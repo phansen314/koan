@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "delete-folder-input",
+  "type": "object",
+  "required": ["folder"],
+  "properties": {
+    "folder": { "$ref": "folder-path" },
+    "recursive": { "type": "boolean", "default": false, "description": "Delete the folder even if it holds tasks or folders." }
+  },
+  "additionalProperties": false
+}

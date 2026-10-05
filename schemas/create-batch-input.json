@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-batch-input",
+  "type": "object",
+  "required": ["tasks"],
+  "properties": {
+    "folder": { "$ref": "folder-path", "default": "/", "description": "The folder of every task that names none. Created if missing, as every task's folder is." },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "ref": { "$ref": "task-file#/$defs/name", "description": "Local name for this task, for later tasks' blocked_by. Unique within the batch." },
+          "title": { "type": "string", "description": "Untrimmed; trimmed and validated per Titles (see Additional validation)." },
+          "folder": { "$ref": "folder-path", "description": "Defaults to the batch's folder. Created if missing, with any missing folders above it." },
+          "priority": { "$ref": "task-file#/properties/priority", "default": null },
+          "tags": { "$ref": "task-file#/properties/tags", "default": [] },
+          "blocked_by": {
+            "type": "array",
+            "uniqueItems": true,
+            "default": [],
+            "items": {
+              "oneOf": [
+                { "$ref": "task-file#/properties/id" },
+                { "$ref": "task-file#/$defs/name" }
+              ]
+            },
+            "description": "IDs of existing tasks, and refs of earlier tasks in the batch."
+          },
+          "extra": { "$ref": "task-file#/properties/extra", "default": {} },
+          "notes": { "type": "string", "default": "", "description": "Initial notes, written to the task's .md." }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

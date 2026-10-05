@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "move-folder-output",
+  "type": "object",
+  "required": ["folder", "from", "created", "changed"],
+  "properties": {
+    "folder": { "$ref": "folder-path", "description": "The folder's path after the operation: the target." },
+    "from": { "$ref": "folder-path", "description": "The folder's path before the operation." },
+    "created": { "type": "array", "items": { "$ref": "folder-path" }, "description": "Folders created above the target (parents), outermost first; empty if none." },
+    "changed": { "type": "boolean", "description": "True if the folder moved; false if it was already at the target." }
+  },
+  "additionalProperties": false
+}

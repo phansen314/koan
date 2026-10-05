@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "warning",
+  "type": "object",
+  "required": ["kind", "message", "paths", "ids"],
+  "properties": {
+    "kind": { "type": "string", "description": "One of the Warning kinds; callers ignore unknown values." },
+    "message": { "type": "string", "description": "Human-readable explanation. Not part of the contract." },
+    "paths": { "type": "array", "items": { "type": "string" }, "description": "Filesystem paths involved; meaning per kind (see Warning kinds)." },
+    "ids": { "type": "array", "items": { "type": "integer" }, "description": "Task IDs involved; order and meaning per kind (see Warning kinds)." },
+    "reason": { "type": "string", "description": "For unusable-file: unreadable, corrupt, or unsupported-format." },
+    "code": { "type": "string", "description": "Symbolic OS error (e.g. EACCES), for unusable-file with reason unreadable, unreadable-folder, and notes-missing (absent there when the OS error has no symbolic name)." }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "unusable-file" } } }, "then": { "required": ["reason"] } },
+    { "if": { "properties": { "kind": { "const": "unusable-file" }, "reason": { "const": "unreadable" } }, "required": ["reason"] }, "then": { "required": ["code"] } },
+    { "if": { "properties": { "kind": { "const": "unreadable-folder" } } }, "then": { "required": ["code"] } }
+  ]
+}

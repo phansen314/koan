@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "init-output",
+  "type": "object",
+  "required": ["root", "action", "last_id"],
+  "properties": {
+    "root": { "type": "string", "description": "Absolute root path, as recorded in the config." },
+    "action": { "type": "string", "enum": ["created", "attached"], "description": "created: a new, empty tree was created. attached: an existing tree (one already containing ftask.json) was attached to this machine." },
+    "last_id": { "$ref": "root-file#/properties/last_id" }
+  },
+  "additionalProperties": false
+}

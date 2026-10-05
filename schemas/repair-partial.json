@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repair-partial",
+  "type": "object",
+  "required": ["repaired"],
+  "properties": {
+    "repaired": { "type": "array", "items": { "$ref": "finding" }, "description": "What repair changed before the error, grouped as in the output." }
+  },
+  "additionalProperties": false
+}

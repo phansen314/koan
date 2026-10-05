@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-folder-output",
+  "type": "object",
+  "required": ["folder", "created"],
+  "properties": {
+    "folder": { "$ref": "folder-path" },
+    "created": { "type": "array", "items": { "$ref": "folder-path" }, "description": "Folders this operation created, outermost first; empty if folder already existed." }
+  },
+  "additionalProperties": false
+}

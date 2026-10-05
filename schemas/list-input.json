@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "list-input",
+  "type": "object",
+  "properties": {
+    "folder": { "$ref": "folder-path", "default": "/", "description": "Only tasks (and folders) in this folder are returned." },
+    "recursive": { "type": "boolean", "default": true, "description": "Also return tasks (and folders) in the folder's subfolders." },
+    "readiness": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "task-view#/properties/readiness" },
+      "default": ["ready", "blocked"],
+      "description": "Only tasks with one of these readiness values. The default leaves out complete tasks."
+    },
+    "include_folders": { "type": "boolean", "default": false, "description": "Also return the folders in scope: with recursive, every folder under folder; without, folder and its immediate subfolders." },
+    "tags_any": { "$ref": "frontier-input#/properties/tags_any" },
+    "tags_all": { "$ref": "frontier-input#/properties/tags_all" },
+    "limit": { "$ref": "frontier-input#/properties/limit" },
+    "fields": { "$ref": "frontier-input#/properties/fields" }
+  },
+  "additionalProperties": false
+}

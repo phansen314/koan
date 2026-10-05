@@ -1,0 +1,89 @@
+# CI: see implementation-spec.md, CI matrix.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # A new commit on a PR supersedes the old run; every commit on main keeps its own.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Go version
+        run: go version
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [[ -n $unformatted ]]; then
+            echo "::error::gofmt found unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Vet with e2e hooks
+        run: go vet -tags e2e_hooks ./...
+      - name: Build
+        run: go build ./...
+      # The picker's end-to-end tests run against each fzf fetched here.
+      - name: Fetch fzf
+        run: echo "FTASK_E2E_FZF=$(scripts/fetch-fzf.sh "$RUNNER_TEMP/fzf")" >> "$GITHUB_ENV"
+      # Never -short: the lock stress tests are the macOS check (Lock 5, 6).
+      - name: Test
+        run: go test ./...
+      - name: Install jq if missing
+        run: |
+          if command -v jq >/dev/null; then
+            jq --version
+          elif [[ $RUNNER_OS == macOS ]]; then
+            brew install jq
+          else
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+      - name: Smoke test
+        run: scripts/smoke.sh
+
+  race:
+    name: race (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Go version
+        run: go version
+      # In-process tests only: e2e/ runs binaries built without -race.
+      - name: Test with the race detector
+        run: go test -race $(go list ./... | grep -v /e2e)
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Go version
+        run: go version
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...

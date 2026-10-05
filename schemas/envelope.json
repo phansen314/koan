@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "envelope",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["ok", "result", "warnings"],
+      "properties": {
+        "ok": { "const": true },
+        "result": { "type": "object" },
+        "warnings": { "type": "array", "items": { "$ref": "warning" } }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["ok", "error", "warnings"],
+      "properties": {
+        "ok": { "const": false },
+        "error": { "$ref": "error" },
+        "warnings": { "type": "array", "items": { "$ref": "warning" } }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

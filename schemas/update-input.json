@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "update-input",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id", "description": "The task to update." },
+    "title": { "type": "string", "description": "Replace the title. Untrimmed; trimmed and validated per Titles (see Additional validation)." },
+    "priority": { "$ref": "task-file#/properties/priority", "description": "Set the priority; null clears it." },
+    "tags": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["replace_all"],
+          "properties": { "replace_all": { "$ref": "task-file#/properties/tags", "description": "The complete new tag set; [] clears it." } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "add": { "$ref": "#/$defs/tag-list", "description": "Tags to add." },
+            "remove": { "$ref": "#/$defs/tag-list", "description": "Tags to remove." }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "extra": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["replace_all"],
+          "properties": { "replace_all": { "$ref": "task-file#/properties/extra", "description": "The complete new extra map; {} clears it." } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "merge": { "type": "object", "minProperties": 1, "description": "Keys to set; each replaces that key's whole value (shallow merge)." },
+            "remove": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" }, "description": "Keys to delete." }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "anyOf": [
+    { "required": ["title"] },
+    { "required": ["priority"] },
+    { "required": ["tags"] },
+    { "required": ["extra"] }
+  ],
+  "$defs": {
+    "tag-list": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "task-file#/$defs/name" } }
+  }
+}

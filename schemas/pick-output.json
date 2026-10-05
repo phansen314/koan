@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pick-output",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["tasks", "missing", "actions", "notes_edited"],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": { "anyOf": [{ "$ref": "task-view" }, { "$ref": "task-projection" }] },
+          "description": "The selected tasks, from the final read, in pick's line order. Task views, or Task projections with fields. May be empty."
+        },
+        "missing": {
+          "type": "array",
+          "items": { "$ref": "task-file#/properties/id" },
+          "description": "Selected IDs the final read did not find: deleted by another process meanwhile, or, for a duplicated ID, no copy left in the selected copy's folder. Usually empty."
+        },
+        "actions": { "$ref": "#/$defs/actions" },
+        "notes_edited": {
+          "type": "array",
+          "items": { "$ref": "task-file#/properties/id" },
+          "description": "IDs whose notes file changed during an e, judged by its content before and after the editor ran. In the order first edited, without duplicates. Usually empty."
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["folders", "missing", "actions"],
+      "properties": {
+        "folders": { "type": "array", "items": { "$ref": "folder-path" }, "description": "The selected folders that the final read found, in tree order. May be empty." },
+        "missing": { "type": "array", "items": { "$ref": "folder-path" }, "description": "Selected folders the final read did not find. Usually empty." },
+        "actions": { "$ref": "#/$defs/actions", "description": "Always empty: the folder picker has no actions." }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "actions": {
+      "type": "array",
+      "description": "Every operation the session's actions ran, in the order run. Loads (list) are not included; notes edits are in notes_edited.",
+      "items": {
+        "type": "object",
+        "required": ["operation", "input", "output"],
+        "properties": {
+          "operation": { "type": "string", "enum": ["complete", "reopen", "create", "block", "unblock", "move", "update"] },
+          "input": { "type": "object", "description": "The operation's input, as passed." },
+          "output": { "oneOf": [{ "$ref": "envelope" }, { "type": "null" }], "description": "The operation's envelope, unchanged: success or failure. null if the outcome is unknown (see Session)." }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

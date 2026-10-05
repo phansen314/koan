@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "show-output",
+  "type": "object",
+  "required": ["tasks"],
+  "properties": {
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The task with the requested ID: one item normally; every copy, in tree order, when the ID is duplicated.",
+      "items": { "$ref": "task-view" }
+    }
+  },
+  "additionalProperties": false
+}

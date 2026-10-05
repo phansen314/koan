@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repair-input",
+  "type": "object",
+  "properties": {
+    "kinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" }, "description": "Finding kinds to repair, each listed in full in the output. Omitted: every auto kind. Naming an on-request kind is the only way to repair it." }
+  },
+  "additionalProperties": false
+}

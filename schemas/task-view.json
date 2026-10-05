@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-view",
+  "type": "object",
+  "required": ["schema", "id", "title", "priority", "created_at", "completed_at", "updated_at", "blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "blocking"],
+  "properties": {
+    "schema": { "$ref": "task#/properties/schema" },
+    "id": { "$ref": "task#/properties/id" },
+    "title": { "$ref": "task#/properties/title" },
+    "priority": { "$ref": "task#/properties/priority" },
+    "created_at": { "$ref": "task#/properties/created_at" },
+    "completed_at": { "$ref": "task#/properties/completed_at" },
+    "updated_at": { "$ref": "task#/properties/updated_at" },
+    "blocked_by": { "$ref": "task#/properties/blocked_by" },
+    "tags": { "$ref": "task#/properties/tags" },
+    "extra": { "$ref": "task#/properties/extra" },
+    "folder": { "$ref": "task#/properties/folder" },
+    "notes_path": { "$ref": "task#/properties/notes_path" },
+    "readiness": { "type": "string", "enum": ["ready", "blocked", "complete"], "description": "Derived per Dependencies (see Dependencies)." },
+    "blocking": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "description": "IDs in blocked_by that currently block the task — open, missing, unusable, or duplicated — in ascending order. Non-empty exactly when readiness is blocked."
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "readiness": { "const": "blocked" } } }, "then": { "properties": { "blocking": { "minItems": 1 } } }, "else": { "properties": { "blocking": { "maxItems": 0 } } } },
+    { "if": { "properties": { "readiness": { "const": "complete" } } }, "then": { "properties": { "completed_at": { "type": "string" } } }, "else": { "properties": { "completed_at": { "type": "null" } } } }
+  ]
+}

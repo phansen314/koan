@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-projection",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "schema": { "$ref": "task-view#/properties/schema" },
+    "id": { "$ref": "task-view#/properties/id" },
+    "title": { "$ref": "task-view#/properties/title" },
+    "priority": { "$ref": "task-view#/properties/priority" },
+    "created_at": { "$ref": "task-view#/properties/created_at" },
+    "completed_at": { "$ref": "task-view#/properties/completed_at" },
+    "updated_at": { "$ref": "task-view#/properties/updated_at" },
+    "blocked_by": { "$ref": "task-view#/properties/blocked_by" },
+    "tags": { "$ref": "task-view#/properties/tags" },
+    "extra": { "$ref": "task-view#/properties/extra" },
+    "folder": { "$ref": "task-view#/properties/folder" },
+    "notes_path": { "$ref": "task-view#/properties/notes_path" },
+    "readiness": { "$ref": "task-view#/properties/readiness" },
+    "blocking": { "$ref": "task-view#/properties/blocking" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-batch-output",
+  "type": "object",
+  "required": ["ids", "refs", "folders_created"],
+  "properties": {
+    "ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "The created tasks' IDs, in input order: ids[i] is tasks[i]'s."
+    },
+    "refs": {
+      "type": "object",
+      "propertyNames": { "$ref": "task-file#/$defs/name" },
+      "additionalProperties": { "$ref": "task-file#/properties/id" },
+      "description": "Each ref given, and the ID of the task it named. Empty when no task had a ref."
+    },
+    "folders_created": {
+      "type": "array",
+      "items": { "$ref": "folder-path" },
+      "description": "The folders this operation created, in tree order. Empty when every folder existed."
+    }
+  },
+  "additionalProperties": false
+}

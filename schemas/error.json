@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "error",
+  "type": "object",
+  "required": ["kind", "message", "details"],
+  "properties": {
+    "kind": { "type": "string", "description": "One of the Error kinds; callers treat unknown values as a generic failure." },
+    "message": { "type": "string", "description": "Human-readable explanation. Not part of the contract." },
+    "details": { "type": "object", "description": "Kind-specific structured data (see Error kinds)." },
+    "partial": { "type": "object", "description": "Present only when a multi-file write or setup failed after some of its effects took place. Shape is defined per operation (see its Partial schema)." }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "invalid-input" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/invalid-input" } } } },
+    { "if": { "properties": { "kind": { "const": "environment" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/environment" } } } },
+    { "if": { "properties": { "kind": { "const": "not-initialized" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/not-initialized" } } } },
+    { "if": { "properties": { "kind": { "const": "not-found" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/not-found" } } } },
+    { "if": { "properties": { "kind": { "const": "conflict" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/conflict" } } } },
+    { "if": { "properties": { "kind": { "const": "corrupt" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/corrupt" } } } },
+    { "if": { "properties": { "kind": { "const": "io" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/io" } } } },
+    { "if": { "properties": { "kind": { "const": "unsupported-format" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/unsupported-format" } } } }
+  ],
+  "$defs": {
+    "invalid-input": {
+      "type": "object",
+      "required": ["problems"],
+      "properties": {
+        "problems": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["field", "reason"],
+            "properties": {
+              "field": { "type": "string", "description": "JSON Pointer into the input." },
+              "reason": { "type": "string", "description": "Human-readable." }
+            },
+            "additionalProperties": false
+          },
+          "maxItems": 20
+        },
+        "problems_truncated": { "const": true, "description": "Present only when problems omits some of those found." }
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "required": ["variable"],
+      "properties": { "variable": { "type": "string", "description": "The environment variable ftask needed, e.g. HOME." } },
+      "additionalProperties": false
+    },
+    "not-initialized": {
+      "type": "object",
+      "required": ["missing"],
+      "properties": { "missing": { "type": "string", "enum": ["config", "root", "metadata"] } },
+      "additionalProperties": false
+    },
+    "not-found": {
+      "type": "object",
+      "required": ["folders", "ids", "paths"],
+      "properties": {
+        "folders": { "type": "array", "items": { "$ref": "folder-path" } },
+        "ids": { "type": "array", "items": { "$ref": "task-file#/properties/id" } },
+        "paths": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "conflict": {
+      "type": "object",
+      "required": ["rule", "ids"],
+      "properties": {
+        "rule": { "type": "string", "description": "One of the known conflict rules (see Error kinds); callers treat unknown values as a generic conflict." },
+        "ids": { "type": "array", "items": { "$ref": "task-file#/properties/id" } },
+        "cycles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" } },
+          "description": "For rule acyclic: cycles[i] is the cycle for ids[i], as a list of distinct IDs, each task blocked by the next, and the last blocked by the first."
+        }
+      },
+      "additionalProperties": false,
+      "if": { "properties": { "rule": { "const": "acyclic" } } },
+      "then": { "required": ["cycles"] },
+      "else": { "not": { "required": ["cycles"] } }
+    },
+    "corrupt": {
+      "type": "object",
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "type": "string" },
+        "reason": { "type": "string", "enum": ["not-json", "invalid", "unexpected-file"] },
+        "problems": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["field", "reason"],
+            "properties": {
+              "field": { "type": "string", "description": "JSON Pointer into the file." },
+              "reason": { "type": "string", "description": "Human-readable." }
+            },
+            "additionalProperties": false
+          },
+          "description": "For invalid, in a JSON file: what is wrong, sorted as invalid-input's problems; the first 20."
+        },
+        "problems_truncated": { "const": true, "description": "Present only when problems omits some of those found." },
+        "detail": { "type": "string", "minLength": 1, "description": "For not-json, and for invalid in the config: what is wrong. Human-readable." }
+      },
+      "additionalProperties": false,
+      "dependentRequired": { "problems_truncated": ["problems"] },
+      "allOf": [
+        { "if": { "properties": { "reason": { "const": "not-json" } } }, "then": { "required": ["detail"], "not": { "required": ["problems"] } } },
+        { "if": { "properties": { "reason": { "const": "invalid" } } }, "then": { "oneOf": [{ "required": ["problems"] }, { "required": ["detail"] }] } },
+        { "if": { "properties": { "reason": { "const": "unexpected-file" } } }, "then": { "not": { "anyOf": [{ "required": ["problems"] }, { "required": ["detail"] }] } } }
+      ]
+    },
+    "io": {
+      "type": "object",
+      "required": ["path", "code"],
+      "properties": {
+        "path": { "type": "string" },
+        "code": { "type": "string", "description": "Symbolic OS error, e.g. ENOSPC." }
+      },
+      "additionalProperties": false
+    },
+    "unsupported-format": {
+      "type": "object",
+      "required": ["path", "found", "supported"],
+      "properties": {
+        "path": { "type": "string" },
+        "found": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+        "supported": { "type": "array", "items": { "type": "integer" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

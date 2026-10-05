@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "delete-output",
+  "type": "object",
+  "required": ["id", "folder", "dependents"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id", "description": "The task deleted." },
+    "folder": { "$ref": "folder-path", "description": "The folder it was in." },
+    "dependents": { "type": "array", "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" }, "description": "Tasks whose blocked_by contained id, in ascending order; each had it removed." }
+  },
+  "additionalProperties": false
+}

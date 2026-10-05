@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "block-input",
+  "type": "object",
+  "required": ["id", "blockers"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id", "description": "The task to block." },
+    "blockers": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" }, "description": "IDs to add to the task's blocked_by." }
+  },
+  "additionalProperties": false
+}

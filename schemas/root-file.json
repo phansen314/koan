@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "root-file",
+  "type": "object",
+  "required": ["schema", "last_id"],
+  "properties": {
+    "schema": { "const": 1 },
+    "last_id": { "type": "integer", "minimum": 0, "maximum": 999999999999999 }
+  },
+  "additionalProperties": false
+}

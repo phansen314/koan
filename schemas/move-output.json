@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "move-output",
+  "type": "object",
+  "required": ["schema", "id", "title", "priority", "created_at", "completed_at", "updated_at", "blocked_by", "tags", "extra", "folder", "notes_path", "from", "created", "changed"],
+  "properties": {
+    "schema": { "$ref": "task#/properties/schema" },
+    "id": { "$ref": "task#/properties/id" },
+    "title": { "$ref": "task#/properties/title" },
+    "priority": { "$ref": "task#/properties/priority" },
+    "created_at": { "$ref": "task#/properties/created_at" },
+    "completed_at": { "$ref": "task#/properties/completed_at" },
+    "updated_at": { "$ref": "task#/properties/updated_at" },
+    "blocked_by": { "$ref": "task#/properties/blocked_by" },
+    "tags": { "$ref": "task#/properties/tags" },
+    "extra": { "$ref": "task#/properties/extra" },
+    "folder": { "$ref": "task#/properties/folder" },
+    "notes_path": { "$ref": "task#/properties/notes_path" },
+    "from": { "$ref": "folder-path", "description": "The folder the task was in before the operation." },
+    "created": { "type": "array", "items": { "$ref": "folder-path" }, "description": "Folders created (parents), outermost first; empty if none." },
+    "changed": { "type": "boolean", "description": "True if the task moved; false if it was already in to." }
+  },
+  "additionalProperties": false
+}

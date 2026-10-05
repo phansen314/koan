@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "frontier-output",
+  "type": "object",
+  "required": ["tasks", "total", "truncated"],
+  "properties": {
+    "tasks": {
+      "type": "array",
+      "items": { "anyOf": [{ "$ref": "task-view" }, { "$ref": "task-projection" }] },
+      "description": "Every ready task in scope that passes the filters, in frontier order — the first limit of them, with a limit. Task views, or Task projections with fields. May be empty."
+    },
+    "total": { "type": "integer", "minimum": 0, "description": "How many ready tasks in scope pass the filters, before the limit." },
+    "truncated": { "type": "boolean", "description": "Whether the limit left some out: total is more than the number of tasks returned." }
+  },
+  "additionalProperties": false
+}

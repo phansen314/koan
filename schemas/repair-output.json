@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repair-output",
+  "type": "object",
+  "required": ["repaired", "healthy", "findings"],
+  "properties": {
+    "repaired": { "type": "array", "items": { "$ref": "finding" }, "description": "What repair changed, grouped as findings; each item's action is what was done. Empty when there was nothing to repair." },
+    "healthy": { "type": "boolean", "description": "True when the tree has no findings left of any kind but informational ones." },
+    "findings": { "type": "array", "items": { "$ref": "finding" }, "description": "The findings left after the repairs, as doctor reports them." }
+  },
+  "additionalProperties": false
+}

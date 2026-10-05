@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "delete-partial",
+  "type": "object",
+  "required": ["dependents"],
+  "properties": {
+    "dependents": { "type": "array", "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" }, "description": "Tasks whose reference to id was removed before the failure, in ascending order. The task was not removed." }
+  },
+  "additionalProperties": false
+}

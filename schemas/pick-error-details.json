@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pick-error-details",
+  "$defs": {
+    "unavailable": {
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string", "enum": ["no-terminal", "fzf-missing", "fzf-too-old", "fzf-failed"] },
+        "found": { "type": "string", "description": "For fzf-too-old: the version found." },
+        "required": { "type": "string", "description": "For fzf-too-old: the minimum version." },
+        "status": { "type": "integer", "description": "For fzf-failed: fzf's exit status." },
+        "actions": { "$ref": "pick-output#/$defs/actions", "description": "For fzf-failed: the operations already run." }
+      },
+      "additionalProperties": false
+    },
+    "cancelled": {
+      "type": "object",
+      "required": ["actions"],
+      "properties": { "actions": { "$ref": "pick-output#/$defs/actions" } },
+      "additionalProperties": false
+    },
+    "incomplete": {
+      "type": "object",
+      "required": ["actions", "error"],
+      "properties": {
+        "actions": { "$ref": "pick-output#/$defs/actions" },
+        "error": { "$ref": "error", "description": "The final read's error, unchanged." }
+      },
+      "additionalProperties": false
+    }
+  }
+}

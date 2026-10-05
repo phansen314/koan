@@ -1,0 +1,13 @@
+{
+  "name": "ftask",
+  "description": "Track and work through your tasks with the ftask CLI: a local, file-based task tree with dependencies.",
+  "author": {
+    "name": "phansen314"
+  },
+  "homepage": "https://github.com/phansen314/ftask",
+  "repository": "https://github.com/phansen314/ftask",
+  "license": "MIT",
+  "skills": [
+    "./claude/skills/"
+  ]
+}

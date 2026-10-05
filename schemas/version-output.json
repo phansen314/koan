@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "version-output",
+  "type": "object",
+  "required": ["version", "commit", "commit_time", "uncommitted_changes", "go", "platform", "schemas"],
+  "properties": {
+    "version": { "type": "string", "description": "Release version (semver), e.g. 1.4.0." },
+    "commit": { "type": "string", "description": "Source commit the binary was built from." },
+    "commit_time": { "$ref": "task-file#/$defs/timestamp", "description": "Timestamp of that commit." },
+    "uncommitted_changes": { "type": "boolean", "description": "True if the binary was built from a working tree with uncommitted changes, so it does not exactly match commit." },
+    "go": { "type": "string", "description": "Go toolchain the binary was built with, e.g. go1.25.1." },
+    "platform": { "type": "string", "description": "OS and architecture, e.g. linux/amd64." },
+    "schemas": {
+      "type": "object",
+      "required": ["task", "root"],
+      "properties": {
+        "task": { "type": "integer", "description": "The one task file format version this binary reads and writes." },
+        "root": { "type": "integer", "description": "The one ftask.json format version this binary reads and writes." }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

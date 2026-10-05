@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unblock-input",
+  "type": "object",
+  "required": ["id", "blockers"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id", "description": "The task to unblock." },
+    "blockers": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" }, "description": "IDs to remove from the task's blocked_by." }
+  },
+  "additionalProperties": false
+}

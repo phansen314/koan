@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "init-partial",
+  "type": "object",
+  "required": ["root_created", "metadata_created"],
+  "properties": {
+    "root_created": { "type": "boolean", "description": "init created the root directory." },
+    "metadata_created": { "type": "boolean", "description": "init created ftask.json." }
+  },
+  "additionalProperties": false
+}

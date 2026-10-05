@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-input",
+  "type": "object",
+  "required": ["title"],
+  "properties": {
+    "title": { "type": "string", "description": "Untrimmed; trimmed and validated per Titles (see Additional validation)." },
+    "folder": { "$ref": "folder-path", "default": "/" },
+    "priority": { "$ref": "task-file#/properties/priority", "default": null },
+    "tags": { "$ref": "task-file#/properties/tags", "default": [] },
+    "blocked_by": { "$ref": "task-file#/properties/blocked_by", "default": [] },
+    "extra": { "$ref": "task-file#/properties/extra", "default": {} },
+    "notes": { "type": "string", "default": "", "description": "Initial notes, written to the task's .md." }
+  },
+  "additionalProperties": false
+}

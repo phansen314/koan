@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "move-input",
+  "type": "object",
+  "required": ["id", "to"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id" },
+    "to": { "$ref": "folder-path", "description": "The folder to move the task into." },
+    "parents": { "type": "boolean", "default": false, "description": "Create to, and any missing folders above it, instead of failing." }
+  },
+  "additionalProperties": false
+}

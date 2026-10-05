@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "doctor-output",
+  "type": "object",
+  "required": ["healthy", "findings"],
+  "properties": {
+    "healthy": { "type": "boolean", "description": "True when the tree has no findings of any kind but informational ones, whether or not kinds named them." },
+    "findings": { "type": "array", "items": { "$ref": "finding" }, "description": "One group per kind found, but informational kinds; or only the kinds named in kinds." }
+  },
+  "additionalProperties": false
+}

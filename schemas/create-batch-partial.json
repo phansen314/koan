@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-batch-partial",
+  "type": "object",
+  "required": ["folders_created", "consumed", "ids", "refs"],
+  "properties": {
+    "folders_created": {
+      "type": "array",
+      "items": { "$ref": "folder-path" },
+      "description": "The folders created before the failure, in tree order. They stay."
+    },
+    "consumed": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "Every ID raised from last_id for the batch, ascending: consumed[i] was tasks[i]'s. Empty when the failure came before last_id was raised."
+    },
+    "ids": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "The tasks created before the failure: the first len(ids) tasks, in input order. May be empty."
+    },
+    "refs": {
+      "type": "object",
+      "propertyNames": { "$ref": "task-file#/$defs/name" },
+      "additionalProperties": { "$ref": "task-file#/properties/id" },
+      "description": "The refs of the tasks in ids, and their IDs."
+    }
+  },
+  "additionalProperties": false
+}

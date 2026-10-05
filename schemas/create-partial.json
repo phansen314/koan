@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-partial",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "type": "integer", "description": "The ID consumed from last_id. This operation created no task; retrying is safe and uses a new ID." }
+  },
+  "additionalProperties": false
+}

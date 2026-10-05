@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pick-input",
+  "type": "object",
+  "properties": {
+    "folder": { "$ref": "folder-path", "default": "/" },
+    "recursive": { "type": "boolean", "default": true },
+    "scope": { "type": "string", "enum": ["ready", "open", "all"], "description": "Default open; all with ids or source." },
+    "tags_any": { "$ref": "frontier-input#/properties/tags_any" },
+    "tags_all": { "$ref": "frontier-input#/properties/tags_all" },
+    "ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" }, "description": "Only these tasks are candidates. May be empty." },
+    "source": { "type": "string", "minLength": 1, "description": "A shell command whose output gives the candidates. Not with ids." },
+    "query": { "type": "string", "default": "" },
+    "select_one": { "type": "boolean", "default": false },
+    "exit_zero": { "type": "boolean", "default": false },
+    "fields": { "$ref": "frontier-input#/properties/fields" },
+    "folders": { "type": "boolean", "default": false }
+  },
+  "additionalProperties": false,
+  "not": { "required": ["ids", "source"] }
+}

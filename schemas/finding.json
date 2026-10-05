@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finding",
+  "type": "object",
+  "required": ["kind", "class", "count", "truncated", "items"],
+  "properties": {
+    "kind": { "type": "string", "description": "One of the Finding kinds; callers ignore unknown values." },
+    "class": { "type": "string", "enum": ["auto", "on-request", "manual", "informational"], "description": "The kind's repair class (see Diagnosis and repair)." },
+    "count": { "type": "integer", "minimum": 1, "description": "How many items the kind has, including any not listed." },
+    "truncated": { "type": "boolean", "description": "True when items lists fewer than count." },
+    "items": { "type": "array", "minItems": 1, "items": { "$ref": "finding-item" } }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "kind": { "enum": ["metadata-unusable", "unusable-file"] } } }, "then": { "properties": { "items": { "items": { "required": ["error"] } } } } },
+    { "if": { "properties": { "kind": { "enum": ["metadata-missing", "id-above-last-id"] } } }, "then": { "properties": { "items": { "items": { "required": ["last_id"] } } } } },
+    { "if": { "properties": { "kind": { "enum": ["orphan-notes", "skipped-entry"] } } }, "then": { "properties": { "items": { "items": { "required": ["reason"] } } } } },
+    { "if": { "properties": { "kind": { "const": "duplicate-id" } } }, "then": { "properties": { "items": { "items": { "required": ["identical"] } } } } },
+    { "if": { "properties": { "kind": { "const": "cycle" } } }, "then": { "properties": { "items": { "items": { "required": ["group"] } } } } },
+    { "if": { "properties": { "kind": { "const": "unreadable-folder" } } }, "then": { "properties": { "items": { "items": { "required": ["code"] } } } } }
+  ]
+}

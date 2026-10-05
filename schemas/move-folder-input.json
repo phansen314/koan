@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "move-folder-input",
+  "type": "object",
+  "required": ["folder", "to"],
+  "properties": {
+    "folder": { "$ref": "folder-path", "description": "The folder to move." },
+    "to": { "$ref": "folder-path", "description": "An existing folder to move it into, or its new path." },
+    "parents": { "type": "boolean", "default": false, "description": "Create missing folders above the new path instead of failing." }
+  },
+  "additionalProperties": false
+}

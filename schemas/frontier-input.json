@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "frontier-input",
+  "type": "object",
+  "properties": {
+    "folder": { "$ref": "folder-path", "default": "/", "description": "Only tasks in this folder are returned." },
+    "recursive": { "type": "boolean", "default": true, "description": "Also return tasks in the folder's subfolders." },
+    "tags_any": { "$ref": "#/$defs/tag-set", "description": "Only tasks with at least one of these tags (see Narrowing tasks)." },
+    "tags_all": { "$ref": "#/$defs/tag-set", "description": "Only tasks with every one of these tags (see Narrowing tasks)." },
+    "limit": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "At most this many tasks, the first in the operation's order; absent, no limit (see Narrowing tasks)." },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "task-field" },
+      "description": "Return each task as a Task projection of these fields, id always included; absent, whole Task views (see Narrowing tasks)."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "tag-set": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "task-file#/$defs/name" } }
+  }
+}

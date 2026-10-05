@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-folder-input",
+  "type": "object",
+  "required": ["folder"],
+  "properties": {
+    "folder": { "$ref": "folder-path" },
+    "parents": { "type": "boolean", "default": false, "description": "Create missing parent folders instead of failing." }
+  },
+  "additionalProperties": false
+}

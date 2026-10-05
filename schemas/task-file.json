@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-file",
+  "type": "object",
+  "required": ["schema", "id", "title", "priority", "created_at", "completed_at", "updated_at", "blocked_by", "tags", "extra"],
+  "properties": {
+    "schema": { "const": 1 },
+    "id": { "type": "integer", "minimum": 1, "maximum": 999999999999999 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000](?:[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029]*[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000])?$" },
+    "priority": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991 },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "completed_at": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+    "updated_at": { "$ref": "#/$defs/timestamp" },
+    "blocked_by": { "type": "array", "items": { "$ref": "#/properties/id" }, "uniqueItems": true },
+    "tags": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
+    "extra": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "timestamp": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "name": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$" }
+  }
+}
