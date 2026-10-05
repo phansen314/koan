@@ -106,6 +106,8 @@ func TestCreateFolder(t *testing.T) {
 		// Something appears between the walk and mkdir (an outside change).
 		{"a directory appears", func(f *fixture) { f.appearAt("a/b", f.mkdir) }, `{"folder": "/a/b/c", "parents": true}`,
 			`{"folder":"/a/b/c","created":["/a","/a/b/c"]}`, []string{"a/b/c"}, nil},
+		{"a case variant appears", func(f *fixture) { f.appearAt("a", func(rel string) { f.mkdir(rel + "/B") }) }, `{"folder": "/a/b/c", "parents": true}`,
+			`conflict {"rule":"case-clash","ids":[]}`, []string{"a/B"}, []string{"a/b"}},
 		{"a file appears", func(f *fixture) { f.appearAt("a/b", func(rel string) { f.write(rel, "") }) }, `{"folder": "/a/b/c", "parents": true}`,
 			`corrupt {"path":"~/tasks/a/b","reason":"unexpected-file"} partial {"created":["/a"]}`, []string{"a"}, []string{"a/b/c"}},
 	} {

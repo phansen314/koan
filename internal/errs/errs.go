@@ -227,12 +227,13 @@ func Conflict(rule Rule, ids []int64) *Error {
 	return &Error{Kind: KindConflict, Message: msg, Details: ConflictDetails{Rule: rule, IDs: nonNil(ids)}}
 }
 
-// CaseClash reports a folder path one of whose segments differs only in
-// case from an entry already in its parent, at path.
-func CaseClash(path string) *Error {
+// CaseClash reports a folder, at path, whose name differs only in case from
+// another's, at other: one already there, or another the operation would
+// create.
+func CaseClash(path, other string) *Error {
 	return &Error{
 		Kind:    KindConflict,
-		Message: path + " already exists with different case; folder names must differ by more than case",
+		Message: path + " and " + other + " differ only in case; folder names must differ by more than case",
 		Details: ConflictDetails{Rule: RuleCaseClash, IDs: []int64{}},
 	}
 }

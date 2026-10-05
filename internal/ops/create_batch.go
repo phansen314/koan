@@ -338,5 +338,14 @@ func batchFolders(tx *store.Tx, tasks []BatchTask) ([]model.FolderPath, *errs.Er
 		}
 	}
 	slices.SortFunc(missing, store.CompareFolders)
+	// The walk compared each first missing folder with what exists; two
+	// missing folders must also differ by more than case.
+	for i, f := range missing {
+		for _, g := range missing[:i] {
+			if store.FoldName(string(f)) == store.FoldName(string(g)) {
+				return nil, errs.CaseClash(tx.Path(store.FolderRel(f)), tx.Path(store.FolderRel(g)))
+			}
+		}
+	}
 	return missing, nil
 }

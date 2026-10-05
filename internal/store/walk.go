@@ -104,7 +104,7 @@ func (tx *Tx) caseClash(parent, name string) *errs.Error {
 		}
 	}
 	if clash != "" {
-		return errs.CaseClash(tx.Path(joinPath(parent, clash)))
+		return errs.CaseClash(tx.Path(joinPath(parent, name)), tx.Path(joinPath(parent, clash)))
 	}
 	return nil
 }

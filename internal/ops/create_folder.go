@@ -73,11 +73,14 @@ func runCreateFolder(env Env, in CreateFolderInput, w *errs.Collector) (any, *er
 	return out, nil
 }
 
-// mkdirFolder creates folder f, whose parent exists. If something appeared
-// there since the path walk — only an outside change can, under the lock —
-// f is walked again: a plain directory counts as already there, anything
-// else is corrupt.
+// mkdirFolder creates folder f, whose parent exists, unless an entry there
+// differs from it only in case. If something appeared there since the path
+// walk — only an outside change can, under the lock — f is walked again: a
+// plain directory counts as already there, anything else is corrupt.
 func mkdirFolder(tx *store.Tx, f model.FolderPath) (bool, *errs.Error) {
+	if e := tx.CaseClash(f); e != nil {
+		return false, e
+	}
 	rel := store.FolderRel(f)
 	err := tx.Mkdir(rel)
 	switch {

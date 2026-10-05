@@ -1524,7 +1524,7 @@ A task may have a **`ref`**: a name, local to the batch, that later tasks in it 
 
 Like every `invalid-input`, every problem in every task is reported, sorted by `field`, the first 20 listed.
 
-**Preconditions:** every task's folder either exists or can be created: the [path walk](#path-walk) meets no entry that is not a plain directory, or is a symlink. Every integer in any `blocked_by` names an existing task, open or complete, and is at most `last_id`, as for [`create`](#create). An ID with several task files exists. `last_id` plus the number of tasks is within the [ID ceiling](design-spec.md#task-ids).
+**Preconditions:** every task's folder either exists or can be created: the [path walk](#path-walk) meets no entry that is not a plain directory, or is a symlink, nor one that differs from a segment only in case; and no two folders the batch would create differ only in case (e.g. `/s/JIRA-1` and `/s/jira-1`). Every integer in any `blocked_by` names an existing task, open or complete, and is at most `last_id`, as for [`create`](#create). An ID with several task files exists. `last_id` plus the number of tasks is within the [ID ceiling](design-spec.md#task-ids).
 
 **Needed files:** the entries along each distinct folder's path ([path walk](#path-walk)), up to the first missing one, and the task files whose filename ID is an integer in any `blocked_by`. When any `blocked_by` holds an integer, `create-batch` walks the whole tree once to look them up, and fails with `io` if it meets a folder it can't list; otherwise it does not walk the tree. Relevant files: the same task files — an ID with more than one task file is a warning, not an error.
 
@@ -1592,6 +1592,7 @@ The tasks themselves are not returned: the caller wrote them, and the result of 
 | `corrupt`, `unsupported-format` | A needed task file is corrupt or has an unsupported `schema`; or a new task's task file already exists in its folder (`corrupt`, `reason`: `unexpected-file`, with a `partial`). |
 | `conflict` | (`rule`: `id-above-last-id`) An integer in a `blocked_by` is above `last_id`. `ids`: every such ID, across all tasks, ascending. Run [`repair`](#repair) first, which raises `last_id`. |
 | `conflict` | (`rule`: `id-exhausted`) The last of the *n* IDs would exceed the ID ceiling. Checked before `last_id` is raised, so nothing is consumed. |
+| `conflict` | (`rule`: `case-clash`) A folder on a task's folder path differs only in case from an entry already there, or two folders the batch would create differ only in case (`ids`: `[]`). Checked before anything is written. |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
 
