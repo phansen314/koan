@@ -37,7 +37,7 @@ Terms used with one meaning throughout this spec and [operations.md](operations.
 | **unusable** | A file that is *unreadable*, *corrupt*, or in an *unsupported format* (see [File validity](#file-validity)). |
 | **process crash**, **system crash** | The two kinds of interruption (see [Crashes](#crashes)). |
 | **outside change** | Any change under the root not made by koan (see [Assumptions](#assumptions)). |
-| **open / complete** | A task's state, determined solely by `completed_at` (see [Fields](#fields)). "Complete" covers every way a task can end, including cancelled. |
+| **open / done** | A task's state, determined solely by `completed_at` (see [Fields](#fields)). "Done" covers every way a task can end, including cancelled. |
 | **read / write / setup** | The kinds of [operation](operations.md#operation-kinds). "Read a file" means file I/O, not a read operation. |
 
 ## Data model
@@ -101,15 +101,15 @@ Every key is required and no other top-level key is allowed. `extra` is the plac
 - **`created_at`** — [Timestamp](#timestamps) of when the task was created. Never changes after creation.
 - **`completed_at`** — [Timestamp](#timestamps) of when the task was completed, or `null`. This is the **sole** source of truth for a task's state:
   - **Open:** `completed_at` is `null`.
-  - **Complete:** `completed_at` is not `null`. Complete covers every way a task can end — done, implemented, cancelled, abandoned — and koan draws no distinction between them. The user can record the distinction in `extra` (e.g. a `status` key).
+  - **Done:** `completed_at` is not `null`. Done covers every way a task can end — finished, implemented, cancelled, abandoned — and koan draws no distinction between them. The user can record the distinction in `extra` (e.g. a `status` key).
 - **`updated_at`** — [Timestamp](#timestamps) of when koan last changed the task file's content: set to `created_at` at creation, then to the current time by every write that changes a field — including removing a deleted task from a dependent's `blocked_by`. A write that changes nothing does not rewrite the file, so leaves it alone. [`move`](operations.md#move) does not set it: the folder is not stored in the task file. Edits to the notes are not tracked: koan never sees them.
-- **`blocked_by`** — Set of IDs of the tasks that must be complete before this one is ready (see [Dependencies](#dependencies)).
+- **`blocked_by`** — Set of IDs of the tasks that must be done before this one is ready (see [Dependencies](#dependencies)).
 - **`tags`** — Set of labels for grouping and filtering tasks across folders (see [Tags](#tags)).
 - **`extra`** — Open map of user-defined data: string keys, any JSON values. Untyped and **never interpreted by koan** — koan stores it and returns it, and managing its keys and value types consistently is up to the user or agent. Entirely optional; a task that doesn't use it has an empty map. Common uses are a workflow `status` or project-specific fields.
 
 `blocked_by` and `tags` are **sets**: stored as JSON arrays, but order carries no meaning and duplicates are not allowed.
 
-> **Completion is deliberately reason-blind.** Because only `completed_at` determines state, completing a task unblocks everything that depends on it, whether it was finished or cancelled. "Complete" means *no longer open*, whatever the reason. If a cancelled task leaves its dependents without a premise, re-planning them is the user's job. This is intentional: the user has to handle cancellation either way, and koan doesn't impose its own vocabulary of outcomes on top.
+> **Completion is deliberately reason-blind.** Because only `completed_at` determines state, completing a task unblocks everything that depends on it, whether it was finished or cancelled. "Done" means *no longer open*, whatever the reason. If a cancelled task leaves its dependents without a premise, re-planning them is the user's job. This is intentional: the user has to handle cancellation either way, and koan doesn't impose its own vocabulary of outcomes on top.
 
 > **Why is `status` an `extra` key and not a tag?** Both are free-form user vocabulary that koan never interprets. The difference is structural: a task has **exactly one** workflow state but **any number** of tags. A tag set can't express "exactly one of" — nothing stops a task from being tagged both `waiting` and `in-progress`. A single key in `extra` holds one value at a time.
 
@@ -228,9 +228,9 @@ A stored title therefore never has leading or trailing whitespace. On disk this 
 
 Readiness is derived **per task file**, from that file's own `blocked_by` and `completed_at` — so two copies of a duplicated ID may differ in readiness:
 
-- **Ready:** the task is open and every task in its `blocked_by` is complete (or `blocked_by` is empty).
+- **Ready:** the task is open and every task in its `blocked_by` is done (or `blocked_by` is empty).
 - **Blocked:** the task is open and at least one entry in its `blocked_by` is open, names no existing task, names a task whose task file is unusable, or names an ID that more than one task file has (see [Walking the tree](#walking-the-tree)).
-- A complete task is neither ready nor blocked. Every open task is exactly one of ready or blocked.
+- A done task is neither ready nor blocked. Every open task is exactly one of ready or blocked.
 
 A `blocked_by` ID that names no existing task can only arise from a system crash or an outside change. It counts as blocking, so the task stays visible as blocked until someone repairs it, and reads report it as a [`dangling-reference`](operations.md#warning-kinds) warning. A blocker whose task file exists but is unusable also counts as blocking, since its state is unknown; it is reported only as `unusable-file`, not as a dangling reference.
 
@@ -240,7 +240,7 @@ Blockers constrain readiness, not completion: a task can be completed at any tim
 
 Rules spanning several files. Every tree koan alone has written satisfies all four, and any change that would violate one is rejected:
 
-- ***Acyclic.*** The dependency graph is a DAG: a task never blocks itself, directly or through a chain of other tasks. This holds for every task, open or complete — a cycle among complete tasks still violates it, since reopening any of them would expose it.
+- ***Acyclic.*** The dependency graph is a DAG: a task never blocks itself, directly or through a chain of other tasks. This holds for every task, open or done — a cycle among done tasks still violates it, since reopening any of them would expose it.
 - ***No dangling references.*** Every ID in a `blocked_by` names a task that exists. Removing a task removes its ID from every `blocked_by` that contains it.
 - ***Unique IDs.*** No two task files have the same ID.
 - ***IDs within `last_id`.*** Every task's `id` is at most `last_id`.
@@ -361,7 +361,7 @@ These rules apply to every operation that walks the tree — reads and writes al
 - Problems with **relevant files** — files that change the result, or explain it — are warnings. A relevant file that is present but unusable is reported as [`unusable-file`](operations.md#warning-kinds), never silently skipped.
 - Problems with any other file the operation walks past are skipped silently, and left to [`doctor`](operations.md#doctor).
 
-**Blockers.** When deriving readiness, a task's blockers are read — and their problems reported — only when the task is open, since a complete task's readiness doesn't depend on them. (The cycle check in [`block`](operations.md#block) is different: it follows every task on its path, open or complete.) For an open task, every blocker is evaluated, even once one is known to block, so the same tree always yields the same `blocking` list and the same warnings.
+**Blockers.** When deriving readiness, a task's blockers are read — and their problems reported — only when the task is open, since a done task's readiness doesn't depend on them. (The cycle check in [`block`](operations.md#block) is different: it follows every task on its path, open or done.) For an open task, every blocker is evaluated, even once one is known to block, so the same tree always yields the same `blocking` list and the same warnings.
 
 **Duplicates.** If several task files with one ID all exist, the IDs are genuine duplicates, and the operation never picks one:
 
@@ -372,7 +372,7 @@ These rules apply to every operation that walks the tree — reads and writes al
 **Folders that can't be listed.** If the walk meets a folder it can't list (e.g. permission denied):
 
 - Operations that return a collection (`frontier`, `list`) report an [`unreadable-folder`](operations.md#warning-kinds) warning and carry on; the folder's tasks are missing from the result.
-- Operations that must find one ID, or prove it absent or unique, or find every reference to one (`show`, `complete`, `reopen`, `block`, `unblock`, `update`, `move`, `delete`, `delete-folder`, `create` with `blocked_by`), fail with `io`: they cannot answer correctly without the whole tree.
+- Operations that must find one ID, or prove it absent or unique, or find every reference to one (`show`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, `delete`, `delete-folder`, `create` with `blocked_by`), fail with `io`: they cannot answer correctly without the whole tree.
 
 ### Reads
 
@@ -487,7 +487,7 @@ Let a task in a [`create-batch`](operations.md#create-batch) name existing tasks
 
 ### Explicit completion time
 
-Let a caller set `completed_at` when completing a task (e.g. to backdate it), instead of always using the current time (see [`complete`](operations.md#complete)).
+Let a caller set `completed_at` when completing a task (e.g. to backdate it), instead of always using the current time (see [`done`](operations.md#done)).
 
 ### Tree view
 

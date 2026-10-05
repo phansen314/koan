@@ -82,7 +82,7 @@ func TestBlockCases(t *testing.T) {
 		// Adding.
 		{"one blocker", `{"id": 1, "blockers": [2]}`, func(f *fixture) { f.task("", 1, false); f.task("", 2, false) },
 			"blocked_by [2] added [2]"},
-		{"complete task, complete blocker", `{"id": 1, "blockers": [2]}`, func(f *fixture) { f.task("", 1, true); f.task("", 2, true) },
+		{"done task, done blocker", `{"id": 1, "blockers": [2]}`, func(f *fixture) { f.task("", 1, true); f.task("", 2, true) },
 			"blocked_by [2] added [2]"},
 		{"some already present", `{"id": 1, "blockers": [3, 2]}`, func(f *fixture) { f.task("", 1, false, 2); f.task("", 2, false); f.task("", 3, false) },
 			"blocked_by [2 3] added [3]"},
@@ -139,7 +139,7 @@ func TestBlockCases(t *testing.T) {
 			f.task("a", 3, false, 4)
 			f.task("b", 4, true, 1)
 		}, `conflict {"rule":"acyclic","ids":[2],"cycles":[[1,2,3,4]]}`},
-		{"through complete tasks", `{"id": 1, "blockers": [2]}`, func(f *fixture) { f.task("", 1, true); f.task("", 2, true, 3); f.task("", 3, true, 1) },
+		{"through done tasks", `{"id": 1, "blockers": [2]}`, func(f *fixture) { f.task("", 1, true); f.task("", 2, true, 3); f.task("", 3, true, 1) },
 			`conflict {"rule":"acyclic","ids":[2],"cycles":[[1,2,3]]}`},
 		{"every offending blocker, and nothing written", `{"id": 1, "blockers": [4, 3, 2]}`, func(f *fixture) {
 			f.task("", 1, false)

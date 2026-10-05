@@ -61,7 +61,7 @@ func duplicateID(tx *store.Tx, id model.ID, locs []store.Location) {
 // view is ld's task, usable, with its readiness derived from its own
 // blocked_by (implementation-spec.md, Queries: derive readiness). For an
 // open task every blocker is looked up, each problem with one a warning; a
-// complete task's blockers are not read.
+// done task's blockers are not read.
 func view(tx *store.Tx, ld *store.Loaded) (model.TaskView, *errs.Error) {
 	v := model.TaskView{Task: tx.Task(ld)}
 	states := map[model.ID]graph.BlockerState{}
@@ -105,7 +105,7 @@ func blockerState(tx *store.Tx, ref *store.Loaded, id model.ID) (graph.BlockerSt
 	case ld.Task.Open():
 		return graph.BlockerOpen, nil
 	}
-	return graph.BlockerComplete, nil
+	return graph.BlockerDone, nil
 }
 
 func missingBlocker(tx *store.Tx, ref *store.Loaded, id model.ID) graph.BlockerState {
@@ -219,8 +219,8 @@ func replaceTask(tx *store.Tx, rel string, t *model.TaskFile, now model.Timestam
 // inScope is the query behind list and frontier (implementation-spec.md,
 // Queries: filter by scope): the path walk of in.Folder, then every folder
 // that could not be listed as a warning, then the folders in scope and the
-// usable tasks in scope as views, both in tree order — complete tasks only
-// if in.Readiness has complete. Every open task in scope is a view whatever
+// usable tasks in scope as views, both in tree order — done tasks only
+// if in.Readiness has done. Every open task in scope is a view whatever
 // in.Readiness, so the warnings its blockers call for are recorded whatever
 // the caller keeps. An unusable task file in scope is a warning and is
 // left out; an ID with several copies in scope is a duplicate-id warning,
@@ -268,7 +268,7 @@ func inScope(tx *store.Tx, in ScopeInput) ([]model.FolderPath, []model.TaskView,
 				return nil, nil, e
 			}
 			continue
-		case !ld.Task.Open() && !slices.Contains(in.Readiness, model.Complete):
+		case !ld.Task.Open() && !slices.Contains(in.Readiness, model.Done):
 			continue
 		}
 		v, e := view(tx, ld)

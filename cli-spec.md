@@ -49,7 +49,7 @@ koan create -i <(jq -n '{title: "x"}')
 
 The command line is parsed in the conventional GNU style of Go's [cobra](https://github.com/spf13/cobra) and [pflag](https://github.com/spf13/pflag) libraries. The rules below are what koan relies on; anything they leave open is the libraries' behavior.
 
-- **Command names are operation names.** A command that runs one operation has that operation's name (`create-folder`, `show`, `complete`). A command that composes several operations gets a name of its own.
+- **Command names are operation names.** A command that runs one operation has that operation's name (`create-folder`, `show`, `done`). A command that composes several operations gets a name of its own.
 - **Option names are field names.** An option that sets an input field is named after that field, in kebab-case: `blocked_by` is `--blocked-by`, `replace_config` is `--replace-config`. A nested field is named by its path: `/tags/add` is `--tags-add`, `/extra/replace_all` is `--extra-replace-all`. Options that set no field under their own name (e.g. `--notes-file`) are the exceptions, and each command lists them.
 - **Arguments are for the one required subject.** A command's single required subject — the task it acts on, the folder it creates, the title it needs — is a positional argument. Everything optional is an option. There are no optional arguments, so a bare token always has one meaning, and a field keeps one spelling across commands (e.g. `folder` is `--folder` everywhere except [`create-folder`](#create-folder), where it is the subject).
 - **Booleans.** `--<field>` sets `true`; `--<field>=false` sets `false` (e.g. `--recursive=false`). A boolean never takes the next token as its value: in `--recursive false`, `false` is an argument.
@@ -60,7 +60,7 @@ The command line is parsed in the conventional GNU style of Go's [cobra](https:/
 - **`--`** ends options. Everything after it is an argument, even if it starts with `-` (e.g. a title like `-urgent`). The command itself must come before it.
 - **A lone `-`** is an ordinary argument, not an option.
 - **Option values** may be given as `--flag value` or `--flag=value`, and for a short form as `-i value` or `-ivalue`. Short boolean options may be combined (`-pi file`).
-- **Exact names.** Commands and options are matched exactly: no abbreviations (`--fold` for `--folder`, `koan comp` for `complete`) and no other case (`--Folder`, `koan Show`), so adding an option or command never breaks an existing command line.
+- **Exact names.** Commands and options are matched exactly: no abbreviations (`--fold` for `--folder`, `koan reo` for `reopen`) and no other case (`--Folder`, `koan Show`), so adding an option or command never breaks an existing command line.
 - **Empty values** are values: `--folder ''` or `--notes=` sets the empty string, which the operation then judges like any other value (an empty folder path is `invalid-input`; empty notes are fine). For a comma list, `''` is the empty list (see *Value formats*).
 - **An option that takes a value always consumes the next token,** even one starting with `-`, so `--priority -3` works.
 - **Arguments are single tokens.** A value with spaces, such as a title, is one argument and must be quoted for the shell (`'Book flights'`; single quotes also keep `$` literal). The quotes are shell syntax, not part of the value. Unquoted words are extra arguments, a usage error; they are never joined.
@@ -537,13 +537,13 @@ koan show 42                                   # readiness, blocking, notes_path
 for id in 41 42 43; do koan show "$id"; done   # one envelope each
 ```
 
-### complete
+### done
 
-Mark a task complete. Completing an already complete task changes nothing. Runs [`complete`](operations.md#complete).
+Mark a task done. Marking an already done task changes nothing. Runs [`done`](operations.md#done).
 
-**Synopsis:** `koan complete <id>`, or `koan complete -i <file>`.
+**Synopsis:** `koan done <id>`, or `koan done -i <file>`.
 
-**Operation:** [`complete`](operations.md#complete).
+**Operation:** [`done`](operations.md#done).
 
 **Arguments:**
 
@@ -555,20 +555,20 @@ Mark a task complete. Completing an already complete task changes nothing. Runs 
 
 **Input:** none beyond the Arguments mapping.
 
-**Output:** Passthrough: the task, plus `changed`. An already complete task exits `0` with `changed: false`.
+**Output:** Passthrough: the task, plus `changed`. An already done task exits `0` with `changed: false`.
 
 **Errors:** none beyond the operation's.
 
 **Examples:**
 
 ```sh
-koan complete 42                               # .result.changed is false if it was already complete
-for id in 41 42; do koan complete "$id"; done  # one envelope each
+koan done 42                               # .result.changed is false if it was already done
+for id in 41 42; do koan done "$id"; done  # one envelope each
 ```
 
 ### reopen
 
-Reopen a complete task. Reopening an already open task changes nothing. The counterpart of [`complete`](#complete). Runs [`reopen`](operations.md#reopen).
+Reopen a done task. Reopening an already open task changes nothing. The counterpart of [`done`](#done). Runs [`reopen`](operations.md#reopen).
 
 **Synopsis:** `koan reopen <id>`, or `koan reopen -i <file>`.
 
@@ -693,7 +693,7 @@ At least one option is needed, and the operation's rules on combining them (e.g.
 
 **Input:** none beyond the Arguments and Options mapping.
 
-Notes are not set by `update`, as in the operation: they are edited directly in the file at the task's `notes_path`. `blocked_by` is changed by [`block`](#block) and [`unblock`](#unblock), and `completed_at` by [`complete`](#complete) and [`reopen`](#reopen).
+Notes are not set by `update`, as in the operation: they are edited directly in the file at the task's `notes_path`. `blocked_by` is changed by [`block`](#block) and [`unblock`](#unblock), and `completed_at` by [`done`](#done) and [`reopen`](#reopen).
 
 **Output:** Passthrough: the task, plus `changed`. An update that changes nothing exits `0` with `changed: []`.
 
@@ -812,7 +812,7 @@ koan frontier --limit 0                                     # how many are ready
 
 ### list
 
-Return every task in scope, whatever its readiness, with its readiness shown — and optionally the folders in scope. Complete tasks are included only on request. Runs [`list`](operations.md#list).
+Return every task in scope, whatever its readiness, with its readiness shown — and optionally the folders in scope. Done tasks are included only on request. Runs [`list`](operations.md#list).
 
 **Synopsis:** `koan list [--folder <path>] [--recursive=false] [--readiness <states>] [--include-folders] [--tags-any <tags>] [--tags-all <tags>] [--limit <n>] [--fields <names>]`, or `koan list -i <file>`.
 
@@ -826,7 +826,7 @@ Return every task in scope, whatever its readiness, with its readiness shown —
 |---|---|---|
 | `--folder <path>` | `/folder` | `/`. An exact [folder path](#command-line). |
 | `--recursive` | `/recursive` | `true`. `--recursive=false` leaves out tasks in subfolders, and folders below the immediate subfolders. |
-| `--readiness <states>` | `/readiness` | `ready,blocked`. Comma list of `ready`, `blocked`, `complete`: only tasks in one of these states. |
+| `--readiness <states>` | `/readiness` | `ready,blocked`. Comma list of `ready`, `blocked`, `done`: only tasks in one of these states. |
 | `--include-folders` | `/include_folders` | `false`. |
 | `--tags-any <tags>` | `/tags_any` | None. Comma list: only tasks with at least one of them. |
 | `--tags-all <tags>` | `/tags_all` | None. Comma list: only tasks with every one of them. |
@@ -845,9 +845,9 @@ Filtering by `extra` or title, and grouping, are left to `jq`; rendering the res
 
 ```sh
 koan list --limit 50 --fields id,title,readiness,folder
-koan list --folder /proj --readiness complete --limit 0                     # how many are done: .result.total
+koan list --folder /proj --readiness done --limit 0                     # how many are done: .result.total
 koan list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
-koan list --readiness ready,blocked,complete --tags-all db,backend --fields id,title,readiness
+koan list --readiness ready,blocked,done --tags-all db,backend --fields id,title,readiness
 koan list --include-folders --limit 0                                      # every folder: .result.folders
 koan list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'
 ```

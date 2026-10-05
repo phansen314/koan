@@ -79,12 +79,12 @@ func TestShowCases(t *testing.T) {
 			"/ 1 ready []"},
 		{"open blocker", func(f *fixture) { f.task("", 1, false, 2); f.task("", 2, false) },
 			"/ 1 blocked [2]"},
-		{"complete blocker", func(f *fixture) { f.task("", 1, false, 2); f.task("a", 2, true) },
+		{"done blocker", func(f *fixture) { f.task("", 1, false, 2); f.task("a", 2, true) },
 			"/ 1 ready []"},
 		{"every blocker looked at", func(f *fixture) { f.task("", 1, false, 2, 3, 4); f.task("", 2, false); f.task("", 3, true) },
 			"/ 1 blocked [2 4]; dangling-reference [1 4] [~/tasks/1.json]"},
-		{"complete task reads no blocker", func(f *fixture) { f.task("", 1, true, 2, 3); f.write("tasks/2.json", "{}") },
-			"/ 1 complete []"},
+		{"done task reads no blocker", func(f *fixture) { f.task("", 1, true, 2, 3); f.write("tasks/2.json", "{}") },
+			"/ 1 done []"},
 
 		// A blocker's problems: it blocks, with a warning.
 		{"dangling blocker", func(f *fixture) { f.task("", 1, false, 2) },

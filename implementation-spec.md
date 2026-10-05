@@ -148,11 +148,11 @@ Task files are loaded on first use and cached for the rest of the operation — 
 
 Operations use the index through a few helpers:
 
-- **Find exactly one** — the targets of `show`, `complete`, `reopen`, `block`, `unblock`, `update`, `move`, and `delete` (which reads only the filename, never the file).
+- **Find exactly one** — the targets of `show`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, and `delete` (which reads only the filename, never the file).
 - **Find every reference** — `delete` and `delete-folder`: every task file outside what is removed is loaded, and those whose `blocked_by` names a removed ID are rewritten; the unusable ones are `unusable-file` warnings.
 - **Check existence** — `create`'s `blocked_by`, `create-batch`'s existing blockers, `block`'s blockers.
 - **Filter by scope** — `frontier` and `list`: tasks and folders under `folder`, recursively or not. Every open task in scope gets its readiness derived, whatever `list`'s `readiness` keeps, so the warnings don't depend on it; then [Narrowing tasks](operations.md#narrowing-tasks) applies to the views, after every warning is recorded.
-- **Derive readiness** — for an open task only, evaluating every blocker even once one is known to block, per [Dependencies](design-spec.md#dependencies): no task file → blocking, `dangling-reference` (unless a folder the walk had to list was unreadable — then no warning, per [Warning kinds](operations.md#warning-kinds)); several → blocking, `duplicate-id`; unusable → blocking, `unusable-file`; complete → not blocking; open → blocking.
+- **Derive readiness** — for an open task only, evaluating every blocker even once one is known to block, per [Dependencies](design-spec.md#dependencies): no task file → blocking, `dangling-reference` (unless a folder the walk had to list was unreadable — then no warning, per [Warning kinds](operations.md#warning-kinds)); several → blocking, `duplicate-id`; unusable → blocking, `unusable-file`; done → not blocking; open → blocking.
 
 ### Error precedence
 
@@ -184,7 +184,7 @@ A needed file that has disappeared — in a read or a write — is treated as ne
 
 ## Cycle check
 
-Implements [`block`](operations.md#block)'s cycle check: adding "`id` is blocked by B" creates a cycle exactly when `id` is reachable from B by following `blocked_by`. The graph is keyed by ID ([Dependencies](design-spec.md#dependencies)): a duplicated ID is one node, with the union of every copy's `blocked_by` as its edges; complete tasks are followed like open ones; an ID with no task file has no edges.
+Implements [`block`](operations.md#block)'s cycle check: adding "`id` is blocked by B" creates a cycle exactly when `id` is reachable from B by following `blocked_by`. The graph is keyed by ID ([Dependencies](design-spec.md#dependencies)): a duplicated ID is one node, with the union of every copy's `blocked_by` as its edges; done tasks are followed like open ones; an ID with no task file has no edges.
 
 ### Phase 1: load the reachable subgraph
 
@@ -214,7 +214,7 @@ So the first discovery of `id` yields the required path.
 
 ### Cycle-check tests
 
-- **Brute force.** On thousands of small random graphs — with duplicated IDs, IDs with no task file, and complete tasks — compare against enumerating every simple path from B to `id` and picking the shortest, then lexicographically smallest. Results must match exactly.
+- **Brute force.** On thousands of small random graphs — with duplicated IDs, IDs with no task file, and done tasks — compare against enumerating every simple path from B to `id` and picking the shortest, then lexicographically smallest. Results must match exactly.
 - **Needed files.** A graph where B reaches both `id` and a corrupt file X, with X ordered after `id`: the result is `corrupt`, not `acyclic`.
 
 ## OS errors

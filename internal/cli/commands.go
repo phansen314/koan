@@ -133,17 +133,17 @@ var commands = []Command{
   for id in 41 42 43; do koan show "$id"; done   # one envelope each`,
 	},
 	{
-		Name:    "complete",
-		Op:      "complete",
-		Summary: "Mark a task complete; completing a complete task changes nothing",
+		Name:    "done",
+		Op:      "done",
+		Summary: "Mark a task done; marking a done task changes nothing",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
-		Example: `  koan complete 42                               # .result.changed is false if it was already complete
-  for id in 41 42; do koan complete "$id"; done  # one envelope each`,
+		Example: `  koan done 42                               # .result.changed is false if it was already done
+  for id in 41 42; do koan done "$id"; done  # one envelope each`,
 	},
 	{
 		Name:    "reopen",
 		Op:      "reopen",
-		Summary: "Reopen a complete task; reopening an open task changes nothing",
+		Summary: "Reopen a done task; reopening an open task changes nothing",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
 		Example: "  koan reopen 42   # .result.completed_at is null again",
 	},
@@ -216,7 +216,7 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "folder", Field: "/folder", Type: String, Help: "only tasks in this folder, an exact `path` (default /)"},
 			{Name: "recursive", Field: "/recursive", Type: Bool, Help: "also tasks in subfolders (default true; --recursive=false for none)"},
-			{Name: "readiness", Field: "/readiness", Type: StringList, Help: "only tasks in these comma-separated `states`: ready, blocked, complete (default ready,blocked)"},
+			{Name: "readiness", Field: "/readiness", Type: StringList, Help: "only tasks in these comma-separated `states`: ready, blocked, done (default ready,blocked)"},
 			{Name: "include-folders", Field: "/include_folders", Type: Bool, Help: "also return the folders in scope"},
 			{Name: "tags-any", Field: "/tags_any", Type: StringList, Help: "only tasks with at least one of these comma-separated `tags`"},
 			{Name: "tags-all", Field: "/tags_all", Type: StringList, Help: "only tasks with every one of these comma-separated `tags`"},
@@ -224,9 +224,9 @@ var commands = []Command{
 			{Name: "fields", Field: "/fields", Type: StringList, Help: "return only these comma-separated task `fields`, and id"},
 		},
 		Example: `  koan list --limit 50 --fields id,title,readiness,folder
-  koan list --folder /proj --readiness complete --limit 0                     # how many are done: .result.total
+  koan list --folder /proj --readiness done --limit 0                         # how many are done: .result.total
   koan list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
-  koan list --readiness ready,blocked,complete --tags-all db,backend --fields id,title,readiness
+  koan list --readiness ready,blocked,done --tags-all db,backend --fields id,title,readiness
   koan list --include-folders --limit 0                                      # every folder: .result.folders
   koan list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'`,
 	},

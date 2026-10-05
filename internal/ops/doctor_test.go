@@ -148,7 +148,7 @@ func TestDoctorKinds(t *testing.T) {
 			name: "cycle",
 			setup: func(f *fixture) {
 				f.task("", 10, false, 11)
-				f.task("", 11, true, 12) // complete tasks count too
+				f.task("", 11, true, 12) // done tasks count too
 				f.task("p", 12, false, 10, 13)
 				f.task("p", 13, false)
 				f.task("q", 20, false, 21)

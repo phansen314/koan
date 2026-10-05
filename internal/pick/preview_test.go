@@ -23,12 +23,12 @@ func TestPreviews(t *testing.T) {
 	flights.Extra.Set("bad\x1bkey", "line\nbreak\u0085")
 	hotel := tv{id: 43, folder: "/trips/japan", r: model.Blocked, blocking: []model.ID{42}, title: "Book hotel"}.view()
 	hotel.BlockedBy = []model.ID{7, 42}
-	// A duplicated ID blocking 42 counts once; a complete task blocks nothing.
+	// A duplicated ID blocking 42 counts once; a done task blocks nothing.
 	copyA := tv{id: 44, folder: "/a", r: model.Blocked, title: "copy"}.view()
 	copyA.BlockedBy = []model.ID{42}
 	copyB := tv{id: 44, folder: "/b", r: model.Blocked, title: "copy"}.view()
 	copyB.BlockedBy = []model.ID{42}
-	done := tv{id: 9, folder: "/trips", r: model.Complete, done: "2026-09-25T10:00:00Z", title: "Renew passport"}.view()
+	done := tv{id: 9, folder: "/trips", r: model.Done, done: "2026-09-25T10:00:00Z", title: "Renew passport"}.view()
 	done.BlockedBy = []model.ID{42}
 
 	got := previews(&Load{Tasks: []model.TaskView{flights, hotel, copyA, copyB, done}})
@@ -50,8 +50,8 @@ func TestPreviews(t *testing.T) {
 		t.Errorf("hotel: %q", l)
 	}
 	d := got["9@/trips"]
-	if d.Right != "complete" || !strings.HasSuffix(d.Lines[0], "completed 2026-09-25") {
-		t.Errorf("complete: %#v", d)
+	if d.Right != "done" || !strings.HasSuffix(d.Lines[0], "completed 2026-09-25") {
+		t.Errorf("done: %#v", d)
 	}
 	if len(got) != 5 {
 		t.Errorf("%d previews, want one per copy", len(got))

@@ -29,7 +29,7 @@ func (t tv) view() model.TaskView {
 	if v.Title == "" {
 		v.Title = "task"
 	}
-	if t.r == model.Complete {
+	if t.r == model.Done {
 		ts := model.Timestamp(t.done)
 		v.CompletedAt = &ts
 	}
@@ -55,16 +55,16 @@ func keys(vs []model.TaskView) []string {
 func p(n int64) *int64 { return &n }
 
 func TestCandidatesOrder(t *testing.T) {
-	// Given in tree order; listed ready, blocked, complete.
+	// Given in tree order; listed ready, blocked, done.
 	l := &Load{Folders: []model.FolderPath{"/", "/a", "/b"}, Tasks: views(
-		tv{id: 1, folder: "/", r: model.Complete, done: "2026-09-01T00:00:00Z"},
+		tv{id: 1, folder: "/", r: model.Done, done: "2026-09-01T00:00:00Z"},
 		tv{id: 2, folder: "/", r: model.Blocked, blocking: []model.ID{9}},
 		tv{id: 3, folder: "/", r: model.Ready},
 		tv{id: 4, folder: "/", r: model.Ready, priority: p(-1)},
 		tv{id: 5, folder: "/", r: model.Ready, priority: p(2)},
 		tv{id: 6, folder: "/", r: model.Blocked, priority: p(1), blocking: []model.ID{9}},
-		tv{id: 7, folder: "/", r: model.Complete, done: "2026-09-02T00:00:00Z"},
-		tv{id: 8, folder: "/", r: model.Complete, done: "2026-09-01T00:00:00Z"},
+		tv{id: 7, folder: "/", r: model.Done, done: "2026-09-02T00:00:00Z"},
+		tv{id: 8, folder: "/", r: model.Done, done: "2026-09-01T00:00:00Z"},
 		tv{id: 0, folder: "/", r: model.Ready, priority: p(2)},
 		// A duplicated ID: its copies in tree order.
 		tv{id: 10, folder: "/b", r: model.Ready},
@@ -82,8 +82,8 @@ func TestCandidatesScope(t *testing.T) {
 		tv{id: 1, folder: "/", r: model.Ready, tags: []model.Tag{"x"}},
 		tv{id: 2, folder: "/a", r: model.Ready, tags: []model.Tag{"x", "y"}},
 		tv{id: 3, folder: "/a/b", r: model.Blocked, tags: []model.Tag{"y"}},
-		tv{id: 4, folder: "/ab", r: model.Complete, done: "2026-09-01T00:00:00Z"},
-		tv{id: 5, folder: "/a", r: model.Complete, done: "2026-09-01T00:00:00Z", tags: []model.Tag{"x"}},
+		tv{id: 4, folder: "/ab", r: model.Done, done: "2026-09-01T00:00:00Z"},
+		tv{id: 5, folder: "/a", r: model.Done, done: "2026-09-01T00:00:00Z", tags: []model.Tag{"x"}},
 	)}
 	all := Scope{Folder: "/", Recursive: true, Readiness: ops.PickAll}
 	with := func(f func(*Scope)) Scope { s := all; f(&s); return s }
@@ -135,7 +135,7 @@ func TestRenderLines(t *testing.T) {
 	vs := views(
 		tv{id: 42, folder: "/trips/japan", r: model.Ready, priority: p(2), tags: []model.Tag{"travel"}, title: "Book flights"},
 		tv{id: 43, folder: "/trips/japan", r: model.Blocked, blocking: []model.ID{42}, tags: []model.Tag{"travel"}, title: "Book hotel"},
-		tv{id: 9, folder: "/trips", r: model.Complete, done: "2026-09-01T00:00:00Z", title: "Renew passport"},
+		tv{id: 9, folder: "/trips", r: model.Done, done: "2026-09-01T00:00:00Z", title: "Renew passport"},
 	)
 	want := []string{
 		"42@/trips/japan\t●  42  p2   /trips/japan \t#travel \tBook flights",

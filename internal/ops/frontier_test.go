@@ -113,13 +113,13 @@ func TestFrontier(t *testing.T) {
 		}, "[/b:2 p5, /:9]; duplicate-id [2] [~/tasks/a/2.json ~/tasks/b/2.json ~/tasks/c/2.json]"},
 
 		// Only ready tasks.
-		{"blocked left out, complete blocker doesn't block", `{}`, func(f *fixture) {
+		{"blocked left out, done blocker doesn't block", `{}`, func(f *fixture) {
 			f.task("", 1, false, 2)
 			f.task("", 2, false)
 			f.task("", 3, false, 4)
 			f.task("", 4, true)
 		}, "[/:2, /:3]"},
-		{"complete tasks never", `{"recursive": true}`, func(f *fixture) { f.task("", 1, true); f.task("", 2, false) }, "[/:2]"},
+		{"done tasks never", `{"recursive": true}`, func(f *fixture) { f.task("", 1, true); f.task("", 2, false) }, "[/:2]"},
 		{"a blocker outside scope still blocks", `{"folder": "/proj"}`, func(f *fixture) {
 			f.task("proj", 1, false, 2)
 			f.task("infra", 2, false)
@@ -173,7 +173,7 @@ func TestFrontier(t *testing.T) {
 		{"folder missing", `{"folder": "/a"}`, nil, `not-found {"folders":["/a"],"ids":[],"paths":[]}`},
 		{"folder a file", `{"folder": "/a"}`, func(f *fixture) { f.write("tasks/a", "") }, `corrupt {"path":"~/tasks/a","reason":"unexpected-file"}`},
 		{"no config", `{}`, func(f *fixture) { f.remove("cfg") }, `not-initialized {"missing":"config"}`},
-		{"list's options aren't frontier's", `{"readiness": ["complete"]}`, nil, `invalid-input {"problems":[{"field":"/readiness","reason":"unknown field"}]}`},
+		{"list's options aren't frontier's", `{"readiness": ["done"]}`, nil, `invalid-input {"problems":[{"field":"/readiness","reason":"unknown field"}]}`},
 		{"bad limit", `{"limit": 1.5}`, nil, `invalid-input {"problems":[{"field":"/limit","reason":"must be an integer written without a fraction or exponent (2, not 2.0 or 2e0)"}]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

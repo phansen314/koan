@@ -32,7 +32,7 @@ func openBlockers(r *actionRun, targets []shownLine) {
 // pick's line order: every open task in the tree, whatever the scope, but
 // the targets and every task from which a target can be reached by
 // following blocked_by, which would close a cycle. The graph is the
-// load's, keyed by ID, with every copy's edges, complete tasks included,
+// load's, keyed by ID, with every copy's edges, done tasks included,
 // as block's cycle check follows them. It is read fresh for the choose
 // list; block still checks, for a cycle made meanwhile.
 func blockerCandidates(l *Load, targets []shownLine) []model.TaskView {

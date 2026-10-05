@@ -9,7 +9,7 @@ import (
 )
 
 // b's candidates: open tasks tree-wide, but the targets and every task from
-// which a target is reached over blocked_by, complete tasks and every
+// which a target is reached over blocked_by, done tasks and every
 // copy's edges included.
 func TestBlockerCandidates(t *testing.T) {
 	blocked := func(v model.TaskView, by ...model.ID) model.TaskView { v.BlockedBy = by; return v }
@@ -17,7 +17,7 @@ func TestBlockerCandidates(t *testing.T) {
 		tv{id: 1, folder: "/", r: model.Ready}.view(),
 		blocked(tv{id: 2, folder: "/", r: model.Blocked}.view(), 1),
 		blocked(tv{id: 3, folder: "/", r: model.Blocked}.view(), 2),
-		blocked(tv{id: 4, folder: "/", r: model.Complete, done: "2026-09-01T00:00:00Z"}.view(), 3),
+		blocked(tv{id: 4, folder: "/", r: model.Done, done: "2026-09-01T00:00:00Z"}.view(), 3),
 		tv{id: 5, folder: "/x", r: model.Ready}.view(),
 		blocked(tv{id: 6, folder: "/", r: model.Ready}.view(), 4),
 		blocked(tv{id: 7, folder: "/a", r: model.Blocked}.view(), 1),
@@ -27,7 +27,7 @@ func TestBlockerCandidates(t *testing.T) {
 		targets []model.ID
 		want    []string
 	}{
-		// 6 reaches 1 through the complete 4; 7's copy in /b by its
+		// 6 reaches 1 through the done 4; 7's copy in /b by its
 		// copy in /a's edge.
 		{[]model.ID{1}, []string{"5@/x"}},
 		{[]model.ID{5}, []string{"1@/", "6@/", "7@/b", "2@/", "3@/", "7@/a"}},

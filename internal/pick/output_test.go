@@ -20,7 +20,7 @@ import (
 func TestSelected(t *testing.T) {
 	vs := views(
 		tv{id: 1, folder: "/", r: model.Ready},
-		tv{id: 2, folder: "/moved", r: model.Complete, done: "2026-09-01T00:00:00Z"},
+		tv{id: 2, folder: "/moved", r: model.Done, done: "2026-09-01T00:00:00Z"},
 		tv{id: 3, folder: "/a", r: model.Ready, priority: p(5)},
 		tv{id: 3, folder: "/b", r: model.Ready, priority: p(5)},
 		tv{id: 4, folder: "/c", r: model.Ready},

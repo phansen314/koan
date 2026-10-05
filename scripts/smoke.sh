@@ -114,22 +114,22 @@ check "6: blocked by 5, across folders" 0 '.result.tasks[0] | .readiness == "blo
 check "not found" 1 '.error.kind == "not-found" and .error.details.ids == [99]' -- show 99
 check "not an ID" 1 '.error.kind == "invalid-input"' -- show abc
 
-echo "== complete and reopen"
-check "complete 1" 0 '.result | .changed and .completed_at != null' -- complete 1
+echo "== done and reopen"
+check "done 1" 0 '.result | .changed and .completed_at != null' -- done 1
 done1=$(jq -r .result.completed_at <<<"$out")
 check "2 now ready" 0 '.result.tasks[0].readiness == "ready"' -- show 2
-check "complete 1 again: nothing changes" 0 '.result | (.changed | not) and .completed_at == "'"$done1"'"' -- complete 1
-check "1 shows complete" 0 '.result.tasks[0].readiness == "complete"' -- show 1
-check "complete 2" 0 '.result.changed' -- complete 2
+check "done 1 again: nothing changes" 0 '.result | (.changed | not) and .completed_at == "'"$done1"'"' -- done 1
+check "1 shows done" 0 '.result.tasks[0].readiness == "done"' -- show 1
+check "done 2" 0 '.result.changed' -- done 2
 check "4 still blocked by 3 only" 0 '.result.tasks[0].blocking == [3]' -- show 4
-check "complete 3" 0 '.result.changed' -- complete 3
+check "done 3" 0 '.result.changed' -- done 3
 check "4 now ready" 0 '.result.tasks[0] | .readiness == "ready" and .blocking == []' -- show 4
-check "complete a task with open blockers" 0 '.result.changed' -- complete 6
+check "done a task with open blockers" 0 '.result.changed' -- done 6
 check "reopen 2" 0 '.result | .changed and .completed_at == null' -- reopen 2
-check "3 still complete" 0 '.result.tasks[0].readiness == "complete"' -- show 3
+check "3 still done" 0 '.result.tasks[0].readiness == "done"' -- show 3
 check "4 blocked again by 2" 0 '.result.tasks[0] | .readiness == "blocked" and .blocking == [2]' -- show 4
 check "reopen 2 again: nothing changes" 0 '.result.changed == false' -- reopen 2
-check "complete: not found" 1 '.error.details.ids == [99]' -- complete 99
+check "done: not found" 1 '.error.details.ids == [99]' -- done 99
 check "reopen: not found" 1 '.error.details.ids == [99]' -- reopen 99
 
 echo "== update"
@@ -151,16 +151,16 @@ check "update: not found" 1 '.error.details.ids == [99]' -- update 99 --title x
 check "show sees the update" 0 '.result.tasks[0] | .title == "Water the plants" and .tags == []' -- show 7
 
 echo "== block"
-# Here: 1 complete; 2 open (reopened), blocked by 1; 3 complete; 4 blocked
-# by 2 and 3; 5 open; 6 complete, blocked by 5; 7 open.
+# Here: 1 done; 2 open (reopened), blocked by 1; 3 done; 4 blocked
+# by 2 and 3; 5 open; 6 done, blocked by 5; 7 open.
 check "block 7 by 5 and 2" 0 '.result | .added == [2, 5] and .blocked_by == [2, 5]' -- block 7 --blockers 5,2
 check "7 blocked by both" 0 '.result.tasks[0] | .readiness == "blocked" and .blocking == [2, 5]' -- show 7
 check "blockers already present: nothing added" 0 '.result | .added == [] and .blocked_by == [2, 5]' -- block 7 --blockers 2,5
 check "some new, some present" 0 '.result.added == [3]' -- block 7 --blockers 2,3
-check "a complete blocker doesn't block" 0 '.result.tasks[0].blocking == [2, 5]' -- show 7
+check "a done blocker doesn't block" 0 '.result.tasks[0].blocking == [2, 5]' -- show 7
 check "direct cycle refused" 1 '.error.details | .rule == "acyclic" and .ids == [7] and .cycles == [[5, 7]]' -- block 5 --blockers 7
 check "longer cycle refused" 1 '.error.details.cycles == [[2, 4]]' -- block 2 --blockers 4
-check "through a complete task" 1 '.error.details.cycles == [[3, 7]]' -- block 3 --blockers 7
+check "through a done task" 1 '.error.details.cycles == [[3, 7]]' -- block 3 --blockers 7
 check "every offending blocker" 1 '.error.details | .ids == [4, 7] and .cycles == [[2, 4], [2, 7]]' -- block 2 --blockers 4,7,1
 check "refused block wrote nothing" 0 '.result.tasks[0].blocked_by == [1]' -- show 2
 check "missing blockers" 1 '.error.details.ids == [98, 99]' -- block 7 --blockers 99,98
@@ -179,13 +179,13 @@ check "unblock: --blockers is required" 2 '.error.kind == "usage"' -- unblock 7
 
 echo "== list"
 # Here: open 2 (/proj/travel), 4 (/home), 5 (/proj/work/q3), 7 (/);
-# complete 1, 3 (/proj/travel) and 6 (/proj/work).
+# done 1, 3 (/proj/travel) and 6 (/proj/work).
 check "every open task, in tree order" 0 '[.result.tasks[].id] == [7, 4, 2, 5] and (.result | has("folders") | not)' -- list
 check "readiness shown" 0 '[.result.tasks[] | {id, readiness}] == [{id: 7, readiness: "ready"}, {id: 4, readiness: "blocked"}, {id: 2, readiness: "ready"}, {id: 5, readiness: "blocked"}]' -- list
-check "with complete tasks" 0 '[.result.tasks[].id] == [7, 4, 1, 2, 3, 6, 5]' -- list --readiness ready,blocked,complete
-check "only complete" 0 '[.result.tasks[].id] == [1, 3, 6]' -- list --readiness complete
+check "with done tasks" 0 '[.result.tasks[].id] == [7, 4, 1, 2, 3, 6, 5]' -- list --readiness ready,blocked,done
+check "only done" 0 '[.result.tasks[].id] == [1, 3, 6]' -- list --readiness done
 check "one folder" 0 '[.result.tasks[].id] == [5]' -- list --folder /proj/work
-check "one folder with complete" 0 '[.result.tasks[].id] == [6, 5]' -- list --folder /proj/work --readiness ready,blocked,complete
+check "one folder with done" 0 '[.result.tasks[].id] == [6, 5]' -- list --folder /proj/work --readiness ready,blocked,done
 check "not recursive" 0 '.result.tasks == []' -- list --folder /proj --recursive=false
 check "folders" 0 '.result.folders == ["/", "/home", "/proj", "/proj/travel", "/proj/work", "/proj/work/q3"]' -- list --include-folders
 check "folders, not recursive" 0 '.result.folders == ["/proj", "/proj/travel", "/proj/work"]' -- list --folder /proj --recursive=false --include-folders
@@ -203,11 +203,11 @@ echo "== frontier"
 check "ready tasks, lower ID first" 0 '[.result.tasks[].id] == [2, 7] and all(.result.tasks[]; .readiness == "ready" and .blocking == [])' -- frontier
 check "one folder" 0 '[.result.tasks[].id] == [2]' -- frontier --folder /proj/travel
 check "a blocker in another folder still blocks" 0 '.result.tasks == []' -- frontier --folder /proj/work
-check "complete 7" 0 '.result.changed' -- complete 7
+check "done 7" 0 '.result.changed' -- done 7
 check "5 joins the frontier" 0 '[.result.tasks[].id] == [2, 5]' -- frontier
 check "priority 9 goes first" 0 '.result.changed == ["priority"]' -- update 5 --priority 9
 check "now 5 first" 0 '[.result.tasks[].id] == [5, 2]' -- frontier
-check "complete 2" 0 '.result.changed' -- complete 2
+check "done 2" 0 '.result.changed' -- done 2
 check "4 ready too: tie on no priority, lower ID first" 0 '[.result.tasks[].id] == [5, 4]' -- frontier
 check "not recursive" 0 '.result.tasks == []' -- frontier --folder /proj --recursive=false
 check "missing folder" 1 '.error.details.folders == ["/nope"]' -- frontier --folder /nope
@@ -216,7 +216,7 @@ check "the count alone" 0 '.result | .tasks == [] and .total == 2' -- frontier -
 check "list's options aren't frontier's" 2 '.error.kind == "usage"' -- frontier --readiness ready
 
 echo "== move and delete"
-# Here: complete 1, 2, 3 (/proj/travel), 6 (/proj/work, blocked by 5), 7 (/);
+# Here: done 1, 2, 3 (/proj/travel), 6 (/proj/work, blocked by 5), 7 (/);
 # open 4 (/home, blocked by 2), 5 (/proj/work/q3, blocked by 7).
 check "move into a new folder" 0 '.result | .folder == "/archive" and .from == "/home" and .created == ["/archive"] and .changed' -- move 4 --to /archive -p
 check "move again changes nothing" 0 '.result.changed == false' -- move 4 --to /archive
@@ -231,7 +231,7 @@ check "5 ready" 0 '.result.tasks[0] | .blocked_by == [] and .readiness == "ready
 check "delete: gone" 1 '.error.details.ids == [7]' -- delete 7
 check "delete-folder -r: 4 no longer blocked by 2" 0 '.result | .ids == [1, 2, 3] and .dependents == [4]' -- delete-folder -r /proj
 check "delete-folder: the root never" 1 '.error.kind == "invalid-input"' -- delete-folder -r /
-check "what's left" 0 '[.result.tasks[].id] == [4, 6, 5] and .result.folders == ["/", "/archive", "/archive/work", "/archive/work/q3", "/home"]' -- list --readiness ready,blocked,complete --include-folders
+check "what's left" 0 '[.result.tasks[].id] == [4, 6, 5] and .result.folders == ["/", "/archive", "/archive/work", "/archive/work/q3", "/home"]' -- list --readiness ready,blocked,done --include-folders
 
 echo "== end state"
 check "last_id counts every task" 0 '.result.tree.last_id == 7' -- info

@@ -44,7 +44,7 @@
         "type": "object",
         "required": ["operation", "input", "output"],
         "properties": {
-          "operation": { "type": "string", "enum": ["complete", "reopen", "create", "block", "unblock", "move", "update"] },
+          "operation": { "type": "string", "enum": ["done", "reopen", "create", "block", "unblock", "move", "update"] },
           "input": { "type": "object", "description": "The operation's input, as passed." },
           "output": { "oneOf": [{ "$ref": "envelope" }, { "type": "null" }], "description": "The operation's envelope, unchanged: success or failure. null if the outcome is unknown (see Session)." }
         },

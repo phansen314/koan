@@ -141,15 +141,15 @@ var crashCases = []crashCase{
 		rerun: safe(`"folder":"/proj/travel"`),
 	},
 	{
-		name:  "complete",
+		name:  "done",
 		setup: [][]string{{"create", "a"}},
-		args:  []string{"complete", "1"},
+		args:  []string{"done", "1"},
 		order: [][]string{{"tasks/1.json"}},
 		rerun: safe(`"completed_at":"2026-09-28T12:00:00Z"`),
 	},
 	{
 		name:  "reopen",
-		setup: [][]string{{"create", "a"}, {"complete", "1"}},
+		setup: [][]string{{"create", "a"}, {"done", "1"}},
 		args:  []string{"reopen", "1"},
 		order: [][]string{{"tasks/1.json"}},
 		rerun: safe(`"completed_at":null`),
@@ -412,7 +412,7 @@ func TestCrashInjection(t *testing.T) {
 				// A seeded tree starts out breaking invariants; repair's
 				// promise is checked by diagnose instead.
 				if _, err := os.Stat(filepath.Join(tr.home, configDir, "config.toml")); err == nil && c.seed == nil {
-					steps(t, []step{{tr.cmd("list", "--readiness", "ready,blocked,complete", "--include-folders"), 0, `"warnings":[]`}})
+					steps(t, []step{{tr.cmd("list", "--readiness", "ready,blocked,done", "--include-folders"), 0, `"warnings":[]`}})
 				}
 				if _, err := os.Stat(filepath.Join(tr.home, configDir, "config.toml")); err == nil {
 					c.diagnose(t, tr, stage, crashed)

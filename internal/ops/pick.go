@@ -99,14 +99,14 @@ func decodePick(f *model.Fields, p *model.Problems) any {
 }
 
 // PickOrder is the order of pick's lines (pick-spec.md, Lines): ready
-// tasks, then blocked ones, each in frontier order; then complete ones,
+// tasks, then blocked ones, each in frontier order; then done ones,
 // completed_at newest first, then ID, then, for copies of a duplicated ID,
 // tree order. It is a total order.
 func PickOrder(a, b model.TaskView) int {
 	if c := cmp.Compare(readinessRank[a.Readiness], readinessRank[b.Readiness]); c != 0 {
 		return c
 	}
-	if a.Readiness != model.Complete {
+	if a.Readiness != model.Done {
 		return frontierOrder(a, b)
 	}
 	return cmp.Or(
@@ -116,4 +116,4 @@ func PickOrder(a, b model.TaskView) int {
 	)
 }
 
-var readinessRank = map[model.Readiness]int{model.Ready: 0, model.Blocked: 1, model.Complete: 2}
+var readinessRank = map[model.Readiness]int{model.Ready: 0, model.Blocked: 1, model.Done: 2}

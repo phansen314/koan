@@ -16,9 +16,9 @@ const (
 	BlockerDuplicate
 	// BlockerUnusable: exactly one task file, and it is unusable.
 	BlockerUnusable
-	// BlockerComplete: exactly one task file, usable and complete. The only
+	// BlockerDone: exactly one task file, usable and done. The only
 	// state that does not block.
-	BlockerComplete
+	BlockerDone
 )
 
 // Readiness derives t's readiness from its own blocked_by and completed_at,
@@ -26,15 +26,15 @@ const (
 // (model.TaskFile.Normalize), so blocked_by is ascending. For an open task,
 // state is called for every blocker, in ascending order, even once one is
 // known to block, so the caller sees each one (to warn about it); for a
-// complete task it is not called. Blocking lists, ascending, the blockers that block: non-empty
+// done task it is not called. Blocking lists, ascending, the blockers that block: non-empty
 // exactly when the readiness is model.Blocked.
 func Readiness(t *model.TaskFile, state func(model.ID) BlockerState) (r model.Readiness, blocking []model.ID) {
 	if !t.Open() {
-		return model.Complete, []model.ID{}
+		return model.Done, []model.ID{}
 	}
 	blocking = []model.ID{}
 	for _, b := range t.BlockedBy {
-		if state(b) != BlockerComplete {
+		if state(b) != BlockerDone {
 			blocking = append(blocking, b)
 		}
 	}

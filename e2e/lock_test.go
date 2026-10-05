@@ -18,7 +18,7 @@ func TestLockContention(t *testing.T) {
 	h := hold(t, tr.cmd("create", "a"))
 	steps(t, []step{
 		{tr.cmd("create", "b"), 1, `"kind":"busy"`},
-		{tr.cmd("complete", "1"), 1, `"kind":"busy"`},
+		{tr.cmd("done", "1"), 1, `"kind":"busy"`},
 		{tr.cmd("list"), 0, `"tasks":[]`},
 		{tr.cmd("info"), 0, `"last_id":0`},
 	})

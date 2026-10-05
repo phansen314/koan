@@ -120,7 +120,7 @@ var midwayCases = []midwayCase{
 			return []string{"error", `error partial {"created":["/a"]}`, "ok"}[stage]
 		},
 	},
-	{name: "complete", setup: openTask, input: `{"id": 5}`, order: [][]string{{"tasks/5.json"}}, outcome: replaced},
+	{name: "done", setup: openTask, input: `{"id": 5}`, order: [][]string{{"tasks/5.json"}}, outcome: replaced},
 	{
 		name: "reopen", setup: func(f *fixture) { f.task("", 5, true) },
 		input: `{"id": 5}`, order: [][]string{{"tasks/5.json"}}, outcome: replaced,

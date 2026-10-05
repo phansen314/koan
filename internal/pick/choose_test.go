@@ -163,7 +163,7 @@ func TestStaleKeys(t *testing.T) {
 		}
 		helper("enter", "", "~2@/")
 		// Back in command mode, with the choose list's keys.
-		for _, args := range [][]string{{"enter", "", "~3@/"}, {"act", "c", "~3@/"}} {
+		for _, args := range [][]string{{"enter", "", "~3@/"}, {"act", "d", "~3@/"}} {
 			if got := helper(args...); got != footer {
 				t.Errorf("%q printed %q", args, got)
 			}

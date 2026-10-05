@@ -47,7 +47,7 @@ func commandKeys() []string {
 // list beside the preview in a terminal 100 wide. ? shows every key.
 const (
 	insertHint  = "enter: pick · tab: mark · esc: commands"
-	commandHint = "c: complete · i: search · ?: keys · q: quit"
+	commandHint = "d: done · i: search · ?: keys · q: quit"
 	// folderHint is command mode's in the folder picker, which has no
 	// actions.
 	folderHint  = "i: search · ?: keys · q: quit"
@@ -61,7 +61,7 @@ const (
 var help = [][2]string{
 	{"enter", "pick the marked tasks, or the one under the cursor"},
 	{"tab space", "mark or unmark"},
-	{"c", "complete; or reopen, when every one is complete"},
+	{"d", "done; or reopen, when every one is done"},
 	{"e", "edit notes, in $VISUAL, else $EDITOR, else vi"},
 	{"n", "new task, titled in a prompt that starts with the query"},
 	{"p", "priority: a number, or null for none"},

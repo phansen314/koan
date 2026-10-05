@@ -46,7 +46,7 @@ func TestPickerArgs(t *testing.T) {
 		"--bind", "i:transform:'/opt/my koan/koan' __pick insert",
 		"--bind", "/:transform:'/opt/my koan/koan' __pick insert",
 		"--bind", "?:preview:'/opt/my koan/koan' __pick help",
-		"--bind", "c:transform:'/opt/my koan/koan' __pick act 'c' {+1}",
+		"--bind", "d:transform:'/opt/my koan/koan' __pick act 'd' {+1}",
 		"--bind", "e:transform:'/opt/my koan/koan' __pick act 'e' {+1}",
 		"--bind", "n:transform:'/opt/my koan/koan' __pick act 'n'",
 		"--bind", "p:transform:'/opt/my koan/koan' __pick act 'p' {+1}",
@@ -58,7 +58,7 @@ func TestPickerArgs(t *testing.T) {
 		"--bind", "f:transform:'/opt/my koan/koan' __pick act 'f'",
 		"--bind", "s:transform:'/opt/my koan/koan' __pick act 's'",
 		"--bind", "r:transform:'/opt/my koan/koan' __pick act 'r'",
-		"--bind", "start:unbind(load,j,k,g,G,space,q,i,/,?,c,e,n,p,t,x,b,u,m,f,s,r)",
+		"--bind", "start:unbind(load,j,k,g,G,space,q,i,/,?,d,e,n,p,t,x,b,u,m,f,s,r)",
 		"--bind", "load:transform:'/opt/my koan/koan' __pick on-load",
 	}
 	if got := pk.args(); !slices.Equal(got, want) {

@@ -75,14 +75,14 @@ With `jq`, a trimmed failure looks like success: the pipe's exit status is jq's,
 ```sh
 koan frontier --limit 10 --fields id,title,priority,folder,tags   # what's ready, in work order
 koan show 42                                                      # one task, whole
-koan complete 42                                                  # done
+koan done 42                                                  # done
 ```
 
 `frontier` lists open, unblocked tasks in the order to work on them: highest priority first, unprioritized after, ties oldest (lowest ID) first. Scope it with `--folder /proj` and `--recursive=false`, or by tag with `--tags-any`.
 
 Other agents (another Claude Code or OpenCode session, say) may be working from the same tree, and nothing stops two of them picking the same task from `frontier`. So before starting a task you picked yourself, rather than one the user named, tell the user which one you're taking.
 
-`show` returns `result.tasks`, always an array: one task, or every copy if the ID is duplicated (with a `duplicate-id` warning — report it). Each has `readiness` (`ready`/`blocked`/`complete`), `blocking` (the blocker IDs still holding it up), and `notes_path`. **Notes are a plain Markdown file:** read and edit it directly with your file tools — there is no koan command for notes after creation.
+`show` returns `result.tasks`, always an array: one task, or every copy if the ID is duplicated (with a `duplicate-id` warning — report it). Each has `readiness` (`ready`/`blocked`/`done`), `blocking` (the blocker IDs still holding it up), and `notes_path`. **Notes are a plain Markdown file:** read and edit it directly with your file tools — there is no koan command for notes after creation.
 
 Overview of everything:
 
@@ -90,12 +90,12 @@ Overview of everything:
 koan list --limit 50 --fields id,title,readiness,folder           # open tasks, in tree order
 koan list --readiness blocked --limit 20 --fields id,title,blocking   # what's stuck, and on what
 koan list --folder /proj --tags-any urgent --limit 20 --fields id,title,readiness
-koan list --readiness complete --limit 0                          # how many are done: .result.total
+koan list --readiness done --limit 0                          # how many are done: .result.total
 koan list --include-folders --limit 0                             # every folder: .result.folders
 koan list --fields id,title,extra --limit 200 | jq -c 'if .ok then .result |= {tasks: (.tasks | map(select(.extra.status == "waiting"))), scanned: (.tasks | length), unscanned: (.total - (.tasks | length))} else . end'
 ```
 
-`list` returns open tasks (`ready` and `blocked`) unless `--readiness` says otherwise: `--readiness complete` for finished ones, `--readiness ready,blocked,complete` for all.
+`list` returns open tasks (`ready` and `blocked`) unless `--readiness` says otherwise: `--readiness done` for finished ones, `--readiness ready,blocked,done` for all.
 
 ## Writing
 
@@ -136,7 +136,7 @@ Rules the commands enforce:
 - **Titles**: one line, up to 200 characters. Quote them with single quotes. A title starting with `-` goes after `--`.
 - **Priority**: an integer; **higher** sorts first in `frontier`. `null` means none (sorts after every priority, even negative ones).
 - **Notes**: short text with `--notes`, anything longer through a quoted heredoc with `--notes-file -` (no escaping needed).
-- `update` changes title, priority, tags (`--tags-add`, `--tags-remove`, `--tags-replace-all`), and `extra` (`--extra-merge`, `--extra-remove key`, `--extra-replace-all`). Blockers change only through `block`/`unblock`; completion only through `complete`/`reopen`.
+- `update` changes title, priority, tags (`--tags-add`, `--tags-remove`, `--tags-replace-all`), and `extra` (`--extra-merge`, `--extra-remove key`, `--extra-replace-all`). Blockers change only through `block`/`unblock`; completion only through `done`/`reopen`.
 
 ## Moving and deleting
 
@@ -150,7 +150,7 @@ koan delete-folder -r /proj/old               # .result.ids: what went; .result.
 
 - Moving never changes blockers: tasks are named by ID, not location. Notes move with the task.
 - **Deleting is permanent.** koan keeps no trash; the only undo is git, if the user keeps the tree in a repo, and only back to their last commit. So:
-  - **Always confirm with the user before `delete` or `delete-folder`**, naming what goes (for a folder, list its tasks first, complete ones too: `koan list --folder /x --readiness ready,blocked,complete --limit 50 --fields id,title,readiness`). Never delete to tidy up on your own initiative.
+  - **Always confirm with the user before `delete` or `delete-folder`**, naming what goes (for a folder, list its tasks first, done ones too: `koan list --folder /x --readiness ready,blocked,done --limit 50 --fields id,title,readiness`). Never delete to tidy up on your own initiative.
   - Prefer cancelling (below) when the user just means "won't do": it keeps the record.
   - A deleted task's ID is removed from its dependents' blockers, so they may become ready. Tell the user which (`dependents` in the output).
 
@@ -163,6 +163,6 @@ koan delete-folder -r /proj/old               # .result.ids: what went; .result.
 
 ## Conventions
 
-- **Cancelled**: tag it, then complete it — `koan update 42 --tags-add cancelled && koan complete 42`.
+- **Cancelled**: tag it, then mark it done — `koan update 42 --tags-add cancelled && koan done 42`.
 - **Waiting on someone/something**: `koan update 42 --extra-merge '{"status":"waiting","on":"vendor quote"}'`; clear with `--extra-remove status --extra-remove on`.
 - **Where a task came from**: put links (PR, issue, ticket) in the notes, not the title.

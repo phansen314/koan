@@ -72,7 +72,7 @@ func TestLockStress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := run(t, tr.cmd("list", "--readiness", "ready,blocked,complete"))
+	r := run(t, tr.cmd("list", "--readiness", "ready,blocked,done"))
 	envelope(t, r)
 	var list struct {
 		Result struct {

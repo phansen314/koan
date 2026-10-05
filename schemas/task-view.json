@@ -16,7 +16,7 @@
     "extra": { "$ref": "task#/properties/extra" },
     "folder": { "$ref": "task#/properties/folder" },
     "notes_path": { "$ref": "task#/properties/notes_path" },
-    "readiness": { "type": "string", "enum": ["ready", "blocked", "complete"], "description": "Derived per Dependencies (see Dependencies)." },
+    "readiness": { "type": "string", "enum": ["ready", "blocked", "done"], "description": "Derived per Dependencies (see Dependencies)." },
     "blocking": {
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" },
@@ -27,6 +27,6 @@
   "additionalProperties": false,
   "allOf": [
     { "if": { "properties": { "readiness": { "const": "blocked" } } }, "then": { "properties": { "blocking": { "minItems": 1 } } }, "else": { "properties": { "blocking": { "maxItems": 0 } } } },
-    { "if": { "properties": { "readiness": { "const": "complete" } } }, "then": { "properties": { "completed_at": { "type": "string" } } }, "else": { "properties": { "completed_at": { "type": "null" } } } }
+    { "if": { "properties": { "readiness": { "const": "done" } } }, "then": { "properties": { "completed_at": { "type": "string" } } }, "else": { "properties": { "completed_at": { "type": "null" } } } }
   ]
 }

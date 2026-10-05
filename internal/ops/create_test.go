@@ -155,7 +155,7 @@ func TestCreateCases(t *testing.T) {
 			`/a/b 101`, map[string]string{"tasks/a/b/101.json": "", "tasks/a/b/101.md": ""}},
 
 		// Blockers.
-		{"open and complete blockers", func(f *fixture) { f.task("", 1, false); f.task("x", 2, true) }, `{"title": "x", "blocked_by": [2, 1]}`,
+		{"open and done blockers", func(f *fixture) { f.task("", 1, false); f.task("x", 2, true) }, `{"title": "x", "blocked_by": [2, 1]}`,
 			`/ 101`, nil},
 		{"missing blockers", func(f *fixture) { f.task("", 1, false) }, `{"title": "x", "blocked_by": [9, 1, 5]}`,
 			`not-found {"folders":[],"ids":[5,9],"paths":[]}`, map[string]string{"tasks/koan.json": "{\"schema\": 1, \"last_id\": 100}\n"}},

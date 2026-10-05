@@ -10,7 +10,7 @@ import (
 
 // The command keys: moving and marking, then each action's.
 func TestCommandKeys(t *testing.T) {
-	if got := strings.Join(commandKeys(), ","); !strings.HasPrefix(got, "j,k,g,G,space,q,i,/,?,c,e") {
+	if got := strings.Join(commandKeys(), ","); !strings.HasPrefix(got, "j,k,g,G,space,q,i,/,?,d,e") {
 		t.Errorf("got %s", got)
 	}
 }

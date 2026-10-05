@@ -26,7 +26,7 @@ func load(env ops.Env, folders bool) (*Load, *ops.Envelope) {
 	in := &jsonio.Object{}
 	in.Set("folder", string(model.RootFolder))
 	in.Set("recursive", true)
-	in.Set("readiness", []any{string(model.Ready), string(model.Blocked), string(model.Complete)})
+	in.Set("readiness", []any{string(model.Ready), string(model.Blocked), string(model.Done)})
 	in.Set("include_folders", folders)
 	out := ops.Run("list", in, nil, env)
 	if !out.OK {
@@ -141,7 +141,7 @@ func inReadiness(r model.Readiness, s ops.PickScope) bool {
 	case ops.PickReady:
 		return r == model.Ready
 	case ops.PickOpen:
-		return r != model.Complete
+		return r != model.Done
 	}
 	return true
 }

@@ -6,23 +6,23 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-func decodeComplete(f *model.Fields, p *model.Problems) any { return decodeID(f, p) }
+func decodeDone(f *model.Fields, p *model.Problems) any { return decodeID(f, p) }
 
-// ChangedOutput is complete's and reopen's result (complete-output,
+// ChangedOutput is done's and reopen's result (done-output,
 // reopen-output): the task after the operation, plus whether it changed.
 type ChangedOutput struct {
 	model.Task
 	Changed bool `json:"changed"`
 }
 
-// runComplete sets the task's completed_at to now, unless it is already
-// complete.
-func runComplete(env Env, in IDInput, w *errs.Collector) (any, *errs.Error) {
+// runDone sets the task's completed_at to now, unless it is already
+// done.
+func runDone(env Env, in IDInput, w *errs.Collector) (any, *errs.Error) {
 	return setCompleted(env, in.ID, true, w)
 }
 
 // setCompleted finds the one task with id, under the write lock, and
-// completes it (completed_at now) or reopens it (completed_at null). A task
+// marks it done (completed_at now) or reopens it (completed_at null). A task
 // already as asked is not written, and keeps its completed_at. Otherwise its
 // task file is replaced in one rename, every other field as it was; the .md
 // is left alone.

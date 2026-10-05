@@ -228,18 +228,18 @@ func TestCreateFolder(t *testing.T) {
 	})
 }
 
-// complete makes a dependent ready, and reopen blocks it again; doing
+// done makes a dependent ready, and reopen blocks it again; doing
 // either twice changes nothing.
-func TestCompleteReopen(t *testing.T) {
+func TestDoneReopen(t *testing.T) {
 	same := newTree(t).cmd
 	steps(t, []step{
 		{same("create", "Book flights"), 0, `"id":1,`},
 		{same("create", "Pack bags", "--blocked-by", "1"), 0, `"id":2,`},
 		{same("show", "2"), 0, `"readiness":"blocked","blocking":[1]`},
-		{same("complete", "1"), 0, `"changed":true`},
+		{same("done", "1"), 0, `"changed":true`},
 		{same("show", "2"), 0, `"readiness":"ready","blocking":[]`},
-		{same("complete", "1"), 0, `"changed":false`},
-		{same("complete", "9"), 1, `"ids":[9]`},
+		{same("done", "1"), 0, `"changed":false`},
+		{same("done", "9"), 1, `"ids":[9]`},
 		{same("reopen", "1"), 0, `"completed_at":null,`},
 		{same("show", "2"), 0, `"readiness":"blocked","blocking":[1]`},
 		{same("reopen", "1"), 0, `"changed":false`},
@@ -291,15 +291,15 @@ func TestListFrontier(t *testing.T) {
 		{same("create-folder", "-p", "/proj/travel"), 0, `"created"`},
 		{same("create", "b", "--folder", "/proj/travel"), 0, `"id":1,`},
 		{same("create", "a", "--blocked-by", "1"), 0, `"id":2,`},
-		{same("complete", "1"), 0, `"changed":true`},
+		{same("done", "1"), 0, `"changed":true`},
 		{same("list"), 0, `"tasks":[{"schema":1,"id":2,`},
-		{same("list", "--readiness", "ready,blocked,complete", "--include-folders"), 0, `"folders":["/","/proj","/proj/travel"],"tasks":[{"schema":1,"id":2,`},
+		{same("list", "--readiness", "ready,blocked,done", "--include-folders"), 0, `"folders":["/","/proj","/proj/travel"],"tasks":[{"schema":1,"id":2,`},
 		{same("list", "--folder", "/nope"), 1, `"folders":["/nope"]`},
 		{same("create", "c", "--priority", "5", "--folder", "/proj"), 0, `"id":3,`},
 		{same("create", "d", "--blocked-by", "3"), 0, `"id":4,`},
 		{same("frontier"), 0, `"tasks":[{"schema":1,"id":3,`},
 		{same("frontier", "--folder", "/proj", "--recursive=false"), 0, `"tasks":[{"schema":1,"id":3,`},
-		{same("complete", "3"), 0, `"changed":true`},
+		{same("done", "3"), 0, `"changed":true`},
 		{same("frontier", "--folder", "/proj"), 0, `"result":{"tasks":[],"total":0,"truncated":false}`},
 	})
 }
@@ -315,7 +315,7 @@ func TestNarrowing(t *testing.T) {
 		{same("create", "b", "--priority", "3", "--tags", "db,backend"), 0, `"id":2,`},
 		{same("create", "c", "--blocked-by", "1"), 0, `"id":3,`},
 		{same("create", "d"), 0, `"id":4,`},
-		{same("complete", "4"), 0, `"changed":true`},
+		{same("done", "4"), 0, `"changed":true`},
 	})
 	for _, tc := range []struct {
 		args []string
@@ -327,8 +327,8 @@ func TestNarrowing(t *testing.T) {
 		{[]string{"frontier", "--tags-all", "db,backend", "--fields", "id"}, `{"tasks":[{"id":2}],"total":1,"truncated":false}`},
 		{[]string{"list", "--readiness", "blocked", "--fields", "readiness,blocking"},
 			`{"tasks":[{"id":3,"readiness":"blocked","blocking":[1]}],"total":1,"truncated":false}`},
-		{[]string{"list", "--readiness", "complete", "--fields", "readiness"},
-			`{"tasks":[{"id":4,"readiness":"complete"}],"total":1,"truncated":false}`},
+		{[]string{"list", "--readiness", "done", "--fields", "readiness"},
+			`{"tasks":[{"id":4,"readiness":"done"}],"total":1,"truncated":false}`},
 		{[]string{"list", "--tags-any", "backend,nope", "--limit", "5", "--fields", "tags", "--include-folders"},
 			`{"folders":["/"],"tasks":[{"id":2,"tags":["backend","db"]}],"total":1,"truncated":false}`},
 	} {
@@ -442,7 +442,7 @@ func TestStderr(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		{"failure", tr.cmd("complete", "999"), 1, "koan: not-found: not found: task 999\n"},
+		{"failure", tr.cmd("done", "999"), 1, "koan: not-found: not found: task 999\n"},
 		{"usage", tr.cmd("nosuch"), 2, "koan: usage: unknown command\n"},
 		{"warnings", tr.cmd("list"), 0, "koan: 3 warnings (see .warnings in the output)\n"},
 		{"clean", tr.cmd("version"), 0, ""},

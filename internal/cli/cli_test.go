@@ -167,7 +167,7 @@ func TestInfo(t *testing.T) {
 // valid ID gets as far as locating the config (none in testEnv).
 // Commands whose one argument is a task ID.
 func TestIDCommands(t *testing.T) {
-	for _, name := range []string{"show", "complete", "reopen"} {
+	for _, name := range []string{"show", "done", "reopen"} {
 		for _, tc := range []struct {
 			args []string
 			code int
@@ -257,7 +257,6 @@ func TestUsage(t *testing.T) {
 		{"help topic", []string{"help", "shwo"}, "help", "use --help"},
 		{"help command help", []string{"help", "--help"}, "help", "use --help"},
 		{"completion", []string{"completion", "bash"}, "completion", "unknown command"},
-		{"no completion suggestion", []string{"comp"}, "comp", "did you mean complete?"},
 		{"command after --", []string{"--", "version"}, "version", "the command must come before --"},
 		{"unknown command after --", []string{"--", "verison"}, "verison", "did you mean version"},
 		{"exclusive options", []string{"create", "t", "--notes", "x", "--notes-file", "-"}, "--notes-file", "--notes-file cannot be combined with --notes"},
@@ -273,6 +272,10 @@ func TestUsage(t *testing.T) {
 				t.Errorf("problem (%q, %q), want (%q, ...%q...)", arg, reason, tc.arg, tc.reason)
 			}
 		})
+	}
+	// The hidden completion command is never suggested.
+	if _, reason := run(t, commands, "{}", "completio").usageProblem(t); reason != "unknown command" {
+		t.Errorf("completio: %q, want no suggestion", reason)
 	}
 }
 
@@ -773,8 +776,8 @@ func TestListInput(t *testing.T) {
 	}{
 		{[]string{"list"}, `{}`},
 		{[]string{"list", "--folder", "/proj", "--recursive=false"}, `{"folder":"/proj","recursive":false}`},
-		{[]string{"list", "--readiness", "complete", "--include-folders"}, `{"readiness":["complete"],"include_folders":true}`},
-		{[]string{"list", "--readiness", "ready,blocked", "--readiness", "complete"}, `{"readiness":["ready","blocked","complete"]}`},
+		{[]string{"list", "--readiness", "done", "--include-folders"}, `{"readiness":["done"],"include_folders":true}`},
+		{[]string{"list", "--readiness", "ready,blocked", "--readiness", "done"}, `{"readiness":["ready","blocked","done"]}`},
 		{[]string{"list", "--tags-any", "a,b", "--tags-all", "c", "--limit", "5", "--fields", "title,folder"},
 			`{"tags_any":["a","b"],"tags_all":["c"],"limit":5,"fields":["title","folder"]}`},
 		{[]string{"list", "--limit", "x", "--fields", ""}, `{"limit":"x","fields":[]}`},

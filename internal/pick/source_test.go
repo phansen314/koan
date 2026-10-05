@@ -78,7 +78,7 @@ func TestLiveSource(t *testing.T) {
 	for _, title := range []string{"one", "two", "three"} {
 		tr.run("create", map[string]any{"title": title})
 	}
-	tr.run("complete", map[string]any{"id": 3})
+	tr.run("done", map[string]any{"id": 3})
 	listed := `{"ok":true,"result":{"tasks":[{"id":3},{"id":1},{"id":9}]},"warnings":[]}`
 	runs := 0
 	tr.source = func(command string, limit time.Duration) (string, string, bool) {

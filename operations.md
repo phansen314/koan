@@ -534,7 +534,7 @@ A [Task](#task) plus its derived readiness. Returned by read operations that rep
     "extra": { "$ref": "task#/properties/extra" },
     "folder": { "$ref": "task#/properties/folder" },
     "notes_path": { "$ref": "task#/properties/notes_path" },
-    "readiness": { "type": "string", "enum": ["ready", "blocked", "complete"], "description": "Derived per Dependencies (see Dependencies)." },
+    "readiness": { "type": "string", "enum": ["ready", "blocked", "done"], "description": "Derived per Dependencies (see Dependencies)." },
     "blocking": {
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" },
@@ -545,7 +545,7 @@ A [Task](#task) plus its derived readiness. Returned by read operations that rep
   "additionalProperties": false,
   "allOf": [
     { "if": { "properties": { "readiness": { "const": "blocked" } } }, "then": { "properties": { "blocking": { "minItems": 1 } } }, "else": { "properties": { "blocking": { "maxItems": 0 } } } },
-    { "if": { "properties": { "readiness": { "const": "complete" } } }, "then": { "properties": { "completed_at": { "type": "string" } } }, "else": { "properties": { "completed_at": { "type": "null" } } } }
+    { "if": { "properties": { "readiness": { "const": "done" } } }, "then": { "properties": { "completed_at": { "type": "string" } } }, "else": { "properties": { "completed_at": { "type": "null" } } } }
   ]
 }
 ```
@@ -1168,7 +1168,7 @@ Permanently remove a folder and everything under it, and remove the IDs of the t
 - No task under `folder` has an ID with more than one task file, anywhere in the tree. A write must know which task it removes.
 - No task under `folder` has an ID above `last_id`: that state only arises from a system crash or an outside change, and removing the task would let its ID be reissued undetectably (see [Task IDs](design-spec.md#task-ids)).
 
-The tasks under `folder` may be open or complete, and their task files may be unusable: `delete-folder` needs only their filenames, never their contents.
+The tasks under `folder` may be open or done, and their task files may be unusable: `delete-folder` needs only their filenames, never their contents.
 
 **Needed files:** the entries along `folder`'s path ([path walk](#path-walk)); the names of every entry under `folder`, at every depth — and, without `recursive`, the type and size of each entry directly in it; and, outside `folder`, every task file whose `blocked_by` names a task under it — those are rewritten. It lists everything under `folder` first, and fails with `io` if it meets a folder there it can't list: it must know every ID it removes. If `folder` holds a task, it then walks the rest of the tree — there is no index — and fails with `io` on a folder it can't list there too, since it must find every reference; if `folder` holds none, nothing outside it is read. Relevant files: every other task file outside `folder` — one that is unusable may hold a reference that can't be removed, so it is a warning, and the reference is left for [`doctor`](#doctor).
 
@@ -1386,7 +1386,7 @@ Create a new, open task.
 
 **Additional validation:** `title` is trimmed, then validated, per [Titles](design-spec.md#titles). `id`, `schema`, `created_at`, `completed_at`, and `updated_at` are never input — koan sets them.
 
-**Preconditions:** `folder` exists; every ID in `blocked_by` names an existing task, open or complete. A `blocked_by` ID that has several task files exists. Every ID in `blocked_by` is at most `last_id`: one above it only arises from a system crash or an outside change, and the new task could be given that ID and block itself (see [Task IDs](design-spec.md#task-ids)).
+**Preconditions:** `folder` exists; every ID in `blocked_by` names an existing task, open or done. A `blocked_by` ID that has several task files exists. Every ID in `blocked_by` is at most `last_id`: one above it only arises from a system crash or an outside change, and the new task could be given that ID and block itself (see [Task IDs](design-spec.md#task-ids)).
 
 **Needed files:** the entries along `folder`'s path ([path walk](#path-walk)), and the task files whose filename ID is in `blocked_by`. When `blocked_by` is non-empty, `create` walks the whole tree to look its IDs up, and fails with `io` if it meets a folder it can't list; when `blocked_by` is empty, `create` does not walk the tree. Relevant files: the same task files — an ID in `blocked_by` with more than one task file is a warning, not an error.
 
@@ -1524,7 +1524,7 @@ A task may have a **`ref`**: a name, local to the batch, that later tasks in it 
 
 Like every `invalid-input`, every problem in every task is reported, sorted by `field`, the first 20 listed.
 
-**Preconditions:** every task's folder either exists or can be created: the [path walk](#path-walk) meets no entry that is not a plain directory, or is a symlink, nor one that differs from a segment only in case; and no two folders the batch would create differ only in case (e.g. `/s/JIRA-1` and `/s/jira-1`). Every integer in any `blocked_by` names an existing task, open or complete, and is at most `last_id`, as for [`create`](#create). An ID with several task files exists. `last_id` plus the number of tasks is within the [ID ceiling](design-spec.md#task-ids).
+**Preconditions:** every task's folder either exists or can be created: the [path walk](#path-walk) meets no entry that is not a plain directory, or is a symlink, nor one that differs from a segment only in case; and no two folders the batch would create differ only in case (e.g. `/s/JIRA-1` and `/s/jira-1`). Every integer in any `blocked_by` names an existing task, open or done, and is at most `last_id`, as for [`create`](#create). An ID with several task files exists. `last_id` plus the number of tasks is within the [ID ceiling](design-spec.md#task-ids).
 
 **Needed files:** the entries along each distinct folder's path ([path walk](#path-walk)), up to the first missing one, and the task files whose filename ID is an integer in any `blocked_by`. When any `blocked_by` holds an integer, `create-batch` walks the whole tree once to look them up, and fails with `io` if it meets a folder it can't list; otherwise it does not walk the tree. Relevant files: the same task files — an ID with more than one task file is a warning, not an error.
 
@@ -1730,9 +1730,9 @@ Each item is a [Task view](#task-view). Notes are not included; `notes_path` loc
 
 **Retry safety:** safe.
 
-### complete
+### done
 
-Mark a task complete by setting its `completed_at` to the current time. Completing an already complete task changes nothing.
+Mark a task done by setting its `completed_at` to the current time. Marking an already done task changes nothing.
 
 **Kind:** write. Takes the write lock. Requires a usable root.
 
@@ -1741,7 +1741,7 @@ Mark a task complete by setting its `completed_at` to the current time. Completi
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "complete-input",
+  "$id": "done-input",
   "type": "object",
   "required": ["id"],
   "properties": {
@@ -1753,16 +1753,16 @@ Mark a task complete by setting its `completed_at` to the current time. Completi
 
 **Additional validation:** none.
 
-**Preconditions:** exactly one task file has ID `id`. The task may be open or complete, and its blockers may be open — a task can be completed at any time (see [Dependencies](design-spec.md#dependencies)).
+**Preconditions:** exactly one task file has ID `id`. The task may be open or done, and its blockers may be open — a task can be marked done at any time (see [Dependencies](design-spec.md#dependencies)).
 
-**Needed files:** every task file whose filename ID is `id`. There is no index, so `complete` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. No relevant files beyond that: `complete` reads neither the task's blockers nor its dependents.
+**Needed files:** every task file whose filename ID is `id`. There is no index, so `done` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. No relevant files beyond that: `done` reads neither the task's blockers nor its dependents.
 
 **Effects:**
 
 - If the task is open: its `completed_at` and `updated_at` are set to the current time. Every other field, the task file's `schema`, and the `.md` are unchanged.
-- If the task is already complete: nothing changes; `completed_at` keeps its original value.
+- If the task is already done: nothing changes; `completed_at` keeps its original value.
 
-Completing a task can make its dependents ready. Readiness is always derived when read (see [Dependencies](design-spec.md#dependencies)), so no other file is rewritten.
+Marking a task done can make its dependents ready. Readiness is always derived when read (see [Dependencies](design-spec.md#dependencies)), so no other file is rewritten.
 
 **Invariants at risk:** none. `completed_at` takes part in no invariant.
 
@@ -1771,7 +1771,7 @@ Completing a task can make its dependents ready. Readiness is always derived whe
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "complete-output",
+  "$id": "done-output",
   "type": "object",
   "required": ["schema", "id", "title", "priority", "created_at", "completed_at", "updated_at", "blocked_by", "tags", "extra", "folder", "notes_path", "changed"],
   "properties": {
@@ -1787,7 +1787,7 @@ Completing a task can make its dependents ready. Readiness is always derived whe
     "extra": { "$ref": "task#/properties/extra" },
     "folder": { "$ref": "task#/properties/folder" },
     "notes_path": { "$ref": "task#/properties/notes_path" },
-    "changed": { "type": "boolean", "description": "True if this operation completed the task; false if it was already complete." }
+    "changed": { "type": "boolean", "description": "True if this operation marked the task done; false if it was already done." }
   },
   "additionalProperties": false
 }
@@ -1808,15 +1808,15 @@ The task after the operation, per the [Task](#task) schema, plus `changed`.
 
 **Warnings:** none.
 
-**Partial schema:** none. `complete` replaces a single file, all-or-nothing.
+**Partial schema:** none. `done` replaces a single file, all-or-nothing.
 
 **Crash behavior:** the task file is either the old version or the new one. There is nothing for `doctor` to find beyond a possible `temp-leftover`, which [`repair`](#repair) removes.
 
-**Retry safety:** safe. Rerunning on a task that is now complete changes nothing and returns `changed: false`.
+**Retry safety:** safe. Rerunning on a task that is now done changes nothing and returns `changed: false`.
 
 ### reopen
 
-Reopen a complete task by clearing its `completed_at`. Reopening an already open task changes nothing. The counterpart of [`complete`](#complete).
+Reopen a done task by clearing its `completed_at`. Reopening an already open task changes nothing. The counterpart of [`done`](#done).
 
 **Kind:** write. Takes the write lock. Requires a usable root.
 
@@ -1837,18 +1837,18 @@ Reopen a complete task by clearing its `completed_at`. Reopening an already open
 
 **Additional validation:** none.
 
-**Preconditions:** exactly one task file has ID `id`. The task may be open or complete.
+**Preconditions:** exactly one task file has ID `id`. The task may be open or done.
 
 **Needed files:** every task file whose filename ID is `id`. There is no index, so `reopen` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. No relevant files beyond that: `reopen` reads neither the task's blockers nor its dependents.
 
 **Effects:**
 
-- If the task is complete: its `completed_at` is set to `null` and its `updated_at` to the current time. Every other field, the task file's `schema`, and the `.md` are unchanged.
+- If the task is done: its `completed_at` is set to `null` and its `updated_at` to the current time. Every other field, the task file's `schema`, and the `.md` are unchanged.
 - If the task is already open: nothing changes.
 
 Reopening a task can make its dependents blocked again, and the reopened task itself may be ready or blocked. Readiness is derived when read (see [Dependencies](design-spec.md#dependencies)), so no other file is rewritten.
 
-**Invariants at risk:** none. `completed_at` takes part in no invariant; *Acyclic* already holds for complete tasks, so reopening one cannot expose a cycle.
+**Invariants at risk:** none. `completed_at` takes part in no invariant; *Acyclic* already holds for done tasks, so reopening one cannot expose a cycle.
 
 **Output schema:**
 
@@ -1924,8 +1924,8 @@ Add one or more blockers to a task's `blocked_by`. All-or-nothing: every blocker
 
 **Preconditions:**
 
-- Exactly one task file has ID `id`. The task may be open or complete.
-- Every **new** blocker — an ID in `blockers` not already in the task's `blocked_by` — names an existing task, open or complete. A blocker ID with several task files exists.
+- Exactly one task file has ID `id`. The task may be open or done.
+- Every **new** blocker — an ID in `blockers` not already in the task's `blocked_by` — names an existing task, open or done. A blocker ID with several task files exists.
 - Adding the new blockers creates no cycle.
 
 Blockers already present are no-ops: they are neither checked for existence nor for cycles. A dangling or cyclic blocker already in `blocked_by` (after a system crash or an outside change) is left for [`doctor`](#doctor), which reports it as `dangling-reference` or `cycle`.
@@ -1933,7 +1933,7 @@ Blockers already present are no-ops: they are neither checked for existence nor 
 **Needed files:** The whole tree is walked (there is no index); a folder that can't be listed fails with `io`, since a write must *prove* the result acyclic. Needed:
 
 - the task file(s) with ID `id`;
-- every task file reachable from the new blockers by following `blocked_by`, stopping at `id` — the cycle check reads exactly these. The walk follows every task on its path, **open or complete** (*Acyclic* holds for both). An unusable file on the way could hide a cycle, so it is an error. A duplicated ID on the way is followed through every copy (the graph is keyed by ID; see [Dependencies](design-spec.md#dependencies)). `id` itself is never expanded, so nothing beyond `id` is read. Every other reachable task file is read, even when a cycle is found early: which files are needed depends only on the graph, not on the order of any search.
+- every task file reachable from the new blockers by following `blocked_by`, stopping at `id` — the cycle check reads exactly these. The walk follows every task on its path, **open or done** (*Acyclic* holds for both). An unusable file on the way could hide a cycle, so it is an error. A duplicated ID on the way is followed through every copy (the graph is keyed by ID; see [Dependencies](design-spec.md#dependencies)). `id` itself is never expanded, so nothing beyond `id` is read. Every other reachable task file is read, even when a cycle is found early: which files are needed depends only on the graph, not on the order of any search.
 
 Relevant files: the new blockers' own task files — a blocker ID with more than one task file is a `duplicate-id` warning. A `blocked_by` ID further down the chain that names no task has no edges, so cannot lie on a cycle; it is skipped silently.
 
@@ -2029,7 +2029,7 @@ Remove one or more blockers from a task's `blocked_by`. Removing an ID that isn'
 
 **Additional validation:** none. An ID in `blockers` that isn't in the task's `blocked_by` — including `id` itself — is simply not there to remove.
 
-**Preconditions:** exactly one task file has ID `id`. The task may be open or complete. The blockers need not exist: removing an ID that names no task is how a dangling reference is cleared.
+**Preconditions:** exactly one task file has ID `id`. The task may be open or done. The blockers need not exist: removing an ID that names no task is how a dangling reference is cleared.
 
 **Needed files:** the task file(s) with ID `id`. There is no index, so `unblock` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. It reads no other task file: removing an edge cannot create a cycle, and the blockers' existence doesn't matter. No relevant files.
 
@@ -2095,7 +2095,7 @@ The task after the operation, per the [Task](#task) schema, plus `removed`.
 
 Change one or more of a task's user-owned fields: `title`, `priority`, `tags`, `extra`. Fields not named in the input are left unchanged.
 
-Other fields have their own operations: `blocked_by` ([`block`](#block), [`unblock`](#unblock)), `completed_at` ([`complete`](#complete), [`reopen`](#reopen)), the folder ([`move`](#move)). Notes are edited directly in the `.md`. `id`, `schema`, and `created_at` never change; `updated_at` changes only as a side effect of a write.
+Other fields have their own operations: `blocked_by` ([`block`](#block), [`unblock`](#unblock)), `completed_at` ([`done`](#done), [`reopen`](#reopen)), the folder ([`move`](#move)). Notes are edited directly in the `.md`. `id`, `schema`, and `created_at` never change; `updated_at` changes only as a side effect of a write.
 
 **Kind:** write. Takes the write lock. Requires a usable root.
 
@@ -2170,7 +2170,7 @@ Other fields have their own operations: `blocked_by` ([`block`](#block), [`unblo
 
 The schema itself enforces the rest: at least one field to change (`{"id": 42}` alone is `invalid-input`); `replace_all` standing alone; and no empty `tags`/`extra` object or empty `add`, `remove`, or `merge`. With these rules, the order in which `add`/`remove` (or `merge`/`remove`) apply doesn't matter.
 
-**Preconditions:** exactly one task file has ID `id`. The task may be open or complete.
+**Preconditions:** exactly one task file has ID `id`. The task may be open or done.
 
 **Needed files:** the task file(s) with ID `id`. `update` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. It reads no other task file. No relevant files.
 
@@ -2265,7 +2265,7 @@ Permanently remove a task, and remove its ID from every other task's `blocked_by
 
 **Preconditions:**
 
-- Exactly one task file has ID `id`. The task may be open or complete, and its task file may be unusable: `delete` needs only its filename, never its contents — so it is also how an unusable task is removed.
+- Exactly one task file has ID `id`. The task may be open or done, and its task file may be unusable: `delete` needs only its filename, never its contents — so it is also how an unusable task is removed.
 - `id` is at most `last_id`: a task above it only arises from a system crash or an outside change, and removing it would let its ID be reissued undetectably (see [Task IDs](design-spec.md#task-ids)).
 
 **Needed files:** every task file whose filename ID is `id`, and every task file whose `blocked_by` contains `id` — those are rewritten. There is no index, so `delete` walks the whole tree, and fails with `io` if it meets a folder it can't list: it must find every reference. Relevant files: every other task file — one that is unusable may hold a reference that can't be removed, so it is a warning, and the reference is left for [`doctor`](#doctor).
@@ -2375,7 +2375,7 @@ Move a task into a folder. Its ID, fields, and notes go with it; moving a task t
 
 **Additional validation:** none.
 
-**Preconditions:** exactly one task file has ID `id`; the task may be open or complete. No `.md` with text is in `to` under the task's name, unless it is the same file (same device and inode) as the task's notes — what an interrupted move leaves. `to` exists, or `parents` is true, as for [`create-folder`](#create-folder):
+**Preconditions:** exactly one task file has ID `id`; the task may be open or done. No `.md` with text is in `to` under the task's name, unless it is the same file (same device and inode) as the task's notes — what an interrupted move leaves. `to` exists, or `parents` is true, as for [`create-folder`](#create-folder):
 
 | State of `to` | Outcome |
 |---|---|
@@ -2577,7 +2577,7 @@ Narrowing never removes a warning: filters and `limit` apply after every one is 
 
 ### list
 
-Return every task in scope, whatever its readiness, with its readiness shown — and optionally the folders in scope. Complete tasks are included only on request.
+Return every task in scope, whatever its readiness, with its readiness shown — and optionally the folders in scope. Done tasks are included only on request.
 
 **Kind:** read. Takes no lock. Requires a usable root.
 
@@ -2597,7 +2597,7 @@ Return every task in scope, whatever its readiness, with its readiness shown —
       "uniqueItems": true,
       "items": { "$ref": "task-view#/properties/readiness" },
       "default": ["ready", "blocked"],
-      "description": "Only tasks with one of these readiness values. The default leaves out complete tasks."
+      "description": "Only tasks with one of these readiness values. The default leaves out done tasks."
     },
     "include_folders": { "type": "boolean", "default": false, "description": "Also return the folders in scope: with recursive, every folder under folder; without, folder and its immediate subfolders." },
     "tags_any": { "$ref": "frontier-input#/properties/tags_any" },
@@ -2611,7 +2611,7 @@ Return every task in scope, whatever its readiness, with its readiness shown —
 
 With no input, `list` returns every open task in the tree. `tags_any`, `tags_all`, `limit`, and `fields` narrow what is returned, per [Narrowing tasks](#narrowing-tasks).
 
-Notes: the default `readiness` and `include_folders` change what the result *is* — "open tasks" versus "all tasks", "tasks" versus "tasks and folders" — so they would be parameters even without [Narrowing tasks](#narrowing-tasks) (see [Conventions](#conventions)). Complete tasks accumulate forever; leaving them out by default keeps the ordinary result about current work. Every task, complete ones included, is `["ready", "blocked", "complete"]`; only finished ones, `["complete"]`.
+Notes: the default `readiness` and `include_folders` change what the result *is* — "open tasks" versus "all tasks", "tasks" versus "tasks and folders" — so they would be parameters even without [Narrowing tasks](#narrowing-tasks) (see [Conventions](#conventions)). Done tasks accumulate forever; leaving them out by default keeps the ordinary result about current work. Every task, done ones included, is `["ready", "blocked", "done"]`; only finished ones, `["done"]`.
 
 **Additional validation:** none.
 

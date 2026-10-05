@@ -90,9 +90,9 @@ func TestListFields(t *testing.T) {
 }
 
 func TestListCases(t *testing.T) {
-	// tree: / has 1 (open, blocked by 2) and 2 (complete); /proj has 3
+	// tree: / has 1 (open, blocked by 2) and 2 (done); /proj has 3
 	// (open, blocked by 4); /proj/travel has 4 (open); /proj-b has 5
-	// (complete); /empty and /proj/travel/far are empty.
+	// (done); /empty and /proj/travel/far are empty.
 	tree := func(f *fixture) {
 		f.task("", 1, false, 2)
 		f.task("", 2, true)
@@ -116,18 +116,18 @@ func TestListCases(t *testing.T) {
 	}{
 		// Scope, in tree order: /proj/travel before /proj-b.
 		{"every open task", `{}`, tree, "tasks [/:1 ready [], /proj:3 blocked [4], /proj/travel:4 ready []]"},
-		{"with complete", `{"readiness": ["ready", "blocked", "complete"]}`, tree,
-			"tasks [/:1 ready [], /:2 complete [], /proj:3 blocked [4], /proj/travel:4 ready [], /proj-b:5 complete []]"},
+		{"with done", `{"readiness": ["ready", "blocked", "done"]}`, tree,
+			"tasks [/:1 ready [], /:2 done [], /proj:3 blocked [4], /proj/travel:4 ready [], /proj-b:5 done []]"},
 		{"a folder", `{"folder": "/proj"}`, tree, "tasks [/proj:3 blocked [4], /proj/travel:4 ready []]"},
 		{"not recursive", `{"folder": "/proj", "recursive": false}`, tree, "tasks [/proj:3 blocked [4]]"},
 		{"a blocker outside scope still counts", `{"folder": "/proj", "recursive": false}`, func(f *fixture) { f.task("proj", 3, false, 9); f.task("x", 9, false) },
 			"tasks [/proj:3 blocked [9]]"},
-		{"root, not recursive", `{"recursive": false, "readiness": ["complete", "ready"]}`, tree, "tasks [/:1 ready [], /:2 complete []]"},
+		{"root, not recursive", `{"recursive": false, "readiness": ["done", "ready"]}`, tree, "tasks [/:1 ready [], /:2 done []]"},
 		{"nothing in scope", `{"folder": "/empty"}`, tree, "tasks []"},
 		{"an empty tree", `{}`, nil, "tasks []"},
 
 		// Readiness.
-		{"only complete", `{"readiness": ["complete"]}`, tree, "tasks [/:2 complete [], /proj-b:5 complete []]"},
+		{"only done", `{"readiness": ["done"]}`, tree, "tasks [/:2 done [], /proj-b:5 done []]"},
 		{"only blocked", `{"readiness": ["blocked"]}`, tree, "tasks [/proj:3 blocked [4]]"},
 		{"only ready", `{"readiness": ["ready"]}`, tree, "tasks [/:1 ready [], /proj/travel:4 ready []]"},
 
@@ -136,7 +136,7 @@ func TestListCases(t *testing.T) {
 		{"limit not reached", `{"limit": 3}`, tree, "tasks [/:1 ready [], /proj:3 blocked [4], /proj/travel:4 ready []]"},
 		{"limit 0: the count alone", `{"limit": 0}`, tree, "tasks [] of 3"},
 		{"limit 0 of none", `{"limit": 0, "folder": "/empty"}`, tree, "tasks []"},
-		{"limit after readiness", `{"readiness": ["complete"], "limit": 1}`, tree, "tasks [/:2 complete []] of 2"},
+		{"limit after readiness", `{"readiness": ["done"], "limit": 1}`, tree, "tasks [/:2 done []] of 2"},
 		{"tags", `{"tags_any": ["a", "b"]}`, tagged, "tasks [/:1 ready [], /:2 ready [], /:3 ready []]"},
 		{"tags, all", `{"tags_all": ["a", "b"]}`, tagged, "tasks [/:3 ready []]"},
 		{"tags, both", `{"tags_any": ["c", "b"], "tags_all": ["a"]}`, tagged, "tasks [/:3 ready []]"},
@@ -155,7 +155,7 @@ func TestListCases(t *testing.T) {
 		{"folders of an empty folder", `{"folder": "/empty", "include_folders": true}`, tree, "folders [/empty]; tasks []"},
 
 		// Warnings: never narrowed away.
-		{"warnings about tasks filtered out", `{"readiness": ["complete"], "tags_any": ["z"], "limit": 0}`, func(f *fixture) {
+		{"warnings about tasks filtered out", `{"readiness": ["done"], "tags_any": ["z"], "limit": 0}`, func(f *fixture) {
 			f.task("a", 1, false, 9)
 			f.task("b", 2, false)
 			f.task("c", 2, false)
@@ -171,7 +171,7 @@ func TestListCases(t *testing.T) {
 			"tasks [/a:1 ready []]"},
 		{"duplicate in scope", `{}`, func(f *fixture) { f.task("a", 1, false); f.task("b", 1, false) },
 			"tasks [/a:1 ready [], /b:1 ready []]; duplicate-id [1] [~/tasks/a/1.json ~/tasks/b/1.json]"},
-		{"duplicate, one copy complete and not listed", `{}`, func(f *fixture) { f.task("a", 1, false); f.task("b", 1, true) },
+		{"duplicate, one copy done and not listed", `{}`, func(f *fixture) { f.task("a", 1, false); f.task("b", 1, true) },
 			"tasks [/a:1 ready []]; duplicate-id [1] [~/tasks/a/1.json ~/tasks/b/1.json]"},
 		{"duplicate, other copy out of scope: silent", `{"folder": "/a"}`, func(f *fixture) { f.task("a", 1, false); f.task("b", 1, false) },
 			"tasks [/a:1 ready []]"},
@@ -179,8 +179,8 @@ func TestListCases(t *testing.T) {
 			"tasks [/a:1 ready [], /a/x:1 ready []]; duplicate-id [1] [~/tasks/a/1.json ~/tasks/a/x/1.json]"},
 		{"dangling blocker", `{}`, func(f *fixture) { f.task("", 1, false, 9) },
 			"tasks [/:1 blocked [9]]; dangling-reference [1 9] [~/tasks/1.json]"},
-		{"a complete task's blockers aren't read", `{"readiness": ["complete"]}`, func(f *fixture) { f.task("", 1, true, 9) },
-			"tasks [/:1 complete []]"},
+		{"a done task's blockers aren't read", `{"readiness": ["done"]}`, func(f *fixture) { f.task("", 1, true, 9) },
+			"tasks [/:1 done []]"},
 		{"duplicated blocker", `{"folder": "/a"}`, func(f *fixture) { f.task("a", 1, false, 2); f.task("b", 2, true); f.task("c", 2, true) },
 			"tasks [/a:1 blocked [2]]; duplicate-id [2] [~/tasks/b/2.json ~/tasks/c/2.json]"},
 		{"duplicated blocker, one copy can't be looked at", `{}`, func(f *fixture) {
@@ -224,8 +224,8 @@ func TestListCases(t *testing.T) {
 		{"corrupt koan.json", `{}`, func(f *fixture) { f.write("tasks/koan.json", "{") }, `corrupt {"path":"~/tasks/koan.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`},
 		{"bad input", `{"recursive": "no"}`, nil, `invalid-input {"problems":[{"field":"/recursive","reason":"expected a boolean"}]}`},
 		{"include_complete is gone", `{"include_complete": true}`, nil, `invalid-input {"problems":[{"field":"/include_complete","reason":"unknown field"}]}`},
-		{"bad readiness", `{"readiness": ["ready", "done", "ready"]}`, nil,
-			`invalid-input {"problems":[{"field":"/readiness/1","reason":"must be one of ready, blocked, complete"},{"field":"/readiness/2","reason":"duplicate of item 0"}]}`},
+		{"bad readiness", `{"readiness": ["ready", "complete", "ready"]}`, nil,
+			`invalid-input {"problems":[{"field":"/readiness/1","reason":"must be one of ready, blocked, done"},{"field":"/readiness/2","reason":"duplicate of item 0"}]}`},
 		{"empty readiness", `{"readiness": []}`, nil, `invalid-input {"problems":[{"field":"/readiness","reason":"must list at least one readiness value"}]}`},
 		{"bad narrowing", `{"limit": -1, "fields": ["title", "name"], "tags_any": [], "tags_all": ["A"]}`, nil,
 			`invalid-input {"problems":[{"field":"/fields/1","reason":"must be one of schema, id, title, priority, created_at, completed_at, updated_at, blocked_by, tags, extra, folder, notes_path, readiness, blocking"},{"field":"/limit","reason":"must be between 0 and 9007199254740991"},{"field":"/tags_all/0","reason":"must be 1-64 lowercase letters, digits, and hyphens, not starting or ending with a hyphen"},{"field":"/tags_any","reason":"must list at least one tag"}]}`},

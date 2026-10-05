@@ -12,7 +12,7 @@ func TestScopeAndReload(t *testing.T) {
 	tr.run("create", map[string]any{"title": "ready"})
 	tr.run("create", map[string]any{"title": "blocked", "blocked_by": []int{1}})
 	tr.run("create", map[string]any{"title": "done"})
-	tr.run("complete", map[string]any{"id": 3})
+	tr.run("done", map[string]any{"id": 3})
 	lineKeys := func(helper func(...string) string) []string {
 		var ks []string
 		for _, l := range strings.Split(strings.TrimSuffix(helper("lines"), "\n"), "\n") {

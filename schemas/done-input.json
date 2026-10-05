@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "complete-input",
+  "$id": "done-input",
   "type": "object",
   "required": ["id"],
   "properties": {

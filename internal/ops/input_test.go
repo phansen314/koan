@@ -28,7 +28,7 @@ var bases = map[string][]string{
 		`{"tasks": [{"title": "x"}]}`,
 	},
 	"show":          {`{"id": 42}`},
-	"complete":      {`{"id": 42}`},
+	"done":          {`{"id": 42}`},
 	"reopen":        {`{"id": 42}`},
 	"block":         {`{"id": 42, "blockers": [41, 43]}`},
 	"unblock":       {`{"id": 42, "blockers": [41, 43]}`},
@@ -42,7 +42,7 @@ var bases = map[string][]string{
 		`{"id": 42, "priority": null}`,
 	},
 	"frontier": {`{"folder": "/proj", "recursive": false, "tags_any": ["a", "b"], "tags_all": ["c"], "limit": 10, "fields": ["title", "id"]}`},
-	"list":     {`{"folder": "/proj", "recursive": false, "readiness": ["ready", "complete"], "include_folders": true, "tags_any": ["a"], "tags_all": ["b", "c"], "limit": 0, "fields": ["readiness", "blocking"]}`},
+	"list":     {`{"folder": "/proj", "recursive": false, "readiness": ["ready", "done"], "include_folders": true, "tags_any": ["a"], "tags_all": ["b", "c"], "limit": 0, "fields": ["readiness", "blocking"]}`},
 	"pick": {
 		`{"folder": "/proj", "recursive": false, "scope": "ready", "tags_any": ["a"], "tags_all": ["b"], "ids": [41, 42], "query": "renew", "select_one": true, "exit_zero": true, "fields": ["title", "id"], "folders": false}`,
 		`{"source": "koan frontier --tags-any today", "scope": "all"}`,
@@ -55,7 +55,7 @@ var bases = map[string][]string{
 // names, readiness values and pick's scopes, good and bad, and limits at
 // their bounds.
 var scopeCandidates = []string{
-	`"ready"`, `"complete"`, `"id"`, `"notes_path"`, `"Ready"`, `"folders"`,
+	`"ready"`, `"done"`, `"id"`, `"notes_path"`, `"Ready"`, `"folders"`,
 	`["id"]`, `["blocking", "schema"]`, `["id", "id"]`, `["title", "Title"]`, `["nope"]`,
 	`["blocked"]`, `["ready", "ready"]`, `["done"]`, `["ready", 1]`,
 	`9007199254740991`, `9007199254740992`,
@@ -209,7 +209,7 @@ func TestInputProblems(t *testing.T) {
 		{"pick", `{"folders": false, "scope": "all", "source": "x"}`, nil},
 		// Integer literals, which the agreement corpus leaves out.
 		{"show", `{"id": 2.0}`, []string{"/id"}},
-		{"complete", `{"id": 42e0}`, []string{"/id"}},
+		{"done", `{"id": 42e0}`, []string{"/id"}},
 		{"create", `{"title": "x", "priority": 1.0, "blocked_by": [4, 5.0]}`, []string{"/blocked_by/1", "/priority"}},
 		{"block", `{"id": 42, "blockers": [2e0]}`, []string{"/blockers/0"}},
 		{"update", `{"id": 42, "priority": 3.0}`, []string{"/priority"}},
@@ -251,10 +251,10 @@ func TestDecodedInputs(t *testing.T) {
 		t.Errorf("list: %+v", got)
 	}
 	limit := int64(0)
-	want := ScopeInput{Folder: "/", Recursive: true, Readiness: []model.Readiness{model.Complete}, Narrowing: Narrowing{
+	want := ScopeInput{Folder: "/", Recursive: true, Readiness: []model.Readiness{model.Done}, Narrowing: Narrowing{
 		TagsAny: []model.Tag{"a", "b"}, TagsAll: []model.Tag{"c"}, Limit: &limit, Fields: []string{"title", "id"},
 	}}
-	if got := decodeOK("list", `{"readiness": ["complete"], "tags_any": ["a", "b"], "tags_all": ["c"], "limit": 0, "fields": ["title", "id"]}`).(ScopeInput); !reflect.DeepEqual(got, want) {
+	if got := decodeOK("list", `{"readiness": ["done"], "tags_any": ["a", "b"], "tags_all": ["c"], "limit": 0, "fields": ["title", "id"]}`).(ScopeInput); !reflect.DeepEqual(got, want) {
 		t.Errorf("list narrowed: %+v", got)
 	}
 	u := decodeOK("update", `{"id": 7, "priority": null, "tags": {"replace_all": []}, "extra": {"remove": ["a"]}}`).(UpdateInput)

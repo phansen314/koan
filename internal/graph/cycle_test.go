@@ -42,7 +42,7 @@ func TestCycles(t *testing.T) {
 // edges are unioned), IDs with no task file, and edges out of id — Cycles
 // agrees with enumerating every simple path from each blocker to id and
 // picking the shortest, then lexicographically smallest. Whether a task is
-// complete plays no part here: phase 2 follows every loaded node.
+// done plays no part here: phase 2 follows every loaded node.
 func TestCyclesBruteForce(t *testing.T) {
 	rng := rand.New(rand.NewPCG(1, 2))
 	for range 5000 {

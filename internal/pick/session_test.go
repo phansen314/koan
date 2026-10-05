@@ -283,7 +283,7 @@ func TestHelperFailed(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		out, reported, e := run("act", "c", "1@/")
+		out, reported, e := run("act", "d", "1@/")
 		if e == nil || !reported || out != "transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("act: %q, %v, %v", out, reported, e)
 		}
@@ -293,14 +293,14 @@ func TestHelperFailed(t *testing.T) {
 		if os.Geteuid() != 0 { // root writes to a read-only directory
 			os.Remove(filepath.Join(tr.session, statusFile))
 			os.Chmod(tr.session, 0o500) // nowhere to write the status line
-			out, reported, e = run("act", "c", "1@/")
+			out, reported, e = run("act", "d", "1@/")
 			os.Chmod(tr.session, 0o700)
 			if e == nil || !reported || out != "" {
 				t.Errorf("act, unwritable: %q, %v, %v", out, reported, e)
 			}
 		}
 		// After an action's status, as a reload's chain has it.
-		os.WriteFile(filepath.Join(tr.session, statusFile), []byte("✓ completed 1"), 0o600)
+		os.WriteFile(filepath.Join(tr.session, statusFile), []byte("✓ done 1"), 0o600)
 		if out, reported, e = run("lines", "x"); e == nil || !reported || out != "" {
 			t.Errorf("lines: %q, %v, %v", out, reported, e)
 		}
@@ -309,7 +309,7 @@ func TestHelperFailed(t *testing.T) {
 		}
 		// The lines' failure is said in the status line, which the
 		// reload's chain shows after the list.
-		if f, _, _ := run("text", "footer"); f != "✓ completed 1 · ✗ usage: unexpected argument" {
+		if f, _, _ := run("text", "footer"); f != "✓ done 1 · ✗ usage: unexpected argument" {
 			t.Errorf("after lines: footer %q", f)
 		}
 		// The query's failure prints nothing: it would become the value a

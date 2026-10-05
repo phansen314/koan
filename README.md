@@ -81,7 +81,7 @@ koan create-folder -p /work/api
 koan create 'Design schema' --folder /work/api --priority 2 --tags db
 koan create 'Write migrations' --folder /work/api --blocked-by 1
 koan frontier --limit 10 --fields id,title                       # the next ready tasks, in work order
-koan complete 1
+koan done 1
 jq -n '{folder: "/work/api", tasks: [                             # a plan in one call: refs name earlier tasks
   {ref: "endpoints", title: "Add endpoints"},
   {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan create-batch -i -
@@ -104,7 +104,7 @@ Type to search. Esc switches to command mode, where single keys act on the marke
 | Key | Does |
 |---|---|
 | Enter | Emits the marked tasks, or the one under the cursor, and exits. In a prompt (`n`, `p`, `t`) or a list to choose from (`b`, `u`, `m`, `f`), it applies what you entered or chose instead. |
-| `c` | Completes, or reopens if every target is complete. |
+| `d` | Marks done, or reopens if every target is done. |
 | `e` | Edits notes in `$VISUAL` or `$EDITOR`. |
 | `n` | Creates a task in the scope folder. Its title prompt starts with the query, to keep or edit. |
 | `b` / `u` | Blocks on, or unblocks from, tasks chosen from a list. |
@@ -125,7 +125,7 @@ koan pick | jq -r '.result.tasks[].id'                            # the IDs pick
 koan pick --folder /work --scope ready                            # what's ready under /work
 koan list --readiness blocked --fields id | koan pick --from -   # choose among the blocked ones
 koan pick --source 'koan frontier --tags-any today'              # the same idea, reloaded after each action
-koan complete "$(koan pick --query 'renew pass' --select-one | jq -r '.result.tasks[0].id')"   # no picker if only one matches
+koan done "$(koan pick --query 'renew pass' --select-one | jq -r '.result.tasks[0].id')"   # no picker if only one matches
 koan pick --folders | jq -r '.result.folders[0]'                  # a folder path instead
 koan pick > picked.json; jq '.result | {actions, notes_edited}' picked.json   # what the session changed
 ```

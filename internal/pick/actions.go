@@ -49,7 +49,7 @@ var actions []action
 // init fills actions, which some actions' own code reads (the command
 // keys, for a prompt).
 func init() {
-	actions = []action{completeAction, editAction, newAction, priorityAction, tagsAction, xAction, blockAction, unblockAction, moveAction, folderAction, scopeAction, reloadAction}
+	actions = []action{doneAction, editAction, newAction, priorityAction, tagsAction, xAction, blockAction, unblockAction, moveAction, folderAction, scopeAction, reloadAction}
 }
 
 func lookupAction(key string) (action, bool) {
@@ -294,8 +294,8 @@ type actionRun struct {
 // outcome is one call's result, for the status line.
 type outcome struct {
 	id   model.ID
-	done string      // the success, as its group says it: "completed"
-	what string      // the call, as a failure says it: "complete 42"
+	done string      // the success, as its group says it: "done"
+	what string      // the call, as a failure says it: "done 42"
 	err  *errs.Error // nil on success
 }
 

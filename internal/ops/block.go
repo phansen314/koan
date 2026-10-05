@@ -117,7 +117,7 @@ func runBlock(env Env, in BlockersInput, w *errs.Collector) (any, *errs.Error) {
 // reachable is the cycle check's phase 1 (implementation-spec.md, Cycle
 // check): the subgraph reachable from the new blockers by following
 // blocked_by, never expanding id. Every copy of each reached ID is loaded,
-// open or complete, and a node's edges are the union of its usable copies'
+// open or done, and a node's edges are the union of its usable copies'
 // blocked_by; an ID with no task file has none. Only once the whole subgraph
 // is loaded are its files checked, in tree order, the first unusable one the
 // error: which files are read depends on the graph alone.

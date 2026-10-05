@@ -11,7 +11,7 @@
       "uniqueItems": true,
       "items": { "$ref": "task-view#/properties/readiness" },
       "default": ["ready", "blocked"],
-      "description": "Only tasks with one of these readiness values. The default leaves out complete tasks."
+      "description": "Only tasks with one of these readiness values. The default leaves out done tasks."
     },
     "include_folders": { "type": "boolean", "default": false, "description": "Also return the folders in scope: with recursive, every folder under folder; without, folder and its immediate subfolders." },
     "tags_any": { "$ref": "frontier-input#/properties/tags_any" },

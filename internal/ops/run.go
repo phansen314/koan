@@ -41,7 +41,7 @@ var runners = map[string]runner{
 	"create":        typed(runCreate),
 	"create-batch":  typed(runCreateBatch),
 	"create-folder": typed(runCreateFolder),
-	"complete":      typed(runComplete),
+	"done":          typed(runDone),
 	"reopen":        typed(runReopen),
 	"update":        typed(runUpdate),
 	"block":         typed(runBlock),

@@ -14,9 +14,9 @@ import (
 )
 
 func TestStatusLine(t *testing.T) {
-	ok := func(id model.ID) outcome { return outcome{id: id, done: "completed", what: "complete"} }
+	ok := func(id model.ID) outcome { return outcome{id: id, done: "done", what: "done"} }
 	failed := func(id model.ID, e *errs.Error) outcome {
-		return outcome{id: id, what: "complete " + string(rune('0'+id)), err: e}
+		return outcome{id: id, what: "done " + string(rune('0'+id)), err: e}
 	}
 	busy := &errs.Error{Kind: errs.KindBusy, Message: "busy"}
 	dup := &errs.Error{Kind: errs.KindConflict, Message: "duplicated", Details: map[string]any{"rule": "duplicate-id"}}
@@ -30,12 +30,12 @@ func TestStatusLine(t *testing.T) {
 		want string
 	}{
 		{"none", nil, ""},
-		{"one", []outcome{ok(42)}, "✓ completed 42"},
-		{"one failed", []outcome{failed(4, dup)}, "✗ complete 4: conflict (duplicate-id): duplicated"},
-		{"several", []outcome{ok(1), ok(2)}, "✓ completed 2: 1, 2"},
+		{"one", []outcome{ok(42)}, "✓ done 42"},
+		{"one failed", []outcome{failed(4, dup)}, "✗ done 4: conflict (duplicate-id): duplicated"},
+		{"several", []outcome{ok(1), ok(2)}, "✓ done 2: 1, 2"},
 		{"groups, successes first", []outcome{failed(3, busy), ok(1), {id: 5, done: "reopened"}, ok(2), failed(4, dup)},
-			"✓ completed 2: 1, 2 · ✓ reopened 1: 5 · ✗ 2 failed: 3 busy, 4 conflict (duplicate-id)"},
-		{"five IDs, then +N", many, "✓ completed 38: 100, 101, 102, 103, 104 +33"},
+			"✓ done 2: 1, 2 · ✓ reopened 1: 5 · ✗ 2 failed: 3 busy, 4 conflict (duplicate-id)"},
+		{"five IDs, then +N", many, "✓ done 38: 100, 101, 102, 103, 104 +33"},
 	} {
 		if got := statusLine(tc.outs); got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
@@ -47,12 +47,12 @@ func TestStatusLine(t *testing.T) {
 // cells, not bytes, and whole when the width is unknown.
 func TestFooterCut(t *testing.T) {
 	s := testSession(t)
-	s.Write(textPrefix+"footer", []byte("✓ completed 38: 100, 101, 102 · 2 warnings"))
+	s.Write(textPrefix+"footer", []byte("✓ done 38: 100, 101, 102 · 2 warnings"))
 	for cols, want := range map[string]string{
-		"":   "✓ completed 38: 100, 101, 102 · 2 warnings",
-		"0":  "✓ completed 38: 100, 101, 102 · 2 warnings",
-		"20": "✓ completed 38: 1…",
-		"99": "✓ completed 38: 100, 101, 102 · 2 warnings",
+		"":   "✓ done 38: 100, 101, 102 · 2 warnings",
+		"0":  "✓ done 38: 100, 101, 102 · 2 warnings",
+		"20": "✓ done 38: 100, 1…",
+		"99": "✓ done 38: 100, 101, 102 · 2 warnings",
 	} {
 		env := Env{Sys: System{Environ: func() []string { return []string{"FZF_COLUMNS=" + cols} }}}
 		if out, _ := text(s, []string{"footer"}, env); string(out) != want {
@@ -79,13 +79,13 @@ func withAction(t *testing.T, a action) {
 	t.Cleanup(func() { actions = saved })
 }
 
-// completing is a test action: complete each target, as one call each.
+// completing is a test action: mark each target done, as one call each.
 func completing(key string, ar arity) action {
 	return action{key: key, arity: ar, run: func(r *actionRun, targets []shownLine) {
 		for _, tg := range targets {
 			in := &jsonio.Object{}
 			in.Set("id", idNumber(tg.ID))
-			r.call(tg.ID, "complete", in, "completed", "complete "+itoa(tg.ID))
+			r.call(tg.ID, "done", in, "done", "done "+itoa(tg.ID))
 		}
 	}}
 }
@@ -123,7 +123,7 @@ func TestAct(t *testing.T) {
 		if got := helper("act", "z", "3@/", "1@/"); got != reloaded {
 			t.Errorf("z printed %q", got)
 		}
-		if got := footer(helper); got != "✓ completed 2: 1, 3" {
+		if got := footer(helper); got != "✓ done 2: 1, 3" {
 			t.Errorf("footer %q", got)
 		}
 		// The reload's lines: the open scope has only 2 left.
@@ -139,7 +139,7 @@ func TestAct(t *testing.T) {
 		if got := helper("act", "y", "2@/"); got != reloaded {
 			t.Errorf("failing y printed %q", got)
 		}
-		if got := footer(helper); !strings.HasPrefix(got, "✗ complete 2: not-found: ") {
+		if got := footer(helper); !strings.HasPrefix(got, "✗ done 2: not-found: ") {
 			t.Errorf("footer %q", got)
 		}
 		// An action with no targets ignores the cursor, and runs nothing
@@ -177,7 +177,7 @@ func TestAct(t *testing.T) {
 		}
 		summary = append(summary, s)
 	}
-	if want := []string{"complete 1", "complete 3", "complete 2 not-found"}; !slices.Equal(summary, want) {
+	if want := []string{"done 1", "done 3", "done 2 not-found"}; !slices.Equal(summary, want) {
 		t.Errorf("actions %q, want %q: %s", summary, want, res)
 	}
 	if ok, f := schematest.Check(t, "pick-output", res); !ok {
@@ -197,8 +197,8 @@ func TestActBeforeReloadShows(t *testing.T) {
 		helper("act", "z", "1@/") // 1 leaves the open list
 		// Pressed while fzf still shows 1: dropped lines come after the
 		// shown ones.
-		helper("act", "c", "1@/", "3@/")
-		if got := helper("text", "footer"); got != "✓ completed 1: 3 · ✓ already complete 1: 1" {
+		helper("act", "d", "1@/", "3@/")
+		if got := helper("text", "footer"); got != "✓ done 1: 3 · ✓ already done 1: 1" {
 			t.Errorf("footer %q", got)
 		}
 		helper("quit")
@@ -220,7 +220,7 @@ func TestActReloadFails(t *testing.T) {
 		if got := helper("act", "z", "1@/a"); got != "clear-selection+transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("printed %q", got)
 		}
-		if got := helper("text", "footer"); !strings.HasPrefix(got, "✓ completed 1 · ✗ reload: not-found: ") {
+		if got := helper("text", "footer"); !strings.HasPrefix(got, "✓ done 1 · ✗ reload: not-found: ") {
 			t.Errorf("footer %q", got)
 		}
 		helper("quit")
@@ -238,12 +238,12 @@ func TestActionsUnknownOutcome(t *testing.T) {
 			t.Fatal(e)
 		}
 		defer s.Close()
-		s.Write(logFile, []byte(`[{"operation":"complete","input":{"id":1},"output":null}]`))
+		s.Write(logFile, []byte(`[{"operation":"done","input":{"id":1},"output":null}]`))
 	}})
 	if out.OK || out.Error.Kind != errs.KindCancelled {
 		t.Fatalf("%s", line)
 	}
-	if !strings.Contains(string(line), `"details":{"actions":[{"operation":"complete","input":{"id":1},"output":null}]}`) {
+	if !strings.Contains(string(line), `"details":{"actions":[{"operation":"done","input":{"id":1},"output":null}]}`) {
 		t.Errorf("%s", line)
 	}
 	d, _ := json.Marshal(out.Error.Details)

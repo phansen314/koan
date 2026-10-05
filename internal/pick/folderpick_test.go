@@ -44,7 +44,7 @@ func TestFolderPicker(t *testing.T) {
 		if h := helper("text", "header"); h != "[cmd]\n/a\n"+folderHint {
 			t.Errorf("header %q", h)
 		}
-		if h := helper("help"); strings.Contains(h, "complete") || !strings.Contains(h, "first, last line") {
+		if h := helper("help"); strings.Contains(h, "done") || !strings.Contains(h, "first, last line") {
 			t.Errorf("help %q", h)
 		}
 		tr.run("delete-folder", map[string]any{"folder": "/a/b"})

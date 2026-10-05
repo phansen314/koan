@@ -379,11 +379,11 @@ func TestPickModes(t *testing.T) {
 	})
 }
 
-// c, the first action, end to end: marked lines completed in line order,
+// d, the first action, end to end: marked lines marked done in line order,
 // the list reloaded without them and with the marks cleared, the status
 // line, command mode kept, and every call in the output's actions; then,
-// with every target shown complete, c reopens.
-func TestPickComplete(t *testing.T) {
+// with every target shown done, d reopens.
+func TestPickDone(t *testing.T) {
 	eachFzf(t, func(t *testing.T, fzfDir string) {
 		tr := pickTree(t)
 		p := startPick(t, fzfDir, tr.cmd("pick", "--fields", "id"))
@@ -394,8 +394,8 @@ func TestPickComplete(t *testing.T) {
 		p.waitState("3 marked", func(st fzfState) bool { return len(st.Selected) == 1 })
 		p.send("j ")
 		p.waitState("1 marked", func(st fzfState) bool { return len(st.Selected) == 2 })
-		p.send("c")
-		p.waitScreen("✓ completed 2: 1, 3")
+		p.send("d")
+		p.waitScreen("✓ done 2: 1, 3")
 		st := p.waitState("the reload", func(st fzfState) bool { return st.TotalCount == 1 })
 		if len(st.Selected) != 0 || lineKey(st.Current) != "2@/trips" {
 			t.Errorf("after c: %+v", st)
@@ -411,19 +411,19 @@ func TestPickComplete(t *testing.T) {
 			b, _ := json.Marshal(a)
 			ops = append(ops, string(b))
 		}
-		if r.code != 0 || len(ops) != 2 || !strings.HasPrefix(ops[0], `{"input":{"id":1},"operation":"complete","output":{"ok":true,`) ||
-			!strings.HasPrefix(ops[1], `{"input":{"id":3},"operation":"complete","output":{"ok":true,`) {
+		if r.code != 0 || len(ops) != 2 || !strings.HasPrefix(ops[0], `{"input":{"id":1},"operation":"done","output":{"ok":true,`) ||
+			!strings.HasPrefix(ops[1], `{"input":{"id":3},"operation":"done","output":{"ok":true,`) {
 			t.Errorf("exit %d: %s", r.code, r.stdout)
 		}
 
-		// Every target shown complete: c reopens.
+		// Every target shown done: d reopens.
 		p = startPick(t, fzfDir, tr.cmd("pick", "--fields", "id", "--scope", "all"))
 		p.loaded()
 		p.command()
 		p.send("G")
-		// Ready first, then complete: 1 and 3, completed together, by ID.
+		// Ready first, then done: 1 and 3, marked done together, by ID.
 		p.waitState("the cursor on the last line", func(st fzfState) bool { return lineKey(st.Current) == "3@/trips" })
-		p.send("c")
+		p.send("d")
 		p.waitScreen("✓ reopened 3")
 		p.send(keyEsc) // quits, in command mode
 		if r := p.result(); r.code != 0 || !strings.Contains(r.stdout, `"operation":"reopen"`) {
@@ -483,8 +483,8 @@ func TestPickEdit(t *testing.T) {
 		t.Run("ctrl-c in the editor", func(t *testing.T) {
 			// No preview, so the status line has the width.
 			p := pick(t, "KOAN_PICK_OPTS=--preview-window=hidden")
-			p.send("c") // complete 1, an action to report
-			p.waitScreen("✓ completed 1")
+			p.send("d") // done 1, an action to report
+			p.waitScreen("✓ done 1")
 			p.waitState("the reload", func(st fzfState) bool { return st.TotalCount == 2 && !st.Reading })
 			p.send("e")
 			p.waitScreen("EDITOR>")
@@ -528,7 +528,7 @@ func TestPickEdit(t *testing.T) {
 func TestPickScopeAndReload(t *testing.T) {
 	eachFzf(t, func(t *testing.T, fzfDir string) {
 		tr := pickTree(t)
-		if r := run(t, tr.cmd("complete", "3")); r.code != 0 {
+		if r := run(t, tr.cmd("done", "3")); r.code != 0 {
 			t.Fatal(r.stdout)
 		}
 		p := startPick(t, fzfDir, tr.cmd("pick", "--fields", "id"))
@@ -1327,7 +1327,7 @@ func TestPickFolders(t *testing.T) {
 		// Space marks, and moves down to /home.
 		p.send(" ")
 		p.waitState("/trips marked", func(st fzfState) bool { return len(st.Selected) == 1 && lineKey(st.Current) == "/home" })
-		p.send("c")
+		p.send("d")
 		p.send(keyTab)
 		p.waitState("/home marked", func(st fzfState) bool { return len(st.Selected) == 2 })
 		p.send(keyEnter)
@@ -1369,7 +1369,7 @@ func TestPickFolders(t *testing.T) {
 func TestPickPipelines(t *testing.T) {
 	eachFzf(t, func(t *testing.T, fzfDir string) {
 		tr := pickTree(t)
-		if r := run(t, tr.cmd("complete", "3")); r.code != 0 {
+		if r := run(t, tr.cmd("done", "3")); r.code != 0 {
 			t.Fatal(r.stdout)
 		}
 		envOf := func(args ...string) string {
@@ -1379,7 +1379,7 @@ func TestPickPipelines(t *testing.T) {
 			}
 			return r.stdout
 		}
-		listed := envOf("list", "--readiness", "ready,complete", "--fields", "id")
+		listed := envOf("list", "--readiness", "ready,done", "--fields", "id")
 		accepted := []struct {
 			name, upstream string
 			lines          int // candidates
@@ -1481,7 +1481,7 @@ func TestPickFinalReadFails(t *testing.T) {
 func TestPickCtrlD(t *testing.T) {
 	eachFzf(t, func(t *testing.T, fzfDir string) {
 		tr := pickTree(t)
-		before := run(t, tr.cmd("list", "--readiness", "ready,blocked,complete")).stdout
+		before := run(t, tr.cmd("list", "--readiness", "ready,blocked,done")).stdout
 		p := startPick(t, fzfDir, tr.cmd("pick", "--fields", "id"))
 		p.loaded()
 		p.send(keyCtrlD + keyCtrlD)
@@ -1494,7 +1494,7 @@ func TestPickCtrlD(t *testing.T) {
 		if got := picked(t, p.result()); !slices.Equal(got, []int64{3}) {
 			t.Errorf("picked %v", got)
 		}
-		if after := run(t, tr.cmd("list", "--readiness", "ready,blocked,complete")).stdout; after != before {
+		if after := run(t, tr.cmd("list", "--readiness", "ready,blocked,done")).stdout; after != before {
 			t.Errorf("tree changed:\n%s\n%s", before, after)
 		}
 	})

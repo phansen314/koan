@@ -61,9 +61,9 @@ type Task struct {
 type Readiness string
 
 const (
-	Ready    Readiness = "ready"
-	Blocked  Readiness = "blocked"
-	Complete Readiness = "complete"
+	Ready   Readiness = "ready"
+	Blocked Readiness = "blocked"
+	Done    Readiness = "done"
 )
 
 // TaskView is a task plus its derived readiness (the shared task-view

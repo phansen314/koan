@@ -8,7 +8,7 @@ import (
 	"github.com/phansen314/koan/internal/model"
 )
 
-// u's choices: the target's blockers that exist, in line order, complete
+// u's choices: the target's blockers that exist, in line order, done
 // ones too, every copy of a duplicated ID; then those that don't, keyed by
 // the ID alone.
 func TestUnblockChoices(t *testing.T) {
@@ -17,7 +17,7 @@ func TestUnblockChoices(t *testing.T) {
 	l := &Load{Tasks: []model.TaskView{
 		target,
 		tv{id: 1, folder: "/", r: model.Ready}.view(),
-		tv{id: 2, folder: "/", r: model.Complete, done: "2026-09-01T00:00:00Z"}.view(),
+		tv{id: 2, folder: "/", r: model.Done, done: "2026-09-01T00:00:00Z"}.view(),
 		tv{id: 3, folder: "/a", r: model.Ready}.view(),
 		tv{id: 3, folder: "/b", r: model.Ready}.view(),
 		tv{id: 4, folder: "/", r: model.Ready, priority: p(1)}.view(),

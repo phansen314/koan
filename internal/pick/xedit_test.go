@@ -91,7 +91,7 @@ func TestXAction(t *testing.T) {
 		}
 
 		// Another action discards the kept file: x starts over.
-		helper("act", "c", "2@/")
+		helper("act", "d", "2@/")
 		if got := x("1@/", nil); strings.Contains(got, "notes") {
 			t.Errorf("not discarded: %q", got)
 		}

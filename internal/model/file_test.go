@@ -94,7 +94,7 @@ func TestTaskFileValidity(t *testing.T) {
 		problem string // a prefix of one problem, for corrupt
 	}{
 		{"valid", exampleTask, FileOK, 1, ""},
-		{"complete", edit(`"completed_at": null`, `"completed_at": "2026-09-21T08:00:00Z"`), FileOK, 1, ""},
+		{"done", edit(`"completed_at": null`, `"completed_at": "2026-09-21T08:00:00Z"`), FileOK, 1, ""},
 		{"no priority", edit(`"priority": 2`, `"priority": null`), FileOK, 1, ""},
 		{"schema missing", edit(`"schema": 1,`, ``), FileCorrupt, 0, "/schema: required"},
 		{"schema 1.0", edit(`"schema": 1`, `"schema": 1.0`), FileCorrupt, 0, "/schema: must be an integer"},

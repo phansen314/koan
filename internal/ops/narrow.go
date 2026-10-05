@@ -24,7 +24,7 @@ type Narrowing struct {
 const limitMax = 1<<53 - 1
 
 // readinessValues are the names readiness may take (task-view's readiness).
-var readinessValues = []string{string(model.Ready), string(model.Blocked), string(model.Complete)}
+var readinessValues = []string{string(model.Ready), string(model.Blocked), string(model.Done)}
 
 func decodeNarrowing(f *model.Fields, p *model.Problems) Narrowing {
 	var n Narrowing

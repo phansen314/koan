@@ -7,7 +7,7 @@
 ## Goals
 
 - **Fuzzy search by title and tags** over the tree, with the task's details and notes in a preview.
-- **Act without leaving.** Complete, edit, create, block, move, reprioritize and retag, then see the list reload.
+- **Act without leaving.** Mark done, edit, create, block, move, reprioritize and retag, then see the list reload.
 - **A pipeline citizen.** Candidates can come from upstream (`koan list … | koan pick --from -`). The selection goes downstream as one [envelope](operations.md#output-envelope) (`koan pick | jq …`). The interface draws on the terminal, never on stdin or stdout, so both can be redirected.
 - **Nothing hidden from a caller.** Every change made inside the picker is reported in the output, so a script or an agent that hands the terminal to a person learns what the person changed.
 
@@ -41,7 +41,7 @@ Fuzzy-pick tasks, or with `--folders` folders, and write the selection as one en
 |---|---|---|
 | `--folder <path>` | `/folder` | `/`. An exact [folder path](cli-spec.md#command-line). The initial scope folder. The [`f` action](#actions) changes it during the session. |
 | `--recursive` | `/recursive` | `true`. `--recursive=false` leaves out tasks in `folder`'s subfolders. In the [folder picker](#folder-picker), it lists `folder` and its immediate subfolders only, as `list`'s `include_folders` does without recursion. |
-| `--scope <scope>` | `/scope` | `open`, or `all` with `--ids`, `--from` or `--source` (see [Candidates](#candidates)). Which tasks show at first: `ready`, `open` (ready and blocked), or `all` (complete too). The [`s` action](#actions) cycles it. |
+| `--scope <scope>` | `/scope` | `open`, or `all` with `--ids`, `--from` or `--source` (see [Candidates](#candidates)). Which tasks show at first: `ready`, `open` (ready and blocked), or `all` (done too). The [`s` action](#actions) cycles it. |
 | `--tags-any <tags>` | `/tags_any` | None. Comma list. As for [`list`](cli-spec.md#list). |
 | `--tags-all <tags>` | `/tags_all` | None. Comma list. As for `list`. |
 | `--ids <id,id,…>` | `/ids` | None. Only these tasks are candidates: a [snapshot](#candidates). |
@@ -83,7 +83,7 @@ Fuzzy-pick tasks, or with `--folders` folders, and write the selection as one en
 
 `--from` resolves to `ids`, as `create`'s `--notes-file` resolves to `notes`:
 
-- <a id="accepted-envelopes"></a>**Accepted envelopes.** The file holds one envelope with `ok: true` whose `result` has either `tasks`, an array of objects each with an `id` (from `list`, `frontier`, `show` or `pick`), or an `id` of its own (from `create`, `complete` and the other single-task commands). Any `--fields` upstream will do, since `id` is always included. The IDs are taken in order, without duplicates.
+- <a id="accepted-envelopes"></a>**Accepted envelopes.** The file holds one envelope with `ok: true` whose `result` has either `tasks`, an array of objects each with an `id` (from `list`, `frontier`, `show` or `pick`), or an `id` of its own (from `create`, `done` and the other single-task commands). Any `--fields` upstream will do, since `id` is always included. The IDs are taken in order, without duplicates.
 - **Read in full first.** The whole file is read before fzf starts, so `--from -` never competes with the terminal.
 - **Bad content** is `invalid-input` at `/ids`: not one JSON value, not an envelope, no tasks or ID in it, or an envelope with `ok: false`. The last says which error kind upstream reported. The upstream command has already written its own stderr line.
 - **An empty `tasks` array** is fine. The picker opens with no candidates.
@@ -110,7 +110,7 @@ koan frontier --tags-any today | koan pick --from -
 koan pick --source 'koan frontier --tags-any today'       # the same, kept live
 koan pick --source "koan list | jq -c '.result.tasks |= map(select(.extra.status == \"waiting\"))'"
 koan pick --ids 41,42,43
-koan complete "$(koan pick --query 'renew pass' --select-one | jq -r '.result.tasks[0].id')"   # no picker if only one matches
+koan done "$(koan pick --query 'renew pass' --select-one | jq -r '.result.tasks[0].id')"   # no picker if only one matches
 koan pick --folders | jq -r '.result.folders[0]'           # a folder path, e.g. for create --folder
 koan pick > picked.json; jq '.result | {actions, notes_edited}' picked.json   # what the session changed
 koan pick | koan pick --from -                            # narrow in two passes
@@ -128,7 +128,7 @@ Which tasks the picker lists, its **candidates**, comes from one of three places
 
 - **Task data is always live.** Every reload reads the tree again, whatever the candidates came from, so titles, readiness and completion are always current. Only *which* tasks are listed can be frozen.
 - **A snapshot never grows.** A task created in the session, a task unblocked by an action, or a task created by another process is not added to it, even if upstream would have listed it. The emitted selection is therefore always a subset of the IDs given, which is what a pipeline downstream of `--from` can rely on. For a list that keeps up, use a live source.
-- **Narrowing applies on top.** With a snapshot or a live source, `pick`'s scope, folder and tag filters still narrow the list. The scope defaults to `all`, so by default the picker shows exactly what upstream chose: `koan list --readiness complete | koan pick --from -` lists the complete tasks. `s` cycles the scope as usual.
+- **Narrowing applies on top.** With a snapshot or a live source, `pick`'s scope, folder and tag filters still narrow the list. The scope defaults to `all`, so by default the picker shows exactly what upstream chose: `koan list --readiness done | koan pick --from -` lists the done tasks. `s` cycles the scope as usual.
 - **Order** is always `pick`'s own (see [Lines](#lines)), not upstream's.
 
 ### Live source
@@ -161,7 +161,7 @@ One line per candidate task, in this order:
 
 1. **Ready** tasks, in [frontier order](operations.md#frontier): priority highest first, unprioritized last, then ID lowest first.
 2. **Blocked** tasks, in the same order.
-3. **Complete** tasks (scope `all` only), `completed_at` newest first, then ID.
+3. **Done** tasks (scope `all` only), `completed_at` newest first, then ID.
 
 With an empty query, fzf shows this order. As the person types, fzf ranks by match, and ties keep this order (`--tiebreak=index`).
 
@@ -175,7 +175,7 @@ Each line has these columns, the title last:
 
 | Column | Content |
 |---|---|
-| State | `●` ready, `◐` blocked, `✓` complete. |
+| State | `●` ready, `◐` blocked, `✓` done. |
 | ID | The task's ID. |
 | Detail | For a blocked task, `→` and its `blocking` IDs. Otherwise `p` and the priority, or nothing. |
 | Folder | The folder path. |
@@ -186,7 +186,7 @@ Each line has these columns, the title last:
 - **Alignment.** Every column but the title is padded to the widest value in the current list, measured in terminal cells, not bytes or code points (wide characters take two). The detail and folder columns are capped at 24 cells, and a longer value is cut with `…`. Neither is matched, so cutting them never changes what the query finds. The tags and the title are never cut: fzf matches only text it displays (`--nth` counts the fields `--with-nth` shows), so a cut tag would stop matching.
 
 - **Only the title and tags are matched.** The query never matches the ID, the folder or the state. Narrowing by folder is the [`f` action](#actions). (fzf's `--nth`.)
-- **Color.** Blocked and complete lines are dimmed, and tags and folder are muted. With `NO_COLOR` set to a non-empty value, lines carry no color.
+- **Color.** Blocked and done lines are dimmed, and tags and folder are muted. With `NO_COLOR` set to a non-empty value, lines carry no color.
 - **Duplicate IDs** show as one line per copy. The preview, marks and the selection follow the copy, by its [key](#line-keys). An action names the ID, so on a duplicated ID it fails with `conflict` (`rule`: `duplicate-id`), shown in the [status line](#status-line).
 
 ### Header, prompt and status line
@@ -195,8 +195,8 @@ Each line has these columns, the title last:
 - **Command mode hides the input line** (fzf's `hide-input`). That is the only way fzf drops typed keys: a key with no binding is otherwise typed into the query. The query is kept and still filters the list, and it reappears with insert mode.
 - **Header** shows the [mode](#modes) when it isn't insert (e.g. `[cmd] query: renew`, since command mode hides the query), the scope folder, the filters in effect, and a one-line key hint for the current mode.
 - <a id="status-line"></a>**Status line** (fzf's footer) is one line, showing the result of the last action until the next one, then, after ` · `, `N warnings` (`1 warning` for one) if the last load reported any:
-  - one target: `✓ completed 42`, `✓ created 51`, or `✗ block 43 ← 7: conflict (acyclic): blocker(s) 7 would create a cycle`. A failure shows its error kind and its `message`.
-  - several: outcomes grouped, successes first, with at most five IDs per group, then `+N`: `✓ completed 38: 41, 42, 44, 45, 47 +33 · ✗ 2 failed: 43 busy, 46 conflict (duplicate-id)`.
+  - one target: `✓ done 42`, `✓ created 51`, or `✗ block 43 ← 7: conflict (acyclic): blocker(s) 7 would create a cycle`. A failure shows its error kind and its `message`.
+  - several: outcomes grouped, successes first, with at most five IDs per group, then `+N`: `✓ done 38: 41, 42, 44, 45, 47 +33 · ✗ 2 failed: 43 busy, 46 conflict (duplicate-id)`.
   - Too long for the terminal, it is cut with `…`. Every outcome is in `actions` in the output, whatever the status line shows.
 
 ### Preview
@@ -245,7 +245,7 @@ Command mode's keys:
 
 | Key | Action | Runs | Targets |
 |---|---|---|---|
-| `c` | Complete or reopen, by the readiness the lines show. If any target is shown open, it completes every target. If every target is shown complete, it reopens them all. A task completed or reopened elsewhere since the last load makes its call a no-op (`changed: false`), never a reversal. | [`complete`](operations.md#complete), [`reopen`](operations.md#reopen) | any |
+| `d` | Done or reopen, by the readiness the lines show. If any target is shown open, it marks every target done. If every target is shown done, it reopens them all. A task marked done or reopened elsewhere since the last load makes its call a no-op (`changed: false`), never a reversal. | [`done`](operations.md#done), [`reopen`](operations.md#reopen) | any |
 | `e` | Edit notes: opens the targets' `notes_path`, all as arguments to one editor, with fzf suspended. `$VISUAL`, else `$EDITOR`, else `vi`. Each `notes_path` is read fresh by ID as `e` runs, not taken from the last load, so a task moved meanwhile has its notes edited where they now are; a target deleted meanwhile refuses the whole `e`, as does one now duplicated with no copy in its line's folder. | [`show`](operations.md#show), per target, for its current `notes_path`. koan never sees notes edits; `pick` reports which notes changed in [`notes_edited`](#output). | any |
 | `n` | New task. Prompt `new> `, filled with the query. Creates an open task with that title in the scope folder (see below). | [`create`](operations.md#create) | none |
 | `b` | Block. Choose list `blockers of 42> ` (see below). Adds the chosen tasks to each target's `blocked_by`. | [`block`](operations.md#block) | any |
@@ -265,8 +265,8 @@ Command mode's keys:
 
 - **One call per target.** An action on several targets runs its operation once per target, in `pick`'s [line order](#lines) from the last load, not in the order fzf reports marks (the order they were marked), nor a query's rank order. Each call stands alone: one that fails doesn't stop the rest, and the status line reports every outcome. A `busy` is reported like any other failure, never retried silently.
 - **Wrong number of targets.** `u` and `x` take one target. With several marked, they run nothing and say so in the status line (`✗ x takes one task: 3 marked`). The `m` and `f` choose lists take one folder: Tab and space are unbound in them, and Enter takes the folder under the cursor. `b`'s and `u`'s choose lists allow several.
-- **Reload after every action** that runs an operation, so the list, the readiness and the preview reflect it. A task that falls out of scope (e.g. completed while the scope is `open`) leaves the list. The status line still names it.
-- **Blocker candidates.** `b`'s choose list holds every open task in the tree, regardless of the scope, except the targets and every task from which a target can be reached by following `blocked_by`, in the [load](#session)'s graph: keyed by ID, with every copy's edges, complete tasks included, since `block`'s cycle check follows them too. Those would close a cycle. `block` still checks: a cycle created concurrently is refused with `conflict` (`acyclic`).
+- **Reload after every action** that runs an operation, so the list, the readiness and the preview reflect it. A task that falls out of scope (e.g. marked done while the scope is `open`) leaves the list. The status line still names it.
+- **Blocker candidates.** `b`'s choose list holds every open task in the tree, regardless of the scope, except the targets and every task from which a target can be reached by following `blocked_by`, in the [load](#session)'s graph: keyed by ID, with every copy's edges, done tasks included, since `block`'s cycle check follows them too. Those would close a cycle. `block` still checks: a cycle created concurrently is refused with `conflict` (`acyclic`).
 - **Tags syntax.** The value is a list of tags, separated by spaces or commas. If every item is bare (`travel urgent`), they replace all tags (`update`'s `tags.replace_all`). If every item is prefixed (`+urgent -later`), `+` adds and `-` removes. A mix is refused in the status line. A lone `-` clears all tags (`tags.replace_all: []`).
 - **Several targets.** With one target, the `p` and `t` prompts start with its current value, and an empty value clears it, as the prompt showed what is being cleared. With several, they start empty, and an empty value does nothing (status `no change`): it never clears every target. Clearing then takes `null` (priority) or `-` (tags). A value of only separators (spaces, commas) is empty. An integer is sent in its plain form, so `+5` and `05` set `5`.
 - **New tasks** get the scope folder and the scope's `tags_all`, and no priority or blockers. With pick's own filters, that makes a new task a candidate unless `--tags-any` is given, which names no tag a new task could be given without guessing.
@@ -353,7 +353,7 @@ In every case, the envelope reports the actions taken.
         "type": "object",
         "required": ["operation", "input", "output"],
         "properties": {
-          "operation": { "type": "string", "enum": ["complete", "reopen", "create", "block", "unblock", "move", "update"] },
+          "operation": { "type": "string", "enum": ["done", "reopen", "create", "block", "unblock", "move", "update"] },
           "input": { "type": "object", "description": "The operation's input, as passed." },
           "output": { "oneOf": [{ "$ref": "envelope" }, { "type": "null" }], "description": "The operation's envelope, unchanged: success or failure. null if the outcome is unknown (see Session)." }
         },
@@ -464,7 +464,7 @@ It holds:
 - the **mode**, and for prompt and choose modes the action and its targets;
 - the **action log**: one entry per operation. Each entry is written, with `output` `null`, before the operation runs, and completed with its envelope after. An entry still `null` at the end means the helper died between the two: the operation may or may not have taken effect, and the entry is emitted as it is;
 - the **selection**, once recorded;
-- the **load**: the result of one `list` call per load, with `folder` `/`, `recursive`, `readiness` `["ready", "blocked", "complete"]`, `include_folders`, and no filters. `pick` derives from it the candidate lines (applying the scope folder, recursion, readiness scope and tag filters with `list`'s meanings), the preview's `blocks`, `b`'s candidates, and the `f` and `m` folder lists, so all of them agree. The status line's `N warnings` counts this read's warnings, never a `--source` command's. With a live source, a reload therefore reads the tree twice: once in the source's command, and once in this load, which supplies the data. A snapshot or source ID that the load does not find is left out of the list, and the header says how many (`2 given IDs not found`);
+- the **load**: the result of one `list` call per load, with `folder` `/`, `recursive`, `readiness` `["ready", "blocked", "done"]`, `include_folders`, and no filters. `pick` derives from it the candidate lines (applying the scope folder, recursion, readiness scope and tag filters with `list`'s meanings), the preview's `blocks`, `b`'s candidates, and the `f` and `m` folder lists, so all of them agree. The status line's `N warnings` counts this read's warnings, never a `--source` command's. With a live source, a reload therefore reads the tree twice: once in the source's command, and once in this load, which supplies the data. A snapshot or source ID that the load does not find is left out of the list, and the header says how many (`2 given IDs not found`);
 - the **notes hashes** of the targets of an `e`, from before the editor ran, for `notes_edited`.
 
 **The helper** is a hidden command, `koan __pick <verb> …`, that fzf's callbacks run. It reads the session directory from `KOAN_PICK_SESSION`, which `pick` sets in fzf's environment. It is internal: not listed in help, not part of the contract, and it may change in any release. Run with no valid session, it fails with `usage`. Inside a session, a callback's own failure (e.g. an unreadable session file) never prints an envelope, which fzf would parse as actions or list as a line: a callback whose output fzf runs shows the error in the status line instead (`✗ internal: …`), or does nothing if even that fails; a list's callback prints no lines; and one whose output fzf shows as it is, such as the preview, prints the error as one line.
