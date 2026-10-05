@@ -188,6 +188,7 @@ const (
 	RuleIDAboveLastID     Rule = "id-above-last-id"
 	RuleNotEmpty          Rule = "not-empty"
 	RuleDestinationExists Rule = "destination-exists"
+	RuleCaseClash         Rule = "case-clash"
 )
 
 // ConflictDetails carries Cycles only for RuleAcyclic, where Cycles[i] is one
@@ -224,6 +225,16 @@ func Conflict(rule Rule, ids []int64) *Error {
 		msg = "conflict: " + string(rule)
 	}
 	return &Error{Kind: KindConflict, Message: msg, Details: ConflictDetails{Rule: rule, IDs: nonNil(ids)}}
+}
+
+// CaseClash reports a folder path one of whose segments differs only in
+// case from an entry already in its parent, at path.
+func CaseClash(path string) *Error {
+	return &Error{
+		Kind:    KindConflict,
+		Message: path + " already exists with different case; folder names must differ by more than case",
+		Details: ConflictDetails{Rule: RuleCaseClash, IDs: []int64{}},
+	}
 }
 
 // Acyclic reports blockers that would create a cycle: cycles[i] is the cycle

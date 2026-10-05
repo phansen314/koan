@@ -87,6 +87,14 @@ jq -n '{folder: "/work/api", tasks: [                             # a plan in on
   {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan create-batch -i -
 ```
 
+## Folder names and tags
+
+Folder names can use upper and lower case letters, digits, and hyphens, up to 64 characters, and can't start or end with a hyphen: `/Work/API-v2` is fine. Case is kept and must match exactly, so `/work` does not find `/Work`.
+
+Two folders side by side can't differ only in case. macOS treats `Work` and `work` as the same folder, so koan refuses to create or move a folder next to one whose name differs from it only in case (`conflict`, rule `case-clash`). A tree made on Linux therefore still works when synced to a Mac. One consequence: to rename `/work` to `/Work`, move it through a temporary name. If such a pair turns up anyway, say from files copied in by hand, `koan doctor` reports it as `case-clash`.
+
+Tags are lowercase only (`db`, `needs-review`), so matching a tag is always exact.
+
 ## Picking tasks yourself
 
 `koan pick` is for working with the tree by hand. It's a [fzf](https://github.com/junegunn/fzf) picker that fuzzy-searches tasks by title and tags, with details and notes in a preview, lets you act on them in place, and prints the ones you choose as one JSON envelope. It needs a terminal and fzf 0.63.0 or later on `PATH`. If `glow` or `bat` is installed, it renders notes in the preview. Agents never run it: run it yourself and hand them the output.

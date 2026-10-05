@@ -98,7 +98,7 @@ An error means the operation failed. `kind` and `details` are the contract; `mes
 | `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, or `metadata` (meaning `koan.json`) — the first absent piece. |
 | `environment` | The process's environment lacks what koan needs to locate its files: the home directory, from which the config location is derived (see [Config file](design-spec.md#config-file)). Not a root state — no config was looked for. | `variable`: the environment variable that is unset or unusable; currently always `HOME`. |
 | `not-found` | A task or folder named by the input, or a filesystem directory it requires, does not exist. | `folders`: tree folder paths; `ids`: task IDs; `paths`: filesystem paths (e.g. `init`'s missing parent directory). All three always present, empty when not applicable. |
-| `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, or act on a task the tree cannot identify uniquely. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). |
+| `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, or act on a task the tree cannot identify uniquely. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move), `case-clash` (a folder path names a folder whose name differs only in case from an entry already there; see [Path walk](#path-walk)). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). |
 | `busy` | Another write (or `doctor`/`repair`) held the write lock for the whole wait, 5 seconds (see *Bounded wait* in [Guarantees](design-spec.md#guarantees)). Nothing was done. Safe to retry, but repeated `busy` means something is holding the lock. | none (`{}`). |
 | `corrupt` | A needed file — or an entry on an input path — is present and readable but its content or type is wrong (see [File validity](design-spec.md#file-validity)); or koan found a file where, under its own invariants, none can exist (e.g. creating a task file that already exists). | `path`; `reason`: `not-json` (not parseable, or not an object), `invalid` (fails a file-level rule, including a missing `schema` or one not written as an integer literal within ±(2^53 − 1)), or `unexpected-file` (wrong entry type, e.g. `koan.json` is a symlink or directory; or a file exists that must not). What is wrong, for `not-json` and `invalid`: `problems`, for a JSON file that is `invalid` — a list of `{field, reason}` as in `invalid-input`, but with `field` a JSON Pointer into the file (e.g. `/updated_at`), sorted the same way, and at most the first 20, with `problems_truncated: true` when more were found; or `detail`, a human-readable string — why the file is `not-json`, or why the config, which is not JSON, is `invalid`. `unexpected-file` has neither. |
 | `io` | The environment refused an operation: an unreadable file, permission denied, disk full, read-only filesystem, and similar. An OS error with no symbolic name is `internal`, not `io`. | `path`: built from the root as stored (see [Root path](design-spec.md#root-path)), or the config's own path for an error on the config; `code`: the symbolic OS error, e.g. `ENOSPC`, never a number. |
@@ -345,6 +345,7 @@ A finding is a problem with the tree that [`doctor`](#doctor) reports and [`repa
 | `skipped-entry` | manual | entry that is not hidden, and that the walk skips although it may hold part of the tree: a symlink, or an entry with a folder's or task file's name but the wrong type (see [Walking the tree](design-spec.md#walking-the-tree)). | the entry | none | `reason`, below | `null` |
 | `stray-entry` | informational | entry that is not hidden and whose name matches neither the folder-name nor the task-filename rule (e.g. `notes.txt`, `42.md~`), other than the root's `koan.json` and a nested tree's. | the entry | none | — | `null` |
 | `unreadable-folder` | manual | folder that can't be listed. Its entries are not looked at. | the folder | none | `code`: the symbolic OS error | `null` |
+| `case-clash` | manual | set of sibling folders whose names differ only in case, e.g. `proj` and `Proj` — possible only on a case-sensitive filesystem, and made outside koan, whose [path walk](#path-walk) refuses them. On a case-insensitive one (macOS's default) they would be one folder. | each folder, in tree order | none | — | `null` |
 
 Kind by kind:
 
@@ -441,6 +442,7 @@ The order koan uses whenever it lists folders or tasks by location:
 
 How an operation checks a folder path given as input (e.g. `folder`). Entries are checked from the root down, one segment at a time, stopping at the first that is not a plain directory:
 
+- **Differs only in case** — no entry has the segment's exact name, but one has it in another case (e.g. `/Proj` where `proj` exists) → `conflict` (`rule`: `case-clash`). Checked by listing the parent, so a path means the same on a case-insensitive filesystem as on a case-sensitive one.
 - **Missing** → `not-found` (`folders`: that folder path) — or, for `create-folder` with `parents`, created.
 - **Present but not a directory, or a symlink** → `corrupt` (`reason`: `unexpected-file`). Symlinks are never followed.
 - **A directory** → continue to the next segment.
@@ -598,7 +600,7 @@ A [folder path](design-spec.md#folder-paths).
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "folder-path",
   "type": "string",
-  "pattern": "^/$|^(/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)+$",
+  "pattern": "^/$|^(/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+$",
   "description": "Folder path from the root, e.g. /proj/travel."
 }
 ```
@@ -1294,6 +1296,7 @@ Then:
 
 - **Target is `folder` itself** (e.g. `/proj/travel` into `/proj`): nothing to do; succeeds with `changed` false.
 - **Anything exists at the target** — a folder, a file, a symlink: `conflict` (`rule`: `destination-exists`). Folders are never merged.
+- **An entry at the target's place differs from it only in case** — e.g. moving `/a/Proj` into `/b`, which holds `proj`: `conflict` (`rule`: `case-clash`). So a rename that changes only case (`/proj` to `/Proj`) is refused too; move through a temporary name instead.
 
 **Needed files:** the entries along `folder`'s and `to`'s paths, checked by the [path walk](#path-walk) — `folder` first — and the entry at the target. `move-folder` does not walk the tree and reads no task file: a task's identity is its ID, not its location, so nothing inside the folder changes.
 
@@ -1327,7 +1330,7 @@ Then:
 | `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found`, `corrupt` | Whichever the [path walk](#path-walk) meets first, `folder`'s path before `to`'s: a missing `folder`, or a missing folder above `to` while `parents` is false (`not-found`, `folders`: every missing one, both paths together); an entry that is not a directory, or is a symlink (`corrupt`, `reason`: `unexpected-file`). |
-| `conflict` | (`rule`: `destination-exists`) Something already exists at the target (`ids`: `[]`). |
+| `conflict` | (`rule`: `destination-exists`) Something already exists at the target (`ids`: `[]`). (`rule`: `case-clash`) An entry differing from the target, or from a folder on `folder`'s or `to`'s path, only in case exists (`ids`: `[]`). |
 
 **Warnings:** none.
 

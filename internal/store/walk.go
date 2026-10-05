@@ -49,12 +49,17 @@ func childFolder(f model.FolderPath, name string) model.FolderPath {
 // on its path, from the root down, must be a plain directory. It returns how
 // many of f's segments exist, stopping at the first missing one; f exists
 // when that is all of them. An entry that is present but not a directory, or
-// is a symlink, is corrupt (unexpected-file).
+// is a symlink, is corrupt (unexpected-file). A segment matches only an
+// entry of exactly its name; one that differs only in case is a case-clash
+// conflict, so a path means the same on case-insensitive filesystems.
 func (tx *Tx) WalkFolder(f model.FolderPath) (int, *errs.Error) {
 	segs := f.Segments()
-	rel := "."
+	parent := "."
 	for i, s := range segs {
-		rel = joinPath(rel, s)
+		rel := joinPath(parent, s)
+		if e := tx.caseClash(parent, s); e != nil {
+			return i, e
+		}
 		fi, err := tx.root.Lstat(rel)
 		switch {
 		case isErrno(err, syscall.ENOENT):
@@ -66,8 +71,54 @@ func (tx *Tx) WalkFolder(f model.FolderPath) (int, *errs.Error) {
 		case !fi.IsDir() || fi.Mode()&fs.ModeSymlink != 0:
 			return i, errs.Corrupt(tx.Path(rel), errs.CorruptUnexpectedFile)
 		}
+		parent = rel
 	}
 	return len(segs), nil
+}
+
+// CaseClash checks folder f's last segment against its parent's entries, as
+// the path walk checks each segment: a case-clash conflict if one differs
+// from it only in case. f's parent exists.
+func (tx *Tx) CaseClash(f model.FolderPath) *errs.Error {
+	segs := f.Segments()
+	if len(segs) == 0 {
+		return nil
+	}
+	return tx.caseClash(FolderRel(model.FolderPath("/"+strings.Join(segs[:len(segs)-1], "/"))), segs[len(segs)-1])
+}
+
+// caseClash lists the directory parent and reports a case-clash conflict if
+// an entry's name differs from name only in ASCII case and none is name.
+func (tx *Tx) caseClash(parent, name string) *errs.Error {
+	entries, err := tx.root.ReadDir(parent)
+	if err != nil {
+		return tx.OSError(parent, err)
+	}
+	var clash string
+	for _, e := range entries {
+		switch n := e.Name(); {
+		case n == name:
+			return nil
+		case clash == "" && FoldName(n) == FoldName(name):
+			clash = n
+		}
+	}
+	if clash != "" {
+		return errs.CaseClash(tx.Path(joinPath(parent, clash)))
+	}
+	return nil
+}
+
+// FoldName is name with ASCII letters lowercased: two folder names clash
+// when they fold the same. Only ASCII folds, as folder names are ASCII.
+func FoldName(name string) string {
+	b := []byte(name)
+	for i, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
 }
 
 // Index is the tree walked by name only, no file read (implementation-spec.md,
@@ -154,7 +205,7 @@ func (x *Index) InScope(f model.FolderPath, recursive bool) ([]model.FolderPath,
 }
 
 var (
-	folderName   = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
+	folderName   = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$`)
 	taskFileName = regexp.MustCompile(`^[1-9][0-9]{0,14}\.json$`)
 	// notesFileName is the task-filename rule's other extension: a task's
 	// notes (design-spec.md, Task filenames).

@@ -231,6 +231,11 @@ func runMoveFolder(env Env, in MoveFolderInput, w *errs.Collector) (any, *errs.E
 		if target == in.Folder {
 			return nil
 		}
+		if target != in.To {
+			if e := tx.CaseClash(target); e != nil {
+				return e
+			}
+		}
 		if _, err := tx.Lstat(store.FolderRel(target)); err == nil {
 			return errs.Conflict(errs.RuleDestinationExists, nil)
 		} else if !isENOENT(err) {

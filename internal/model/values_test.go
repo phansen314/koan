@@ -64,7 +64,7 @@ func TestNames(t *testing.T) {
 	long := strings.Repeat("a", 64)
 	for in, ok := range map[string]bool{
 		"travel": true, "a": true, "0": true, "a-b": true, "a--b": true, long: true,
-		long + "a": false, "": false, "-a": false, "a-": false, "A": false, "a_b": false,
+		long + "a": false, "": false, "-a": false, "a-": false, "a_b": false,
 		"é": false, ".": false, "..": false, ".git": false, "a b": false,
 	} {
 		var p Problems
@@ -82,11 +82,21 @@ func TestNames(t *testing.T) {
 	for in, ok := range map[string]bool{
 		"/": true, "/proj/travel": true, "/a/b/c": true,
 		"": false, "proj": false, "/proj/": false, "//": false, "/a//b": false,
-		"/./a": false, "/a/..": false, "/Proj": false,
+		"/./a": false, "/a/..": false, "/Proj": true, "/A/b-C/D9": true, "/Proj-": false,
 	} {
 		var p Problems
 		if _, got := p.FolderPath(in, "/folder"); got != ok {
 			t.Errorf("FolderPath(%q) = %v, want %v", in, got, ok)
+		}
+	}
+	// Tags are lowercase; folder names may use either case.
+	for _, in := range []string{"A", "Proj", "pRoj", "a-B"} {
+		var p, q Problems
+		if _, ok := p.Tag(in, "/tags/0"); ok {
+			t.Errorf("Tag(%q) accepted", in)
+		}
+		if _, ok := q.FolderPath("/"+in, "/folder"); !ok {
+			t.Errorf("FolderPath(%q) refused: %v", "/"+in, q.List())
 		}
 	}
 	if got := FolderPath("/proj/travel").Segments(); !reflect.DeepEqual(got, []string{"proj", "travel"}) {

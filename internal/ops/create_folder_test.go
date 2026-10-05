@@ -81,6 +81,18 @@ func TestCreateFolder(t *testing.T) {
 		{"folder itself a symlink", symlink, `{"folder": "/a"}`,
 			`corrupt {"path":"~/tasks/a","reason":"unexpected-file"}`, nil, nil},
 
+		// Case is kept, and siblings must differ by more than case.
+		{"mixed case", func(f *fixture) { f.mkdir("tasks/work") }, `{"folder": "/Work-2/API", "parents": true}`,
+			`{"folder":"/Work-2/API","created":["/Work-2","/Work-2/API"]}`, []string{"Work-2/API"}, nil},
+		{"differs only in case", func(f *fixture) { f.mkdir("tasks/work") }, `{"folder": "/Work"}`,
+			`conflict {"rule":"case-clash","ids":[]}`, nil, []string{"Work"}},
+		{"a parent differs only in case", func(f *fixture) { f.mkdir("tasks/Work") }, `{"folder": "/work/a", "parents": true}`,
+			`conflict {"rule":"case-clash","ids":[]}`, nil, []string{"work"}},
+		{"a file differs only in case", func(f *fixture) { f.write("tasks/Work", "") }, `{"folder": "/work"}`,
+			`conflict {"rule":"case-clash","ids":[]}`, nil, []string{"work"}},
+		{"exact case exists beside a variant", func(f *fixture) { f.mkdir("tasks/Work"); f.mkdir("tasks/work") }, `{"folder": "/work/a"}`,
+			`{"folder":"/work/a","created":["/work/a"]}`, []string{"work/a"}, nil},
+
 		// Root states come first.
 		{"corrupt koan.json", func(f *fixture) { f.write("tasks/koan.json", "{") }, `{"folder": "/a"}`,
 			`corrupt {"path":"~/tasks/koan.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`, nil, nil},

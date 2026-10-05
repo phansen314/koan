@@ -33,6 +33,7 @@ const (
 	kindSkippedEntry      = "skipped-entry"
 	kindStrayEntry        = "stray-entry"
 	kindUnreadableFolder  = "unreadable-folder"
+	kindCaseClash         = "case-clash"
 )
 
 // Repair classes (design-spec.md, Diagnosis and repair).
@@ -60,6 +61,7 @@ var findingClass = map[string]string{
 	kindSkippedEntry:      classManual,
 	kindStrayEntry:        classInformational,
 	kindUnreadableFolder:  classManual,
+	kindCaseClash:         classManual,
 }
 
 // findingKinds is every finding kind, sorted.
@@ -314,6 +316,8 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 		fs.add(kindUnreadableFolder, Item{Paths: []string{tx.Path(rel)}, Code: code, Suggest: ptr("fix its permissions; until then its tasks are missing from every result")})
 	}
 
+	caseClashes(tx, x, fs)
+
 	// Task files: unusable ones, and the usable ones' edges.
 	usable := map[model.ID][]*store.Loaded{}
 	for _, l := range x.Tasks {
@@ -373,6 +377,38 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 		return nil, e
 	}
 	return fs, nil
+}
+
+// caseClashes adds a case-clash finding for each set of sibling folders
+// whose names differ only in case, listing them in tree order.
+func caseClashes(tx *store.Tx, x *store.Index, fs findings) {
+	type key struct {
+		parent model.FolderPath
+		folded string
+	}
+	groups := map[key][]model.FolderPath{}
+	var order []key
+	for _, f := range x.Folders {
+		segs := f.Segments()
+		if len(segs) == 0 {
+			continue
+		}
+		k := key{folderPrefix(f, len(segs)-1), store.FoldName(segs[len(segs)-1])}
+		if groups[k] == nil {
+			order = append(order, k)
+		}
+		groups[k] = append(groups[k], f)
+	}
+	for _, k := range order {
+		if len(groups[k]) < 2 {
+			continue
+		}
+		var paths []string
+		for _, f := range groups[k] {
+			paths = append(paths, tx.Path(store.FolderRel(f)))
+		}
+		fs.add(kindCaseClash, Item{Paths: paths, Suggest: ptr("rename all but one with koan move-folder, or merge them: on a case-insensitive filesystem, such as macOS's, they are one folder")})
+	}
 }
 
 // duplicates adds a duplicate-id finding for each ID with several task files,

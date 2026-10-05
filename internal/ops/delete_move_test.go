@@ -314,7 +314,7 @@ func TestMoveCases(t *testing.T) {
 			f.write("tasks/p/.keep", "")
 		}, "", "6.json p/ p/.keep p/5.json"},
 
-		{"invalid", `{"id": 5, "to": "p"}`, nil, `invalid-input {"problems":[{"field":"/to","reason":"must be a folder path from the root, like / or /proj/travel, each segment must be 1-64 lowercase letters, digits, and hyphens, not starting or ending with a hyphen"}]}`, ""},
+		{"invalid", `{"id": 5, "to": "p"}`, nil, `invalid-input {"problems":[{"field":"/to","reason":"must be a folder path from the root, like / or /proj/travel, each segment must be 1-64 letters, digits, and hyphens, not starting or ending with a hyphen"}]}`, ""},
 		{"folder not found", `{"id": 5, "to": "/p/q"}`, func(f *fixture) { f.task("", 5, false) },
 			`not-found {"folders":["/p"],"ids":[],"paths":[]}`, "5.json"},
 		{"folder and task not found", `{"id": 5, "to": "/p"}`, nil,
@@ -323,6 +323,8 @@ func TestMoveCases(t *testing.T) {
 			`not-found {"folders":["/p"],"ids":[],"paths":[]}`, "5.json"},
 		{"unusable", `{"id": 5, "to": "/p"}`, func(f *fixture) { f.write("tasks/5.json", "{"); f.write("tasks/p/.keep", "") },
 			`corrupt {"path":"~/tasks/5.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`, "5.json p/ p/.keep"},
+		{"to differs only in case", `{"id": 5, "to": "/P"}`, func(f *fixture) { f.task("", 5, false); f.write("tasks/p/.keep", "") },
+			`conflict {"rule":"case-clash","ids":[]}`, "5.json p/ p/.keep"},
 		{"to is a file", `{"id": 5, "to": "/p"}`, func(f *fixture) { f.task("", 5, false); f.write("tasks/p", "") },
 			`corrupt {"path":"~/tasks/p","reason":"unexpected-file"}`, "5.json p"},
 		{"duplicated", `{"id": 5, "to": "/p"}`, func(f *fixture) { f.task("", 5, false); f.task("p", 5, false) },
@@ -420,6 +422,14 @@ func TestMoveFolderCases(t *testing.T) {
 		}, `{"folder":"/q/p","from":"/p","created":[],"changed":true}`, "q/ q/p/ q/p/.keep"},
 		{"a file is there", `{"folder": "/p", "to": "/q"}`, func(f *fixture) { f.write("tasks/p/.keep", ""); f.write("tasks/q/p", "") },
 			`conflict {"rule":"destination-exists","ids":[]}`, "p/ p/.keep q/ q/p"},
+		{"mixed case", `{"folder": "/p", "to": "/Archive/P", "parents": true}`, func(f *fixture) { f.task("p", 5, false) },
+			`{"folder":"/Archive/P","from":"/p","created":["/Archive"],"changed":true}`, "Archive/ Archive/P/ Archive/P/5.json"},
+		{"a folder differing only in case is there", `{"folder": "/p/a", "to": "/q"}`, func(f *fixture) { f.write("tasks/p/a/.keep", ""); f.write("tasks/q/A/.keep", "") },
+			`conflict {"rule":"case-clash","ids":[]}`, "p/ p/a/ p/a/.keep q/ q/A/ q/A/.keep"},
+		{"to differs only in case", `{"folder": "/p", "to": "/Q"}`, func(f *fixture) { f.write("tasks/p/.keep", ""); f.write("tasks/q/.keep", "") },
+			`conflict {"rule":"case-clash","ids":[]}`, "p/ p/.keep q/ q/.keep"},
+		{"a rename that changes only case", `{"folder": "/p", "to": "/P"}`, func(f *fixture) { f.write("tasks/p/.keep", "") },
+			`conflict {"rule":"case-clash","ids":[]}`, "p/ p/.keep"},
 		{"to is a file", `{"folder": "/p", "to": "/q"}`, func(f *fixture) { f.write("tasks/p/.keep", ""); f.write("tasks/q", "") },
 			`corrupt {"path":"~/tasks/q","reason":"unexpected-file"}`, "p/ p/.keep q"},
 	} {

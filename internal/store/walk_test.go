@@ -89,11 +89,11 @@ func TestIndex(t *testing.T) {
 
 	readTx(t, f.env, nil, func(tx *Tx) {
 		x := tx.Index()
-		wantFolders := []model.FolderPath{"/", "/empty", "/infra", "/proj", "/proj/travel", "/proj-b"}
+		wantFolders := []model.FolderPath{"/", "/Misc", "/empty", "/infra", "/proj", "/proj/travel", "/proj-b"}
 		if !reflect.DeepEqual(x.Folders, wantFolders) {
 			t.Errorf("folders %v, want %v", x.Folders, wantFolders)
 		}
-		wantTasks := []Location{{"/", 1}, {"/infra", 2}, {"/infra", 9}, {"/proj", 9}, {"/proj", 10}, {"/proj/travel", 5}, {"/proj-b", 3}}
+		wantTasks := []Location{{"/", 1}, {"/Misc", 13}, {"/infra", 2}, {"/infra", 9}, {"/proj", 9}, {"/proj", 10}, {"/proj/travel", 5}, {"/proj-b", 3}}
 		if !reflect.DeepEqual(x.Tasks, wantTasks) {
 			t.Errorf("tasks %v, want %v", x.Tasks, wantTasks)
 		}

@@ -40,6 +40,7 @@ Error kinds worth handling:
 - `conflict` with `rule: "acyclic"` — the block would make a cycle; `.error.details.cycles` shows it.
 - `conflict` with `rule: "not-empty"` — `delete-folder` without `-r` on a folder that holds tasks, folders, or other files. Don't add `-r` on your own: ask the user.
 - `conflict` with `rule: "destination-exists"` — `move-folder` would land on a folder that already exists (folders are never merged), or `move` would overwrite a `.md` with text in the target folder; show it to the user.
+- `conflict` with `rule: "case-clash"` — a folder path differs only in case from an existing folder (e.g. `/Work` where `/work` exists); `.error.message` names it. Use the existing folder's exact name.
 - `conflict` with `rule: "duplicate-id"` or `"id-above-last-id"` — the tree is damaged; check it (below), don't work around it.
 - `corrupt`, `unsupported-format`, `io`, `internal` — stop and report to the user, quoting `.error.message` (for `corrupt` it names what is wrong); don't try to fix files by hand.
 
@@ -131,7 +132,7 @@ EOF
 
 Rules the commands enforce:
 
-- **Folder paths are exact**, from the tree's root: `/`, `/proj/api`. Never `proj/api` or `/proj/`, and never derived from the working directory. Segments and tags: lowercase letters, digits, hyphens.
+- **Folder paths are exact**, from the tree's root: `/`, `/proj/api`. Never `proj/api` or `/proj/`, and never derived from the working directory. Segments: letters (either case), digits, hyphens, and case must match exactly (`/Work` is not `/work`). Tags: lowercase letters, digits, hyphens.
 - **Titles**: one line, up to 200 characters. Quote them with single quotes. A title starting with `-` goes after `--`.
 - **Priority**: an integer; **higher** sorts first in `frontier`. `null` means none (sorts after every priority, even negative ones).
 - **Notes**: short text with `--notes`, anything longer through a quoted heredoc with `--notes-file -` (no escaping needed).

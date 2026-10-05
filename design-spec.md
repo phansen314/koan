@@ -145,18 +145,20 @@ Task file:
 
 ### Naming and validation
 
-Folder names and task filenames are restricted to lowercase ASCII. macOS (APFS) is case-insensitive by default and stores filenames in decomposed Unicode, while Linux does neither; restricting names to lowercase ASCII keeps a tree meaning the same thing on both.
+Folder names, task filenames, and tags are restricted to ASCII. macOS (APFS) is case-insensitive by default and stores filenames in decomposed Unicode, while Linux does neither; restricting names to ASCII, and refusing folder names that differ only in case, keeps a tree meaning the same thing on both.
 
 #### Folder names
 
 Each path segment must match:
 
 ```text
-^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$
+^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$
 ```
 
-- 1–64 characters: lowercase letters, digits, and hyphens.
+- 1–64 characters: letters (upper or lower case), digits, and hyphens.
 - Must not start or end with a hyphen. This also excludes `.`, `..`, and hidden names.
+- Case is kept, and a path matches a folder only with the exact case: `/Proj` names `Proj`, never `proj`.
+- Sibling folders must differ by more than case: koan refuses to create or move a folder next to one whose name differs from it only in case (`conflict`, `rule`: `case-clash`; see [Path walk](operations.md#path-walk)), since on a case-insensitive filesystem the two would be one folder. A tree that has such siblings anyway, made outside koan, is a [`case-clash`](operations.md#finding-kinds) finding.
 
 #### Folder paths
 
@@ -189,7 +191,11 @@ The `id` in the filename always equals the `id` in the task file.
 
 #### Tags
 
-Each tag follows the same rules as a [folder name](#folder-names). Tags are lowercase-only, so matching is exact.
+Each tag follows the same rules as a [folder name](#folder-names), except that tags are lowercase-only, so matching is exact:
+
+```text
+^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$
+```
 
 #### Timestamps
 
@@ -410,7 +416,7 @@ Every finding kind is in one of four classes:
 |---|---|---|
 | ***auto*** | Repairs it whenever it runs, unless the caller names other kinds. | `temp-leftover`, `id-above-last-id`, `dangling-reference`, `orphan-notes` (only the items that are safe; see [Finding kinds](operations.md#finding-kinds)) |
 | ***on-request*** | Repairs it only when the caller names the kind. | `metadata-missing` |
-| ***manual*** | Never repairs it. `doctor` reports it, with a suggestion. | `duplicate-id`, `cycle`, `unusable-file`, `metadata-unusable`, `nested-tree`, `skipped-entry`, `unreadable-folder` |
+| ***manual*** | Never repairs it. `doctor` reports it, with a suggestion. | `duplicate-id`, `cycle`, `unusable-file`, `metadata-unusable`, `nested-tree`, `skipped-entry`, `unreadable-folder`, `case-clash` |
 | ***informational*** | Never repairs it. `doctor` reports it only when the caller names the kind, and it never makes a tree unhealthy: it is not damage. | `stray-entry` |
 
 Rebuilding a missing `koan.json` is on-request because the `last_id` it writes is the highest ID found. A task with a higher ID that was deleted before `koan.json` was lost would have its ID issued again, breaking *Never reused* (see [Task IDs](#task-ids)). Only the user knows, e.g. from git history, whether that happened.

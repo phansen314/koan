@@ -122,10 +122,13 @@ func isLineBreakOrControl(r rune) bool {
 // Tag is a tag: a name (see design-spec.md, Tags).
 type Tag string
 
-// namePattern is the rule for folder names and tags.
-var namePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
+// tagPattern is the rule for tags: a folder name, lowercase only.
+var tagPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
 
-const reasonName = "must be 1-64 lowercase letters, digits, and hyphens, not starting or ending with a hyphen"
+const (
+	reasonTag        = "must be 1-64 lowercase letters, digits, and hyphens, not starting or ending with a hyphen"
+	reasonFolderName = "must be 1-64 letters, digits, and hyphens, not starting or ending with a hyphen"
+)
 
 // Tag checks v, at ptr, as a tag.
 func (p *Problems) Tag(v any, ptr string) (Tag, bool) {
@@ -133,8 +136,8 @@ func (p *Problems) Tag(v any, ptr string) (Tag, bool) {
 	if !ok {
 		return "", false
 	}
-	if !namePattern.MatchString(s) {
-		p.Add(ptr, reasonName)
+	if !tagPattern.MatchString(s) {
+		p.Add(ptr, reasonTag)
 		return "", false
 	}
 	return Tag(s), true
@@ -164,7 +167,7 @@ type FolderPath string
 // RootFolder is the root's folder path.
 const RootFolder FolderPath = "/"
 
-var folderPathPattern = regexp.MustCompile(`^/$|^(/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)+$`)
+var folderPathPattern = regexp.MustCompile(`^/$|^(/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+$`)
 
 // FolderPath checks v, at ptr, as a folder path.
 func (p *Problems) FolderPath(v any, ptr string) (FolderPath, bool) {
@@ -173,7 +176,7 @@ func (p *Problems) FolderPath(v any, ptr string) (FolderPath, bool) {
 		return "", false
 	}
 	if !folderPathPattern.MatchString(s) {
-		p.Add(ptr, "must be a folder path from the root, like / or /proj/travel, each segment "+reasonName)
+		p.Add(ptr, "must be a folder path from the root, like / or /proj/travel, each segment "+reasonFolderName)
 		return "", false
 	}
 	return FolderPath(s), true

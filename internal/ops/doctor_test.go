@@ -179,6 +179,18 @@ func TestDoctorKinds(t *testing.T) {
 			files: "18.json/ lnk notes.txt p/ p/koan.json",
 		},
 		{
+			name: "case-clash",
+			setup: func(f *fixture) {
+				f.task("p/Work", 5, false)
+				f.task("p/work", 6, false)
+				f.task("p/WORK", 7, false)
+				f.task("Work", 8, false) // not a sibling of /p/work
+			},
+			doctor: `{"healthy":false,"findings":[{"kind":"case-clash","class":"manual","count":1,"truncated":false,"items":[` +
+				`{"paths":["~/tasks/p/WORK","~/tasks/p/Work","~/tasks/p/work"],"ids":[],"action":null,"suggest":"rename all but one with koan move-folder, or merge them: on a case-insensitive filesystem, such as macOS's, they are one folder"}]}]}`,
+			files: "Work/ Work/8.json p/ p/WORK/ p/WORK/7.json p/Work/ p/Work/5.json p/work/ p/work/6.json",
+		},
+		{
 			name: "metadata-missing",
 			setup: func(f *fixture) {
 				f.remove("tasks/koan.json")
