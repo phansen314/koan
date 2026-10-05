@@ -845,7 +845,7 @@ Filtering by `extra` or title, and grouping, are left to `jq`; rendering the res
 
 ```sh
 koan list --limit 50 --fields id,title,readiness,folder
-koan list --folder /proj --readiness done --limit 0                     # how many are done: .result.total
+koan list --folder /proj --readiness done --limit 0                         # how many are done: .result.total
 koan list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
 koan list --readiness ready,blocked,done --tags-all db,backend --fields id,title,readiness
 koan list --include-folders --limit 0                                      # every folder: .result.folders

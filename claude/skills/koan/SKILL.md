@@ -75,7 +75,7 @@ With `jq`, a trimmed failure looks like success: the pipe's exit status is jq's,
 ```sh
 koan frontier --limit 10 --fields id,title,priority,folder,tags   # what's ready, in work order
 koan show 42                                                      # one task, whole
-koan done 42                                                  # done
+koan done 42                                                      # finished, or cancelled: see below
 ```
 
 `frontier` lists open, unblocked tasks in the order to work on them: highest priority first, unprioritized after, ties oldest (lowest ID) first. Scope it with `--folder /proj` and `--recursive=false`, or by tag with `--tags-any`.
@@ -90,7 +90,7 @@ Overview of everything:
 koan list --limit 50 --fields id,title,readiness,folder           # open tasks, in tree order
 koan list --readiness blocked --limit 20 --fields id,title,blocking   # what's stuck, and on what
 koan list --folder /proj --tags-any urgent --limit 20 --fields id,title,readiness
-koan list --readiness done --limit 0                          # how many are done: .result.total
+koan list --readiness done --limit 0                              # how many are done: .result.total
 koan list --include-folders --limit 0                             # every folder: .result.folders
 koan list --fields id,title,extra --limit 200 | jq -c 'if .ok then .result |= {tasks: (.tasks | map(select(.extra.status == "waiting"))), scanned: (.tasks | length), unscanned: (.total - (.tasks | length))} else . end'
 ```
