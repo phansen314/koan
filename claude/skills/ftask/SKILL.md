@@ -11,9 +11,10 @@ description: Track and work through the user's tasks with the ftask CLI — a lo
 
 ```sh
 ftask info
+ftask version
 ```
 
-Ready when `.result.usable` is true; if not, the rest of `.result` says why. When no root is set up, tell the user and suggest `ftask init ~/tasks` (or a path they choose). **Never run `init` unasked** — it changes this machine's setup. If `init` fails with `conflict` and `rule: "config-exists"`, report it; never pass `--replace-config` unless the user asks for it.
+Ready when `.result.usable` is true; if not, the rest of `.result` says why. If `version`'s `.result.version` is below `0.2.0` (`0.0.0-dev` is a build from source: treat it as current), the binary is older than this skill: tell the user to upgrade with `go install github.com/phansen314/ftask/cmd/ftask@latest`. A `usage` error saying `unknown command` for a command this skill names means the same. When no root is set up, tell the user and suggest `ftask init ~/tasks` (or a path they choose). **Never run `init` unasked** — it changes this machine's setup. If `init` fails with `conflict` and `rule: "config-exists"`, report it; never pass `--replace-config` unless the user asks for it.
 
 ## Reading output
 

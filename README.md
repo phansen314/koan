@@ -34,7 +34,7 @@ scripts/install.sh --opencode    # or name them: --claude, --opencode
 scripts/install.sh --uninstall   # take it all out again
 ```
 
-It needs `jq`, backs a settings file up (to `.bak.<timestamp>`, a new one each time) before changing it, touches only ftask's rules, and is safe to rerun. For OpenCode it also links the skill into `~/.config/opencode/skills/ftask`, so OpenCode's skill comes from this clone: `git pull` updates it. Claude Code's comes from the plugin, and tracks `main`: `claude plugin update ftask@ftask` picks up changes, or turn on auto-update for the `ftask` marketplace in `/plugin`. To try an edited skill in Claude Code before pushing, run `claude --plugin-dir .` in a clone.
+It needs `jq`, backs a settings file up (to `.bak.<timestamp>`, a new one each time) before changing it, touches only ftask's rules, and is safe to rerun. For OpenCode it also links the skill into `~/.config/opencode/skills/ftask`, so OpenCode's skill comes from this clone: `git pull` updates it. Claude Code's comes from the plugin, and tracks the latest release: `claude plugin update ftask@ftask` picks up changes, or turn on auto-update for the `ftask` marketplace in `/plugin`. To try an edited skill in Claude Code before pushing, run `claude --plugin-dir .` in a clone.
 
 Then ask your agent things like "what should I work on next?" or "add a task to review the migration PR, blocked by 12".
 
@@ -161,6 +161,17 @@ Restore only the removed paths, never the whole tree: `ftask.json` holds the las
 go test ./...        # unit and e2e tests
 scripts/smoke.sh     # the built binary from a shell, in a throwaway home
 ```
+
+### Releasing
+
+The plugin serves the skill from the release tag, so the skill and `go install …@latest` move together.
+
+1. CI is green on `main`.
+2. Pick the version: before 1.0, a new command or any change to the formats or the JSON output bumps the minor version; anything else, the patch.
+3. Set `ref` in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) to the new tag (until the first release the plugin's `source` is `"./"`: replace it with `{ "source": "github", "repo": "phansen314/ftask", "ref": "vX.Y.Z" }`), and the skill's minimum version if the skill now needs this release; commit.
+4. Tag and push together: `git tag -a vX.Y.Z -m "…"` then `git push --atomic origin main vX.Y.Z`.
+5. `gh release create vX.Y.Z` with notes on what changed and how to fix existing trees.
+6. Check: `GOBIN=$(mktemp -d) GOPROXY=https://proxy.golang.org go install github.com/phansen314/ftask/cmd/ftask@vX.Y.Z`, and that binary's `ftask version` reports `X.Y.Z`.
 
 ## License
 
