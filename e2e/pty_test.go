@@ -25,9 +25,9 @@ import (
 // state is read back through --listen.
 
 // fzfVar lists the fzf binaries to run the picker tests against, separated
-// as PATH is, e.g. FTASK_E2E_FZF=/opt/fzf-0.63.0/fzf:/usr/bin/fzf. Unset,
+// as PATH is, e.g. KOAN_E2E_FZF=/opt/fzf-0.63.0/fzf:/usr/bin/fzf. Unset,
 // they run against fzf on PATH, if any.
-const fzfVar = "FTASK_E2E_FZF"
+const fzfVar = "KOAN_E2E_FZF"
 
 // Keys as the terminal sends them.
 const (
@@ -244,7 +244,7 @@ func (tm *term) wait() int {
 	return tm.cmd.ProcessState.ExitCode()
 }
 
-// picker is ftask pick running in a terminal, with fzf listening for
+// picker is koan pick running in a terminal, with fzf listening for
 // requests on a local port.
 type picker struct {
 	*term
@@ -252,7 +252,7 @@ type picker struct {
 	stdout, stderr bytes.Buffer
 }
 
-// startPick starts cmd, an ftask pick command, in a 24 by 100 terminal,
+// startPick starts cmd, a koan pick command, in a 24 by 100 terminal,
 // with the fzf in fzfDir. Its stdout and stderr are captured, unless cmd
 // sets them, and its stdin is the terminal, unless cmd sets it. startPick
 // returns once fzf answers, or pick has exited.
@@ -309,7 +309,7 @@ func (p *picker) diagnosis(runtime string) string {
 
 // pickEnv is env for running pick with the fzf in fzfDir first on PATH, a
 // runtime directory of its own unless env sets one, and fzf listening on
-// the port returned, after any FTASK_PICK_OPTS in env.
+// the port returned, after any KOAN_PICK_OPTS in env.
 func pickEnv(t *testing.T, fzfDir string, env []string) ([]string, int) {
 	t.Helper()
 	port := freePort(t)
@@ -319,8 +319,8 @@ func pickEnv(t *testing.T, fzfDir string, env []string) ([]string, int) {
 		switch {
 		case strings.HasPrefix(kv, "PATH="):
 			kv = "PATH=" + fzfDir + string(filepath.ListSeparator) + strings.TrimPrefix(kv, "PATH=")
-		case strings.HasPrefix(kv, "FTASK_PICK_OPTS="):
-			opts = strings.TrimPrefix(kv, "FTASK_PICK_OPTS=") + " " + opts
+		case strings.HasPrefix(kv, "KOAN_PICK_OPTS="):
+			opts = strings.TrimPrefix(kv, "KOAN_PICK_OPTS=") + " " + opts
 			continue
 		}
 		out = append(out, kv)
@@ -328,7 +328,7 @@ func pickEnv(t *testing.T, fzfDir string, env []string) ([]string, int) {
 	if !slices.ContainsFunc(out, func(kv string) bool { return strings.HasPrefix(kv, "XDG_RUNTIME_DIR=") }) {
 		out = append(out, "XDG_RUNTIME_DIR="+t.TempDir())
 	}
-	return append(out, "FTASK_PICK_OPTS="+opts), port
+	return append(out, "KOAN_PICK_OPTS="+opts), port
 }
 
 // listening waits until fzf answers on its port, or the process has

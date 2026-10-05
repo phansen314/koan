@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // Envelope is the output envelope (operations.md, Output envelope): Result on

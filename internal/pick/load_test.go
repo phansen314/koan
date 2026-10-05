@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // tv is a task view for tests: id in folder, with readiness r.

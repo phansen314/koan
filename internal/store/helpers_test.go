@@ -7,10 +7,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // fixture is a usable root, <home>/tasks, named by a config in <home>/cfg.

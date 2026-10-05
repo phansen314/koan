@@ -1,6 +1,6 @@
 package graph
 
-import "github.com/phansen314/ftask/internal/model"
+import "github.com/phansen314/koan/internal/model"
 
 // BlockerState is what a blocked_by entry names, as readiness sees it (see
 // design-spec.md, Dependencies).

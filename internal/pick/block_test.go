@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // b's candidates: open tasks tree-wide, but the targets and every task from

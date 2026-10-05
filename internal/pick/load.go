@@ -4,10 +4,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // Load is one load (pick-spec.md, Session): one list over the whole tree,

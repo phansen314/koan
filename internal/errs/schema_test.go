@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
-// A separate package, so errs itself still imports none of ftask's packages.
+// A separate package, so errs itself still imports none of koan's packages.
 
 func encode(t *testing.T, v any) []byte {
 	t.Helper()
@@ -48,7 +48,7 @@ func TestErrorsMatchSchema(t *testing.T) {
 		{"corrupt config", errs.CorruptBy("/c/config.toml", errs.CorruptCause{Reason: errs.CorruptInvalid, Detail: "line 1: no closing quote"})},
 		{"corrupt partial", errs.Corrupt("/r/5.json", errs.CorruptUnexpectedFile).WithPartial(map[string]int{"id": 5})},
 		{"io", errs.IO("/r/5.json", "ENOSPC")},
-		{"unsupported-format", errs.UnsupportedFormat("/r/ftask.json", 2, []int64{1})},
+		{"unsupported-format", errs.UnsupportedFormat("/r/koan.json", 2, []int64{1})},
 		{"internal", errs.Internal("bug")},
 		{"usage", errs.Usage([]errs.UsageProblem{{Argument: &arg, Reason: "empty"}, {Reason: "missing command"}})},
 	} {

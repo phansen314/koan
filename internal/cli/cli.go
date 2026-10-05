@@ -13,10 +13,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/ops"
-	"github.com/phansen314/ftask/internal/pick"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/ops"
+	"github.com/phansen314/koan/internal/pick"
 )
 
 // Env is what one invocation reads and writes besides the operation's own
@@ -38,7 +38,7 @@ const (
 	ExitNotDelivered = 3
 )
 
-// Main runs ftask as this process: the real environment and the standard
+// Main runs koan as this process: the real environment and the standard
 // streams. args exclude the program name.
 func Main(args []string) int {
 	return Run(args, ProcessEnv())
@@ -108,11 +108,11 @@ func execute(cmds []Command, args []string, env Env) ([]byte, int, string) {
 
 func newRoot(cmds []Command, env Env, result **ops.Envelope) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "ftask",
+		Use:           "koan",
 		Short:         "Local, file-based task management with JSON output",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		// Bare ftask is a usage error, and an unknown command is reported
+		// Bare koan is a usage error, and an unknown command is reported
 		// here rather than by cobra so its problem names the token.
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -278,7 +278,7 @@ func runCommand(c *Command, cmd *cobra.Command, args []string, env Env) ops.Enve
 // runOp runs an operation; tests replace it to see the input built.
 var runOp = ops.Run
 
-// usageError is a usage problem found by ftask rather than cobra.
+// usageError is a usage problem found by koan rather than cobra.
 type usageError struct{ problem errs.UsageProblem }
 
 func (e *usageError) Error() string { return e.problem.Reason }
@@ -347,7 +347,7 @@ func errorNote(e *errs.Error) string {
 	if e.Kind == errs.KindUsage {
 		msg = strings.TrimPrefix(msg, "usage: ")
 	}
-	return oneLine("ftask: " + string(e.Kind) + ": " + msg)
+	return oneLine("koan: " + string(e.Kind) + ": " + msg)
 }
 
 // warningsNote is the stderr line for a success with n warnings; they are
@@ -357,9 +357,9 @@ func warningsNote(n int) string {
 	case 0:
 		return ""
 	case 1:
-		return "ftask: 1 warning (see .warnings in the output)"
+		return "koan: 1 warning (see .warnings in the output)"
 	}
-	return fmt.Sprintf("ftask: %d warnings (see .warnings in the output)", n)
+	return fmt.Sprintf("koan: %d warnings (see .warnings in the output)", n)
 }
 
 // oneLine is the one-line form of the stderr line (errs.OneLine).
@@ -377,7 +377,7 @@ func deliver(env Env, out []byte, code int, note string) int {
 		err = c.Close()
 	}
 	if err != nil {
-		fmt.Fprintf(env.Stderr, "ftask: result not delivered: %v\n", err)
+		fmt.Fprintf(env.Stderr, "koan: result not delivered: %v\n", err)
 		return ExitNotDelivered
 	}
 	if note != "" {

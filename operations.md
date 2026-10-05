@@ -1,4 +1,4 @@
-# ftask operations
+# koan operations
 
 An operation is a single change to, or query of, the data defined in the [design spec](design-spec.md), specified in terms of that data model. Operations are the domain layer: small and orthogonal. They are not CLI commands — the CLI may compose several operations into one command, run under a single write lock (e.g. create a task and make an existing task wait on it, in one step).
 
@@ -10,8 +10,8 @@ Terms follow the design spec's [Terms](design-spec.md#terms).
 - **Input follows the file-level rules.** Input is held to the same [file-level rules](design-spec.md#file-validity) for integer literals (`2`, not `2.0` or `2e0`), duplicate keys (in the input itself or anywhere inside `extra`), unpaired surrogate escapes, and nesting depth. A violation is `invalid-input`.
 - **Schema identifiers.** Shared schemas have short `$id`s (`envelope`, `error`, `warning`, `task`, `task-view`, `task-projection`, `task-field`, `folder-path`, and the design spec's `task-file` and `root-file`). Each operation's schemas are `<op>-input`, `<op>-output`, and `<op>-partial`. Where a property has the same meaning and constraints as a task file field, the schema `$ref`s it, and its meaning is the one in [Fields](design-spec.md#fields).
 - **Referring to operations and kinds.** Operation names, error kinds, and warning kinds are written in code (`create`, `conflict`, `duplicate-id`), linked on their first mention in a section. Error qualifiers are written `` `kind` (`field`: `value`) ``, e.g. `conflict` (`rule`: `id-exhausted`).
-- **Parameters.** An operation takes a parameter only if it changes the meaning of the result or the work done (e.g. `frontier`'s `folder`, which limits which files are read). Narrowing or shaping output — filtering on fields, taking the first N — is left to the caller (e.g. `jq`) or the CLI. One exception: [`frontier`](#frontier) and [`list`](#list) take the few parameters of [Narrowing tasks](#narrowing-tasks) — a limit, a choice of fields, and filters on tags and readiness. Their output goes straight into the context of the agent driving ftask, its main caller, where every byte is a cost that later turns pay for too; so the small result must be the one the tool itself makes easy, not one the caller has to remember to cut down. Anything past those few is still left to `jq`.
-- **Versioning.** The schemas in this document are ftask's public contract (see [Versioning](#versioning)).
+- **Parameters.** An operation takes a parameter only if it changes the meaning of the result or the work done (e.g. `frontier`'s `folder`, which limits which files are read). Narrowing or shaping output — filtering on fields, taking the first N — is left to the caller (e.g. `jq`) or the CLI. One exception: [`frontier`](#frontier) and [`list`](#list) take the few parameters of [Narrowing tasks](#narrowing-tasks) — a limit, a choice of fields, and filters on tags and readiness. Their output goes straight into the context of the agent driving koan, its main caller, where every byte is a cost that later turns pay for too; so the small result must be the one the tool itself makes easy, not one the caller has to remember to cut down. Anything past those few is still left to `jq`.
+- **Versioning.** The schemas in this document are koan's public contract (see [Versioning](#versioning)).
 
 ## Operation kinds
 
@@ -20,7 +20,7 @@ Every operation is one of three kinds:
 - ***read*** — Takes no lock and changes nothing. Read operations that walk the tree follow the design spec's [Walking the tree](design-spec.md#walking-the-tree) and [Reads](design-spec.md#reads) rules. Some reads (`version`, `info`) do not require a usable root.
 - ***write*** — Changes the tree. Requires a usable root, takes the write lock, and follows the design spec's [Guarantees](design-spec.md#guarantees) (and [Walking the tree](design-spec.md#walking-the-tree), when it walks). Uses the general [Precedence](#precedence).
 - ***setup*** — Creates what writes depend on. Only [`init`](#init) is a setup operation. It takes no lock, the write guarantees do not apply to it, and it defines its own error precedence.
-- ***diagnostic*** — Finds, and repairs, what a system crash or an outside change left in the tree (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). [`doctor`](#doctor) and [`repair`](#repair) are the diagnostic operations. They take the write lock, even `doctor`, which changes nothing, but do not require a usable root: they need the config and the root, and report a missing or unusable `ftask.json` as a [finding](#findings). They walk the whole tree, and define their own error precedence. `repair` follows the write [Guarantees](design-spec.md#guarantees).
+- ***diagnostic*** — Finds, and repairs, what a system crash or an outside change left in the tree (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). [`doctor`](#doctor) and [`repair`](#repair) are the diagnostic operations. They take the write lock, even `doctor`, which changes nothing, but do not require a usable root: they need the config and the root, and report a missing or unusable `koan.json` as a [finding](#findings). They walk the whole tree, and define their own error precedence. `repair` follows the write [Guarantees](design-spec.md#guarantees).
 
 ## Operation template
 
@@ -95,32 +95,32 @@ An error means the operation failed. `kind` and `details` are the contract; `mes
 | Kind | Meaning | `details` |
 |---|---|---|
 | `invalid-input` | Input failed validation. Always raised before the write lock is sought, and before any needed file is read (a check on an input path itself, like `init`'s, may inspect that path). Reports **every** invalid input, not just the first. | `problems`: list of `{field, reason}`; `field` is a JSON Pointer into the input (e.g. `/tags/2`), `reason` a human-readable string. Sorted by `field`, then by `reason` (both compared as strings, byte by byte), so the same input always yields the same list; at most the first 20 are listed, with `problems_truncated: true` when more were found. |
-| `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, or `metadata` (meaning `ftask.json`) — the first absent piece. |
-| `environment` | The process's environment lacks what ftask needs to locate its files: the home directory, from which the config location is derived (see [Config file](design-spec.md#config-file)). Not a root state — no config was looked for. | `variable`: the environment variable that is unset or unusable; currently always `HOME`. |
+| `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, or `metadata` (meaning `koan.json`) — the first absent piece. |
+| `environment` | The process's environment lacks what koan needs to locate its files: the home directory, from which the config location is derived (see [Config file](design-spec.md#config-file)). Not a root state — no config was looked for. | `variable`: the environment variable that is unset or unusable; currently always `HOME`. |
 | `not-found` | A task or folder named by the input, or a filesystem directory it requires, does not exist. | `folders`: tree folder paths; `ids`: task IDs; `paths`: filesystem paths (e.g. `init`'s missing parent directory). All three always present, empty when not applicable. |
 | `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, or act on a task the tree cannot identify uniquely. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). |
 | `busy` | Another write (or `doctor`/`repair`) held the write lock for the whole wait, 5 seconds (see *Bounded wait* in [Guarantees](design-spec.md#guarantees)). Nothing was done. Safe to retry, but repeated `busy` means something is holding the lock. | none (`{}`). |
-| `corrupt` | A needed file — or an entry on an input path — is present and readable but its content or type is wrong (see [File validity](design-spec.md#file-validity)); or ftask found a file where, under its own invariants, none can exist (e.g. creating a task file that already exists). | `path`; `reason`: `not-json` (not parseable, or not an object), `invalid` (fails a file-level rule, including a missing `schema` or one not written as an integer literal within ±(2^53 − 1)), or `unexpected-file` (wrong entry type, e.g. `ftask.json` is a symlink or directory; or a file exists that must not). What is wrong, for `not-json` and `invalid`: `problems`, for a JSON file that is `invalid` — a list of `{field, reason}` as in `invalid-input`, but with `field` a JSON Pointer into the file (e.g. `/updated_at`), sorted the same way, and at most the first 20, with `problems_truncated: true` when more were found; or `detail`, a human-readable string — why the file is `not-json`, or why the config, which is not JSON, is `invalid`. `unexpected-file` has neither. |
+| `corrupt` | A needed file — or an entry on an input path — is present and readable but its content or type is wrong (see [File validity](design-spec.md#file-validity)); or koan found a file where, under its own invariants, none can exist (e.g. creating a task file that already exists). | `path`; `reason`: `not-json` (not parseable, or not an object), `invalid` (fails a file-level rule, including a missing `schema` or one not written as an integer literal within ±(2^53 − 1)), or `unexpected-file` (wrong entry type, e.g. `koan.json` is a symlink or directory; or a file exists that must not). What is wrong, for `not-json` and `invalid`: `problems`, for a JSON file that is `invalid` — a list of `{field, reason}` as in `invalid-input`, but with `field` a JSON Pointer into the file (e.g. `/updated_at`), sorted the same way, and at most the first 20, with `problems_truncated: true` when more were found; or `detail`, a human-readable string — why the file is `not-json`, or why the config, which is not JSON, is `invalid`. `unexpected-file` has neither. |
 | `io` | The environment refused an operation: an unreadable file, permission denied, disk full, read-only filesystem, and similar. An OS error with no symbolic name is `internal`, not `io`. | `path`: built from the root as stored (see [Root path](design-spec.md#root-path)), or the config's own path for an error on the config; `code`: the symbolic OS error, e.g. `ENOSPC`, never a number. |
 | `unsupported-format` | A needed file's `schema` is not the version this binary supports (see [Format versions](design-spec.md#format-versions)). | `path`; `found`: the file's version; `supported`: the versions this binary supports. |
-| `internal` | A bug ftask detects. Every failure ftask reports has a kind: anything not covered above is `internal`. A crash reports nothing at all (see the CLI's [exit codes](cli-spec.md#exit-codes)). | none (`{}`). |
+| `internal` | A bug koan detects. Every failure koan reports has a kind: anything not covered above is `internal`. A crash reports nothing at all (see the CLI's [exit codes](cli-spec.md#exit-codes)). | none (`{}`). |
 
 The `reason` fields of `invalid-input` problems, of `corrupt`, and of the `unusable-file` warning are independent: each has its own values.
 
 ### Precedence
 
-An operation's **needed files** are the files it must read to do its job: the config and `ftask.json` for anything that requires a usable root, the entries along any input path, plus whatever its Needed files part lists. A problem with a needed file is an error. A problem with a **relevant** file — one that changes or explains the operation's result, as its Needed files part lists — is a warning. Problems with unrelated files the operation walks past are skipped silently; [`doctor`](#doctor) is the operation for finding those. The design spec's [Walking the tree](design-spec.md#walking-the-tree) applies these rules to blockers, duplicates, and unlistable folders.
+An operation's **needed files** are the files it must read to do its job: the config and `koan.json` for anything that requires a usable root, the entries along any input path, plus whatever its Needed files part lists. A problem with a needed file is an error. A problem with a **relevant** file — one that changes or explains the operation's result, as its Needed files part lists — is a warning. Problems with unrelated files the operation walks past are skipped silently; [`doctor`](#doctor) is the operation for finding those. The design spec's [Walking the tree](design-spec.md#walking-the-tree) applies these rules to blockers, duplicates, and unlistable folders.
 
 A read or write operation reports one error. When several apply, it reports the first in this order:
 
 1. `invalid-input` — checked before anything else is read.
-2. `environment` (the config can't be located), then `not-initialized`, and `corrupt` or `unsupported-format` for the config and `ftask.json` — the [Root states](#root-states) errors.
+2. `environment` (the config can't be located), then `not-initialized`, and `corrupt` or `unsupported-format` for the config and `koan.json` — the [Root states](#root-states) errors.
 3. `busy`.
 4. `not-found`, and `corrupt` (`reason`: `unexpected-file`) for an entry on an input path — whichever the [path walk](#path-walk) meets first.
 5. `corrupt` or `unsupported-format` for needed task files.
 6. `conflict`.
 
-Steps 4–6 are checked under the write lock. A write re-reads `ftask.json` after acquiring the lock (it decides on current state); a problem found only then is reported with the step 2 kinds. `io` and `internal` are reported wherever they occur. Setup and diagnostic operations define their own order (see [`init`](#init), [`doctor`](#doctor), and [`repair`](#repair)).
+Steps 4–6 are checked under the write lock. A write re-reads `koan.json` after acquiring the lock (it decides on current state); a problem found only then is reported with the step 2 kinds. `io` and `internal` are reported wherever they occur. Setup and diagnostic operations define their own order (see [`init`](#init), [`doctor`](#doctor), and [`repair`](#repair)).
 
 When several errors of one step apply and the kind reports only one (e.g. two needed task files are both `corrupt`), the one reported is the first in [tree order](#tree-order). A kind that lists every instance (e.g. `not-found`'s `ids`) lists them all.
 
@@ -181,7 +181,7 @@ A kind that lists every instance lists them across the whole step: e.g. [`create
     "environment": {
       "type": "object",
       "required": ["variable"],
-      "properties": { "variable": { "type": "string", "description": "The environment variable ftask needed, e.g. HOME." } },
+      "properties": { "variable": { "type": "string", "description": "The environment variable koan needed, e.g. HOME." } },
       "additionalProperties": false
     },
     "not-initialized": {
@@ -331,18 +331,18 @@ A finding is a problem with the tree that [`doctor`](#doctor) reports and [`repa
 
 | Kind | Class | One item per | `paths` | `ids` | Other fields | `action` |
 |---|---|---|---|---|---|---|
-| `temp-leftover` | auto | ftask temp file or folder (its name starts with `.ftask-tmp-`) anywhere under the root: a write's leftover file, or the folder an interrupted [`delete-folder`](#delete-folder) renamed aside. Its contents are not looked at. | the entry | none | — | `remove` |
-| `metadata-missing` | on-request | root with no `ftask.json`: one item. | where `ftask.json` belongs | none | `last_id`: the highest ID in any task filename, or `0` | `create-metadata`; `null` while any folder can't be listed, since a task in it may have a higher ID |
-| `metadata-unusable` | manual | root whose `ftask.json` is unusable: one item. | `ftask.json` | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
-| `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when `ftask.json` is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |
+| `temp-leftover` | auto | koan temp file or folder (its name starts with `.koan-tmp-`) anywhere under the root: a write's leftover file, or the folder an interrupted [`delete-folder`](#delete-folder) renamed aside. Its contents are not looked at. | the entry | none | — | `remove` |
+| `metadata-missing` | on-request | root with no `koan.json`: one item. | where `koan.json` belongs | none | `last_id`: the highest ID in any task filename, or `0` | `create-metadata`; `null` while any folder can't be listed, since a task in it may have a higher ID |
+| `metadata-unusable` | manual | root whose `koan.json` is unusable: one item. | `koan.json` | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
+| `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when `koan.json` is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |
 | `dangling-reference` | auto | pair of a task file and an ID in its `blocked_by` that names no task, as the [warning](#warning-kinds) of that name. Not reported while any folder can't be listed, since the task may be in it. | the referring task file | `[referring, missing]`, in that order | — | `remove-reference` |
 | `orphan-notes` | auto, for `empty` and `linked` items | `.md` named like a task's notes, with no task file of its ID beside it. | the `.md`, then each task file with its ID elsewhere, in [tree order](#tree-order) | its ID | `reason`, below; `code` when `reason` is `unreadable` | `remove` when `reason` is `empty` or `linked`; else `null` |
 | `duplicate-id` | manual | ID that more than one task file has. | every copy, in tree order | the one ID | `identical`: whether every copy is the same, byte for byte | `null` |
 | `cycle` | manual | group of tasks that block each other: a strongly connected component of the [dependency graph](design-spec.md#dependencies). | none | one cycle in the group: the shortest through its lowest ID, from that ID back to it, e.g. `[12, 15, 12]` (12 is blocked by 15, which is blocked by 12) | `group`: every ID in the group, ascending | `null` |
 | `unusable-file` | manual | task file that is [unusable](design-spec.md#file-validity). | the task file | its ID, from the filename | `error`: the error a write that needed the file would fail with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
-| `nested-tree` | manual | `ftask.json` in a folder other than the root: another tree's metadata, inside this one. | the file | none | — | `null` |
+| `nested-tree` | manual | `koan.json` in a folder other than the root: another tree's metadata, inside this one. | the file | none | — | `null` |
 | `skipped-entry` | manual | entry that is not hidden, and that the walk skips although it may hold part of the tree: a symlink, or an entry with a folder's or task file's name but the wrong type (see [Walking the tree](design-spec.md#walking-the-tree)). | the entry | none | `reason`, below | `null` |
-| `stray-entry` | informational | entry that is not hidden and whose name matches neither the folder-name nor the task-filename rule (e.g. `notes.txt`, `42.md~`), other than the root's `ftask.json` and a nested tree's. | the entry | none | — | `null` |
+| `stray-entry` | informational | entry that is not hidden and whose name matches neither the folder-name nor the task-filename rule (e.g. `notes.txt`, `42.md~`), other than the root's `koan.json` and a nested tree's. | the entry | none | — | `null` |
 | `unreadable-folder` | manual | folder that can't be listed. Its entries are not looked at. | the folder | none | `code`: the symbolic OS error | `null` |
 
 Kind by kind:
@@ -354,9 +354,9 @@ Kind by kind:
   - `no-task`: no task has this ID — e.g. a [`delete`](#delete) was interrupted, or the task was removed by hand. The text may be the user's only copy, so it is left to them.
   - `unreadable`: the `.md` can't be looked at — e.g. its folder can be listed but not searched; `code` is the symbolic OS error. What it holds is unknown, so it is left to the user. A `.md` gone since the walk is not reported.
 - **`cycle`** — the graph is built as for the [cycle check](#block): from usable task files only, with an ID's edges the union of every copy's. A cycle is reported once per group, not once per cycle, since a group can hold more cycles than tasks. Removing any one blocker on the example cycle breaks that cycle; `suggest` gives one [`unblock`](#unblock) that does.
-- **`nested-tree`** — reported as the cause. The nested tree's tasks and folders are still walked as part of this tree, so its symptoms (duplicate IDs, IDs above `last_id`) are reported under their own kinds. The nested `ftask.json` itself is not also a `stray-entry`.
-- **`skipped-entry`** — `reason` is `symlink` for a symbolic link, whatever its name and whatever it leads to: ftask never follows one, so a folder linked into the tree is not part of it. It is `type` when the name is a folder's or a task file's (or its notes') but the entry's type is wrong, e.g. a directory named `42.json`, or a `.md` that is a folder. A root `ftask.json` that is not a regular file is `metadata-unusable` instead.
-- **`stray-entry`** — a file or folder ftask has no use for: a user's own file, or an editor's backup. ftask ignores it, safely, so it is reported only when asked for.
+- **`nested-tree`** — reported as the cause. The nested tree's tasks and folders are still walked as part of this tree, so its symptoms (duplicate IDs, IDs above `last_id`) are reported under their own kinds. The nested `koan.json` itself is not also a `stray-entry`.
+- **`skipped-entry`** — `reason` is `symlink` for a symbolic link, whatever its name and whatever it leads to: koan never follows one, so a folder linked into the tree is not part of it. It is `type` when the name is a folder's or a task file's (or its notes') but the entry's type is wrong, e.g. a directory named `42.json`, or a `.md` that is a folder. A root `koan.json` that is not a regular file is `metadata-unusable` instead.
+- **`stray-entry`** — a file or folder koan has no use for: a user's own file, or an editor's backup. koan ignores it, safely, so it is reported only when asked for.
 - **`unusable-file`** — the full diagnosis that the [`unusable-file`](#warning-kinds) warning leaves out. A task file whose filename ID differs from its `id` field is reported here, as `corrupt`.
 - **`id-above-last-id`** and **`metadata-missing`** — every task file counts, usable or not, by the ID in its filename: that is the ID it occupies (see [Tasks](design-spec.md#tasks)).
 
@@ -415,15 +415,15 @@ Whether read and write operations can run against this machine's root is one of 
 
 | State | Holds when | Operations that require a usable root fail with |
 |---|---|---|
-| ***Not initialized*** | Something is missing: the config, the root it names (the path must lead, through symlinks, to a directory), or `ftask.json` in that root. | `not-initialized`, with `missing` naming the first absent piece. Remedy depends on `missing` — see below. |
-| ***Initialized, not usable*** | Nothing is missing, but the config or `ftask.json` is unusable. | `corrupt` or `unsupported-format`, or `io` if the file is unreadable. Remedy: repair the file or its permissions, or use a binary that supports the format. [`doctor`](#doctor) reports `ftask.json`'s problem in full. |
-| ***Usable*** | Nothing is missing, and the config and `ftask.json` both pass every check in [File validity](design-spec.md#file-validity). | — |
+| ***Not initialized*** | Something is missing: the config, the root it names (the path must lead, through symlinks, to a directory), or `koan.json` in that root. | `not-initialized`, with `missing` naming the first absent piece. Remedy depends on `missing` — see below. |
+| ***Initialized, not usable*** | Nothing is missing, but the config or `koan.json` is unusable. | `corrupt` or `unsupported-format`, or `io` if the file is unreadable. Remedy: repair the file or its permissions, or use a binary that supports the format. [`doctor`](#doctor) reports `koan.json`'s problem in full. |
+| ***Usable*** | Nothing is missing, and the config and `koan.json` both pass every check in [File validity](design-spec.md#file-validity). | — |
 
 Remedies for *not initialized*, by `missing`:
 
 - **`config`** — nothing is set up on this machine. Run [`init`](#init).
 - **`root`** — the config names a root that isn't there. Check the path first (an unmounted drive, a moved folder). Run `init` with `replace_config` only if a new or different tree is really intended: on an unmounted drive's mount point it would create a fresh empty tree.
-- **`metadata`** — the root exists but has lost its `ftask.json`. Run [`doctor`](#doctor) to see the tree's state, then [`repair`](#repair) naming `metadata-missing`, which rebuilds it (see [Finding kinds](#finding-kinds) for the risk). `init` refuses (the config exists, and the root isn't empty).
+- **`metadata`** — the root exists but has lost its `koan.json`. Run [`doctor`](#doctor) to see the tree's state, then [`repair`](#repair) naming `metadata-missing`, which rebuilds it (see [Finding kinds](#finding-kinds) for the risk). `init` refuses (the config exists, and the root isn't empty).
 
 *Initialized* is about presence; *usable* additionally about content. A file that exists but is unusable never makes a root *not initialized*. In particular, a config that exists but is unusable — it doesn't parse, or names a root in an illegal [form](design-spec.md#root-path) — leaves the root *initialized, not usable*, even though no root can be read from it; operations fail with `corrupt`.
 
@@ -431,7 +431,7 @@ Remedies for *not initialized*, by `missing`:
 
 ### Tree order
 
-The order ftask uses whenever it lists folders or tasks by location:
+The order koan uses whenever it lists folders or tasks by location:
 
 1. By folder path, a parent before its children, siblings by name: `/`, `/infra`, `/proj`, `/proj/travel`, `/proj-b`. This is *not* a plain string sort of the paths (which would put `/proj-b` before `/proj/travel`, since `-` sorts before `/`).
 2. Within a folder, tasks by `id`, lowest first.
@@ -472,11 +472,11 @@ Every result of `frontier` and `list` carries `total` and `truncated`, whether o
 
 ### Undo
 
-[`delete`](#delete) and [`delete-folder`](#delete-folder) remove files for good: ftask keeps no trash and no history. Undo comes from git, when the root is a repository (see *Syncing and committing are allowed* in [Assumptions](design-spec.md#assumptions)), and reaches back only to the last commit — ftask never commits. Restoring from git is an [outside change](design-spec.md#assumptions):
+[`delete`](#delete) and [`delete-folder`](#delete-folder) remove files for good: koan keeps no trash and no history. Undo comes from git, when the root is a repository (see *Syncing and committing are allowed* in [Assumptions](design-spec.md#assumptions)), and reaches back only to the last commit — koan never commits. Restoring from git is an [outside change](design-spec.md#assumptions):
 
-- **Restore only the removed paths**, never the whole tree: restoring `ftask.json` can lower `last_id` and let IDs be reused. A delete not yet committed is undone with `git restore -- proj/travel`; a committed one from a commit that still has the files, usually the parent of the one that removed them: `git restore --source=<commit>^ -- proj/travel`. A task is two paths, `42.json` and `42.md`.
+- **Restore only the removed paths**, never the whole tree: restoring `koan.json` can lower `last_id` and let IDs be reused. A delete not yet committed is undone with `git restore -- proj/travel`; a committed one from a commit that still has the files, usually the parent of the one that removed them: `git restore --source=<commit>^ -- proj/travel`. A task is two paths, `42.json` and `42.md`.
 - **References don't come back.** The delete removed the task's ID from its dependents' `blocked_by`, and restoring their files too would undo any other change to them since. Re-[`block`](#block) the `dependents` the delete reported instead.
-- **What ftask would have checked is left to [`doctor`](#doctor):** a restored task's `blocked_by` may name tasks removed since (`dangling-reference`, which [`repair`](#repair) removes), and its edges may close a cycle added while it was gone (`cycle`, which a person breaks).
+- **What koan would have checked is left to [`doctor`](#doctor):** a restored task's `blocked_by` may name tasks removed since (`dangling-reference`, which [`repair`](#repair) removes), and its edges may close a cycle added while it was gone (`cycle`, which a person breaks).
 
 ## Shared schemas
 
@@ -604,7 +604,7 @@ A [folder path](design-spec.md#folder-paths).
 
 ## Versioning
 
-ftask releases follow [semantic versioning](https://semver.org/). The operation input, output, partial, error, warning, and finding schemas are ftask's public contract: a breaking change to any of them requires a new major version. There is no separate API version.
+koan releases follow [semantic versioning](https://semver.org/). The operation input, output, partial, error, warning, and finding schemas are koan's public contract: a breaking change to any of them requires a new major version. There is no separate API version.
 
 **Before 1.0**, the contract is not yet stable: a breaking change bumps the **minor** version instead (0.1 → 0.2), and its release says what changed. The same holds for the data formats; see [Format versions](design-spec.md#format-versions).
 
@@ -616,7 +616,7 @@ Data formats are versioned separately; see the design spec's [Format versions](d
 
 ### init
 
-Create a new tree, or attach an existing one, and make it this machine's configured root. A new tree gets a fresh `ftask.json`; an existing tree — one that already contains `ftask.json`, e.g. cloned or moved from another machine — is left untouched, and `init` only writes the config naming it. Afterwards the root is at least *initialized* (see [Root states](#root-states)).
+Create a new tree, or attach an existing one, and make it this machine's configured root. A new tree gets a fresh `koan.json`; an existing tree — one that already contains `koan.json`, e.g. cloned or moved from another machine — is left untouched, and `init` only writes the config naming it. Afterwards the root is at least *initialized* (see [Root states](#root-states)).
 
 **Kind:** setup. Takes no lock — a new tree's root may not exist until `init` creates it, and `init` never changes an existing tree's content. Does not require a usable root. Concurrent `init` runs are not supported.
 
@@ -645,16 +645,16 @@ Create a new tree, or attach an existing one, and make it this machine's configu
 | Does not exist, parent directory exists | Created as a new tree. |
 | Does not exist, parent directory missing | `not-found`. `init` never creates the root's parent directories. |
 | Empty directory (hidden entries allowed, e.g. `.git`) | Initialized as a new tree. |
-| Non-empty directory without `ftask.json` | `conflict` (`rule`: `root-not-empty`) — ftask never adopts a directory with other contents. |
-| Directory containing `ftask.json` | Attached as-is. |
+| Non-empty directory without `koan.json` | `conflict` (`rule`: `root-not-empty`) — koan never adopts a directory with other contents. |
+| Directory containing `koan.json` | Attached as-is. |
 
 If a config already exists — whatever it names, and whether or not it parses — and `replace_config` is false: `conflict` (`rule`: `config-exists`). `init` never compares roots and never overwrites a config unless told to.
 
-**Needed files:** `ftask.json` in `root`, when present, checked as [File validity](design-spec.md#file-validity) describes. `init` never reads the config; it only checks whether one exists.
+**Needed files:** `koan.json` in `root`, when present, checked as [File validity](design-spec.md#file-validity) describes. `init` never reads the config; it only checks whether one exists.
 
 **Effects:**
 
-- `root` is a directory containing `ftask.json`. A new tree has `{"schema": 1, "last_id": 0}`; an existing tree's `ftask.json` is unchanged.
+- `root` is a directory containing `koan.json`. A new tree has `{"schema": 1, "last_id": 0}`; an existing tree's `koan.json` is unchanged.
 - The config names `root`. `init` creates the config directory, and any missing ancestors of it, as needed.
 - With `replace_config`, the config file itself is replaced: a config that is a symlink (into a dotfiles checkout, say) becomes a regular file, and the file it pointed to is left as it was.
 
@@ -670,7 +670,7 @@ If a config already exists — whatever it names, and whether or not it parses �
   "required": ["root", "action", "last_id"],
   "properties": {
     "root": { "type": "string", "description": "Absolute root path, as recorded in the config." },
-    "action": { "type": "string", "enum": ["created", "attached"], "description": "created: a new, empty tree was created. attached: an existing tree (one already containing ftask.json) was attached to this machine." },
+    "action": { "type": "string", "enum": ["created", "attached"], "description": "created: a new, empty tree was created. attached: an existing tree (one already containing koan.json) was attached to this machine." },
     "last_id": { "$ref": "root-file#/properties/last_id" }
   },
   "additionalProperties": false
@@ -685,9 +685,9 @@ If a config already exists — whatever it names, and whether or not it parses �
 | `environment` | The config can't be located (see [Config file](design-spec.md#config-file)). |
 | `conflict` | (`rule`: `config-exists`) A config already exists and `replace_config` is false. |
 | `not-found` | `root` does not exist and neither does its parent directory (the parent in `paths`). |
-| `conflict` | (`rule`: `root-not-empty`) `root` is a non-empty directory without `ftask.json`. |
-| `corrupt` | `ftask.json` exists but is corrupt, including not being a regular file. |
-| `unsupported-format` | `ftask.json` exists with an unsupported `schema`. |
+| `conflict` | (`rule`: `root-not-empty`) `root` is a non-empty directory without `koan.json`. |
+| `corrupt` | `koan.json` exists but is corrupt, including not being a regular file. |
+| `unsupported-format` | `koan.json` exists with an unsupported `schema`. |
 
 **Warnings:** none.
 
@@ -701,21 +701,21 @@ If a config already exists — whatever it names, and whether or not it parses �
   "required": ["root_created", "metadata_created"],
   "properties": {
     "root_created": { "type": "boolean", "description": "init created the root directory." },
-    "metadata_created": { "type": "boolean", "description": "init created ftask.json." }
+    "metadata_created": { "type": "boolean", "description": "init created koan.json." }
   },
   "additionalProperties": false
 }
 ```
 
-Present when `init` fails after creating the root directory or `ftask.json` — e.g. the config cannot be written. What it created stays; rerunning `init` with the same input completes it.
+Present when `init` fails after creating the root directory or `koan.json` — e.g. the config cannot be written. What it created stays; rerunning `init` with the same input completes it.
 
-**Crash behavior:** a crash may leave some of the pieces in place and not others — e.g. a new root directory without `ftask.json`, or a tree with `ftask.json` but no config. The config is written last, so until it exists nothing else uses the root, and a partial `init` is never mistaken for a usable one. Apart from possible leftover temp files — in the root, which [`doctor`](#doctor) finds as `temp-leftover`, or in the config directory, which the next `init` removes — there is nothing for `doctor` to find.
+**Crash behavior:** a crash may leave some of the pieces in place and not others — e.g. a new root directory without `koan.json`, or a tree with `koan.json` but no config. The config is written last, so until it exists nothing else uses the root, and a partial `init` is never mistaken for a usable one. Apart from possible leftover temp files — in the root, which [`doctor`](#doctor) finds as `temp-leftover`, or in the config directory, which the next `init` removes — there is nothing for `doctor` to find.
 
-**Retry safety:** after a crash or an error with `partial`, safe: the config is written last, so an interrupted `init` did not change the config, and rerunning it with the same input finishes the job (reporting `attached` if it had already written `ftask.json` — an empty tree it created itself). After a success, rerunning fails with `conflict` (`rule`: `config-exists`). A crash after the config is written — while only its temp file remains to remove — is a success, and a rerun fails the same way.
+**Retry safety:** after a crash or an error with `partial`, safe: the config is written last, so an interrupted `init` did not change the config, and rerunning it with the same input finishes the job (reporting `attached` if it had already written `koan.json` — an empty tree it created itself). After a success, rerunning fails with `conflict` (`rule`: `config-exists`). A crash after the config is written — while only its temp file remains to remove — is a success, and a rerun fails the same way.
 
 ### version
 
-Report the version and build of the ftask binary, and the data format versions it supports. Describes the binary only, never a root.
+Report the version and build of the koan binary, and the data format versions it supports. Describes the binary only, never a root.
 
 **Kind:** read. Takes no lock. Does not require a usable root, so it works before `init` and whatever the root state.
 
@@ -761,7 +761,7 @@ Report the version and build of the ftask binary, and the data format versions i
       "required": ["task", "root"],
       "properties": {
         "task": { "type": "integer", "description": "The one task file format version this binary reads and writes." },
-        "root": { "type": "integer", "description": "The one ftask.json format version this binary reads and writes." }
+        "root": { "type": "integer", "description": "The one koan.json format version this binary reads and writes." }
       },
       "additionalProperties": false
     }
@@ -806,7 +806,7 @@ Report the state of this machine's configured root: what is configured, what exi
 
 **Preconditions:** none.
 
-**Needed files:** none. `info` inspects the config and `ftask.json` but reports any problem with them as state, not as an error.
+**Needed files:** none. `info` inspects the config and `koan.json` but reports any problem with them as state, not as an error.
 
 **Effects:** none.
 
@@ -836,8 +836,8 @@ Report the state of this machine's configured root: what is configured, what exi
       "required": ["root_exists", "metadata", "schema", "last_id"],
       "properties": {
         "root_exists": { "type": "boolean", "description": "Whether the root path leads, through symlinks, to a directory." },
-        "metadata": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of ftask.json, per the three-step check (see File validity): corrupt fails step 1 or 3 (or is not a regular file); unsupported-format fails step 2." },
-        "schema": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991, "description": "ftask.json's schema value; set whenever step 1 passes — whether metadata ends up ok, unsupported-format, or corrupt at step 3 — otherwise null." },
+        "metadata": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of koan.json, per the three-step check (see File validity): corrupt fails step 1 or 3 (or is not a regular file); unsupported-format fails step 2." },
+        "schema": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991, "description": "koan.json's schema value; set whenever step 1 passes — whether metadata ends up ok, unsupported-format, or corrupt at step 3 — otherwise null." },
         "last_id": { "anyOf": [{ "$ref": "root-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless metadata is ok." }
       },
       "additionalProperties": false,
@@ -845,7 +845,7 @@ Report the state of this machine's configured root: what is configured, what exi
     },
     "initialized": { "type": "boolean", "description": "True unless the root is not initialized (see Root states). True, with tree null, when the config exists but is unusable." },
     "usable": { "type": "boolean", "description": "True when the root is usable (see Root states)." },
-    "compatible": { "type": ["boolean", "null"], "description": "Whether tree.schema equals this binary's supported ftask.json version (see Format versions); null when tree.schema is null." }
+    "compatible": { "type": ["boolean", "null"], "description": "Whether tree.schema equals this binary's supported koan.json version (see Format versions); null when tree.schema is null." }
   },
   "additionalProperties": false
 }
@@ -871,7 +871,7 @@ Every problem with the root is reported as state in the output, not as an error.
 
 Report everything wrong with the tree, as [findings](#findings): what each is, and what [`repair`](#repair) would do about it, or what a person could. Changes nothing.
 
-**Kind:** diagnostic. Takes the write lock, so that what it reports is the tree at rest (see [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). Does not require a usable root: it needs the config and the root, and reports a missing or unusable `ftask.json` as a finding. Walks the whole tree.
+**Kind:** diagnostic. Takes the write lock, so that what it reports is the tree at rest (see [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). Does not require a usable root: it needs the config and the root, and reports a missing or unusable `koan.json` as a finding. Walks the whole tree.
 
 **Input schema:**
 
@@ -891,7 +891,7 @@ Report everything wrong with the tree, as [findings](#findings): what each is, a
 
 **Preconditions:** the config is usable and names a root that exists.
 
-**Needed files:** the config, and the root directory, which `doctor` opens and locks. Nothing else is needed: a problem with `ftask.json`, or with any entry under the root, is a finding, never an error. `doctor` lists every folder; reads `ftask.json` and every task file in full; and checks each `.md` named like a task's notes that has no task file beside it, for its size and its identity (see `orphan-notes`).
+**Needed files:** the config, and the root directory, which `doctor` opens and locks. Nothing else is needed: a problem with `koan.json`, or with any entry under the root, is a finding, never an error. `doctor` lists every folder; reads `koan.json` and every task file in full; and checks each `.md` named like a task's notes that has no task file beside it, for its size and its identity (see `orphan-notes`).
 
 **Effects:** none.
 
@@ -921,7 +921,7 @@ Report everything wrong with the tree, as [findings](#findings): what each is, a
 |---|---|
 | `invalid-input` | `kinds` is empty, repeats a kind, or names a kind that is not a finding kind. |
 | `environment` | The config can't be located. |
-| `not-initialized` | `missing`: `config` or `root`. Never `metadata`: a missing `ftask.json` is the `metadata-missing` finding. |
+| `not-initialized` | `missing`: `config` or `root`. Never `metadata`: a missing `koan.json` is the `metadata-missing` finding. |
 | `corrupt` | The config is corrupt. |
 | `busy` | Another write holds the write lock. |
 
@@ -939,7 +939,7 @@ Errors are checked in the order above. Everything found after the lock is taken 
 
 Apply the safe repairs: for each kind it repairs, every item whose `action` is not `null` (see [Finding kinds](#finding-kinds)). Then report what is left, as [`doctor`](#doctor) would.
 
-**Kind:** diagnostic. Takes the write lock. Does not require a usable root: it needs the config and the root, and a usable `ftask.json`, or none when it is asked to create one. Walks the whole tree.
+**Kind:** diagnostic. Takes the write lock. Does not require a usable root: it needs the config and the root, and a usable `koan.json`, or none when it is asked to create one. Walks the whole tree.
 
 **Input schema:**
 
@@ -959,21 +959,21 @@ Apply the safe repairs: for each kind it repairs, every item whose `action` is n
 
 **Preconditions:**
 
-| `ftask.json` | Outcome |
+| `koan.json` | Outcome |
 |---|---|
 | usable | `repair` runs. |
 | missing, and `kinds` names `metadata-missing` | `repair` runs, and creates it. |
 | missing, otherwise | `not-initialized` (`missing`: `metadata`). Raising `last_id` and every later step need it, and creating it is the user's decision. |
-| present but unusable | `corrupt`, `unsupported-format`, or `io`. `repair` changes nothing in a tree whose `ftask.json` it can't read, or whose format it doesn't know. `doctor` reports the problem in full, for a person to fix. |
+| present but unusable | `corrupt`, `unsupported-format`, or `io`. `repair` changes nothing in a tree whose `koan.json` it can't read, or whose format it doesn't know. `doctor` reports the problem in full, for a person to fix. |
 
-Naming `metadata-missing` when `ftask.json` is present is not an error: there is nothing to repair for it.
+Naming `metadata-missing` when `koan.json` is present is not an error: there is nothing to repair for it.
 
-**Needed files:** as for `doctor`, plus `ftask.json`, and each task file it rewrites (a usable file, since `doctor` read its `blocked_by`).
+**Needed files:** as for `doctor`, plus `koan.json`, and each task file it rewrites (a usable file, since `doctor` read its `blocked_by`).
 
 **Effects:** for each kind it repairs, each item's `action` is applied:
 
 - **`remove`** — the entry is removed: a `temp-leftover` file, or folder with everything in it; an `orphan-notes` `.md`.
-- **`create-metadata`** — `ftask.json` is created, with this binary's `schema` and the item's `last_id`.
+- **`create-metadata`** — `koan.json` is created, with this binary's `schema` and the item's `last_id`.
 - **`raise-last-id`** — `last_id` is set to the item's `last_id`, the highest ID in any task filename. One write for every item.
 - **`remove-reference`** — the missing ID is removed from the task file's `blocked_by`, and `updated_at` is set to now, as [`unblock`](#unblock) does. A copy of a duplicated ID is rewritten like any other task file: the change is to that file alone.
 
@@ -1006,12 +1006,12 @@ Afterwards, the findings that remain are reported, for every kind, as `doctor` w
 |---|---|
 | `invalid-input` | `kinds` is empty, repeats a kind, or names a kind that is not a finding kind, or a *manual* or *informational* one. |
 | `environment` | The config can't be located. |
-| `not-initialized` | `missing`: `config` or `root`; or `metadata`, when `ftask.json` is missing and `kinds` doesn't name `metadata-missing`. |
-| `corrupt` | The config, or `ftask.json`, is corrupt. |
+| `not-initialized` | `missing`: `config` or `root`; or `metadata`, when `koan.json` is missing and `kinds` doesn't name `metadata-missing`. |
+| `corrupt` | The config, or `koan.json`, is corrupt. |
 | `busy` | Another write holds the write lock. |
-| `unsupported-format` | `ftask.json`'s `schema` is not the version this binary supports. |
+| `unsupported-format` | `koan.json`'s `schema` is not the version this binary supports. |
 
-Errors are checked in the order above, except that `ftask.json` is read only once the lock is taken, since `repair` decides on current state: its `not-initialized`, `corrupt`, and `unsupported-format` come after `busy`.
+Errors are checked in the order above, except that `koan.json` is read only once the lock is taken, since `repair` decides on current state: its `not-initialized`, `corrupt`, and `unsupported-format` come after `busy`.
 
 **Warnings:** none. Every problem `repair` finds is a finding.
 
@@ -1035,12 +1035,12 @@ Present only when an error (e.g. `io`) comes after at least one repair. Each rep
 **Crash behavior:** steps run in this order, one item at a time:
 
 1. `temp-leftover` items are removed. A crash while a temp folder is being removed leaves part of it, still a `temp-leftover`.
-2. `ftask.json` is created, when `kinds` names `metadata-missing` and its item's `action` is not `null`.
+2. `koan.json` is created, when `kinds` names `metadata-missing` and its item's `action` is not `null`.
 3. `last_id` is raised.
 4. `dangling-reference` items are removed, one task file at a time.
 5. `orphan-notes` items are removed. Each is checked again just before: an `empty` one must still be empty, a `linked` one still the same file as its task's notes. One that changed is left, and reported among the remaining findings.
 
-Creating `ftask.json` before raising `last_id` means a rebuilt `ftask.json` never needs raising. A [process crash](design-spec.md#crashes) between any two steps leaves a tree with fewer findings, and no new ones. A [system crash](design-spec.md#crashes) keeps the order of the files `repair` writes — `ftask.json` and rewritten task files are flushed like any write's — but can undo removals, which are not flushed; `doctor` then reports those items again.
+Creating `koan.json` before raising `last_id` means a rebuilt `koan.json` never needs raising. A [process crash](design-spec.md#crashes) between any two steps leaves a tree with fewer findings, and no new ones. A [system crash](design-spec.md#crashes) keeps the order of the files `repair` writes — `koan.json` and rewritten task files are flushed like any write's — but can undo removals, which are not flushed; `doctor` then reports those items again.
 
 **Retry safety:** safe. After `busy`, an error with `partial`, or a crash, rerunning repairs what is left. After success, rerunning repairs nothing and returns an empty `repaired`.
 
@@ -1136,7 +1136,7 @@ Present only when an error (e.g. `io`) interrupts a `parents` chain after at lea
 
 ### delete-folder
 
-Permanently remove a folder and everything under it, and remove the IDs of the tasks under it from every `blocked_by` outside it. ftask keeps no copy; see [Undo](#undo).
+Permanently remove a folder and everything under it, and remove the IDs of the tasks under it from every `blocked_by` outside it. koan keeps no copy; see [Undo](#undo).
 
 **Kind:** write. Takes the write lock. Requires a usable root.
 
@@ -1380,7 +1380,7 @@ Create a new, open task.
 }
 ```
 
-**Additional validation:** `title` is trimmed, then validated, per [Titles](design-spec.md#titles). `id`, `schema`, `created_at`, `completed_at`, and `updated_at` are never input — ftask sets them.
+**Additional validation:** `title` is trimmed, then validated, per [Titles](design-spec.md#titles). `id`, `schema`, `created_at`, `completed_at`, and `updated_at` are never input — koan sets them.
 
 **Preconditions:** `folder` exists; every ID in `blocked_by` names an existing task, open or complete. A `blocked_by` ID that has several task files exists. Every ID in `blocked_by` is at most `last_id`: one above it only arises from a system crash or an outside change, and the new task could be given that ID and block itself (see [Task IDs](design-spec.md#task-ids)).
 
@@ -1444,7 +1444,7 @@ Present only when the failure came after `last_id` was incremented. Once the tas
 2. The task file is created. A process crash here leaves a valid task whose `.md` is missing, which reads as empty notes.
 3. The `.md` is created.
 
-A [system crash](design-spec.md#crashes) keeps this order too: `ftask.json` is flushed before the task file is created. Only an outside change, such as a merge of `ftask.json`, or a system crash on a disk that ignores flushes, can leave the task file without the `last_id` increment. The task then has an ID above `last_id`, and the next `create` issues that ID again:
+A [system crash](design-spec.md#crashes) keeps this order too: `koan.json` is flushed before the task file is created. Only an outside change, such as a merge of `koan.json`, or a system crash on a disk that ignores flushes, can leave the task file without the `last_id` increment. The task then has an ID above `last_id`, and the next `create` issues that ID again:
 
 - **In a different folder**, it succeeds, producing two tasks with one ID. Reads report them as `duplicate-id`.
 - **In the same folder**, the existing task file blocks it: `create` fails with `corrupt` (`reason`: `unexpected-file`) and a `partial` for the consumed ID. A retry uses the next ID and succeeds.
@@ -1643,7 +1643,7 @@ Present only when the failure came after something was written: a folder created
 2. `last_id` is raised by *n*. A crash here consumes *n* IDs without creating a task — allowed gaps.
 3. For each task in input order: its task file is created, then its `.md`. A crash here leaves the tasks before it created, the one in progress either created (with its `.md` possibly missing, which reads as empty notes) or not, and the rest not. Each created task's blockers exist: refs name earlier tasks, which were written first.
 
-A [system crash](design-spec.md#crashes) keeps the order of steps 2 and 3, since `ftask.json` and each task file are flushed before the next step. Creating a folder is not flushed (see [Crashes](design-spec.md#crashes)), so a system crash can lose a new folder and, with it, the tasks written into it: their IDs become gaps, and a task elsewhere that a lost one blocked is left with a `dangling-reference`, which `doctor` finds and [`repair`](#repair) removes. The other exception is the one [`create`](#create) describes: an outside change, or a disk that ignores flushes, can leave tasks with IDs above `last_id`, which the batch's IDs may then collide with. A collision in the same folder fails the batch at that task with `corrupt` and a `partial`; in a different folder it produces a `duplicate-id`. `doctor` finds both, as for `create`.
+A [system crash](design-spec.md#crashes) keeps the order of steps 2 and 3, since `koan.json` and each task file are flushed before the next step. Creating a folder is not flushed (see [Crashes](design-spec.md#crashes)), so a system crash can lose a new folder and, with it, the tasks written into it: their IDs become gaps, and a task elsewhere that a lost one blocked is left with a `dangling-reference`, which `doctor` finds and [`repair`](#repair) removes. The other exception is the one [`create`](#create) describes: an outside change, or a disk that ignores flushes, can leave tasks with IDs above `last_id`, which the batch's IDs may then collide with. A collision in the same folder fails the batch at that task with `corrupt` and a `partial`; in a different folder it produces a `duplicate-id`. `doctor` finds both, as for `create`.
 
 **Retry safety:** after `busy`, safe — nothing happened. After an error before the writes (every kind but those with a `partial`), safe — nothing changed. After an error with `partial`, rerunning the whole batch is safe only if `ids` is empty: folders already created are not an error, and the IDs are consumed afresh. Otherwise it is **not** safe: it creates the tasks in `ids` again, with new IDs. Rerun only the tasks not created — `tasks` from index `len(ids)` on — with each string in their `blocked_by` that names a created task replaced by its ID from `partial.refs`. After a crash or an unclear outcome, **not** safe, as for `create`: check which tasks exist first, e.g. by title with [`list`](#list). See [Idempotent create](design-spec.md#idempotent-create), which would cover a batch with one key.
 
@@ -2237,7 +2237,7 @@ The task after the operation, per the [Task](#task) schema, plus `changed`.
 
 ### delete
 
-Permanently remove a task, and remove its ID from every other task's `blocked_by`. ftask keeps no copy; see [Undo](#undo).
+Permanently remove a task, and remove its ID from every other task's `blocked_by`. koan keeps no copy; see [Undo](#undo).
 
 **Kind:** write. Takes the write lock. Requires a usable root.
 
@@ -2679,4 +2679,4 @@ Operations not yet specified, with the constraints already decided.
 
 ### migrate
 
-Upgrade a tree from one format version to the next — `ftask.json` and every task file — as a single explicit operation (see [Format versions](design-spec.md#format-versions)). Until then, a binary that supports a different format than the tree's cannot use it.
+Upgrade a tree from one format version to the next — `koan.json` and every task file — as a single explicit operation (see [Format versions](design-spec.md#format-versions)). Until then, a binary that supports a different format than the tree's cannot use it.

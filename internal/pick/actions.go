@@ -9,10 +9,10 @@ import (
 
 	"github.com/mattn/go-runewidth"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // The action framework (pick-spec.md, Actions): command mode's keys that
@@ -455,7 +455,7 @@ func reload(s *Session, env Env, next *Scope) (string, int, *errs.Error) {
 	}
 	exe, err := env.Sys.Executable()
 	if err != nil {
-		return "", 0, errs.Internal("locating the ftask binary: " + err.Error())
+		return "", 0, errs.Internal("locating the koan binary: " + err.Error())
 	}
 	var prompt string
 	if next != nil {
@@ -492,7 +492,7 @@ func setStatus(s *Session, env Env, warnings int, status string) ([]byte, *errs.
 	}
 	exe, err := env.Sys.Executable()
 	if err != nil {
-		return nil, errs.Internal("locating the ftask binary: " + err.Error())
+		return nil, errs.Internal("locating the koan binary: " + err.Error())
 	}
 	return []byte("transform-footer(" + helperLine(exe, "text", "footer") + ")"), nil
 }
@@ -606,7 +606,7 @@ func kindText(e *errs.Error) string {
 }
 
 func errInternalExe(err error) *errs.Error {
-	return errs.Internal("locating the ftask binary: " + err.Error())
+	return errs.Internal("locating the koan binary: " + err.Error())
 }
 
 // fitWidth cuts a one-line text to width terminal cells, with …; width 0

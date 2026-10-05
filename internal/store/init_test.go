@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 // initFixture is a home with nothing set up: the config directory would be
@@ -70,7 +70,7 @@ func TestInit(t *testing.T) {
 		root    string // under the home
 		replace bool
 		want    string
-		meta    string // want tasks/ftask.json afterwards; "" to skip
+		meta    string // want tasks/koan.json afterwards; "" to skip
 		config  string // want cfg/config.toml afterwards, "~" for the home; "" to skip
 	}{
 		// State of root (operations.md, init, Preconditions).
@@ -82,27 +82,27 @@ func TestInit(t *testing.T) {
 			`not-found {"folders":[],"ids":[],"paths":["~/a"]} root_created=false metadata_created=false`, "", "<none>"},
 		{"empty directory", func(f *initFixture) { f.mkdir("tasks") }, "tasks", false,
 			"created 0 root_created=false metadata_created=true", newMeta, `root = "~/tasks"` + "\n"},
-		{"only hidden entries", func(f *initFixture) { f.mkdir("tasks/.git"); f.write("tasks/.ftask-tmp-x", "") }, "tasks", false,
+		{"only hidden entries", func(f *initFixture) { f.mkdir("tasks/.git"); f.write("tasks/.koan-tmp-x", "") }, "tasks", false,
 			"created 0 root_created=false metadata_created=true", newMeta, ""},
 		{"not empty", func(f *initFixture) { f.write("tasks/notes.txt", "") }, "tasks", false,
 			`conflict {"rule":"root-not-empty","ids":[]} root_created=false metadata_created=false`, "<none>", "<none>"},
 		{"existing tree", func(f *initFixture) {
-			f.write("tasks/ftask.json", `{"schema": 1, "last_id": 5}`)
+			f.write("tasks/koan.json", `{"schema": 1, "last_id": 5}`)
 			f.write("tasks/3.json", "x")
 		}, "tasks", false,
 			"attached 5 root_created=false metadata_created=false", `{"schema": 1, "last_id": 5}`, `root = "~/tasks"` + "\n"},
-		{"corrupt ftask.json", func(f *initFixture) { f.write("tasks/ftask.json", `{"schema": 1}`) }, "tasks", false,
-			`corrupt {"path":"~/tasks/ftask.json","reason":"invalid","problems":[{"field":"/last_id","reason":"required"}]} root_created=false metadata_created=false`, "", "<none>"},
-		{"ftask.json a directory", func(f *initFixture) { f.mkdir("tasks/ftask.json") }, "tasks", false,
-			`corrupt {"path":"~/tasks/ftask.json","reason":"unexpected-file"} root_created=false metadata_created=false`, "", "<none>"},
-		{"ftask.json a symlink", func(f *initFixture) {
+		{"corrupt koan.json", func(f *initFixture) { f.write("tasks/koan.json", `{"schema": 1}`) }, "tasks", false,
+			`corrupt {"path":"~/tasks/koan.json","reason":"invalid","problems":[{"field":"/last_id","reason":"required"}]} root_created=false metadata_created=false`, "", "<none>"},
+		{"koan.json a directory", func(f *initFixture) { f.mkdir("tasks/koan.json") }, "tasks", false,
+			`corrupt {"path":"~/tasks/koan.json","reason":"unexpected-file"} root_created=false metadata_created=false`, "", "<none>"},
+		{"koan.json a symlink", func(f *initFixture) {
 			f.write("real.json", `{"schema": 1, "last_id": 5}`)
 			f.mkdir("tasks")
-			must(f.t, os.Symlink(f.path("real.json"), f.path("tasks/ftask.json")))
+			must(f.t, os.Symlink(f.path("real.json"), f.path("tasks/koan.json")))
 		}, "tasks", false,
-			`corrupt {"path":"~/tasks/ftask.json","reason":"unexpected-file"} root_created=false metadata_created=false`, "", "<none>"},
-		{"unsupported ftask.json", func(f *initFixture) { f.write("tasks/ftask.json", `{"schema": 2}`) }, "tasks", false,
-			`unsupported-format {"path":"~/tasks/ftask.json","found":2,"supported":[1]} root_created=false metadata_created=false`, "", "<none>"},
+			`corrupt {"path":"~/tasks/koan.json","reason":"unexpected-file"} root_created=false metadata_created=false`, "", "<none>"},
+		{"unsupported koan.json", func(f *initFixture) { f.write("tasks/koan.json", `{"schema": 2}`) }, "tasks", false,
+			`unsupported-format {"path":"~/tasks/koan.json","found":2,"supported":[1]} root_created=false metadata_created=false`, "", "<none>"},
 		{"root a symlink to a directory", func(f *initFixture) { f.mkdir("real"); must(f.t, os.Symlink(f.path("real"), f.path("tasks"))) }, "tasks", false,
 			"created 0 root_created=false metadata_created=true", newMeta, `root = "~/tasks"` + "\n"},
 
@@ -127,7 +127,7 @@ func TestInit(t *testing.T) {
 			"created 0 root_created=true metadata_created=true", newMeta, `root = "~/tasks"` + "\n"},
 		{"config directory is a file", func(f *initFixture) { f.write("cfg", "") }, "tasks", false,
 			`io {"path":"~/cfg/config.toml","code":"ENOTDIR"} root_created=false metadata_created=false`, "<none>", ""},
-		{"config directory's parents created", func(f *initFixture) { f.env.ConfigDir = f.path("x/y/ftask") }, "tasks", false,
+		{"config directory's parents created", func(f *initFixture) { f.env.ConfigDir = f.path("x/y/koan") }, "tasks", false,
 			"created 0 root_created=true metadata_created=true", newMeta, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -140,8 +140,8 @@ func TestInit(t *testing.T) {
 				t.Errorf("got  %s\nwant %s", got, tc.want)
 			}
 			if tc.meta != "" {
-				if got := f.read("tasks/ftask.json"); got != tc.meta {
-					t.Errorf("ftask.json %q, want %q", got, tc.meta)
+				if got := f.read("tasks/koan.json"); got != tc.meta {
+					t.Errorf("koan.json %q, want %q", got, tc.meta)
 				}
 			}
 			if tc.config != "" {
@@ -157,8 +157,8 @@ func TestInit(t *testing.T) {
 // Every stale temp file in the config directory is gone, and nothing else.
 func TestInitRemovesStaleTemps(t *testing.T) {
 	f := newInitFixture(t)
-	f.write("cfg/.ftask-tmp-1", "x")
-	f.write("cfg/.ftask-tmp-2", "x")
+	f.write("cfg/.koan-tmp-1", "x")
+	f.write("cfg/.koan-tmp-2", "x")
 	f.write("cfg/keep", "y")
 	_, e := Init(f.env, f.path("tasks"), false)
 	wantNoErr(t, e)
@@ -199,17 +199,17 @@ func TestInitConfigExistsRemovesStaleTemps(t *testing.T) {
 	f := newInitFixture(t)
 	_, e := Init(f.env, f.path("tasks"), false)
 	wantNoErr(t, e)
-	f.write("cfg/.ftask-tmp-1", "x")
+	f.write("cfg/.koan-tmp-1", "x")
 	_, e = Init(f.env, f.path("tasks"), false)
 	if e == nil || e.Kind != errs.KindConflict {
 		t.Fatalf("got %v, want config-exists", e)
 	}
-	if _, err := os.Lstat(f.path("cfg/.ftask-tmp-1")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(f.path("cfg/.koan-tmp-1")); !os.IsNotExist(err) {
 		t.Errorf("temp file still there: %v", err)
 	}
 }
 
-// A failure after the root or ftask.json was created reports what was
+// A failure after the root or koan.json was created reports what was
 // created; rerunning with the same input completes the job, attaching the
 // tree the first run created (operations.md, init, Retry safety).
 func TestInitPartialAndRetry(t *testing.T) {
@@ -222,8 +222,8 @@ func TestInitPartialAndRetry(t *testing.T) {
 			`io {"path":"~/cfg/config.toml","code":"EACCES"} root_created=true metadata_created=true`},
 		{"config directory not created", func(o fsys.Op) bool { return o.Name == fsys.OpMkdirAll },
 			`io {"path":"~/cfg","code":"EACCES"} root_created=true metadata_created=true`},
-		{"ftask.json not written", func(o fsys.Op) bool { return o.Name == fsys.OpLink && o.NewPath == MetaName },
-			`io {"path":"~/tasks/ftask.json","code":"EACCES"} root_created=true metadata_created=false`},
+		{"koan.json not written", func(o fsys.Op) bool { return o.Name == fsys.OpLink && o.NewPath == MetaName },
+			`io {"path":"~/tasks/koan.json","code":"EACCES"} root_created=true metadata_created=false`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newInitFixture(t)
@@ -249,8 +249,8 @@ func TestInitPartialAndRetry(t *testing.T) {
 			if got := f.summary(res, e); got != want {
 				t.Errorf("retry: got %s, want %s", got, want)
 			}
-			if got := f.read("tasks/ftask.json"); got != newMeta {
-				t.Errorf("retry: ftask.json %q", got)
+			if got := f.read("tasks/koan.json"); got != newMeta {
+				t.Errorf("retry: koan.json %q", got)
 			}
 		})
 	}

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 func TestXChanges(t *testing.T) {
@@ -42,7 +42,7 @@ func TestXAction(t *testing.T) {
 	tr.run("create", map[string]any{"title": "one", "priority": 2, "tags": []string{"a"}, "extra": map[string]any{"k": 1}})
 	tr.run("create", map[string]any{"title": "two"})
 	tr.run("create", map[string]any{"title": "three"})
-	execute := "execute('/bin/ftask' __pick edit)+transform('/bin/ftask' __pick after-x)"
+	execute := "execute('/bin/koan' __pick edit)+transform('/bin/koan' __pick after-x)"
 	_, line := tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
 		footer := func() string { return helper("text", "footer") }
 		// x opens; edit, if not nil, writes the file; after-x applies.

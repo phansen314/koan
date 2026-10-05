@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/ops"
-	"github.com/phansen314/ftask/internal/pick"
-	"github.com/phansen314/ftask/internal/schematest"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/ops"
+	"github.com/phansen314/koan/internal/pick"
+	"github.com/phansen314/koan/internal/schematest"
+	"github.com/phansen314/koan/internal/store"
 )
 
 func testEnv(stdin string) (Env, *bytes.Buffer, *bytes.Buffer) {
@@ -101,11 +101,11 @@ func wantNote(t *testing.T, r result, stderr string) {
 		if e["kind"] == "usage" {
 			msg = strings.TrimPrefix(msg, "usage: ")
 		}
-		want = oneLine(fmt.Sprintf("ftask: %s: %s", e["kind"], msg)) + "\n"
+		want = oneLine(fmt.Sprintf("koan: %s: %s", e["kind"], msg)) + "\n"
 	case n == 1:
-		want = "ftask: 1 warning (see .warnings in the output)\n"
+		want = "koan: 1 warning (see .warnings in the output)\n"
 	case n > 1:
-		want = fmt.Sprintf("ftask: %d warnings (see .warnings in the output)\n", n)
+		want = fmt.Sprintf("koan: %d warnings (see .warnings in the output)\n", n)
 	}
 	if stderr != want {
 		t.Errorf("stderr %q, want %q", stderr, want)
@@ -117,7 +117,7 @@ func wantNote(t *testing.T, r result, stderr string) {
 func TestFailureNoteIgnoresWarnings(t *testing.T) {
 	env := ops.Envelope{Error: errs.Busy(), Warnings: []errs.Warning{errs.CorruptFile("/r/1.json", 1), errs.CorruptFile("/r/2.json", 2)}}
 	_, code, note := envelopeLine(env)
-	if want := "ftask: busy: another write held the write lock throughout the wait"; code != ExitError || note != want {
+	if want := "koan: busy: another write held the write lock throughout the wait"; code != ExitError || note != want {
 		t.Errorf("exit %d, note %q; want 1, %q", code, note, want)
 	}
 }
@@ -439,7 +439,7 @@ func (w failWriter) Write(p []byte) (int, error) { return len(p), w.writeErr }
 func (w failWriter) Close() error                { return w.closeErr }
 
 func TestDeliver(t *testing.T) {
-	const note = "ftask: busy: another write held the write lock throughout the wait"
+	const note = "koan: busy: another write held the write lock throughout the wait"
 	for _, tc := range []struct {
 		name      string
 		w         failWriter
@@ -457,7 +457,7 @@ func TestDeliver(t *testing.T) {
 			got := deliver(Env{Stdout: tc.w, Stderr: stderr}, []byte("x\n"), ExitUsage, note)
 			s := stderr.buf.String()
 			if tc.stderr == "notice" {
-				if !strings.HasPrefix(s, "ftask: result not delivered: ") || strings.Count(s, "\n") != 1 {
+				if !strings.HasPrefix(s, "koan: result not delivered: ") || strings.Count(s, "\n") != 1 {
 					t.Errorf("stderr %q, want only the notice", s)
 				}
 			} else if s != tc.stderr {
@@ -876,7 +876,7 @@ func TestPickInput(t *testing.T) {
 		{"every task option", []string{"--folder", "/work", "--recursive=false", "--scope", "ready", "--tags-any", "a,b", "--tags-all", "c",
 			"--ids", "41,42", "--query", "renew pass", "--select-one", "--exit-zero", "--fields", "id,title"},
 			"", `{"folder":"/work","recursive":false,"scope":"ready","tags_any":["a","b"],"tags_all":["c"],"ids":[41,42],"query":"renew pass","select_one":true,"exit_zero":true,"fields":["id","title"]}`, ""},
-		{"source", []string{"--source", "ftask frontier --tags-any today"}, "", `{"source":"ftask frontier --tags-any today"}`, ""},
+		{"source", []string{"--source", "koan frontier --tags-any today"}, "", `{"source":"koan frontier --tags-any today"}`, ""},
 		{"folders", []string{"--folders", "--folder", "/a"}, "", `{"folder":"/a","folders":true}`, ""},
 		{"empty ids", []string{"--ids", ""}, "", `{"ids":[]}`, ""},
 		// --from: the IDs in order, without duplicates.
@@ -954,8 +954,8 @@ func TestPickInvalidInput(t *testing.T) {
 		stdin  string
 		fields []string
 	}{
-		{"ids and source", []string{"--ids", "1", "--source", "ftask list"}, "", []string{""}},
-		{"from and source", []string{"--from", "-", "--source", "ftask list"}, `{"ok":true,"result":{"id":1},"warnings":[]}`, []string{""}},
+		{"ids and source", []string{"--ids", "1", "--source", "koan list"}, "", []string{""}},
+		{"from and source", []string{"--from", "-", "--source", "koan list"}, `{"ok":true,"result":{"id":1},"warnings":[]}`, []string{""}},
 		{"folders and task options", []string{"--folders", "--scope", "all", "--fields", "id", "--tags-any", "a"}, "", []string{"/fields", "/scope", "/tags_any"}},
 		{"bad values", []string{"--scope", "done", "--ids", "0,x", "--folder", "work", "--source", ""}, "", []string{"", "/folder", "/ids/0", "/ids/1", "/scope", "/source"}},
 		{"bad --from and a bad option", []string{"--from", "-", "--scope", "done"}, `{"ok":false,"error":{"kind":"busy","message":"m"},"warnings":[]}`, []string{"/ids", "/scope"}},

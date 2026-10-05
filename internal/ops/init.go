@@ -3,9 +3,9 @@ package ops
 import (
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // InitInput is init's input. Root is absolute, cleaned, and has no ".."
@@ -43,7 +43,7 @@ type InitPartial struct {
 }
 
 // runInit runs store.Init, which follows init's own precedence order. An
-// error after the root directory or ftask.json was created carries the
+// error after the root directory or koan.json was created carries the
 // partial result.
 func runInit(env Env, in InitInput, _ *errs.Collector) (any, *errs.Error) {
 	res, e := store.Init(env.Env, in.Root, in.ReplaceConfig)

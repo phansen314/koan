@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Sets ftask up for Claude Code, OpenCode, or both: the permission rules that
-# let the agent run ftask and jq without prompting (except `ftask init`, which
+# Sets koan up for Claude Code, OpenCode, or both: the permission rules that
+# let the agent run koan and jq without prompting (except `koan init`, which
 # changes this machine's setup, the deletes, which have no undo but git, and
-# `ftask repair`, which changes files to repair the tree),
-# and, for OpenCode, the skill. Claude Code gets the skill from the ftask
+# `koan repair`, which changes files to repair the tree),
+# and, for OpenCode, the skill. Claude Code gets the skill from the koan
 # plugin; see the README.
 #
 #   scripts/install.sh                         # every agent whose CLI is on PATH
@@ -12,34 +12,34 @@
 #
 # Claude Code: rules in ${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json.
 # OpenCode: rules in ${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json, and
-# the skill as a link, opencode/skills/ftask, to this clone's copy.
+# the skill as a link, opencode/skills/koan, to this clone's copy.
 #
 # Safe to rerun. A settings file is backed up (to .bak.<timestamp>, a new one
-# each time) before it changes, and only ftask's rules are added or removed;
+# each time) before it changes, and only koan's rules are added or removed;
 # an opencode.jsonc, or an opencode.json jq can't parse, is never touched: the
 # rules are printed to add by hand. Runs under macOS's /bin/bash 3.2. Needs jq.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd -P)
-skill_src=$repo/claude/skills/ftask
+skill_src=$repo/claude/skills/koan
 
 claude_dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 claude_settings=$claude_dir/settings.json
-claude_allow='["Bash(ftask:*)", "Bash(jq:*)"]'
-claude_ask='["Bash(ftask init:*)", "Bash(ftask delete:*)", "Bash(ftask delete-folder:*)", "Bash(ftask repair:*)"]'
+claude_allow='["Bash(koan:*)", "Bash(jq:*)"]'
+claude_ask='["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)"]'
 
 oc_dir=${XDG_CONFIG_HOME:-$HOME/.config}/opencode
 oc_json=$oc_dir/opencode.json
 oc_jsonc=$oc_dir/opencode.jsonc
-oc_link=$oc_dir/skills/ftask
-# The last matching rule wins in OpenCode, so the asks come after "ftask *".
+oc_link=$oc_dir/skills/koan
+# The last matching rule wins in OpenCode, so the asks come after "koan *".
 oc_rules='{
-  "ftask *": "allow",
+  "koan *": "allow",
   "jq *": "allow",
-  "ftask init*": "ask",
-  "ftask delete *": "ask",
-  "ftask delete-folder *": "ask",
-  "ftask repair*": "ask"
+  "koan init*": "ask",
+  "koan delete *": "ask",
+  "koan delete-folder *": "ask",
+  "koan repair*": "ask"
 }'
 
 usage() {
@@ -60,9 +60,9 @@ for arg in "$@"; do
 done
 
 command -v jq >/dev/null || { echo "install.sh needs jq on PATH" >&2; exit 1; }
-if [[ $mode == install ]] && ! command -v ftask >/dev/null; then
-	echo "ftask is not on PATH. Install it with:" >&2
-	echo "  GOBIN=~/.local/bin go install github.com/phansen314/ftask/cmd/ftask@latest" >&2
+if [[ $mode == install ]] && ! command -v koan >/dev/null; then
+	echo "koan is not on PATH. Install it with:" >&2
+	echo "  GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest" >&2
 	echo "with GOBIN a directory on PATH, then rerun this script." >&2
 	exit 1
 fi
@@ -115,10 +115,10 @@ is_our_link() {
 # script linked it there; anything else there is the user's, so stop before
 # changing anything.
 stray=
-for p in "$HOME/.claude/skills/ftask" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/skills/ftask"}; do
+for p in "$HOME/.claude/skills/koan" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/skills/koan"}; do
 	if [[ -e $p || -L $p ]] && ! is_our_link "$p"; then
 		echo "skill: $p exists and isn't a link to $skill_src." >&2
-		echo "  It would load as a second ftask skill, beside the plugin's or OpenCode's." >&2
+		echo "  It would load as a second koan skill, beside the plugin's or OpenCode's." >&2
 		stray=1
 	fi
 done
@@ -129,7 +129,7 @@ if [[ -n $stray ]]; then
 	fi
 	echo "  Left in place." >&2
 fi
-for p in "$HOME/.claude/skills/ftask" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/skills/ftask"}; do
+for p in "$HOME/.claude/skills/koan" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/skills/koan"}; do
 	if is_our_link "$p"; then
 		rm "$p"
 		changed=1
@@ -206,7 +206,7 @@ oc_by_hand() {
 	if [[ $mode == install ]]; then
 		echo "  Add these rules by hand, in this order, at the end of"
 		echo "  \"permission\": { \"bash\": { ... } } (in OpenCode the last matching rule"
-		echo "  wins, so they must come after any rule matching ftask):"
+		echo "  wins, so they must come after any rule matching koan):"
 		jq -r 'to_entries[] | "    \(.key | tojson): \(.value | tojson),"' <<<"$oc_rules"
 		echo "  If \"bash\" is a string, such as \"ask\", make it an object with \"*\" set to"
 		echo "  that value first."
@@ -233,7 +233,7 @@ if [[ -n $want_oc ]]; then
 
 	if [[ -n $oc_cur ]]; then
 		if [[ $mode == install ]]; then
-			# Drop ftask's rules wherever they are, then append them, so they
+			# Drop koan's rules wherever they are, then append them, so they
 			# end up last and in order. A string default ("bash": "ask")
 			# becomes the "*" rule, so it still covers everything else.
 			# shellcheck disable=SC2016 # $rules is a jq variable
@@ -264,10 +264,10 @@ if [[ -n $want_oc ]]; then
 			# shellcheck disable=SC2016
 			others=$(jq -r --argjson rules "$oc_rules" '
 				.permission.bash | keys_unsorted[]
-				| select(. as $k | startswith("ftask") and ($rules | has($k) | not))' <<<"$new")
+				| select(. as $k | startswith("koan") and ($rules | has($k) | not))' <<<"$new")
 			if [[ -n $others ]]; then
-				echo "opencode: warning: these rules of yours match ftask commands, but come"
-				echo "  before ftask's, so where both match, ftask's win:"
+				echo "opencode: warning: these rules of yours match koan commands, but come"
+				echo "  before koan's, so where both match, koan's win:"
 				printf '    %s\n' "$others"
 			fi
 		fi
@@ -298,17 +298,17 @@ if [[ -n $want_oc ]]; then
 fi
 
 if [[ $mode == install ]]; then
-	if ! ftask info | jq -e .result.usable >/dev/null; then
+	if ! koan info | jq -e .result.usable >/dev/null; then
 		echo
-		echo "ftask has no usable root yet. Set one up with, e.g.:"
-		echo "  ftask init ~/ftasks"
+		echo "koan has no usable root yet. Set one up with, e.g.:"
+		echo "  koan init ~/koans"
 	fi
 	if [[ -n $want_claude ]] && command -v claude >/dev/null &&
-		! claude plugin list --json 2>/dev/null | jq -e 'any(.[]; .id == "ftask@ftask" and .enabled)' >/dev/null; then
+		! claude plugin list --json 2>/dev/null | jq -e 'any(.[]; .id == "koan@koan" and .enabled)' >/dev/null; then
 		echo
-		echo "The ftask plugin, which gives Claude Code the skill, is not installed. Install it with:"
-		echo "  claude plugin marketplace add phansen314/ftask"
-		echo "  claude plugin install ftask@ftask"
+		echo "The koan plugin, which gives Claude Code the skill, is not installed. Install it with:"
+		echo "  claude plugin marketplace add phansen314/koan"
+		echo "  claude plugin install koan@koan"
 	fi
 fi
 

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/buildinfo"
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/buildinfo"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 func parse(t *testing.T, doc string) *jsonio.Object {

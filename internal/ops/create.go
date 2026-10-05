@@ -1,10 +1,10 @@
 package ops
 
 import (
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // CreateInput is create's input, defaults applied. Title is trimmed.

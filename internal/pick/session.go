@@ -9,23 +9,23 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 // SessionVar names the session directory in fzf's environment, for the
 // helper (pick-spec.md, Session).
-const SessionVar = "FTASK_PICK_SESSION"
+const SessionVar = "KOAN_PICK_SESSION"
 
-// sessionPrefix begins a session directory's name: ftask-pick-<random>.
-const sessionPrefix = "ftask-pick-"
+// sessionPrefix begins a session directory's name: koan-pick-<random>.
+const sessionPrefix = "koan-pick-"
 
 // markerName is the file that makes a directory a session, and markerText
 // its contents: the helper refuses a directory without it, so
-// FTASK_PICK_SESSION pointed anywhere else names no session.
+// KOAN_PICK_SESSION pointed anywhere else names no session.
 const (
 	markerName = "session"
-	markerText = "ftask pick session 1\n"
+	markerText = "koan pick session 1\n"
 )
 
 // Session is a session directory: private (0700), outside the root, and
@@ -107,7 +107,7 @@ func random() string {
 }
 
 // openSession opens the session the helper runs in, named by
-// FTASK_PICK_SESSION in environ. With none, or one that is not a session,
+// KOAN_PICK_SESSION in environ. With none, or one that is not a session,
 // the helper fails with usage (pick-spec.md, Session).
 func openSession(fsy fsys.FS, environ []string) (*Session, *errs.Error) {
 	dir := lookupEnv(environ, SessionVar)
@@ -130,7 +130,7 @@ func openSession(fsy fsys.FS, environ []string) (*Session, *errs.Error) {
 }
 
 func notInSession(why string) *errs.Error {
-	return errs.Usage([]errs.UsageProblem{{Reason: "ftask __pick runs only inside ftask pick: " + why}})
+	return errs.Usage([]errs.UsageProblem{{Reason: "koan __pick runs only inside koan pick: " + why}})
 }
 
 // Write replaces the session file name with data, atomically: a temp file

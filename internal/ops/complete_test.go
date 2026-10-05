@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // changed runs op (complete or reopen) for id over f, checking the envelope
@@ -44,7 +44,7 @@ func (f *fixture) changed(op string, id int) string {
 	return fmt.Sprintf("%s %d %s changed=%v", r.Folder, r.ID, at, r.Changed)
 }
 
-// A rich task file, as ftask writes it: open, or completed (and last
+// A rich task file, as koan writes it: open, or completed (and last
 // updated) at 2026-09-21T10:00:00Z.
 func richTask(completed bool) string {
 	at, updated := "null", `"2026-09-20T18:31:51Z"`
@@ -76,7 +76,7 @@ func TestComplete(t *testing.T) {
 	}
 }
 
-// A task file in another layout keeps every value, rewritten in ftask's.
+// A task file in another layout keeps every value, rewritten in koan's.
 func TestCompleteHandFormatted(t *testing.T) {
 	f := newFixture(t)
 	f.write("tasks/7.json", `{"schema":1,"id":7,"title":"t","priority":null,"created_at":"2026-09-20T18:31:51Z","completed_at":null,"updated_at":"2026-09-20T18:31:51Z","blocked_by":[],"tags":[],"extra":{"n":1e2}}`)
@@ -147,8 +147,8 @@ func TestCompletedAtCases(t *testing.T) {
 			f.fail(fsys.OpReadDir, "p", syscall.EACCES)
 		},
 			`io {"path":"~/tasks/p","code":"EACCES"}`, ""},
-		{"corrupt ftask.json", "complete", func(f *fixture) { f.task("", 7, false); f.write("tasks/ftask.json", "{") },
-			`corrupt {"path":"~/tasks/ftask.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`, ""},
+		{"corrupt koan.json", "complete", func(f *fixture) { f.task("", 7, false); f.write("tasks/koan.json", "{") },
+			`corrupt {"path":"~/tasks/koan.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`, ""},
 
 		// The write fails: all-or-nothing.
 		{"replace fails", "complete", func(f *fixture) {

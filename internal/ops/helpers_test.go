@@ -10,23 +10,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // fixedClock is the tests' clock, so written files compare byte for byte.
 func fixedClock() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC) }
 
-// stamped is file, a task file as ftask writes it, with its updated_at set to
+// stamped is file, a task file as koan writes it, with its updated_at set to
 // fixedClock, as a write that changes the task leaves it.
 func stamped(file string) string {
 	return regexp.MustCompile(`"updated_at": "[^"]*"`).ReplaceAllString(file, `"updated_at": "2026-09-28T12:00:00Z"`)
 }
 
 // fixture is a usable root under a temp home: the config in cfg/, the root
-// at tasks/ with ftask.json's last_id 100, and no tasks.
+// at tasks/ with koan.json's last_id 100, and no tasks.
 type fixture struct {
 	t    *testing.T
 	home string

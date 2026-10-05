@@ -1,6 +1,6 @@
-# ftask CLI spec
+# koan CLI spec
 
-The `ftask` command-line interface: how each command maps to the [operations](operations.md), how input gets in, and what comes out. The CLI adds no behavior of its own beyond parsing arguments — including any input resolution a command's Input part lists, such as `init`'s path resolution or `create`'s `--notes-file` — and composing operations; everything about the data is specified by the operations and the [design spec](design-spec.md).
+The `koan` command-line interface: how each command maps to the [operations](operations.md), how input gets in, and what comes out. The CLI adds no behavior of its own beyond parsing arguments — including any input resolution a command's Input part lists, such as `init`'s path resolution or `create`'s `--notes-file` — and composing operations; everything about the data is specified by the operations and the [design spec](design-spec.md).
 
 The intended user is a power user working through Claude, with `jq` for anything a person reads directly. The one exception is [`pick`](#pick), an interactive picker for people, specified in [pick-spec.md](pick-spec.md).
 
@@ -13,9 +13,9 @@ The intended user is a power user working through Claude, with `jq` for anything
 - **Compact.** The envelope is written on a single line, followed by a newline. The format is the same whether or not stdout is a terminal. A complete envelope always ends in that newline.
 - **Encoding.** Output is UTF-8, with the string escaping of the design spec's [File format](design-spec.md#file-format): only `"`, `\`, U+0000–U+001F, U+2028, and U+2029 are escaped; everything else is raw UTF-8.
 - **Delivered before exit.** Exit `0`, `1`, or `2` is reported only once the whole envelope has been written. On any other exit status, stdout may hold nothing or an incomplete line (see [Exit codes](#exit-codes)).
-- **stderr** gets at most one line from ftask, written after the envelope has been delivered, so a failure stays visible when stdout goes into a pipeline (e.g. `ftask create … | jq -r .result.id`):
-  - exit `1` or `2`: `ftask: <kind>: <message>` — even when the envelope also has warnings; a usage error's message drops its own leading `usage: `, so the line reads `ftask: usage: unknown command`;
-  - exit `0` with warnings: `ftask: N warnings (see .warnings in the output)` (`1 warning` for one); the warnings themselves are never listed;
+- **stderr** gets at most one line from koan, written after the envelope has been delivered, so a failure stays visible when stdout goes into a pipeline (e.g. `koan create … | jq -r .result.id`):
+  - exit `1` or `2`: `koan: <kind>: <message>` — even when the envelope also has warnings; a usage error's message drops its own leading `usage: `, so the line reads `koan: usage: unknown command`;
+  - exit `0` with warnings: `koan: N warnings (see .warnings in the output)` (`1 warning` for one); the warnings themselves are never listed;
   - exit `0` without warnings, and `--help`: nothing;
   - exit `3`: only its notice (see [Exit codes](#exit-codes)); a crash (any other exit status) may add its own diagnostics.
 
@@ -27,7 +27,7 @@ The intended user is a power user working through Claude, with `jq` for anything
 
 - **Flags and arguments** supply operation input for everyday use.
 - **`-i, --input <file>`** supplies operation input read from `<file>`; `-` means stdin. Every command accepts it.
-- **stdin is read only when a value names it:** `--input -`, or `create`'s `--notes-file -`. ftask never reads stdin on its own, so it is safe inside loops and pipelines that feed stdin to something else (e.g. `while read id; do ftask … "$id"; done < ids.txt`). When stdin is named, ftask reads until end of input; if stdin is a terminal, it waits for it.
+- **stdin is read only when a value names it:** `--input -`, or `create`'s `--notes-file -`. koan never reads stdin on its own, so it is safe inside loops and pipelines that feed stdin to something else (e.g. `while read id; do koan … "$id"; done < ids.txt`). When stdin is named, koan reads until end of input; if stdin is a terminal, it waits for it.
 - **Any readable path.** `<file>` may be any path that can be read to the end, not only a regular file: process substitution (`-i <(jq -n …)`) and named pipes work. A file literally named `-` is given as `./-`.
 - **Exactly one JSON value.** The input is one JSON object, optionally surrounded by whitespace. Empty input, a value that is not an object, a second value (e.g. several objects from `jq -c '.[]'`), or any other trailing bytes are `invalid-input` (`field`: `""`).
 - **UTF-8.** The input is UTF-8 with no byte-order mark. A byte-order mark or invalid UTF-8 is `invalid-input` (`field`: `""`).
@@ -36,10 +36,10 @@ The intended user is a power user working through Claude, with `jq` for anything
 - **Unreadable input.** A missing or unreadable `<file>`, or a directory, is `io`.
 
 ```sh
-jq -n '{title: "x"}' | ftask create -i -
-ftask create -i - < req.json
-ftask create -i req.json
-ftask create -i <(jq -n '{title: "x"}')
+jq -n '{title: "x"}' | koan create -i -
+koan create -i - < req.json
+koan create -i req.json
+koan create -i <(jq -n '{title: "x"}')
 ```
 
 - **Either `--input` or field arguments, not both.** `--input` supplies the whole operation input. Giving it together with any argument or option that sets an input field is a [usage error](#usage-errors). Options that set no input field (e.g. `--help`) are unaffected.
@@ -47,7 +47,7 @@ ftask create -i <(jq -n '{title: "x"}')
 
 ### Command line
 
-The command line is parsed in the conventional GNU style of Go's [cobra](https://github.com/spf13/cobra) and [pflag](https://github.com/spf13/pflag) libraries. The rules below are what ftask relies on; anything they leave open is the libraries' behavior.
+The command line is parsed in the conventional GNU style of Go's [cobra](https://github.com/spf13/cobra) and [pflag](https://github.com/spf13/pflag) libraries. The rules below are what koan relies on; anything they leave open is the libraries' behavior.
 
 - **Command names are operation names.** A command that runs one operation has that operation's name (`create-folder`, `show`, `complete`). A command that composes several operations gets a name of its own.
 - **Option names are field names.** An option that sets an input field is named after that field, in kebab-case: `blocked_by` is `--blocked-by`, `replace_config` is `--replace-config`. A nested field is named by its path: `/tags/add` is `--tags-add`, `/extra/replace_all` is `--extra-replace-all`. Options that set no field under their own name (e.g. `--notes-file`) are the exceptions, and each command lists them.
@@ -56,11 +56,11 @@ The command line is parsed in the conventional GNU style of Go's [cobra](https:/
 - **Required options.** An option a command marks as required — typically one whose position alone would not make its meaning clear — is a usage error when missing, unless `--input` is given.
 - **Short options are rare.** An option gets a one-letter form only when it has a strong Unix precedent (e.g. `-p` for `--parents`, as in `mkdir -p`) or is used constantly. Everything else is long-form only.
 - **Folder paths are exact.** A folder path given as an argument or option is taken exactly as a [folder path](design-spec.md#folder-paths): from the root, which is `/` (e.g. `/proj/travel`). The CLI does not complete or normalize it — `proj/travel` and `/proj/` are `invalid-input` — and never derives one from the working directory.
-- **Options and arguments follow the command,** in any order: `ftask <command> [options and arguments]`. The exception is `--help`, which may also be given with no command (`ftask --help`).
+- **Options and arguments follow the command,** in any order: `koan <command> [options and arguments]`. The exception is `--help`, which may also be given with no command (`koan --help`).
 - **`--`** ends options. Everything after it is an argument, even if it starts with `-` (e.g. a title like `-urgent`). The command itself must come before it.
 - **A lone `-`** is an ordinary argument, not an option.
 - **Option values** may be given as `--flag value` or `--flag=value`, and for a short form as `-i value` or `-ivalue`. Short boolean options may be combined (`-pi file`).
-- **Exact names.** Commands and options are matched exactly: no abbreviations (`--fold` for `--folder`, `ftask comp` for `complete`) and no other case (`--Folder`, `ftask Show`), so adding an option or command never breaks an existing command line.
+- **Exact names.** Commands and options are matched exactly: no abbreviations (`--fold` for `--folder`, `koan comp` for `complete`) and no other case (`--Folder`, `koan Show`), so adding an option or command never breaks an existing command line.
 - **Empty values** are values: `--folder ''` or `--notes=` sets the empty string, which the operation then judges like any other value (an empty folder path is `invalid-input`; empty notes are fine). For a comma list, `''` is the empty list (see *Value formats*).
 - **An option that takes a value always consumes the next token,** even one starting with `-`, so `--priority -3` works.
 - **Arguments are single tokens.** A value with spaces, such as a title, is one argument and must be quoted for the shell (`'Book flights'`; single quotes also keep `$` literal). The quotes are shell syntax, not part of the value. Unquoted words are extra arguments, a usage error; they are never joined.
@@ -75,15 +75,15 @@ The command line is parsed in the conventional GNU style of Go's [cobra](https:/
 - **Mutually exclusive options,** where a command lists them, are a usage error when given together.
 - **The CLI rejects only what it cannot build.** A combination of options is a usage error only when the CLI cannot construct an input from it — e.g. two options that set the same field, like `--notes` and `--notes-file`. A combination the CLI can build but the operation forbids (e.g. `update`'s `--tags-replace-all` with `--tags-add`, or no field to change at all) is passed to the operation, which rejects it as `invalid-input`. Rules about input live in the operation, not in the CLI.
 - **A repeated option** that takes one value (e.g. `-i a -i b`, `--priority 1 --priority 2`): the last one wins. List options accumulate (see *Value formats*).
-- **Bare `ftask`**, with no command, is a usage error.
-- **`--help`** (or `-h`) writes help text and exits `0`, running no operation: the command's help after a command (`ftask create --help`), otherwise the general help. Help text is for humans and not part of the contract; which other problems on the same command line it overrides is the libraries' behavior.
-- **No `help` or `completion` command.** Help is only `--help`: `ftask help` and `ftask completion` are usage errors, like any unknown command.
+- **Bare `koan`**, with no command, is a usage error.
+- **`--help`** (or `-h`) writes help text and exits `0`, running no operation: the command's help after a command (`koan create --help`), otherwise the general help. Help text is for humans and not part of the contract; which other problems on the same command line it overrides is the libraries' behavior.
+- **No `help` or `completion` command.** Help is only `--help`: `koan help` and `koan completion` are usage errors, like any unknown command.
 
 ### Usage errors
 
 A usage error is a problem with the command line itself: an unknown command or option, a missing or extra argument, an option missing its value, mutually exclusive options given together, two options that set the same field (e.g. `--notes` with `--notes-file`), `--input` together with field arguments or options. It is reported as an envelope with error kind `usage`, and exits with code `2`. `invalid-input` stays reserved for operation input, whose `field` is a JSON Pointer into that input; problems with an `--input` file's content are `invalid-input`, not `usage` (see [Input](#input)).
 
-**Shape, not values.** `usage` is about the shape of the command line: an unknown, missing, extra, or conflicting token. A token in the right place whose value is unacceptable — one that cannot be converted to its field's type (e.g. `ftask show abc`, where the ID is an integer) or that fails the operation's validation — is `invalid-input`, with `field` the JSON Pointer of the input field it sets, per the command's Arguments and Options tables. A bad value is therefore the same error whether it arrives as an argument or through `--input`. The one exception is a boolean option given a value with `=`: cobra parses that itself, and a value it can't parse as a boolean (`--recursive=maybe`) is `usage`, naming the option.
+**Shape, not values.** `usage` is about the shape of the command line: an unknown, missing, extra, or conflicting token. A token in the right place whose value is unacceptable — one that cannot be converted to its field's type (e.g. `koan show abc`, where the ID is an integer) or that fails the operation's validation — is `invalid-input`, with `field` the JSON Pointer of the input field it sets, per the command's Arguments and Options tables. A bad value is therefore the same error whether it arrives as an argument or through `--input`. The one exception is a boolean option given a value with `=`: cobra parses that itself, and a value it can't parse as a boolean (`--recursive=maybe`) is `usage`, naming the option.
 
 `usage` is a CLI-only error kind: no operation raises it, and it is not listed in the operations' [error kinds](operations.md#error-kinds). So are [`pick`](#pick)'s `cancelled`, `unavailable` and `incomplete`. As with any kind, callers treat an unknown one as a generic failure.
 
@@ -122,12 +122,12 @@ A usage error is a problem with the command line itself: an unknown command or o
 | `1` | Operation error. The kind is in the envelope. |
 | `2` | Usage error. |
 | `3` | Outcome unknown: the envelope could not be written to stdout. |
-| any other | Outcome unknown: ftask was terminated before it finished (e.g. `128+n` for signal `n`). Handle like `3`. |
+| any other | Outcome unknown: koan was terminated before it finished (e.g. `128+n` for signal `n`). Handle like `3`. |
 
 - **One code for all operation errors.** Callers branch on the envelope's `kind` (e.g. `jq -e '.error.kind == "busy"'`), not on the exit code. A new error kind, a minor change under [Versioning](operations.md#versioning), therefore needs no new exit code.
 - **Outcome unknown.** On `3` or any status outside `0`–`2`, the operation may already have taken effect, and there may be no envelope, or only part of one. The caller treats this like a crash: whether to rerun follows the operation's **Retry safety**. Exiting `1` here would invite a retry that, for `create`, makes a duplicate. For a read, rerunning is always safe.
-- **Unwritable stdout.** When stdout cannot be written (e.g. a closed pipe, a full disk behind a redirect), ftask exits `3` with a notice on stderr, or, for a closed pipe, may instead be terminated by `SIGPIPE`. Both mean outcome unknown. This applies even when nothing was run, e.g. a usage error with stdout closed.
-- **Interrupts are crashes.** An interrupt or termination signal (e.g. Ctrl-C, `kill`, a timeout in the calling harness) ends ftask like a crash: no envelope, exit `128+n`, and the operation's **Crash behavior** and **Retry safety** apply.
+- **Unwritable stdout.** When stdout cannot be written (e.g. a closed pipe, a full disk behind a redirect), koan exits `3` with a notice on stderr, or, for a closed pipe, may instead be terminated by `SIGPIPE`. Both mean outcome unknown. This applies even when nothing was run, e.g. a usage error with stdout closed.
+- **Interrupts are crashes.** An interrupt or termination signal (e.g. Ctrl-C, `kill`, a timeout in the calling harness) ends koan like a crash: no envelope, exit `128+n`, and the operation's **Crash behavior** and **Retry safety** apply.
 
 ### Global options
 
@@ -143,7 +143,7 @@ Every command is specified with the same parts, in this order. Every part is alw
 | Part | Content |
 |---|---|
 | **Summary** | Unlabeled first paragraph: what the command does, in one or two sentences, and the operation(s) it runs, linked. |
-| **Synopsis** | The usage line(s), e.g. `ftask create <title> [options]`, including any aliases. |
+| **Synopsis** | The usage line(s), e.g. `koan create <title> [options]`, including any aliases. |
 | **Operation** | The operation the command runs; for a composed command, the operations, their order, and whether they run under one write lock. |
 | **Arguments** | Table of positional arguments and the input field each sets. |
 | **Options** | Table of command-specific options (not the [global options](#global-options)), the input field each sets, and its default. |
@@ -159,9 +159,9 @@ Exit codes are not a part: they follow from the envelope and the global [Exit co
 
 ### version
 
-Report the version and build of the ftask binary, and the data format versions it supports. Runs [`version`](operations.md#version).
+Report the version and build of the koan binary, and the data format versions it supports. Runs [`version`](operations.md#version).
 
-**Synopsis:** `ftask version`, or `ftask version -i <file>`.
+**Synopsis:** `koan version`, or `koan version -i <file>`.
 
 **Operation:** [`version`](operations.md#version).
 
@@ -178,14 +178,14 @@ Report the version and build of the ftask binary, and the data format versions i
 **Examples:**
 
 ```sh
-ftask version
+koan version
 ```
 
 ### info
 
 Report the state of this machine's configured root: the config, the tree it names, and whether this binary can use it. Runs [`info`](operations.md#info).
 
-**Synopsis:** `ftask info`, or `ftask info -i <file>`.
+**Synopsis:** `koan info`, or `koan info -i <file>`.
 
 **Operation:** [`info`](operations.md#info).
 
@@ -204,14 +204,14 @@ A root that is not initialized or not usable is reported as state (`ok: true`, `
 **Examples:**
 
 ```sh
-ftask info   # ready when .result.usable is true; if not, the rest of .result says why
+koan info   # ready when .result.usable is true; if not, the rest of .result says why
 ```
 
 ### init
 
 Create a new tree, or attach an existing one, and make it this machine's configured root. Runs [`init`](operations.md#init).
 
-**Synopsis:** `ftask init <root> [--replace-config]`, or `ftask init -i <file>`.
+**Synopsis:** `koan init <root> [--replace-config]`, or `koan init -i <file>`.
 
 **Operation:** [`init`](operations.md#init).
 
@@ -248,17 +248,17 @@ A relative `root` is resolved against the working directory even when it comes f
 **Examples:**
 
 ```sh
-ftask init ~/tasks
-ftask init tasks                    # relative to the working directory
-ftask init /mnt/usb/tasks --replace-config
-jq -n '{root: "~/tasks"}' | ftask init -i -
+koan init ~/tasks
+koan init tasks                    # relative to the working directory
+koan init /mnt/usb/tasks --replace-config
+jq -n '{root: "~/tasks"}' | koan init -i -
 ```
 
 ### doctor
 
 Report everything wrong with the tree, and what `repair` would do about each problem. Changes nothing. Runs [`doctor`](operations.md#doctor).
 
-**Synopsis:** `ftask doctor [--kinds <kinds>]`, or `ftask doctor -i <file>`.
+**Synopsis:** `koan doctor [--kinds <kinds>]`, or `koan doctor -i <file>`.
 
 **Operation:** [`doctor`](operations.md#doctor).
 
@@ -279,17 +279,17 @@ Report everything wrong with the tree, and what `repair` would do about each pro
 **Examples:**
 
 ```sh
-ftask doctor                                   # healthy when .result.healthy is true; else .result.findings says why
-ftask doctor --kinds cycle,duplicate-id        # just these, in full
-ftask doctor --kinds stray-entry               # files ftask ignores: listed only when asked for
-ftask doctor | jq '.result.findings[] | select(.class != "manual") | .kind'   # what repair would fix
+koan doctor                                   # healthy when .result.healthy is true; else .result.findings says why
+koan doctor --kinds cycle,duplicate-id        # just these, in full
+koan doctor --kinds stray-entry               # files koan ignores: listed only when asked for
+koan doctor | jq '.result.findings[] | select(.class != "manual") | .kind'   # what repair would fix
 ```
 
 ### repair
 
 Apply the repairs that are safe, then report what is left. Runs [`repair`](operations.md#repair).
 
-**Synopsis:** `ftask repair [--kinds <kinds>]`, or `ftask repair -i <file>`.
+**Synopsis:** `koan repair [--kinds <kinds>]`, or `koan repair -i <file>`.
 
 **Operation:** [`repair`](operations.md#repair).
 
@@ -299,7 +299,7 @@ Apply the repairs that are safe, then report what is left. Runs [`repair`](opera
 
 | Option | Field | Default |
 |---|---|---|
-| `--kinds <kinds>` | `/kinds` | None: every *auto* kind. Comma list of [finding kinds](operations.md#finding-kinds) to repair. Naming `metadata-missing` is the only way to rebuild `ftask.json`. |
+| `--kinds <kinds>` | `/kinds` | None: every *auto* kind. Comma list of [finding kinds](operations.md#finding-kinds) to repair. Naming `metadata-missing` is the only way to rebuild `koan.json`. |
 
 **Input:** none beyond the Options mapping.
 
@@ -310,18 +310,18 @@ Apply the repairs that are safe, then report what is left. Runs [`repair`](opera
 **Examples:**
 
 ```sh
-ftask repair                                   # every auto repair
-ftask repair --kinds temp-leftover             # only the leftover temp files
-ftask repair --kinds metadata-missing          # rebuild a lost ftask.json; never done by default
+koan repair                                   # every auto repair
+koan repair --kinds temp-leftover             # only the leftover temp files
+koan repair --kinds metadata-missing          # rebuild a lost koan.json; never done by default
 ```
 
-There is no `doctor --fix`. Repairing is its own command, so that agent permission rules, which match a command line by its start, can ask before `ftask repair` whatever options follow.
+There is no `doctor --fix`. Repairing is its own command, so that agent permission rules, which match a command line by its start, can ask before `koan repair` whatever options follow.
 
 ### create-folder
 
 Create a folder, and optionally any missing parent folders. Runs [`create-folder`](operations.md#create-folder).
 
-**Synopsis:** `ftask create-folder <folder> [-p]`, or `ftask create-folder -i <file>`.
+**Synopsis:** `koan create-folder <folder> [-p]`, or `koan create-folder -i <file>`.
 
 **Operation:** [`create-folder`](operations.md#create-folder).
 
@@ -346,15 +346,15 @@ Create a folder, and optionally any missing parent folders. Runs [`create-folder
 **Examples:**
 
 ```sh
-ftask create-folder /proj
-ftask create-folder -p /proj/travel/2026   # .result.created: the folders it made
+koan create-folder /proj
+koan create-folder -p /proj/travel/2026   # .result.created: the folders it made
 ```
 
 ### delete-folder
 
 Permanently remove a folder and everything under it, and the removed tasks' IDs from every `blocked_by` outside it. Runs [`delete-folder`](operations.md#delete-folder).
 
-**Synopsis:** `ftask delete-folder <folder> [-r]`, or `ftask delete-folder -i <file>`.
+**Synopsis:** `koan delete-folder <folder> [-r]`, or `koan delete-folder -i <file>`.
 
 **Operation:** [`delete-folder`](operations.md#delete-folder).
 
@@ -379,15 +379,15 @@ Permanently remove a folder and everything under it, and the removed tasks' IDs 
 **Examples:**
 
 ```sh
-ftask delete-folder /proj/old
-ftask delete-folder -r /proj/travel        # .result.ids: the tasks removed; .result.dependents: the tasks they no longer block
+koan delete-folder /proj/old
+koan delete-folder -r /proj/travel        # .result.ids: the tasks removed; .result.dependents: the tasks they no longer block
 ```
 
 ### move-folder
 
 Move a folder, and everything under it, to a new place — which also renames it. Runs [`move-folder`](operations.md#move-folder).
 
-**Synopsis:** `ftask move-folder <folder> --to <folder> [-p]`, or `ftask move-folder -i <file>`.
+**Synopsis:** `koan move-folder <folder> --to <folder> [-p]`, or `koan move-folder -i <file>`.
 
 **Operation:** [`move-folder`](operations.md#move-folder).
 
@@ -415,16 +415,16 @@ Move a folder, and everything under it, to a new place — which also renames it
 **Examples:**
 
 ```sh
-ftask move-folder /proj/travel --to /archive              # → /archive/travel
-ftask move-folder /proj/travel --to /archive/travel-2025  # → moved and renamed
-ftask move-folder /proj/travel --to /archive/2025/trips -p  # → /archive/2025/trips, creating /archive/2025
+koan move-folder /proj/travel --to /archive              # → /archive/travel
+koan move-folder /proj/travel --to /archive/travel-2025  # → moved and renamed
+koan move-folder /proj/travel --to /archive/2025/trips -p  # → /archive/2025/trips, creating /archive/2025
 ```
 
 ### create
 
 Create a new, open task. Runs [`create`](operations.md#create).
 
-**Synopsis:** `ftask create <title> [options]`, or `ftask create -i <file>`.
+**Synopsis:** `koan create <title> [options]`, or `koan create -i <file>`.
 
 **Operation:** [`create`](operations.md#create).
 
@@ -466,17 +466,17 @@ A `create` that exits `3` or with any other [outcome-unknown](#exit-codes) statu
 **Examples:**
 
 ```sh
-ftask create 'Book flights' --folder /proj/travel --tags travel,urgent --priority 2
-ftask create 'Deploy' --blocked-by 41,42   # the new ID is .result.id
-gh issue view 12 --json body -q .body | ftask create 'Fix login bug' --notes-file -
-ftask create 'Wait on quote' --extra '{"status":"waiting"}'
+koan create 'Book flights' --folder /proj/travel --tags travel,urgent --priority 2
+koan create 'Deploy' --blocked-by 41,42   # the new ID is .result.id
+gh issue view 12 --json body -q .body | koan create 'Fix login bug' --notes-file -
+koan create 'Wait on quote' --extra '{"status":"waiting"}'
 ```
 
 ### create-batch
 
 Create several tasks in one call, with dependencies between them named by refs. Runs [`create-batch`](operations.md#create-batch).
 
-**Synopsis:** `ftask create-batch -i <file>`.
+**Synopsis:** `koan create-batch -i <file>`.
 
 **Operation:** [`create-batch`](operations.md#create-batch).
 
@@ -498,17 +498,17 @@ jq -n '{folder: "/work/api", tasks: [
   {ref: "migrate", title: "Write migrations", blocked_by: ["schema"]},
   {ref: "backfill", title: "Backfill old rows", blocked_by: ["migrate"]},
   {title: "Deploy", blocked_by: ["migrate", "backfill", 12]}
-]}' | ftask create-batch -i -                     # creates /work/api if missing; .result.refs.schema is Design schema's ID
+]}' | koan create-batch -i -                     # creates /work/api if missing; .result.refs.schema is Design schema's ID
 
-ftask create-batch -i plan.json | jq -r '.result.ids | join(",")' \
-  | xargs ftask block 41 --blockers               # task 41 now waits on the whole plan
+koan create-batch -i plan.json | jq -r '.result.ids | join(",")' \
+  | xargs koan block 41 --blockers               # task 41 now waits on the whole plan
 ```
 
 ### show
 
 Return one task by ID, with its readiness and where its notes live. Runs [`show`](operations.md#show).
 
-**Synopsis:** `ftask show <id>`, or `ftask show -i <file>`.
+**Synopsis:** `koan show <id>`, or `koan show -i <file>`.
 
 **Operation:** [`show`](operations.md#show).
 
@@ -533,15 +533,15 @@ Notes are not included, as in the operation; `notes_path` locates them. The CLI 
 **Examples:**
 
 ```sh
-ftask show 42                                   # readiness, blocking, notes_path: all in .result.tasks[0]
-for id in 41 42 43; do ftask show "$id"; done   # one envelope each
+koan show 42                                   # readiness, blocking, notes_path: all in .result.tasks[0]
+for id in 41 42 43; do koan show "$id"; done   # one envelope each
 ```
 
 ### complete
 
 Mark a task complete. Completing an already complete task changes nothing. Runs [`complete`](operations.md#complete).
 
-**Synopsis:** `ftask complete <id>`, or `ftask complete -i <file>`.
+**Synopsis:** `koan complete <id>`, or `koan complete -i <file>`.
 
 **Operation:** [`complete`](operations.md#complete).
 
@@ -562,15 +562,15 @@ Mark a task complete. Completing an already complete task changes nothing. Runs 
 **Examples:**
 
 ```sh
-ftask complete 42                               # .result.changed is false if it was already complete
-for id in 41 42; do ftask complete "$id"; done  # one envelope each
+koan complete 42                               # .result.changed is false if it was already complete
+for id in 41 42; do koan complete "$id"; done  # one envelope each
 ```
 
 ### reopen
 
 Reopen a complete task. Reopening an already open task changes nothing. The counterpart of [`complete`](#complete). Runs [`reopen`](operations.md#reopen).
 
-**Synopsis:** `ftask reopen <id>`, or `ftask reopen -i <file>`.
+**Synopsis:** `koan reopen <id>`, or `koan reopen -i <file>`.
 
 **Operation:** [`reopen`](operations.md#reopen).
 
@@ -591,14 +591,14 @@ Reopen a complete task. Reopening an already open task changes nothing. The coun
 **Examples:**
 
 ```sh
-ftask reopen 42   # .result.completed_at is null again
+koan reopen 42   # .result.completed_at is null again
 ```
 
 ### block
 
 Add one or more blockers to a task's `blocked_by`, all-or-nothing. Runs [`block`](operations.md#block).
 
-**Synopsis:** `ftask block <id> --blockers <id,id,…>`, or `ftask block -i <file>`.
+**Synopsis:** `koan block <id> --blockers <id,id,…>`, or `koan block -i <file>`.
 
 **Operation:** [`block`](operations.md#block).
 
@@ -614,7 +614,7 @@ Add one or more blockers to a task's `blocked_by`, all-or-nothing. Runs [`block`
 |---|---|---|
 | `--blockers <id,id,…>` | `/blockers` | Required unless `--input` is given. |
 
-`--blockers` is an option rather than a second argument so that the direction is explicit: in `ftask block 42 41` nothing would say which ID blocks which, and a swap would silently add the reverse dependency.
+`--blockers` is an option rather than a second argument so that the direction is explicit: in `koan block 42 41` nothing would say which ID blocks which, and a swap would silently add the reverse dependency.
 
 **Input:** none beyond the Arguments and Options mapping.
 
@@ -625,15 +625,15 @@ Add one or more blockers to a task's `blocked_by`, all-or-nothing. Runs [`block`
 **Examples:**
 
 ```sh
-ftask block 42 --blockers 41,43   # .result.added: the ones not already there
-ftask block 42 --blockers 7       # a cycle is refused: .error.details.cycles shows it
+koan block 42 --blockers 41,43   # .result.added: the ones not already there
+koan block 42 --blockers 7       # a cycle is refused: .error.details.cycles shows it
 ```
 
 ### unblock
 
 Remove one or more blockers from a task's `blocked_by`. Removing an ID that isn't there changes nothing. The counterpart of [`block`](#block). Runs [`unblock`](operations.md#unblock).
 
-**Synopsis:** `ftask unblock <id> --blockers <id,id,…>`, or `ftask unblock -i <file>`.
+**Synopsis:** `koan unblock <id> --blockers <id,id,…>`, or `koan unblock -i <file>`.
 
 **Operation:** [`unblock`](operations.md#unblock).
 
@@ -658,15 +658,15 @@ Remove one or more blockers from a task's `blocked_by`. Removing an ID that isn'
 **Examples:**
 
 ```sh
-ftask unblock 42 --blockers 41   # .result.removed: the ones that were there
-ftask unblock 42 --blockers 99   # clears a dangling reference to a task that no longer exists
+koan unblock 42 --blockers 41   # .result.removed: the ones that were there
+koan unblock 42 --blockers 99   # clears a dangling reference to a task that no longer exists
 ```
 
 ### update
 
 Change one or more of a task's `title`, `priority`, `tags`, and `extra`. Fields not named are left unchanged. Runs [`update`](operations.md#update).
 
-**Synopsis:** `ftask update <id> [options]`, or `ftask update -i <file>`.
+**Synopsis:** `koan update <id> [options]`, or `koan update -i <file>`.
 
 **Operation:** [`update`](operations.md#update).
 
@@ -702,17 +702,17 @@ Notes are not set by `update`, as in the operation: they are edited directly in 
 **Examples:**
 
 ```sh
-ftask update 42 --priority 3 --tags-add urgent
-ftask update 42 --extra-merge '{"status":"waiting"}'   # .result.changed names the fields that changed
-ftask update 42 --priority null --tags-remove urgent --extra-remove status
-ftask update 42 --tags-replace-all ''
+koan update 42 --priority 3 --tags-add urgent
+koan update 42 --extra-merge '{"status":"waiting"}'   # .result.changed names the fields that changed
+koan update 42 --priority null --tags-remove urgent --extra-remove status
+koan update 42 --tags-replace-all ''
 ```
 
 ### delete
 
 Permanently remove a task, and its ID from every other task's `blocked_by`. Runs [`delete`](operations.md#delete).
 
-**Synopsis:** `ftask delete <id>`, or `ftask delete -i <file>`.
+**Synopsis:** `koan delete <id>`, or `koan delete -i <file>`.
 
 **Operation:** [`delete`](operations.md#delete).
 
@@ -733,7 +733,7 @@ Permanently remove a task, and its ID from every other task's `blocked_by`. Runs
 **Examples:**
 
 ```sh
-ftask delete 42                                              # .result.dependents: the tasks it no longer blocks
+koan delete 42                                              # .result.dependents: the tasks it no longer blocks
 git log --diff-filter=D --oneline -- '*/42.json' '42.json'   # find it again later
 ```
 
@@ -741,7 +741,7 @@ git log --diff-filter=D --oneline -- '*/42.json' '42.json'   # find it again lat
 
 Move a task into a folder. Runs [`move`](operations.md#move).
 
-**Synopsis:** `ftask move <id> --to <folder> [-p]`, or `ftask move -i <file>`.
+**Synopsis:** `koan move <id> --to <folder> [-p]`, or `koan move -i <file>`.
 
 **Operation:** [`move`](operations.md#move).
 
@@ -767,15 +767,15 @@ Move a task into a folder. Runs [`move`](operations.md#move).
 **Examples:**
 
 ```sh
-ftask move 42 --to /proj/travel
-ftask move 42 --to /archive/2025 -p   # creates /archive/2025; the notes move too
+koan move 42 --to /proj/travel
+koan move 42 --to /archive/2025 -p   # creates /archive/2025; the notes move too
 ```
 
 ### frontier
 
 Return the ready tasks — open, and not blocked — in the order to work on them. Runs [`frontier`](operations.md#frontier).
 
-**Synopsis:** `ftask frontier [--folder <path>] [--recursive=false] [--tags-any <tags>] [--tags-all <tags>] [--limit <n>] [--fields <names>]`, or `ftask frontier -i <file>`.
+**Synopsis:** `koan frontier [--folder <path>] [--recursive=false] [--tags-any <tags>] [--tags-all <tags>] [--limit <n>] [--fields <names>]`, or `koan frontier -i <file>`.
 
 **Operation:** [`frontier`](operations.md#frontier).
 
@@ -803,18 +803,18 @@ Filtering by `extra` or title is left to `jq` (see [Not included](#not-included)
 **Examples:**
 
 ```sh
-ftask frontier --limit 10 --fields id,title,priority,folder   # the next ten, briefly
-ftask frontier --limit 1                                     # the next task, whole
-ftask frontier --folder /proj --limit 20 --fields id,title   # ready under /proj
-ftask frontier --tags-any urgent,today --fields id,title
-ftask frontier --limit 0                                     # how many are ready: .result.total
+koan frontier --limit 10 --fields id,title,priority,folder   # the next ten, briefly
+koan frontier --limit 1                                     # the next task, whole
+koan frontier --folder /proj --limit 20 --fields id,title   # ready under /proj
+koan frontier --tags-any urgent,today --fields id,title
+koan frontier --limit 0                                     # how many are ready: .result.total
 ```
 
 ### list
 
 Return every task in scope, whatever its readiness, with its readiness shown — and optionally the folders in scope. Complete tasks are included only on request. Runs [`list`](operations.md#list).
 
-**Synopsis:** `ftask list [--folder <path>] [--recursive=false] [--readiness <states>] [--include-folders] [--tags-any <tags>] [--tags-all <tags>] [--limit <n>] [--fields <names>]`, or `ftask list -i <file>`.
+**Synopsis:** `koan list [--folder <path>] [--recursive=false] [--readiness <states>] [--include-folders] [--tags-any <tags>] [--tags-all <tags>] [--limit <n>] [--fields <names>]`, or `koan list -i <file>`.
 
 **Operation:** [`list`](operations.md#list).
 
@@ -844,19 +844,19 @@ Filtering by `extra` or title, and grouping, are left to `jq`; rendering the res
 **Examples:**
 
 ```sh
-ftask list --limit 50 --fields id,title,readiness,folder
-ftask list --folder /proj --readiness complete --limit 0                     # how many are done: .result.total
-ftask list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
-ftask list --readiness ready,blocked,complete --tags-all db,backend --fields id,title,readiness
-ftask list --include-folders --limit 0                                      # every folder: .result.folders
-ftask list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'
+koan list --limit 50 --fields id,title,readiness,folder
+koan list --folder /proj --readiness complete --limit 0                     # how many are done: .result.total
+koan list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
+koan list --readiness ready,blocked,complete --tags-all db,backend --fields id,title,readiness
+koan list --include-folders --limit 0                                      # every folder: .result.folders
+koan list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'
 ```
 
 ### pick
 
 Fuzzy-pick tasks, or folders, in an interactive [fzf](https://github.com/junegunn/fzf) picker, act on them in place, and write the ones chosen as one envelope. For people at a terminal, not agents. It is specified in its own document, [pick-spec.md](pick-spec.md), which says where it departs from this spec's global rules.
 
-**Synopsis:** `ftask pick [--folder <path>] [--recursive=false] [--scope <scope>] [--tags-any <tags>] [--tags-all <tags>] [--ids <ids> | --from <file> | --source <command>] [--query <text>] [--select-one] [--exit-zero] [--fields <names>]`, `ftask pick --folders [--folder <path>] [--recursive=false] [--query <text>] [--select-one] [--exit-zero]`, or `ftask pick -i <file>`.
+**Synopsis:** `koan pick [--folder <path>] [--recursive=false] [--scope <scope>] [--tags-any <tags>] [--tags-all <tags>] [--ids <ids> | --from <file> | --source <command>] [--query <text>] [--select-one] [--exit-zero] [--fields <names>]`, `koan pick --folders [--folder <path>] [--recursive=false] [--query <text>] [--select-one] [--exit-zero]`, or `koan pick -i <file>`.
 
 **Operation:** none of its own: [`list`](operations.md#list) for each load and for `u`'s list, [`show`](operations.md#show) for `e` and `x`, and one write operation per target for each action. See [pick-spec.md, Command](pick-spec.md#command).
 
@@ -875,9 +875,9 @@ Fuzzy-pick tasks, or folders, in an interactive [fzf](https://github.com/junegun
 **Examples:**
 
 ```sh
-ftask pick | jq -r '.result.tasks[].id'                            # the IDs picked
-ftask list --readiness blocked --fields id | ftask pick --from -   # choose among the blocked ones
-ftask pick --folders | jq -r '.result.folders[0]'                  # a folder path
+koan pick | jq -r '.result.tasks[].id'                            # the IDs picked
+koan list --readiness blocked --fields id | koan pick --from -   # choose among the blocked ones
+koan pick --folders | jq -r '.result.folders[0]'                  # a folder path
 ```
 
 ## Not included

@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
-// EnvelopeIDs reads data as one envelope from another ftask command and
+// EnvelopeIDs reads data as one envelope from another koan command and
 // returns the IDs it names, in order, without duplicates: its result's tasks'
 // IDs, or the result's own id (pick-spec.md, Accepted envelopes). The IDs are
 // taken as they are; the adapter judges them. reason is why data is no such
 // envelope, or "".
 func EnvelopeIDs(data []byte) ([]any, string) {
-	const notEnvelope = "not an ftask envelope: "
+	const notEnvelope = "not a koan envelope: "
 	env, repeated, err := jsonio.ParseObject(data)
 	switch {
 	case err != nil:

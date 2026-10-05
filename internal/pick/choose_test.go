@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // blocking is a test action with a choose list of the other shown tasks:
@@ -69,7 +69,7 @@ func TestChoose(t *testing.T) {
 		helper("command", "o")
 
 		got := helper("act", "z", "1@/")
-		want := "show-input+unbind(" + keys + ")+transform-prompt('/bin/ftask' __pick text 'prompt')+change-query()+clear-selection+rebind(load)+reload-sync('/bin/ftask' __pick choices)+transform-header('/bin/ftask' __pick text 'header')"
+		want := "show-input+unbind(" + keys + ")+transform-prompt('/bin/koan' __pick text 'prompt')+change-query()+clear-selection+rebind(load)+reload-sync('/bin/koan' __pick choices)+transform-header('/bin/koan' __pick text 'header')"
 		if got != want {
 			t.Errorf("z printed\n%q\nwant\n%q", got, want)
 		}
@@ -81,9 +81,9 @@ func TestChoose(t *testing.T) {
 		// list, in command mode, with the search query back.
 		got = helper("enter", "", "~3@/", "~2@/")
 		for _, part := range []string{
-			"enable-search+transform-query('/bin/ftask' __pick text 'query')+transform-prompt(",
+			"enable-search+transform-query('/bin/koan' __pick text 'query')+transform-prompt(",
 			"+rebind(" + keys + ",tab)+",
-			"+rebind(load)+clear-selection+reload-sync('/bin/ftask' __pick lines)+",
+			"+rebind(load)+clear-selection+reload-sync('/bin/koan' __pick lines)+",
 		} {
 			if !strings.Contains(got, part) {
 				t.Errorf("enter printed %q, without %q", got, part)
@@ -108,7 +108,7 @@ func TestChoose(t *testing.T) {
 		for _, cancel := range []string{"esc", "command"} {
 			helper("act", "z", "2@/")
 			got := helper(cancel, "1")
-			if !strings.HasPrefix(got, "enable-search+transform-query(") || !strings.HasSuffix(got, "+rebind(load)+clear-selection+reload-sync('/bin/ftask' __pick lines)") {
+			if !strings.HasPrefix(got, "enable-search+transform-query(") || !strings.HasSuffix(got, "+rebind(load)+clear-selection+reload-sync('/bin/koan' __pick lines)") {
 				t.Errorf("%s printed %q", cancel, got)
 			}
 			if h := text("header"); !strings.HasPrefix(h, "[cmd] query: o\n") {
@@ -151,7 +151,7 @@ func TestStaleKeys(t *testing.T) {
 		tr.run("create", map[string]any{"title": title})
 	}
 	_, line := tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
-		footer := "transform-footer('/bin/ftask' __pick text 'footer')"
+		footer := "transform-footer('/bin/koan' __pick text 'footer')"
 		helper("command", "")
 		helper("act", "z", "1@/")
 		// Enter with the task list's key: the choose list stays.
@@ -198,7 +198,7 @@ func TestLeaveFailsAfterCommit(t *testing.T) {
 		}
 		got := helper("enter", "", "~2@/")
 		if !strings.HasPrefix(got, "enable-search+") || !strings.Contains(got, "+rebind(load)+clear-selection+reload-sync(") ||
-			!strings.HasSuffix(got, "+transform-footer('/bin/ftask' __pick text 'footer')") {
+			!strings.HasSuffix(got, "+transform-footer('/bin/koan' __pick text 'footer')") {
 			t.Errorf("enter printed %q", got)
 		}
 		if f := helper("text", "footer"); !strings.HasPrefix(f, "✗ io: ") {

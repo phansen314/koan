@@ -3,9 +3,9 @@
 # (pick-spec.md, Testing): the minimum, 0.63.0, and the current release.
 # Each tarball is checked against the sha256 pinned below before it is
 # unpacked, to DIR/fzf-VERSION/fzf. Prints the binaries' paths joined by
-# ':', ready for FTASK_E2E_FZF:
+# ':', ready for KOAN_E2E_FZF:
 #
-#   export FTASK_E2E_FZF=$(scripts/fetch-fzf.sh ~/.cache/ftask-fzf)
+#   export KOAN_E2E_FZF=$(scripts/fetch-fzf.sh ~/.cache/koan-fzf)
 #   go test ./e2e -run TestPick
 #
 # Already-fetched versions are reused. Linux and macOS, amd64 and arm64.

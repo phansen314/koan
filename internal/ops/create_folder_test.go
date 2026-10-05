@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // createFolder runs create-folder with input over f, checking the envelope,
@@ -82,8 +82,8 @@ func TestCreateFolder(t *testing.T) {
 			`corrupt {"path":"~/tasks/a","reason":"unexpected-file"}`, nil, nil},
 
 		// Root states come first.
-		{"corrupt ftask.json", func(f *fixture) { f.write("tasks/ftask.json", "{") }, `{"folder": "/a"}`,
-			`corrupt {"path":"~/tasks/ftask.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`, nil, nil},
+		{"corrupt koan.json", func(f *fixture) { f.write("tasks/koan.json", "{") }, `{"folder": "/a"}`,
+			`corrupt {"path":"~/tasks/koan.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`, nil, nil},
 
 		// Failures midway: what was created stays, and is the partial.
 		{"first mkdir fails", func(f *fixture) { f.fail(fsys.OpMkdir, "a", syscall.EACCES) }, `{"folder": "/a/b", "parents": true}`,

@@ -1,9 +1,9 @@
 package ops
 
 import (
-	"github.com/phansen314/ftask/internal/buildinfo"
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/buildinfo"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // VersionInput is version's input: none.
@@ -22,7 +22,7 @@ type VersionOutput struct {
 	Schemas            VersionSchemas  `json:"schemas"`
 }
 
-// VersionSchemas are the one task file and ftask.json format versions this
+// VersionSchemas are the one task file and koan.json format versions this
 // binary reads and writes.
 type VersionSchemas struct {
 	Task int64 `json:"task"`

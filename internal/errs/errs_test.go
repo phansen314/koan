@@ -53,7 +53,7 @@ func TestDetailsShapes(t *testing.T) {
 		{"acyclic", Acyclic([]int64{3}, [][]int64{{1, 3, 2}}), `{"rule":"acyclic","ids":[3],"cycles":[[1,3,2]]}`},
 		{"busy", Busy(), `{}`},
 		{"internal", Internal("x"), `{}`},
-		{"corrupt", Corrupt("/r/ftask.json", CorruptUnexpectedFile), `{"path":"/r/ftask.json","reason":"unexpected-file"}`},
+		{"corrupt", Corrupt("/r/koan.json", CorruptUnexpectedFile), `{"path":"/r/koan.json","reason":"unexpected-file"}`},
 		{"io", IO("/r/a", "EACCES"), `{"path":"/r/a","code":"EACCES"}`},
 		{"unsupported-format", UnsupportedFormat("/r/1.json", 2, []int64{1}), `{"path":"/r/1.json","found":2,"supported":[1]}`},
 		{"usage", Usage([]UsageProblem{{Argument: &arg, Reason: "extra argument"}, {Reason: "missing <id>"}}),

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // e records the notes' hashes and has fzf run the editor, then after-edit;
@@ -20,7 +20,7 @@ func TestEditAction(t *testing.T) {
 	tr.run("create", map[string]any{"title": "one", "notes": "first notes"})
 	tr.run("create", map[string]any{"title": "two"})
 	tr.run("create", map[string]any{"title": "three"})
-	execute := "execute('/bin/ftask' __pick edit)+transform('/bin/ftask' __pick after-edit)"
+	execute := "execute('/bin/koan' __pick edit)+transform('/bin/koan' __pick after-edit)"
 	out, line := tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
 		notes := shownNotes(t, tr.session)
 		edit := func(keys []string, change func()) string {
@@ -76,7 +76,7 @@ func TestEditActionFresh(t *testing.T) {
 	tr.run("create-folder", map[string]any{"folder": "/b"})
 	tr.run("create", map[string]any{"title": "one"})
 	tr.run("create", map[string]any{"title": "two"})
-	execute := "execute('/bin/ftask' __pick edit)+transform('/bin/ftask' __pick after-edit)"
+	execute := "execute('/bin/koan' __pick edit)+transform('/bin/koan' __pick after-edit)"
 	tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
 		// Elsewhere, meanwhile.
 		tr.run("move", map[string]any{"id": 1, "to": "/b"})

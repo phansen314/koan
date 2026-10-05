@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // selectionFile holds the selection Enter's or quit's callback recorded:

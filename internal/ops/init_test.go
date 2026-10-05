@@ -7,10 +7,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // init through Run: its output, then a failure after the tree was created,

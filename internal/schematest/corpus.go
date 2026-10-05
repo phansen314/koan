@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // Candidates are the values Mutations puts in place of a field. They leave

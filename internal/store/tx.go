@@ -5,9 +5,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // Tx is one operation's — or one composed command's — access to a usable
@@ -43,7 +43,7 @@ func Read(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
 }
 
 // Write runs fn holding the write lock: after the Root states checks, it
-// takes the lock (see takeLock) and re-reads ftask.json, since a write
+// takes the lock (see takeLock) and re-reads koan.json, since a write
 // decides on current state. The lock is released when fn returns.
 func Write(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
 	tx, e := begin(env, w)
@@ -66,7 +66,7 @@ func Write(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
 
 // Diagnose runs fn holding the write lock, for doctor and repair
 // (implementation-spec.md, doctor and repair): after locating the config and
-// opening the root, it takes the lock (see takeLock) and reads ftask.json
+// opening the root, it takes the lock (see takeLock) and reads koan.json
 // without failing on it — MetaState says what it found. The
 // transaction allows writes, and its walk records a Survey.
 func Diagnose(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
@@ -115,14 +115,14 @@ func takeLock(r fsys.Root, rootPath string, wait time.Duration) (fsys.Lock, *err
 	}
 }
 
-// MetaState is ftask.json's state as a diagnostic transaction read it, and
+// MetaState is koan.json's state as a diagnostic transaction read it, and
 // the error an operation requiring a usable root would fail with, nil when
 // it is ok. The error of a missing one is not-initialized (metadata).
 func (tx *Tx) MetaState() (MetaState, *errs.Error) {
 	return tx.metaSt.state, metaError(tx.metaSt, tx.rootPath)
 }
 
-// CreateMeta creates ftask.json, which must not exist, with this binary's
+// CreateMeta creates koan.json, which must not exist, with this binary's
 // schema and lastID: repair's rebuild of a lost one.
 func (tx *Tx) CreateMeta(lastID int64) *errs.Error {
 	m := model.RootFile{Schema: model.RootSchema, LastID: lastID}
@@ -174,10 +174,10 @@ func (tx *Tx) NextStep() {
 	tx.cache = map[Location]*Loaded{}
 }
 
-// Meta is ftask.json's content as last read or written.
+// Meta is koan.json's content as last read or written.
 func (tx *Tx) Meta() model.RootFile { return tx.meta }
 
-// Path is the filesystem path ftask reports for rel, a slash-separated path
+// Path is the filesystem path koan reports for rel, a slash-separated path
 // relative to the root ("." for the root itself): the root as stored, with
 // "~/" expanded, joined with rel (design-spec.md, Root path).
 func (tx *Tx) Path(rel string) string { return joinPath(tx.rootPath, rel) }

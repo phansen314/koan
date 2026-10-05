@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 func TestParseTags(t *testing.T) {
@@ -45,7 +45,7 @@ func TestTagsAction(t *testing.T) {
 	tr := newTestTree(t)
 	tr.run("create", map[string]any{"title": "one", "tags": []string{"x", "y"}})
 	tr.run("create", map[string]any{"title": "two"})
-	footerOnly := "transform-footer('/bin/ftask' __pick text 'footer')"
+	footerOnly := "transform-footer('/bin/koan' __pick text 'footer')"
 	_, line := tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
 		text := func(name string) string { return helper("text", name) }
 		helper("command", "")

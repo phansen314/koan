@@ -12,7 +12,7 @@ import (
 
 // Version is the release version, set at release build time:
 //
-//	go build -ldflags "-X github.com/phansen314/ftask/internal/buildinfo.Version=1.4.0"
+//	go build -ldflags "-X github.com/phansen314/koan/internal/buildinfo.Version=1.4.0"
 //
 // A build without it takes the version of the tag it was built from, if any
 // (see fromBuild); otherwise it keeps the default, which is still semver.

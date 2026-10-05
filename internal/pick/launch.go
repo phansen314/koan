@@ -6,13 +6,13 @@ import (
 
 	"github.com/junegunn/go-shellwords"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // OptsVar holds the person's options for pick's fzf, which come after
 // pick's own and so win (pick-spec.md, fzf options).
-const OptsVar = "FTASK_PICK_OPTS"
+const OptsVar = "KOAN_PICK_OPTS"
 
 // undone are the options pick passes after FZF_DEFAULT_OPTS to undo any
 // there that would end fzf without a callback, move it into a popup, or
@@ -32,7 +32,7 @@ type picker struct {
 	userOpts []string
 }
 
-// userOpts splits FTASK_PICK_OPTS as fzf splits FZF_DEFAULT_OPTS, with its
+// userOpts splits KOAN_PICK_OPTS as fzf splits FZF_DEFAULT_OPTS, with its
 // own parser, comments included. One that doesn't split is reported as fzf
 // reports a bad FZF_DEFAULT_OPTS: fzf-failed, here without a status, since
 // fzf never ran.
@@ -47,7 +47,7 @@ func userOpts(environ []string) ([]string, *errs.Error) {
 }
 
 // args are fzf's arguments, in order: pick's own (pick-spec.md, fzf
-// contract), then FTASK_PICK_OPTS. FZF_DEFAULT_OPTS, which fzf reads
+// contract), then KOAN_PICK_OPTS. FZF_DEFAULT_OPTS, which fzf reads
 // itself, comes before them all.
 func (pk picker) args() []string {
 	a := append([]string{}, undone...)

@@ -1,6 +1,6 @@
-# ftask pick spec
+# koan pick spec
 
-`ftask pick`: the interactive picker, built on [fzf](https://github.com/junegunn/fzf). Fuzzy-search tasks by title and tags, act on them in place, and emit the ones chosen as JSON. It is the way a person works with ftask directly; agents use the other commands.
+`koan pick`: the interactive picker, built on [fzf](https://github.com/junegunn/fzf). Fuzzy-search tasks by title and tags, act on them in place, and emit the ones chosen as JSON. It is the way a person works with koan directly; agents use the other commands.
 
 `pick` is a CLI command, specified on top of the [CLI spec](cli-spec.md) and the [operations](operations.md). It runs no operation of its own. It composes [`list`](operations.md#list) for what it shows with the write operations its keys run, each as its own call. Everything the CLI spec says holds for `pick` except where this document says otherwise. Those places are collected in [Departures from the CLI spec](#departures-from-the-cli-spec).
 
@@ -8,13 +8,13 @@
 
 - **Fuzzy search by title and tags** over the tree, with the task's details and notes in a preview.
 - **Act without leaving.** Complete, edit, create, block, move, reprioritize and retag, then see the list reload.
-- **A pipeline citizen.** Candidates can come from upstream (`ftask list … | ftask pick --from -`). The selection goes downstream as one [envelope](operations.md#output-envelope) (`ftask pick | jq …`). The interface draws on the terminal, never on stdin or stdout, so both can be redirected.
+- **A pipeline citizen.** Candidates can come from upstream (`koan list … | koan pick --from -`). The selection goes downstream as one [envelope](operations.md#output-envelope) (`koan pick | jq …`). The interface draws on the terminal, never on stdin or stdout, so both can be redirected.
 - **Nothing hidden from a caller.** Every change made inside the picker is reported in the output, so a script or an agent that hands the terminal to a person learns what the person changed.
 
 ## Non-goals
 
-- **Agents.** `pick` is for a person at a terminal. Without one, it fails whenever it would show the picker (see [Errors](#errors)). The [ftask skill](claude/skills/ftask/SKILL.md) tells agents never to run it (see [Shipping](#shipping)).
-- **Deleting.** No key deletes a task or a folder. Deletes stay with `ftask delete` and `ftask delete-folder`, which agents' permission rules make ask first.
+- **Agents.** `pick` is for a person at a terminal. Without one, it fails whenever it would show the picker (see [Errors](#errors)). The [koan skill](claude/skills/koan/SKILL.md) tells agents never to run it (see [Shipping](#shipping)).
+- **Deleting.** No key deletes a task or a folder. Deletes stay with `koan delete` and `koan delete-folder`, which agents' permission rules make ask first.
 - **A configurable keymap.** The keymap is fixed and documented here. fzf's own options restyle the picker (see [fzf options](#fzf-options)).
 - **A tree view.** Folders are a column and a narrowing step, not a nested display. That is the design spec's [Tree view](design-spec.md#tree-view).
 - **Its own fuzzy matcher.** Matching, ranking and the screen are fzf's.
@@ -29,7 +29,7 @@
 
 Fuzzy-pick tasks, or with `--folders` folders, and write the selection as one envelope. Runs [`list`](operations.md#list) to load and reload the candidates, and the write operations of the [actions](#actions).
 
-**Synopsis:** `ftask pick [--folder <path>] [--recursive=false] [--scope <scope>] [--tags-any <tags>] [--tags-all <tags>] [--ids <ids> | --from <file> | --source <command>] [--query <text>] [--select-one] [--exit-zero] [--fields <names>]`, `ftask pick --folders [--folder <path>] [--recursive=false] [--query <text>] [--select-one] [--exit-zero]`, or `ftask pick -i <file>`.
+**Synopsis:** `koan pick [--folder <path>] [--recursive=false] [--scope <scope>] [--tags-any <tags>] [--tags-all <tags>] [--ids <ids> | --from <file> | --source <command>] [--query <text>] [--select-one] [--exit-zero] [--fields <names>]`, `koan pick --folders [--folder <path>] [--recursive=false] [--query <text>] [--select-one] [--exit-zero]`, or `koan pick -i <file>`.
 
 **Operation:** none of its own. Each load runs `list` once, over the whole tree (see [Session](#session)), and each action runs one write operation per target task. No write lock is held between them, and none is held while the person looks at the list.
 
@@ -101,19 +101,19 @@ Fuzzy-pick tasks, or with `--folders` folders, and write the selection as one en
 **Examples:**
 
 ```sh
-ftask pick                                                  # open tasks; Enter → .result.tasks
-ftask pick --folder /work --scope ready                     # what's ready under /work
-ftask pick | jq -r '.result.tasks[].id'                     # the IDs picked
-ftask pick --fields id,title,notes_path | jq -r '.result.tasks[].notes_path' | xargs -r -o "$EDITOR"   # -o: the editor gets the terminal
-ftask list --readiness blocked --fields id | ftask pick --from -   # choose among the blocked ones
-ftask frontier --tags-any today | ftask pick --from -
-ftask pick --source 'ftask frontier --tags-any today'       # the same, kept live
-ftask pick --source "ftask list | jq -c '.result.tasks |= map(select(.extra.status == \"waiting\"))'"
-ftask pick --ids 41,42,43
-ftask complete "$(ftask pick --query 'renew pass' --select-one | jq -r '.result.tasks[0].id')"   # no picker if only one matches
-ftask pick --folders | jq -r '.result.folders[0]'           # a folder path, e.g. for create --folder
-ftask pick > picked.json; jq '.result | {actions, notes_edited}' picked.json   # what the session changed
-ftask pick | ftask pick --from -                            # narrow in two passes
+koan pick                                                  # open tasks; Enter → .result.tasks
+koan pick --folder /work --scope ready                     # what's ready under /work
+koan pick | jq -r '.result.tasks[].id'                     # the IDs picked
+koan pick --fields id,title,notes_path | jq -r '.result.tasks[].notes_path' | xargs -r -o "$EDITOR"   # -o: the editor gets the terminal
+koan list --readiness blocked --fields id | koan pick --from -   # choose among the blocked ones
+koan frontier --tags-any today | koan pick --from -
+koan pick --source 'koan frontier --tags-any today'       # the same, kept live
+koan pick --source "koan list | jq -c '.result.tasks |= map(select(.extra.status == \"waiting\"))'"
+koan pick --ids 41,42,43
+koan complete "$(koan pick --query 'renew pass' --select-one | jq -r '.result.tasks[0].id')"   # no picker if only one matches
+koan pick --folders | jq -r '.result.folders[0]'           # a folder path, e.g. for create --folder
+koan pick > picked.json; jq '.result | {actions, notes_edited}' picked.json   # what the session changed
+koan pick | koan pick --from -                            # narrow in two passes
 ```
 
 ## Candidates
@@ -128,7 +128,7 @@ Which tasks the picker lists, its **candidates**, comes from one of three places
 
 - **Task data is always live.** Every reload reads the tree again, whatever the candidates came from, so titles, readiness and completion are always current. Only *which* tasks are listed can be frozen.
 - **A snapshot never grows.** A task created in the session, a task unblocked by an action, or a task created by another process is not added to it, even if upstream would have listed it. The emitted selection is therefore always a subset of the IDs given, which is what a pipeline downstream of `--from` can rely on. For a list that keeps up, use a live source.
-- **Narrowing applies on top.** With a snapshot or a live source, `pick`'s scope, folder and tag filters still narrow the list. The scope defaults to `all`, so by default the picker shows exactly what upstream chose: `ftask list --readiness complete | ftask pick --from -` lists the complete tasks. `s` cycles the scope as usual.
+- **Narrowing applies on top.** With a snapshot or a live source, `pick`'s scope, folder and tag filters still narrow the list. The scope defaults to `all`, so by default the picker shows exactly what upstream chose: `koan list --readiness complete | koan pick --from -` lists the complete tasks. `s` cycles the scope as usual.
 - **Order** is always `pick`'s own (see [Lines](#lines)), not upstream's.
 
 ### Live source
@@ -136,7 +136,7 @@ Which tasks the picker lists, its **candidates**, comes from one of three places
 `--source` runs a command for the first load and again on every reload, and takes the candidates from its output:
 
 - **Run with `sh -c`**, in `pick`'s working directory and environment, with stdin from `/dev/null`. It is the user's own command, trusted as fzf's callbacks are.
-- **Its output** must be one of the [accepted envelopes](#accepted-envelopes), as for `--from`: from `list` or `frontier`, perhaps through `jq`, or anything else that prints an ftask envelope with tasks. Its IDs are the candidates.
+- **Its output** must be one of the [accepted envelopes](#accepted-envelopes), as for `--from`: from `list` or `frontier`, perhaps through `jq`, or anything else that prints a koan envelope with tasks. Its IDs are the candidates.
 - **Its stderr** is captured, not passed to the terminal, where it would garble the picker.
 - **Synchronous, with a limit.** A reload waits for the command, and the picker doesn't respond meanwhile, not even to ctrl-c, which fzf queues until the callback returns. A later run that takes more than 10 seconds is killed, with its process group, and fails as `✗ source: timed out after 10s`; the list stays as it was. The first run has no limit: it runs before fzf opens, where ctrl-c still interrupts it.
 - **The first run's failures** end `pick` before fzf opens, as `invalid-input` (`field`: `/source`): output that is not an accepted envelope, and an `ok: false` envelope, exactly as for `--from` (see [Accepted envelopes](#accepted-envelopes)). The `reason` gives the upstream error's kind and message, or else the first line of the command's stderr. The source's own kind is never passed through: a `usage` from a mistyped command would make `pick` exit `2`, saying that `pick`'s own command line was wrong.
@@ -146,7 +146,7 @@ Which tasks the picker lists, its **candidates**, comes from one of three places
 
 `--select-one` and `--exit-zero` let `pick` finish without showing the picker, as fzf's `--select-1` and `--exit-0` do:
 
-- **Matched first, headlessly.** After the first load, `pick` matches `query` against the candidate lines with `fzf --filter`, with the options the picker gets, in the same order: `FZF_DEFAULT_OPTS`, `pick`'s own (so only title and tags are matched), then `FTASK_PICK_OPTS`. So `--exact` or `--ignore-case` in the person's options applies to both. `fzf --filter` exits `0` with matches and `1` with none, which is the `--exit-zero` case, not a failure. Any other status is `unavailable` (`fzf-failed`). The selection is recorded by Enter's callback (see [fzf contract](#fzf-contract)), and fzf's own `--select-1` skips it, so `pick` makes the decision itself.
+- **Matched first, headlessly.** After the first load, `pick` matches `query` against the candidate lines with `fzf --filter`, with the options the picker gets, in the same order: `FZF_DEFAULT_OPTS`, `pick`'s own (so only title and tags are matched), then `KOAN_PICK_OPTS`. So `--exact` or `--ignore-case` in the person's options applies to both. `fzf --filter` exits `0` with matches and `1` with none, which is the `--exit-zero` case, not a failure. Any other status is `unavailable` (`fzf-failed`). The selection is recorded by Enter's callback (see [fzf contract](#fzf-contract)), and fzf's own `--select-1` skips it, so `pick` makes the decision itself.
 - **One match** with `--select-one`: emit that candidate, exactly as if it were picked with Enter.
 - **No match** with `--exit-zero`: emit an empty selection, as a quit does.
 - **Otherwise** the picker opens as usual, with `query` already typed.
@@ -212,7 +212,7 @@ extra: status = waiting on quote
 Prefer ANA, aisle seat…
 ```
 
-- **`blocks`** lists the open tasks whose `blocked_by` names this one. ftask stores no such list, so `pick` derives it from the [load](#session), which covers the whole tree, not from the scope.
+- **`blocks`** lists the open tasks whose `blocked_by` names this one. koan stores no such list, so `pick` derives it from the [load](#session), which covers the whole tree, not from the scope.
 - **`extra`** shows one `key = value` per key, each value as compact JSON, except that a string is shown bare.
 - **Notes** are rendered with `glow` if it is on `PATH`, otherwise with `bat` (as Markdown, with color), otherwise as plain text. An empty or missing `.md` shows `(no notes)`.
 - ctrl-/ toggles the pane in every mode.
@@ -246,7 +246,7 @@ Command mode's keys:
 | Key | Action | Runs | Targets |
 |---|---|---|---|
 | `c` | Complete or reopen, by the readiness the lines show. If any target is shown open, it completes every target. If every target is shown complete, it reopens them all. A task completed or reopened elsewhere since the last load makes its call a no-op (`changed: false`), never a reversal. | [`complete`](operations.md#complete), [`reopen`](operations.md#reopen) | any |
-| `e` | Edit notes: opens the targets' `notes_path`, all as arguments to one editor, with fzf suspended. `$VISUAL`, else `$EDITOR`, else `vi`. Each `notes_path` is read fresh by ID as `e` runs, not taken from the last load, so a task moved meanwhile has its notes edited where they now are; a target deleted meanwhile refuses the whole `e`, as does one now duplicated with no copy in its line's folder. | [`show`](operations.md#show), per target, for its current `notes_path`. ftask never sees notes edits; `pick` reports which notes changed in [`notes_edited`](#output). | any |
+| `e` | Edit notes: opens the targets' `notes_path`, all as arguments to one editor, with fzf suspended. `$VISUAL`, else `$EDITOR`, else `vi`. Each `notes_path` is read fresh by ID as `e` runs, not taken from the last load, so a task moved meanwhile has its notes edited where they now are; a target deleted meanwhile refuses the whole `e`, as does one now duplicated with no copy in its line's folder. | [`show`](operations.md#show), per target, for its current `notes_path`. koan never sees notes edits; `pick` reports which notes changed in [`notes_edited`](#output). | any |
 | `n` | New task. Prompt `new> `, filled with the query. Creates an open task with that title in the scope folder (see below). | [`create`](operations.md#create) | none |
 | `b` | Block. Choose list `blockers of 42> ` (see below). Adds the chosen tasks to each target's `blocked_by`. | [`block`](operations.md#block) | any |
 | `u` | Unblock. Choose list `unblock 42> ` of the target's `blocked_by`, missing IDs included: such a line says `(no such task)`, and its preview `no task with ID 50`. Removes the chosen ones. | [`list`](operations.md#list), then [`unblock`](operations.md#unblock) | one |
@@ -270,7 +270,7 @@ Command mode's keys:
 - **Tags syntax.** The value is a list of tags, separated by spaces or commas. If every item is bare (`travel urgent`), they replace all tags (`update`'s `tags.replace_all`). If every item is prefixed (`+urgent -later`), `+` adds and `-` removes. A mix is refused in the status line. A lone `-` clears all tags (`tags.replace_all: []`).
 - **Several targets.** With one target, the `p` and `t` prompts start with its current value, and an empty value clears it, as the prompt showed what is being cleared. With several, they start empty, and an empty value does nothing (status `no change`): it never clears every target. Clearing then takes `null` (priority) or `-` (tags). A value of only separators (spaces, commas) is empty. An integer is sent in its plain form, so `+5` and `05` set `5`.
 - **New tasks** get the scope folder and the scope's `tags_all`, and no priority or blockers. With pick's own filters, that makes a new task a candidate unless `--tags-any` is given, which names no tag a new task could be given without guessing.
-- **A new task is listed only if it is a candidate.** `pick` never adds a task to the list because it created it. After a successful `n`, the search query is cleared, since it has become the new task's title. The list is then in `pick`'s own order, and the helper knows the new task's position in it. The cursor goes there through fzf's `load` event. fzf can only re-enable a binding, not add one, so `load` is bound from the start to `transform(ftask __pick on-load)` and unbound at `start`. A successful `n` records the position in the session and returns `rebind(load)+reload-sync(…)`: `load` is armed before the reload starts, since in fzf 0.63.0 a quick reload can fire it before a rebind later in the chain takes effect. `on-load` returns `pos(N)+unbind(load)` and clears the record, or only `unbind(load)` when there is none: fzf can fire `load` for the first list before `start:unbind(load)` takes effect, so the binding may run once unarmed. (A `pos` chained after `reload-sync` would run before the new list arrives.) If the new task isn't listed, the status line says so (`✓ created 51 (not in this list)`), and it is reported in `actions` like any other. This happens with `--tags-any`, with a [snapshot](#candidates), which never grows, and with a [live source](#live-source) whose command doesn't return it.
+- **A new task is listed only if it is a candidate.** `pick` never adds a task to the list because it created it. After a successful `n`, the search query is cleared, since it has become the new task's title. The list is then in `pick`'s own order, and the helper knows the new task's position in it. The cursor goes there through fzf's `load` event. fzf can only re-enable a binding, not add one, so `load` is bound from the start to `transform(koan __pick on-load)` and unbound at `start`. A successful `n` records the position in the session and returns `rebind(load)+reload-sync(…)`: `load` is armed before the reload starts, since in fzf 0.63.0 a quick reload can fire it before a rebind later in the chain takes effect. `on-load` returns `pos(N)+unbind(load)` and clears the record, or only `unbind(load)` when there is none: fzf can fire `load` for the first list before `start:unbind(load)` takes effect, so the binding may run once unarmed. (A `pos` chained after `reload-sync` would run before the new list arrives.) If the new task isn't listed, the status line says so (`✓ created 51 (not in this list)`), and it is reported in `actions` like any other. This happens with `--tags-any`, with a [snapshot](#candidates), which never grows, and with a [live source](#live-source) whose command doesn't return it.
 - **Editing as JSON.** `x` writes the target's editable fields to a temp file in the session, as a pretty-printed JSON object, and opens it:
   ```json
   {
@@ -292,7 +292,7 @@ Command mode's keys:
 
 ## Folder picker
 
-`ftask pick --folders` lists the folders in scope, in [tree order](operations.md#tree-order), and emits the ones chosen in `result.folders`. As for tasks, the selection is checked against a final read: a chosen folder that no longer exists, e.g. moved or deleted by another process meanwhile, is put in `result.missing` instead. It has insert and command modes, with movement, marking, `?`, Enter, Esc, `q` and ctrl-c as above, and no actions. The `f` and `m` choose lists use the same display.
+`koan pick --folders` lists the folders in scope, in [tree order](operations.md#tree-order), and emits the ones chosen in `result.folders`. As for tasks, the selection is checked against a final read: a chosen folder that no longer exists, e.g. moved or deleted by another process meanwhile, is put in `result.missing` instead. It has insert and command modes, with movement, marking, `?`, Enter, Esc, `q` and ctrl-c as above, and no actions. The `f` and `m` choose lists use the same display.
 
 ## Output
 
@@ -375,7 +375,7 @@ In every case, the envelope reports the actions taken.
 
 | Kind | When | `details` |
 |---|---|---|
-| `unavailable` | The picker cannot run: no terminal, or no usable fzf. fzf is checked after `invalid-input`, and so after a [live source](#live-source)'s first run, whose failures are `invalid-input`, and before `pick` itself reads anything from the tree. The terminal is checked when the picker is about to be shown, after the first load (see [Selecting at once](#selecting-at-once)). | `reason`: `no-terminal` (`/dev/tty` doesn't open), `fzf-missing` (not on `PATH`), `fzf-too-old`, or `fzf-failed` (fzf exited with an error, e.g. a bad option in `FZF_DEFAULT_OPTS`, or `fzf --version` or `fzf --filter` did, or fzf couldn't be started or was killed, or `FTASK_PICK_OPTS` doesn't split into options). For `fzf-too-old`: `found` and `required`, the versions. For `fzf-failed`: `status`, fzf's exit status, if it exited; and `actions`, since fzf can fail after actions have run, except when `FTASK_PICK_OPTS` doesn't split, as fzf never ran then. |
+| `unavailable` | The picker cannot run: no terminal, or no usable fzf. fzf is checked after `invalid-input`, and so after a [live source](#live-source)'s first run, whose failures are `invalid-input`, and before `pick` itself reads anything from the tree. The terminal is checked when the picker is about to be shown, after the first load (see [Selecting at once](#selecting-at-once)). | `reason`: `no-terminal` (`/dev/tty` doesn't open), `fzf-missing` (not on `PATH`), `fzf-too-old`, or `fzf-failed` (fzf exited with an error, e.g. a bad option in `FZF_DEFAULT_OPTS`, or `fzf --version` or `fzf --filter` did, or fzf couldn't be started or was killed, or `KOAN_PICK_OPTS` doesn't split into options). For `fzf-too-old`: `found` and `required`, the versions. For `fzf-failed`: `status`, fzf's exit status, if it exited; and `actions`, since fzf can fail after actions have run, except when `KOAN_PICK_OPTS` doesn't split, as fzf never ran then. |
 | `cancelled` | The person cancelled with ctrl-c or another fzf abort key. | `actions`: as in the output, the operations already run. |
 | `incomplete` | The session ended, but its result could not be read: the final read failed. | `actions`, and `error`: the final read's own error, whole, with its kind and details. |
 
@@ -423,7 +423,7 @@ Otherwise:
 - **Later loads' errors** (e.g. the scope folder deleted by another process) show in the status line. The list stays as it was, and so does the scope: an `s` or `f` whose load fails changes nothing.
 - **Actions' errors** never end the picker. They show in the status line and are reported in `actions`.
 - **A failure after the session.** If the final read fails after fzf exits (e.g. the root became unusable), `pick` reports `incomplete`, with that read's error in `details.error`. The error is wrapped, not passed through: each operation error kind's `details` is closed, with no room for `actions`.
-- **`.error.details.actions`** is present in `cancelled`, `incomplete`, and `unavailable` (`fzf-failed`), except a `fzf-failed` for an `FTASK_PICK_OPTS` that doesn't split, which comes before fzf runs. It is `[]` when no action ran, e.g. when `fzf --version` or `fzf --filter` failed. A caller that finds it knows what the session changed, whatever the kind.
+- **`.error.details.actions`** is present in `cancelled`, `incomplete`, and `unavailable` (`fzf-failed`), except a `fzf-failed` for an `KOAN_PICK_OPTS` that doesn't split, which comes before fzf runs. It is `[]` when no action ran, e.g. when `fzf --version` or `fzf --filter` failed. A caller that finds it knows what the session changed, whatever the kind.
 
 **stderr** follows the CLI spec's [one-line rule](cli-spec.md#output), with one addition: fzf's own stderr (e.g. its message about a bad option) passes through to the terminal.
 
@@ -437,10 +437,10 @@ How `pick` drives fzf. This section is normative for behavior. The option spelli
 
 - **One fzf process per session.** Modes, prompts and choose lists all switch inside it with `reload-sync`, `rebind`/`unbind`, `enable-search`/`disable-search`, `hide-input`/`show-input`, `transform-prompt`, `transform-query` and `transform-footer`. No nested fzf.
 - **The terminal.** fzf draws on `/dev/tty`. `pick` gives fzf the first candidate lines on stdin, and sends fzf's stdout to `/dev/null`. The picker's selection never comes from fzf's output. [Selecting at once](#selecting-at-once) does read `fzf --filter`'s output, so options that change what fzf reads or writes are undone, as are those that end fzf without a callback (see [fzf options](#fzf-options)).
-- **Callbacks.** Every key that does more than move or mark is bound to `transform(…)` calling back into the ftask binary (its own absolute path, from `os.Executable`) through an internal helper (see [Session](#session)). The helper does the work and prints the fzf actions to take next, e.g. `reload-sync(…)+transform-footer(…)+rebind(…)`.
+- **Callbacks.** Every key that does more than move or mark is bound to `transform(…)` calling back into the koan binary (its own absolute path, from `os.Executable`) through an internal helper (see [Session](#session)). The helper does the work and prints the fzf actions to take next, e.g. `reload-sync(…)+transform-footer(…)+rebind(…)`.
 - **What runs concurrently.** fzf runs `transform` synchronously, so transforms never overlap one another. The commands they start may overlap them: the preview runs on every cursor move, and a reload's command runs while the next key is handled. So reloads are `reload-sync`, which changes the list, marks and cursor only once the new list is complete. A key handled meanwhile passes the lines fzf still shows: a task line the last load dropped is still acted on as shown, but the lines of a choose list being left, or of the task list a choose list is replacing, do nothing, and the status line says `✗ list still loading: nothing done`. The input is hidden on leaving a prompt or choose list only if command mode is still the mode once the new list is in, since a key handled meanwhile (`i`, or one opening a prompt) may have left it; every session file is written atomically, to a temp file in the session renamed over the old one; and the preview treats a missing or unreadable session file as `loading…`, never as an error.
-- **No data in action text.** What the helper prints names actions only, with fixed arguments: key names, mode names, and the helper's own command lines, whose only variables are fzf placeholders such as `{+1}`. fzf parses everything a transform prints as actions, and is lenient about parentheses, so a message such as `)+execute-silent(…)+(` would run a command. Text that comes from data — a status message, an error's `message`, the query, a prompt's value, a source's stderr — is written to the session, and fzf fetches it through an action whose command output fzf shows literally: `transform-footer(ftask __pick text footer)`, `transform-query(…)`, `transform-prompt(…)`, `transform-header(…)`. The `text` verb writes one line, with control characters, U+2028 and U+2029 escaped as in the CLI's [stderr line](cli-spec.md#output).
-- **Editors run through `execute`,** never inside a callback. A transform's stdout is fzf's action channel, and fzf still owns the terminal while it runs. So `e` and `x` return `execute(ftask __pick edit …)+transform(ftask __pick after-edit)`: fzf suspends itself and gives the editor the terminal, and the second callback, once the editor exits, compares hashes, applies an `x`, and returns the reload and status line.
+- **No data in action text.** What the helper prints names actions only, with fixed arguments: key names, mode names, and the helper's own command lines, whose only variables are fzf placeholders such as `{+1}`. fzf parses everything a transform prints as actions, and is lenient about parentheses, so a message such as `)+execute-silent(…)+(` would run a command. Text that comes from data — a status message, an error's `message`, the query, a prompt's value, a source's stderr — is written to the session, and fzf fetches it through an action whose command output fzf shows literally: `transform-footer(koan __pick text footer)`, `transform-query(…)`, `transform-prompt(…)`, `transform-header(…)`. The `text` verb writes one line, with control characters, U+2028 and U+2029 escaped as in the CLI's [stderr line](cli-spec.md#output).
+- **Editors run through `execute`,** never inside a callback. A transform's stdout is fzf's action channel, and fzf still owns the terminal while it runs. So `e` and `x` return `execute(koan __pick edit …)+transform(koan __pick after-edit)`: fzf suspends itself and gives the editor the terminal, and the second callback, once the editor exits, compares hashes, applies an `x`, and returns the reload and status line.
 - **The selection** is recorded by the helper: Enter's callback writes the selected lines' keys to the session, then returns `accept`, and quit's writes an empty selection, then returns `accept`.
 - **The outcome** is decided from the session first, then from fzf's exit status. A recorded selection is Enter or quit, whatever the status: fzf's `accept` exits `1` when no line matches, e.g. on an empty list or a query that matches nothing. With no selection recorded, `130` is cancel, and any other status, `0` included, is `unavailable` (`fzf-failed`).
 - **A shell of known syntax.** fzf runs callbacks with `--with-shell 'sh -c'`, whatever the user's `$SHELL`, and every argument is quoted for `sh`.
@@ -449,8 +449,8 @@ How `pick` drives fzf. This section is normative for behavior. The option spelli
 ### fzf options
 
 - **`FZF_DEFAULT_OPTS`** (and `FZF_DEFAULT_OPTS_FILE`) are honored, as fzf honors them: colors, layout, borders, history.
-- **Options `pick` undoes.** After `FZF_DEFAULT_OPTS` and before `FTASK_PICK_OPTS`, `pick` passes `--no-select-1 --no-exit-0 --no-expect --no-tmux --no-read0 --no-header-lines --no-print0 --no-print-query --accept-nth ..`. The first three would end fzf without running a callback, so no selection would be recorded. `--read0` would read the candidates as one line, and `--header-lines` would make the first tasks a header that can't be chosen. `--print0`, `--print-query` and `--accept-nth` change `fzf --filter`'s output, which [Selecting at once](#selecting-at-once) reads: two matches would read as one, or the query as a match, or a line without its key. fzf has no `--no-accept-nth`; `..`, every field, restores the whole line. `--tmux` (in 0.74 an alias of `--popup`) would run fzf in a tmux or Zellij popup, a separate process that `pick`'s terminal check, environment and signal handling were not designed or tested for. `--select-1` and `--exit-0` are `pick`'s own `--select-one` and `--exit-zero`, decided by `pick` (see [Selecting at once](#selecting-at-once)).
-- **`FTASK_PICK_OPTS`** is appended after `pick`'s own options, so it wins: e.g. `FTASK_PICK_OPTS='--height 60% --layout reverse'`. It is split as fzf splits `FZF_DEFAULT_OPTS`, comments included.
+- **Options `pick` undoes.** After `FZF_DEFAULT_OPTS` and before `KOAN_PICK_OPTS`, `pick` passes `--no-select-1 --no-exit-0 --no-expect --no-tmux --no-read0 --no-header-lines --no-print0 --no-print-query --accept-nth ..`. The first three would end fzf without running a callback, so no selection would be recorded. `--read0` would read the candidates as one line, and `--header-lines` would make the first tasks a header that can't be chosen. `--print0`, `--print-query` and `--accept-nth` change `fzf --filter`'s output, which [Selecting at once](#selecting-at-once) reads: two matches would read as one, or the query as a match, or a line without its key. fzf has no `--no-accept-nth`; `..`, every field, restores the whole line. `--tmux` (in 0.74 an alias of `--popup`) would run fzf in a tmux or Zellij popup, a separate process that `pick`'s terminal check, environment and signal handling were not designed or tested for. `--select-1` and `--exit-0` are `pick`'s own `--select-one` and `--exit-zero`, decided by `pick` (see [Selecting at once](#selecting-at-once)).
+- **`KOAN_PICK_OPTS`** is appended after `pick`'s own options, so it wins: e.g. `KOAN_PICK_OPTS='--height 60% --layout reverse'`. It is split as fzf splits `FZF_DEFAULT_OPTS`, comments included.
 - **Rebinding is at your own risk.** An option that rebinds a key `pick` uses (or `--disabled`, `--no-multi`, `--with-shell`) can break the modes. `pick` does not detect that.
 - **`FZF_DEFAULT_COMMAND`** is never used: `pick` supplies every list.
 
@@ -467,7 +467,7 @@ It holds:
 - the **load**: the result of one `list` call per load, with `folder` `/`, `recursive`, `readiness` `["ready", "blocked", "complete"]`, `include_folders`, and no filters. `pick` derives from it the candidate lines (applying the scope folder, recursion, readiness scope and tag filters with `list`'s meanings), the preview's `blocks`, `b`'s candidates, and the `f` and `m` folder lists, so all of them agree. The status line's `N warnings` counts this read's warnings, never a `--source` command's. With a live source, a reload therefore reads the tree twice: once in the source's command, and once in this load, which supplies the data. A snapshot or source ID that the load does not find is left out of the list, and the header says how many (`2 given IDs not found`);
 - the **notes hashes** of the targets of an `e`, from before the editor ran, for `notes_edited`.
 
-**The helper** is a hidden command, `ftask __pick <verb> …`, that fzf's callbacks run. It reads the session directory from `FTASK_PICK_SESSION`, which `pick` sets in fzf's environment. It is internal: not listed in help, not part of the contract, and it may change in any release. Run with no valid session, it fails with `usage`. Inside a session, a callback's own failure (e.g. an unreadable session file) never prints an envelope, which fzf would parse as actions or list as a line: a callback whose output fzf runs shows the error in the status line instead (`✗ internal: …`), or does nothing if even that fails; a list's callback prints no lines; and one whose output fzf shows as it is, such as the preview, prints the error as one line.
+**The helper** is a hidden command, `koan __pick <verb> …`, that fzf's callbacks run. It reads the session directory from `KOAN_PICK_SESSION`, which `pick` sets in fzf's environment. It is internal: not listed in help, not part of the contract, and it may change in any release. Run with no valid session, it fails with `usage`. Inside a session, a callback's own failure (e.g. an unreadable session file) never prints an envelope, which fzf would parse as actions or list as a line: a callback whose output fzf runs shows the error in the status line instead (`✗ internal: …`), or does nothing if even that fails; a list's callback prints no lines; and one whose output fzf shows as it is, such as the preview, prints the error as one line.
 
 ## Departures from the CLI spec
 
@@ -479,13 +479,13 @@ Where `pick` differs from the [CLI spec](cli-spec.md)'s global rules, and why:
 - **An outside program.** fzf is a runtime dependency of `pick` alone. No other command needs it.
 - **Three CLI-only error kinds,** `cancelled`, `unavailable` and `incomplete`, besides `usage`. They carry `actions` in `details`, and `incomplete` wraps an operation's error instead of passing it through.
 - **Interrupts.** The CLI spec makes an interrupt a crash. In `pick`, ctrl-c cancels with an envelope, and SIGINT is discarded while fzf runs (see [Errors](#errors)). This also departs from the implementation spec's [Exit and signals](implementation-spec.md#exit-and-signals), which installs no SIGINT handler.
-- **stderr.** The CLI spec allows ftask one stderr line. fzf's own stderr also reaches the terminal (see [Errors](#errors)), since fzf reports its own problems, such as a bad option, there.
+- **stderr.** The CLI spec allows koan one stderr line. fzf's own stderr also reaches the terminal (see [Errors](#errors)), since fzf reports its own problems, such as a bad option, there.
 - **stdin.** The CLI spec names the values that read stdin, `--input -` and `create`'s `--notes-file -`. `pick`'s `--from -` is a third, read in full before fzf starts.
 - **Operations without passthrough.** The operations `pick` runs inside the session write nothing to stdout. Their envelopes are reported in `actions` instead.
 
 ## Testing
 
-- **The helper is the unit.** Every action, mode switch and callback is a call to `ftask __pick` with a session directory, so it is tested without fzf: given a session and a key's arguments, check the fzf actions printed, the session after, and the operations run.
+- **The helper is the unit.** Every action, mode switch and callback is a call to `koan __pick` with a session directory, so it is tested without fzf: given a session and a key's arguments, check the fzf actions printed, the session after, and the operations run.
 - **fzf end to end.** A smoke test drives a real fzf in a pseudo-terminal, with a scripted key sequence through fzf's `--listen` (or by writing keys to the pty). It covers each mode switch, one action of each kind, Enter, quit and cancel, and checks the envelope. It also covers:
   - **Outcomes.** Enter on an empty list, and quit with a query that matches nothing, each give `ok: true` with an empty selection. `FZF_DEFAULT_OPTS='--select-1 --exit-0 --expect=esc'` changes nothing.
   - **Hostile text.** A task title, a `--source` stderr line and an error message containing `)+execute-silent(touch X)+change-footer(` and a newline are shown literally, and `X` is never created. The text must make an action chain fzf would run if it were injected: `)+execute-silent(touch X)+(` does not, since fzf refuses a chain with the bare `(` it leaves, so a test with it passes even when the text is injected.
@@ -501,7 +501,7 @@ Where `pick` differs from the [CLI spec](cli-spec.md)'s global rules, and why:
 
 Done with the implementation, not before, since they describe a command that exists:
 
-- **The skill** gets a hard rule: never run `ftask pick`. It needs the user's terminal; when the user wants to choose for themselves, suggest they run it. An envelope from `pick` that the user hands over is read like any other, `result.actions` included: it says what they changed.
+- **The skill** gets a hard rule: never run `koan pick`. It needs the user's terminal; when the user wants to choose for themselves, suggest they run it. An envelope from `pick` that the user hands over is read like any other, `result.actions` included: it says what they changed.
 - **The README** gets a section on picking tasks yourself, with the keymap's essentials and the pipeline examples.
 - **cli-spec.md** moves `pick` from Planned commands to Commands.
 

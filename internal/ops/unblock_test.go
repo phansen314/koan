@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // unblock runs unblock with input over f, checking the envelope and, on

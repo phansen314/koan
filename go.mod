@@ -1,4 +1,4 @@
-module github.com/phansen314/ftask
+module github.com/phansen314/koan
 
 go 1.25.0
 

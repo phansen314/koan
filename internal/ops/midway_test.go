@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // tree is a home's contents, relative to it: a file's bytes, with the home
@@ -69,7 +69,7 @@ var midwayCases = []midwayCase{
 	{
 		name:  "init",
 		input: `{"root": "~/tasks"}`,
-		order: [][]string{{"tasks"}, {"tasks/ftask.json"}, {"cfg"}, {"cfg/config.toml"}},
+		order: [][]string{{"tasks"}, {"tasks/koan.json"}, {"cfg"}, {"cfg/config.toml"}},
 		outcome: func(stage int) string {
 			return []string{
 				"error",
@@ -84,7 +84,7 @@ var midwayCases = []midwayCase{
 		name:  "create",
 		setup: func(*fixture) {},
 		input: `{"title": "x", "notes": "n"}`,
-		order: [][]string{{"tasks/ftask.json"}, {"tasks/101.json"}, {"tasks/101.md"}},
+		order: [][]string{{"tasks/koan.json"}, {"tasks/101.json"}, {"tasks/101.md"}},
 		// Once the task file is written, create cannot fail: a missing .md
 		// is a warning.
 		outcome: func(stage int) string {
@@ -95,7 +95,7 @@ var midwayCases = []midwayCase{
 		name:  "create-batch",
 		setup: func(*fixture) {},
 		input: `{"tasks": [{"ref": "a", "title": "x", "folder": "/p/q", "notes": "n"}]}`,
-		order: [][]string{{"tasks/p"}, {"tasks/p/q"}, {"tasks/ftask.json"}, {"tasks/p/q/101.json"}, {"tasks/p/q/101.md"}},
+		order: [][]string{{"tasks/p"}, {"tasks/p/q"}, {"tasks/koan.json"}, {"tasks/p/q/101.json"}, {"tasks/p/q/101.md"}},
 		// One task: a failure writing a .md is a warning and the batch goes
 		// on, so with several tasks the stages would not be in a line
 		// (TestCreateBatchCases has those partials). Once the task file is

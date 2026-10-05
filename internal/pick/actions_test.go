@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 func TestStatusLine(t *testing.T) {
@@ -109,11 +109,11 @@ func TestAct(t *testing.T) {
 		tr.run("create", map[string]any{"title": title})
 	}
 	footer := func(helper func(...string) string) string { return helper("text", "footer") }
-	reloaded := "clear-selection+reload-sync('/bin/ftask' __pick lines)+transform-header('/bin/ftask' __pick text 'header')+transform-footer('/bin/ftask' __pick text 'footer')"
+	reloaded := "clear-selection+reload-sync('/bin/koan' __pick lines)+transform-header('/bin/koan' __pick text 'header')+transform-footer('/bin/koan' __pick text 'footer')"
 
 	out, line := tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
 		// One target, refused with several: nothing runs, nothing reloads.
-		if got := helper("act", "y", "3@/", "1@/"); got != "transform-footer('/bin/ftask' __pick text 'footer')" {
+		if got := helper("act", "y", "3@/", "1@/"); got != "transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("y printed %q", got)
 		}
 		if got := footer(helper); got != "✗ y takes one task: 2 marked" {
@@ -144,7 +144,7 @@ func TestAct(t *testing.T) {
 		}
 		// An action with no targets ignores the cursor, and runs nothing
 		// here, so nothing reloads.
-		if got := helper("act", "w", "1@/"); got != "clear-selection+transform-footer('/bin/ftask' __pick text 'footer')" {
+		if got := helper("act", "w", "1@/"); got != "clear-selection+transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("w printed %q", got)
 		}
 		if got := footer(helper); got != "✓ nothing to do" {
@@ -217,7 +217,7 @@ func TestActReloadFails(t *testing.T) {
 		tr.run("create-folder", map[string]any{"folder": "/b"})
 		tr.run("move", map[string]any{"id": 1, "to": "/b"})
 		tr.run("delete-folder", map[string]any{"folder": "/a"})
-		if got := helper("act", "z", "1@/a"); got != "clear-selection+transform-footer('/bin/ftask' __pick text 'footer')" {
+		if got := helper("act", "z", "1@/a"); got != "clear-selection+transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("printed %q", got)
 		}
 		if got := helper("text", "footer"); !strings.HasPrefix(got, "✓ completed 1 · ✗ reload: not-found: ") {

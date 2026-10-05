@@ -8,13 +8,13 @@ import (
 	"io/fs"
 	"slices"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // editAction is e (pick-spec.md, Actions): the targets' notes, all as
-// arguments to one editor, with fzf suspended. ftask never sees the edits;
+// arguments to one editor, with fzf suspended. koan never sees the edits;
 // pick reports the notes that changed in notes_edited. The editor runs
 // through execute, never inside a callback (pick-spec.md, fzf contract):
 // e's callback records the notes' hashes and returns
@@ -65,7 +65,7 @@ func editNotes(r *actionRun, targets []shownLine) {
 	}
 	exe, err := r.env.Sys.Executable()
 	if err != nil {
-		r.err = errs.Internal("locating the ftask binary: " + err.Error())
+		r.err = errs.Internal("locating the koan binary: " + err.Error())
 		return
 	}
 	r.next = "execute(" + helperLine(exe, "edit") + ")+transform(" + helperLine(exe, "after-edit") + ")"

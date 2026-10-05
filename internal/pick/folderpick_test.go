@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // The folders in scope, as list has them: the scope folder, then every

@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // blockAction is b (pick-spec.md, Actions): a choose list of candidate

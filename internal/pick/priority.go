@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // priorityAction is p (pick-spec.md, Actions): the targets' priority, in a

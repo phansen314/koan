@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // Narrowing is the input frontier and list share for narrowing the tasks
@@ -85,7 +85,7 @@ type Tasks struct {
 	Fields []string // nil: whole views
 }
 
-// MarshalJSON encodes the tasks as ftask's output does (jsonio): views
+// MarshalJSON encodes the tasks as koan's output does (jsonio): views
 // whole, or projected.
 func (t Tasks) MarshalJSON() ([]byte, error) {
 	var v any = t.Views

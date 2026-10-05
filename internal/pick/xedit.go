@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // xAction is x (pick-spec.md, Actions: Editing as JSON): the target's

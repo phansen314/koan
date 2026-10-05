@@ -9,9 +9,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // Location is where a task file is: its folder and the ID in its filename.
@@ -88,14 +88,14 @@ type Index struct {
 // and task files (implementation-spec.md, The survey). Paths are relative to
 // the root.
 type Survey struct {
-	// Temps are ftask's temp files and folders, not descended into.
+	// Temps are koan's temp files and folders, not descended into.
 	Temps []string
 	// Strays are the entries that are not hidden and the index skips.
 	Strays []Stray
 	// Notes are the .md files named like a task's notes that are regular
 	// files, by the location of the task they are named for.
 	Notes []Location
-	// Nested are the ftask.json files below the root.
+	// Nested are the koan.json files below the root.
 	Nested []string
 }
 
@@ -226,7 +226,7 @@ func (tx *Tx) walk(x *Index, f model.FolderPath) {
 }
 
 // record files an entry the index skipped: a task's notes, a nested tree's
-// metadata, or a stray. The root's own ftask.json is neither.
+// metadata, or a stray. The root's own koan.json is neither.
 func (s *Survey) record(f model.FolderPath, e fs.DirEntry) {
 	name, rel := e.Name(), joinPath(FolderRel(f), e.Name())
 	switch {

@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 // noFiles is an empty, read-only filesystem: fuzzed command lines never

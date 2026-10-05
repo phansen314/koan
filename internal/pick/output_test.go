@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 func TestSelected(t *testing.T) {
@@ -49,7 +49,7 @@ func TestSelected(t *testing.T) {
 	}
 }
 
-// tree is an initialized ftask tree in a home of its own, for running pick
+// tree is an initialized koan tree in a home of its own, for running pick
 // whole.
 type tree struct {
 	t    *testing.T
@@ -107,7 +107,7 @@ func (tr *tree) pick(in map[string]any, fzf fzfDoes) (ops.Envelope, []byte) {
 		LookPath:   func(string) (string, error) { return "/bin/fzf", nil },
 		Output:     func(string, []string, []string) ([]byte, []byte, int, error) { return []byte("0.63.0\n"), nil, 0, nil },
 		Environ:    func() []string { return []string{"XDG_RUNTIME_DIR=" + runtimeDir} },
-		Executable: func() (string, error) { return "/bin/ftask", nil },
+		Executable: func() (string, error) { return "/bin/koan", nil },
 		OpenTTY:    func() error { return nil },
 
 		CatchInterrupts: func() func() { return func() {} },

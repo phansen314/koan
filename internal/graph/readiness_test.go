@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 func TestReadiness(t *testing.T) {

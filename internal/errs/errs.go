@@ -1,9 +1,9 @@
-// Package errs defines ftask's error and warning kinds, the warning collector,
+// Package errs defines koan's error and warning kinds, the warning collector,
 // and the table of symbolic OS error names.
 //
 // The kinds, their details, and their JSON shapes are specified in
 // operations.md (Error kinds, Warning kinds) and, for usage, cli-spec.md
-// (Usage errors). errs imports none of ftask's own packages.
+// (Usage errors). errs imports none of koan's own packages.
 package errs
 
 import (
@@ -115,12 +115,12 @@ type EnvironmentDetails struct {
 	Variable string `json:"variable"`
 }
 
-// Environment reports that the environment lacks what ftask needs to locate
+// Environment reports that the environment lacks what koan needs to locate
 // its files; variable names the environment variable, e.g. HOME.
 func Environment(variable string) *Error {
 	return &Error{
 		Kind:    KindEnvironment,
-		Message: fmt.Sprintf("cannot locate ftask's files: $%s is unset or not an absolute path", variable),
+		Message: fmt.Sprintf("cannot locate koan's files: $%s is unset or not an absolute path", variable),
 		Details: EnvironmentDetails{Variable: variable},
 	}
 }
@@ -146,7 +146,7 @@ func NotInitialized(missing Missing) *Error {
 	case MissingRoot:
 		msg = "the configured root does not exist"
 	case MissingMetadata:
-		msg = "the root has no ftask.json"
+		msg = "the root has no koan.json"
 	default:
 		msg = "not initialized"
 	}
@@ -211,7 +211,7 @@ func Conflict(rule Rule, ids []int64) *Error {
 	case RuleConfigExists:
 		msg = "a config already exists"
 	case RuleRootNotEmpty:
-		msg = "the root is a non-empty directory without ftask.json"
+		msg = "the root is a non-empty directory without koan.json"
 	case RuleDuplicateID:
 		msg = fmt.Sprintf("more than one task file has ID %s", joinIDs(ids))
 	case RuleIDAboveLastID:
@@ -337,7 +337,7 @@ func UnsupportedFormat(path string, found int64, supported []int64) *Error {
 	}
 }
 
-// Internal reports a bug ftask detects. Panics are never turned into one.
+// Internal reports a bug koan detects. Panics are never turned into one.
 func Internal(message string) *Error {
 	return &Error{Kind: KindInternal, Message: message, Details: empty{}}
 }

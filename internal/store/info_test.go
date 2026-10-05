@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // Inspect's output for each root state, as info reports it (JSON, so null
@@ -62,16 +62,16 @@ func TestInspect(t *testing.T) {
 		{"root cannot be opened", func(f *fixture) Env {
 			return f.withFault(fsys.ErrnoAt(fsys.OpOpenRoot, "", 1, syscall.EACCES))
 		}, `{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"unreadable","schema":null,"last_id":null},"initialized":true,"usable":false,"compatible":null}`},
-		{"missing ftask.json", func(f *fixture) Env { must(t, os.Remove(f.root+"/"+MetaName)); return f.env },
+		{"missing koan.json", func(f *fixture) Env { must(t, os.Remove(f.root+"/"+MetaName)); return f.env },
 			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"missing","schema":null,"last_id":null},"initialized":false,"usable":false,"compatible":null}`},
-		{"unreadable ftask.json", func(f *fixture) Env {
+		{"unreadable koan.json", func(f *fixture) Env {
 			return f.withFault(fsys.ErrnoAt(fsys.OpReadFile, MetaName, 1, syscall.EIO))
 		}, `{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"unreadable","schema":null,"last_id":null},"initialized":true,"usable":false,"compatible":null}`},
-		{"ftask.json not JSON", func(f *fixture) Env { f.write("tasks/"+MetaName, "[]"); return f.env },
+		{"koan.json not JSON", func(f *fixture) Env { f.write("tasks/"+MetaName, "[]"); return f.env },
 			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"corrupt","schema":null,"last_id":null},"initialized":true,"usable":false,"compatible":null}`},
-		{"ftask.json corrupt at step 3", func(f *fixture) Env { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": 1.5}`); return f.env },
+		{"koan.json corrupt at step 3", func(f *fixture) Env { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": 1.5}`); return f.env },
 			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"corrupt","schema":1,"last_id":null},"initialized":true,"usable":false,"compatible":true}`},
-		{"ftask.json unsupported", func(f *fixture) Env { f.write("tasks/"+MetaName, `{"schema": 2}`); return f.env },
+		{"koan.json unsupported", func(f *fixture) Env { f.write("tasks/"+MetaName, `{"schema": 2}`); return f.env },
 			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"unsupported-format","schema":2,"last_id":null},"initialized":true,"usable":false,"compatible":false}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

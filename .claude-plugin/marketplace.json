@@ -1,14 +1,14 @@
 {
-  "name": "ftask",
-  "description": "ftask: local, file-based task management for Claude Code.",
+  "name": "koan",
+  "description": "koan: local, file-based task management for Claude Code.",
   "owner": {
     "name": "phansen314"
   },
   "plugins": [
     {
-      "name": "ftask",
+      "name": "koan",
       "source": "./",
-      "description": "Track and work through your tasks with the ftask CLI: a local, file-based task tree with dependencies."
+      "description": "Track and work through your tasks with the koan CLI: a local, file-based task tree with dependencies."
     }
   ]
 }

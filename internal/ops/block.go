@@ -4,11 +4,11 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/graph"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/graph"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // BlockersInput is the input of block and unblock: a task and the blockers

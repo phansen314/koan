@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
+	"github.com/phansen314/koan/internal/errs"
 )
 
-// HelperCommand is the hidden command fzf's callbacks run: ftask __pick
+// HelperCommand is the hidden command fzf's callbacks run: koan __pick
 // <verb> …. It is internal: not in help, not part of the contract, and it
 // may change in any release (pick-spec.md, Session).
 const HelperCommand = "__pick"
@@ -37,7 +37,7 @@ var verbs = map[string]verb{
 	"text":       text,
 }
 
-// Helper runs ftask __pick with args, the words after it, and returns what
+// Helper runs koan __pick with args, the words after it, and returns what
 // to print. With no valid session, or no verb it knows, it fails as any
 // command does, with an envelope: usage. A verb's failure is reported
 // instead, and out is what to print for it (see failed): fzf reads a

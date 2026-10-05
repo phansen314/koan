@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // createBatch runs create-batch with input over f, checking the envelope,
@@ -92,7 +92,7 @@ func TestCreateBatch(t *testing.T) {
 		"tasks/work/api/102.json": task(102, "Write migrations", "null", "[\n    101\n  ]", "[]", "{}"),
 		"tasks/work/api/102.md":   "",
 		"tasks/ops/prod/103.json": task(103, "Deploy", "null", "[\n    7,\n    101,\n    102\n  ]", "[]", "{\n    \"n\": 1.50\n  }"),
-		"tasks/ftask.json":        "{\n  \"schema\": 1,\n  \"last_id\": 103\n}\n",
+		"tasks/koan.json":         "{\n  \"schema\": 1,\n  \"last_id\": 103\n}\n",
 	} {
 		if got := f.read(rel); got != want {
 			t.Errorf("%s:\n%s\nwant\n%s", rel, got, want)
@@ -117,7 +117,7 @@ func TestCreateBatchCases(t *testing.T) {
 		{"shared missing parent created once", nil, `{"tasks": [{"title": "x", "folder": "/a/c"}, {"title": "y", "folder": "/a/b"}, {"title": "z", "folder": "/a"}]}`,
 			`{"ids":[101,102,103],"refs":{},"folders_created":["/a","/a/b","/a/c"]}`, map[string]string{"tasks/a/c/101.json": "", "tasks/a/b/102.json": "", "tasks/a/103.json": ""}},
 		{"folder a file", func(f *fixture) { f.write("tasks/a", "") }, `{"tasks": [{"title": "x", "folder": "/a/b"}]}`,
-			`corrupt {"path":"~/tasks/a","reason":"unexpected-file"}`, map[string]string{"tasks/ftask.json": fresh}},
+			`corrupt {"path":"~/tasks/a","reason":"unexpected-file"}`, map[string]string{"tasks/koan.json": fresh}},
 		{"first bad folder in tree order", func(f *fixture) { f.write("tasks/b", ""); f.write("tasks/a/c", "") },
 			`{"tasks": [{"title": "x", "folder": "/b"}, {"title": "y", "folder": "/a/c"}, {"title": "z", "folder": "/n"}]}`,
 			`corrupt {"path":"~/tasks/a/c","reason":"unexpected-file"}`, map[string]string{"tasks/n": "<none>"}},
@@ -131,7 +131,7 @@ func TestCreateBatchCases(t *testing.T) {
 
 		// Existing blockers.
 		{"missing blockers across tasks", func(f *fixture) { f.task("", 1, false) }, `{"tasks": [{"title": "x", "folder": "/n", "blocked_by": [9, 1]}, {"title": "y", "blocked_by": [5, 9]}]}`,
-			`not-found {"folders":[],"ids":[5,9],"paths":[]}`, map[string]string{"tasks/ftask.json": fresh, "tasks/n": "<none>"}},
+			`not-found {"folders":[],"ids":[5,9],"paths":[]}`, map[string]string{"tasks/koan.json": fresh, "tasks/n": "<none>"}},
 		{"corrupt folder before missing blockers", func(f *fixture) { f.write("tasks/a", "") }, `{"tasks": [{"title": "x", "folder": "/a", "blocked_by": [9]}]}`,
 			`corrupt {"path":"~/tasks/a","reason":"unexpected-file"}`, nil},
 		{"corrupt blocker", func(f *fixture) { f.write("tasks/1.json", "{") }, `{"tasks": [{"title": "x", "blocked_by": [1]}]}`,
@@ -151,20 +151,20 @@ func TestCreateBatchCases(t *testing.T) {
 		// The IDs.
 		{"blockers above last_id", func(f *fixture) { f.task("x", 101, false); f.task("", 1, false) },
 			`{"tasks": [{"title": "x", "folder": "/n", "blocked_by": [1]}, {"title": "y", "blocked_by": [101]}]}`,
-			`conflict {"rule":"id-above-last-id","ids":[101]}`, map[string]string{"tasks/ftask.json": fresh, "tasks/101.json": "<none>", "tasks/n": "<none>"}},
-		{"batch past the ceiling", func(f *fixture) { f.write("tasks/ftask.json", `{"schema": 1, "last_id": 999999999999998}`) },
+			`conflict {"rule":"id-above-last-id","ids":[101]}`, map[string]string{"tasks/koan.json": fresh, "tasks/101.json": "<none>", "tasks/n": "<none>"}},
+		{"batch past the ceiling", func(f *fixture) { f.write("tasks/koan.json", `{"schema": 1, "last_id": 999999999999998}`) },
 			`{"tasks": [{"title": "x"}, {"title": "y"}]}`,
 			`conflict {"rule":"id-exhausted","ids":[]}`, nil},
-		{"batch up to the ceiling", func(f *fixture) { f.write("tasks/ftask.json", `{"schema": 1, "last_id": 999999999999997}`) },
+		{"batch up to the ceiling", func(f *fixture) { f.write("tasks/koan.json", `{"schema": 1, "last_id": 999999999999997}`) },
 			`{"tasks": [{"title": "x"}, {"title": "y"}]}`,
 			`{"ids":[999999999999998,999999999999999],"refs":{},"folders_created":[]}`, nil},
-		{"ceiling checked before folders are made", func(f *fixture) { f.write("tasks/ftask.json", `{"schema": 1, "last_id": 999999999999999}`) },
+		{"ceiling checked before folders are made", func(f *fixture) { f.write("tasks/koan.json", `{"schema": 1, "last_id": 999999999999999}`) },
 			`{"tasks": [{"title": "x", "folder": "/n"}]}`,
 			`conflict {"rule":"id-exhausted","ids":[]}`, map[string]string{"tasks/n": "<none>"}},
 		{"task file already there", func(f *fixture) { f.task("", 102, false) },
 			`{"tasks": [{"ref": "a", "title": "x"}, {"title": "y"}, {"title": "z"}]}`,
 			`corrupt {"path":"~/tasks/102.json","reason":"unexpected-file"} partial {"folders_created":[],"consumed":[101,102,103],"ids":[101],"refs":{"a":101}}`,
-			map[string]string{"tasks/ftask.json": "{\n  \"schema\": 1,\n  \"last_id\": 103\n}\n", "tasks/101.json": "", "tasks/103.json": "<none>"}},
+			map[string]string{"tasks/koan.json": "{\n  \"schema\": 1,\n  \"last_id\": 103\n}\n", "tasks/101.json": "", "tasks/103.json": "<none>"}},
 
 		// Root states come first.
 		{"no config", func(f *fixture) { f.remove("cfg") }, `{"tasks": [{"title": "x"}]}`,
@@ -174,14 +174,14 @@ func TestCreateBatchCases(t *testing.T) {
 		{"folder not made", func(f *fixture) { f.failAt(fsys.OpMkdir, "b", syscall.EACCES) },
 			`{"tasks": [{"title": "x", "folder": "/a"}, {"title": "y", "folder": "/b"}]}`,
 			`io {"path":"~/tasks/b","code":"EACCES"} partial {"folders_created":["/a"],"consumed":[],"ids":[],"refs":{}}`,
-			map[string]string{"tasks/ftask.json": fresh}},
+			map[string]string{"tasks/koan.json": fresh}},
 		{"first folder not made", func(f *fixture) { f.failAt(fsys.OpMkdir, "a", syscall.EACCES) }, `{"tasks": [{"title": "x", "folder": "/a"}]}`,
 			`io {"path":"~/tasks/a","code":"EACCES"}`, nil},
-		{"ftask.json not written after folders", func(f *fixture) { f.failAt(fsys.OpRename, "ftask.json", syscall.ENOSPC) }, `{"tasks": [{"title": "x", "folder": "/a"}]}`,
-			`io {"path":"~/tasks/ftask.json","code":"ENOSPC"} partial {"folders_created":["/a"],"consumed":[],"ids":[],"refs":{}}`,
-			map[string]string{"tasks/ftask.json": fresh}},
-		{"ftask.json not written", func(f *fixture) { f.failAt(fsys.OpRename, "ftask.json", syscall.ENOSPC) }, `{"tasks": [{"title": "x"}]}`,
-			`io {"path":"~/tasks/ftask.json","code":"ENOSPC"}`, nil},
+		{"koan.json not written after folders", func(f *fixture) { f.failAt(fsys.OpRename, "koan.json", syscall.ENOSPC) }, `{"tasks": [{"title": "x", "folder": "/a"}]}`,
+			`io {"path":"~/tasks/koan.json","code":"ENOSPC"} partial {"folders_created":["/a"],"consumed":[],"ids":[],"refs":{}}`,
+			map[string]string{"tasks/koan.json": fresh}},
+		{"koan.json not written", func(f *fixture) { f.failAt(fsys.OpRename, "koan.json", syscall.ENOSPC) }, `{"tasks": [{"title": "x"}]}`,
+			`io {"path":"~/tasks/koan.json","code":"ENOSPC"}`, nil},
 		{"second task not written", func(f *fixture) { f.failAt(fsys.OpLink, "102.json", syscall.ENOSPC) },
 			`{"tasks": [{"ref": "a", "title": "x"}, {"ref": "b", "title": "y", "blocked_by": ["a"]}, {"title": "z", "blocked_by": ["b"]}]}`,
 			`io {"path":"~/tasks/102.json","code":"ENOSPC"} partial {"folders_created":[],"consumed":[101,102,103],"ids":[101],"refs":{"a":101}}`,
@@ -227,7 +227,7 @@ func TestCreateBatchLimits(t *testing.T) {
 	if got := f.batchSummary(f.createBatch(`{"tasks": [` + tasks + `{"title": "x"}]}`)); got != `invalid-input {"problems":[{"field":"/tasks","reason":"must list at most 1000 tasks"}]}` {
 		t.Errorf("1001 tasks: %s", got)
 	}
-	if got := f.read("tasks/ftask.json"); got != "{\"schema\": 1, \"last_id\": 100}\n" {
-		t.Errorf("ftask.json %q", got)
+	if got := f.read("tasks/koan.json"); got != "{\"schema\": 1, \"last_id\": 100}\n" {
+		t.Errorf("koan.json %q", got)
 	}
 }

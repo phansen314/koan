@@ -482,7 +482,7 @@ func TestPickEdit(t *testing.T) {
 
 		t.Run("ctrl-c in the editor", func(t *testing.T) {
 			// No preview, so the status line has the width.
-			p := pick(t, "FTASK_PICK_OPTS=--preview-window=hidden")
+			p := pick(t, "KOAN_PICK_OPTS=--preview-window=hidden")
 			p.send("c") // complete 1, an action to report
 			p.waitScreen("✓ completed 1")
 			p.waitState("the reload", func(st fzfState) bool { return st.TotalCount == 2 && !st.Reading })
@@ -654,7 +654,7 @@ func TestPickHostileStatus(t *testing.T) {
 		// of the message can't close into an action, so fzf would refuse
 		// the whole chain; this one makes a chain fzf would run.
 		hostile := ")+execute-silent(touch X)+change-footer("
-		init := ftask(t, "init", filepath.Join(home, hostile+"\nr"))
+		init := koan(t, "init", filepath.Join(home, hostile+"\nr"))
 		init.Env = []string{"HOME=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "PATH=" + os.Getenv("PATH")}
 		if r := run(t, init); r.code != 0 {
 			t.Fatal(r.stdout)
@@ -670,7 +670,7 @@ func TestPickHostileStatus(t *testing.T) {
 		dir := t.TempDir()
 		cmd := tr.cmd("pick")
 		cmd.Dir = dir
-		cmd.Env = append(cmd.Env, "FTASK_PICK_OPTS=--preview-window=hidden")
+		cmd.Env = append(cmd.Env, "KOAN_PICK_OPTS=--preview-window=hidden")
 		// Checked however the test ends.
 		t.Cleanup(func() {
 			for _, d := range []string{dir, home} {
@@ -784,7 +784,7 @@ fi
 			t.Fatal(err)
 		}
 		cmd := tr.cmd("pick", "--fields", "id,title")
-		cmd.Env = append(cmd.Env, "VISUAL="+ed, "FTASK_PICK_OPTS=--preview-window=hidden")
+		cmd.Env = append(cmd.Env, "VISUAL="+ed, "KOAN_PICK_OPTS=--preview-window=hidden")
 		p := startPick(t, fzfDir, cmd)
 		p.loaded()
 		p.command()
@@ -1192,7 +1192,7 @@ func TestPickSource(t *testing.T) {
 			})
 			cmd := tr.cmd("pick", "--source", script)
 			cmd.Dir = dir
-			cmd.Env = append(cmd.Env, "FTASK_PICK_OPTS=--preview-window=hidden")
+			cmd.Env = append(cmd.Env, "KOAN_PICK_OPTS=--preview-window=hidden")
 			p := startPick(t, fzfDir, cmd)
 			p.loaded()
 			p.command()
@@ -1216,7 +1216,7 @@ func TestPickSource(t *testing.T) {
 			}
 			cmd := tr.cmd("pick", "--fields", "id", "--source", script)
 			cmd.Dir = dir
-			cmd.Env = append(cmd.Env, "FTASK_PICK_OPTS=--preview-window=hidden")
+			cmd.Env = append(cmd.Env, "KOAN_PICK_OPTS=--preview-window=hidden")
 			p := startPick(t, fzfDir, cmd)
 			total := p.loaded().TotalCount
 			p.command()
@@ -1246,7 +1246,7 @@ func TestPickSource(t *testing.T) {
 			}
 			cmd := tr.cmd("pick", "--source", script)
 			cmd.Dir = dir
-			cmd.Env = append(cmd.Env, "FTASK_E2E_SOURCE_LIMIT=300ms", "FTASK_PICK_OPTS=--preview-window=hidden")
+			cmd.Env = append(cmd.Env, "KOAN_E2E_SOURCE_LIMIT=300ms", "KOAN_PICK_OPTS=--preview-window=hidden")
 			p := startPick(t, fzfDir, cmd)
 			total := p.loaded().TotalCount
 			p.command()
@@ -1512,7 +1512,7 @@ func TestPickFirstLoadCursor(t *testing.T) {
 		for i := range 20 {
 			log := filepath.Join(t.TempDir(), "helper.log")
 			cmd := tr.cmd("pick")
-			cmd.Env = append(cmd.Env, "FTASK_E2E_HELPER_LOG="+log)
+			cmd.Env = append(cmd.Env, "KOAN_E2E_HELPER_LOG="+log)
 			p := startPick(t, fzfDir, cmd)
 			p.loaded()
 			p.command()
@@ -1548,7 +1548,7 @@ func TestPickTmux(t *testing.T) {
 		ttyBind := func(file string) string {
 			return fmt.Sprintf("--bind 'ctrl-t:execute-silent(ps -o tty= -p $$ > %s)'", file)
 		}
-		env, port := pickEnv(t, fzfDir, append(tr.env, "FZF_DEFAULT_OPTS=--tmux", "PS1=$ ", "FTASK_PICK_OPTS="+ttyBind("pick.tty")))
+		env, port := pickEnv(t, fzfDir, append(tr.env, "FZF_DEFAULT_OPTS=--tmux", "PS1=$ ", "KOAN_PICK_OPTS="+ttyBind("pick.tty")))
 		cmd := exec.Command("tmux", "-S", sock, "-f", "/dev/null", "new-session", "-x", "100", "-y", "24", "sh")
 		cmd.Env, cmd.Dir = env, dir
 		p := &picker{term: startTerm(t, cmd, 24, 100), port: port}

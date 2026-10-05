@@ -6,8 +6,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 // noTemps fails the test if any temp file is left in dir, under home.
@@ -101,7 +101,7 @@ func TestPublishFailures(t *testing.T) {
 	}
 }
 
-// Publish's temp file is created in the target's directory, with ftask's
+// Publish's temp file is created in the target's directory, with koan's
 // prefix, and published by link or rename as asked.
 func TestPublishSteps(t *testing.T) {
 	f := newFixture(t)
@@ -171,7 +171,7 @@ func TestSetLastID(t *testing.T) {
 		}
 	})
 	if got, want := f.read("tasks/"+MetaName), "{\n  \"schema\": 1,\n  \"last_id\": 101\n}\n"; got != want {
-		t.Errorf("ftask.json is %q, want %q", got, want)
+		t.Errorf("koan.json is %q, want %q", got, want)
 	}
 	env := f.withFault(fsys.ErrnoAt(fsys.OpRename, "", 1, syscall.EROFS))
 	writeTx(t, env, nil, func(tx *Tx) {

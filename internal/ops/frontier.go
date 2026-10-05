@@ -4,9 +4,9 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // ScopeInput is the input of frontier and list, defaults applied.

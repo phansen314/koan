@@ -3,14 +3,14 @@ package store
 import (
 	"syscall"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // MetaName is the root metadata file's name, at the root.
-const MetaName = "ftask.json"
+const MetaName = "koan.json"
 
 // config is what a readable, parseable config names.
 type config struct {
@@ -107,7 +107,7 @@ func rootMissing(err error) bool {
 	return isErrno(err, syscall.ENOENT) || isErrno(err, syscall.ENOTDIR) || isErrno(err, syscall.ELOOP)
 }
 
-// metaState is the outcome of reading ftask.json: its state as info reports
+// metaState is the outcome of reading koan.json: its state as info reports
 // it, with what each state carries.
 type metaState struct {
 	state MetaState
@@ -117,7 +117,7 @@ type metaState struct {
 	meta  model.RootFile    // MetaOK
 }
 
-// readMeta reads ftask.json through r. It must be a regular file: a symlink,
+// readMeta reads koan.json through r. It must be a regular file: a symlink,
 // a directory, or anything else in its place is corrupt (unexpected-file).
 func readMeta(r fsys.Root) metaState {
 	fi, err := r.Lstat(MetaName)
@@ -148,7 +148,7 @@ func readMeta(r fsys.Root) metaState {
 	return ms
 }
 
-// unexpectedFile is the cause of an ftask.json that is not a regular file.
+// unexpectedFile is the cause of a koan.json that is not a regular file.
 var unexpectedFile = errs.CorruptCause{Reason: errs.CorruptUnexpectedFile}
 
 func metaReadError(err error) metaState {
@@ -161,7 +161,7 @@ func metaReadError(err error) metaState {
 	return metaState{state: MetaUnreadable, err: err}
 }
 
-// metaError turns an unusable ftask.json into the Root states error.
+// metaError turns an unusable koan.json into the Root states error.
 func metaError(ms metaState, root string) *errs.Error {
 	p := joinPath(root, MetaName)
 	switch ms.state {

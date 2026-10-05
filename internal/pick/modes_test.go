@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 // The command keys: moving and marking, then each action's.

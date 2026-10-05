@@ -5,7 +5,7 @@
   "required": ["root_created", "metadata_created"],
   "properties": {
     "root_created": { "type": "boolean", "description": "init created the root directory." },
-    "metadata_created": { "type": "boolean", "description": "init created ftask.json." }
+    "metadata_created": { "type": "boolean", "description": "init created koan.json." }
   },
   "additionalProperties": false
 }

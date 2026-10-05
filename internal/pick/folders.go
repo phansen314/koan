@@ -1,8 +1,8 @@
 package pick
 
 import (
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // moveAction is m (pick-spec.md, Actions): a choose list, move to> , of

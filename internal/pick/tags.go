@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // tagsAction is t (pick-spec.md, Actions): the targets' tags, in a prompt

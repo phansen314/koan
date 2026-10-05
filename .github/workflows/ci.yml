@@ -46,7 +46,7 @@ jobs:
         run: go build ./...
       # The picker's end-to-end tests run against each fzf fetched here.
       - name: Fetch fzf
-        run: echo "FTASK_E2E_FZF=$(scripts/fetch-fzf.sh "$RUNNER_TEMP/fzf")" >> "$GITHUB_ENV"
+        run: echo "KOAN_E2E_FZF=$(scripts/fetch-fzf.sh "$RUNNER_TEMP/fzf")" >> "$GITHUB_ENV"
       # Never -short: the lock stress tests are the macOS check (Lock 5, 6).
       - name: Test
         run: go test ./...

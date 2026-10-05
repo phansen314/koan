@@ -13,7 +13,7 @@ func TestPromptOnTargets(t *testing.T) {
 	tr.run("create", map[string]any{"title": "one", "priority": 5})
 	tr.run("create", map[string]any{"title": "two"})
 	tr.run("create", map[string]any{"title": "three"})
-	footerOnly := "transform-footer('/bin/ftask' __pick text 'footer')"
+	footerOnly := "transform-footer('/bin/koan' __pick text 'footer')"
 	_, line := tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
 		text := func(name string) string { return helper("text", name) }
 		helper("command", "")

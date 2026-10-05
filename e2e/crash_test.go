@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 // clock fixes the time every crash-test command sees, so the files of two
 // runs compare byte for byte.
-const clock = "FTASK_E2E_CLOCK=2026-09-28T12:00:00Z"
+const clock = "KOAN_E2E_CLOCK=2026-09-28T12:00:00Z"
 
 // snapshot is a home directory's contents: each path relative to the home
 // maps to the file's bytes, with the home itself written "~", or to "/" for
@@ -68,7 +68,7 @@ type crashCase struct {
 	// setup.
 	init  bool
 	setup [][]string
-	// seed, if set, then changes the tree as no ftask command would: the
+	// seed, if set, then changes the tree as no koan command would: the
 	// outside change repair repairs.
 	seed func(t *testing.T, root string)
 	args []string
@@ -97,7 +97,7 @@ var crashCases = []crashCase{
 	{
 		name: "init", init: true,
 		args:  []string{"init", "~/tasks"},
-		order: [][]string{{"tasks"}, {"tasks/ftask.json"}, configDirs, {configDir + "/config.toml"}},
+		order: [][]string{{"tasks"}, {"tasks/koan.json"}, configDirs, {configDir + "/config.toml"}},
 		// Once the config is written, init has succeeded, and a rerun is a
 		// rerun after success.
 		rerun: func(stage int) (int, string, bool) {
@@ -110,7 +110,7 @@ var crashCases = []crashCase{
 	{
 		name:  "create",
 		args:  []string{"create", "Fix", "--notes", "call first"},
-		order: [][]string{{"tasks/ftask.json"}, {"tasks/1.json"}, {"tasks/1.md"}},
+		order: [][]string{{"tasks/koan.json"}, {"tasks/1.json"}, {"tasks/1.md"}},
 		// Not safe after a crash: once the ID is consumed, a rerun creates
 		// a second task.
 		rerun: func(stage int) (int, string, bool) {
@@ -124,7 +124,7 @@ var crashCases = []crashCase{
 		name:  "create-batch",
 		args:  []string{"create-batch", "-i", "-"},
 		stdin: `{"tasks": [{"ref": "a", "title": "x", "folder": "/p", "notes": "n"}, {"title": "y", "blocked_by": ["a"], "notes": "m"}]}`,
-		order: [][]string{{"tasks/p"}, {"tasks/ftask.json"}, {"tasks/p/1.json"}, {"tasks/p/1.md"}, {"tasks/2.json"}, {"tasks/2.md"}},
+		order: [][]string{{"tasks/p"}, {"tasks/koan.json"}, {"tasks/p/1.json"}, {"tasks/p/1.md"}, {"tasks/2.json"}, {"tasks/2.md"}},
 		// Not safe after a crash once IDs are consumed: a rerun creates the
 		// batch again, with new IDs.
 		rerun: func(stage int) (int, string, bool) {
@@ -229,8 +229,8 @@ var crashCases = []crashCase{
 		setup: [][]string{{"create", "a"}, {"create", "b"}, {"block", "1", "--blockers", "2"}},
 		seed: func(t *testing.T, root string) {
 			for name, data := range map[string]string{
-				".ftask-tmp-seed": "x",
-				"ftask.json":      "{\n  \"schema\": 1,\n  \"last_id\": 0\n}\n",
+				".koan-tmp-seed": "x",
+				"koan.json":      "{\n  \"schema\": 1,\n  \"last_id\": 0\n}\n",
 			} {
 				if err := os.WriteFile(filepath.Join(root, name), []byte(data), 0o644); err != nil {
 					t.Fatal(err)
@@ -241,7 +241,7 @@ var crashCases = []crashCase{
 			}
 		},
 		args:  []string{"repair"},
-		order: [][]string{{"tasks/ftask.json"}, {"tasks/1.json"}, {"tasks/2.md"}},
+		order: [][]string{{"tasks/koan.json"}, {"tasks/1.json"}, {"tasks/2.md"}},
 		found: map[int][]string{
 			0: {"dangling-reference", "id-above-last-id", "orphan-notes"},
 			1: {"dangling-reference", "orphan-notes"},
@@ -320,7 +320,7 @@ func (c crashCase) fixture(t *testing.T) *tree {
 	t.Helper()
 	var tr *tree
 	if c.init {
-		cmd := ftask(t)
+		cmd := koan(t)
 		tr = &tree{t: t, env: cmd.Env, home: envHome(cmd)}
 	} else {
 		tr = newTree(t)
@@ -381,7 +381,7 @@ func TestCrashInjection(t *testing.T) {
 				}
 				tr := c.fixture(t)
 				cmd := c.cmd(tr)
-				cmd.Env = append(cmd.Env, "FTASK_E2E_CRASH_BEFORE="+strconv.Itoa(k))
+				cmd.Env = append(cmd.Env, "KOAN_E2E_CRASH_BEFORE="+strconv.Itoa(k))
 				r := run(t, cmd)
 				ws, _ := cmd.ProcessState.Sys().(syscall.WaitStatus)
 				if !ws.Signaled() {

@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/phansen314/ftask/internal/errs"
+	"github.com/phansen314/koan/internal/errs"
 )
 
 // MinFzf is the oldest fzf pick runs with (pick-spec.md, Requirements).
@@ -27,7 +27,7 @@ type System struct {
 	// not be started or did not exit normally.
 	Output  func(path string, args, env []string) (stdout, stderr []byte, status int, err error)
 	Environ func() []string
-	// Executable is the absolute path of this ftask binary, which fzf's
+	// Executable is the absolute path of this koan binary, which fzf's
 	// callbacks run.
 	Executable func() (string, error)
 	// OpenTTY checks that /dev/tty opens for reading and writing.

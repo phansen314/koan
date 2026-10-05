@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
+	"github.com/phansen314/koan/internal/errs"
 )
 
 // matchAtOnce matches the query against lines headlessly, with fzf

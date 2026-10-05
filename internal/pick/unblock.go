@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // unblockAction is u (pick-spec.md, Actions): a choose list, unblock 42> ,

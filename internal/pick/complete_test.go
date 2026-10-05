@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // c decides by the readiness the lines show: any open completes all, all

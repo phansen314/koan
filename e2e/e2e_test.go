@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 func TestExitCodes(t *testing.T) {
@@ -32,7 +32,7 @@ func TestExitCodes(t *testing.T) {
 		{"bare", nil, "", 2, `"kind":"usage"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := ftask(t, tc.args...)
+			cmd := koan(t, tc.args...)
 			cmd.Stdin = strings.NewReader(tc.stdin)
 			r := run(t, cmd)
 			if r.code != tc.code {
@@ -49,7 +49,7 @@ func TestExitCodes(t *testing.T) {
 // stdin is never read unless named: a terminal-less, never-closed stdin
 // must not block a command that does not ask for it.
 func TestStdinNotRead(t *testing.T) {
-	cmd := ftask(t, "version")
+	cmd := koan(t, "version")
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestStdinNotRead(t *testing.T) {
 }
 
 func TestHelp(t *testing.T) {
-	r := run(t, ftask(t, "version", "--help"))
+	r := run(t, koan(t, "version", "--help"))
 	if r.code != 0 || !strings.Contains(r.stdout, "Usage:") || r.stderr != "" {
 		t.Errorf("exit %d: %q %q", r.code, r.stdout, r.stderr)
 	}
@@ -76,10 +76,10 @@ func TestClosedPipe(t *testing.T) {
 	}
 	pr.Close()
 	defer pw.Close()
-	cmd := ftask(t, "version")
+	cmd := koan(t, "version")
 	cmd.Stdout = pw
 	r := run(t, cmd)
-	if r.code != 3 || !strings.HasPrefix(r.stderr, "ftask: result not delivered: ") {
+	if r.code != 3 || !strings.HasPrefix(r.stderr, "koan: result not delivered: ") {
 		t.Errorf("exit %d, stderr %q; want 3 and the notice", r.code, r.stderr)
 	}
 }
@@ -95,7 +95,7 @@ func TestInfo(t *testing.T) {
 		{"no home", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := ftask(t, "info")
+			cmd := koan(t, "info")
 			var want any // config.path: null when it can't be located
 			if tc.unset {
 				cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
@@ -126,19 +126,19 @@ func TestInfo(t *testing.T) {
 // show against the real filesystem: not-initialized in a fresh home (exit
 // 1), and a task found in a tree written by hand (init comes later).
 func TestShow(t *testing.T) {
-	cmd := ftask(t, "show", "1")
+	cmd := koan(t, "show", "1")
 	r := run(t, cmd)
 	envelope(t, r)
 	if r.code != 1 || !strings.Contains(r.stdout, `"missing":"config"`) {
 		t.Fatalf("fresh home: exit %d: %s", r.code, r.stdout)
 	}
 
-	cmd = ftask(t, "show", "1")
+	cmd = koan(t, "show", "1")
 	home := envHome(cmd)
 	root := filepath.Join(home, "tasks")
 	for p, content := range map[string]string{
 		filepath.Join(home, configDir, "config.toml"): `root = "` + root + "\"\n",
-		filepath.Join(root, "ftask.json"):             `{"schema": 1, "last_id": 1}`,
+		filepath.Join(root, "koan.json"):              `{"schema": 1, "last_id": 1}`,
 		filepath.Join(root, "proj", "1.json"):         `{"schema": 1, "id": 1, "title": "t", "priority": null, "created_at": "2026-09-27T00:00:00Z", "completed_at": null,"updated_at": "2026-09-27T00:00:00Z", "blocked_by": [2], "tags": [], "extra": {}}`,
 	} {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -158,9 +158,9 @@ func TestShow(t *testing.T) {
 }
 
 // init creates a tree the other commands then use; a second init refuses.
-// ~/ is expanded by ftask itself, as with no shell in between.
+// ~/ is expanded by koan itself, as with no shell in between.
 func TestInit(t *testing.T) {
-	first := ftask(t, "init", "~/tasks")
+	first := koan(t, "init", "~/tasks")
 	home := envHome(first)
 	same := func(args ...string) *exec.Cmd {
 		cmd := exec.Command(binary, args...)
@@ -359,7 +359,7 @@ func TestNarrowing(t *testing.T) {
 // A relative root is resolved against the working directory as the shell
 // reports it: through a symlink, not with it resolved.
 func TestInitRelative(t *testing.T) {
-	cmd := ftask(t, "init", "tasks")
+	cmd := koan(t, "init", "tasks")
 	home := envHome(cmd)
 	if err := os.Mkdir(filepath.Join(home, "real"), 0o755); err != nil {
 		t.Fatal(err)
@@ -375,7 +375,7 @@ func TestInitRelative(t *testing.T) {
 	if r.code != 0 || !strings.Contains(r.stdout, `"root":"`+link+`/tasks"`) {
 		t.Fatalf("exit %d: %s", r.code, r.stdout)
 	}
-	if _, err := os.Stat(filepath.Join(home, "real", "tasks", "ftask.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, "real", "tasks", "koan.json")); err != nil {
 		t.Error(err)
 	}
 }
@@ -389,18 +389,18 @@ func TestFullDisk(t *testing.T) {
 		t.Skip(err)
 	}
 	defer full.Close()
-	cmd := ftask(t, "version")
+	cmd := koan(t, "version")
 	cmd.Stdout = full
 	r := run(t, cmd)
-	if r.code != 3 || !strings.HasPrefix(r.stderr, "ftask: result not delivered: ") {
+	if r.code != 3 || !strings.HasPrefix(r.stderr, "koan: result not delivered: ") {
 		t.Errorf("exit %d, stderr %q; want 3 and the notice", r.code, r.stderr)
 	}
 }
 
 // A panic is a crash: SIGABRT, exit 134, never 2 (a usage error).
 func TestCrash(t *testing.T) {
-	cmd := ftask(t, "version")
-	cmd.Env = append(cmd.Env, "FTASK_E2E_PANIC=1")
+	cmd := koan(t, "version")
+	cmd.Env = append(cmd.Env, "KOAN_E2E_PANIC=1")
 	r := run(t, cmd)
 	ws, _ := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	if !ws.Signaled() || ws.Signal() != syscall.SIGABRT {
@@ -414,9 +414,9 @@ func TestCrash(t *testing.T) {
 // The release build has no test hooks: their variables change nothing
 // (implementation-spec.md, Test hooks).
 func TestReleaseIgnoresHooks(t *testing.T) {
-	cmd := ftask(t, "version")
+	cmd := koan(t, "version")
 	cmd.Path, cmd.Args[0] = release, release
-	cmd.Env = append(cmd.Env, "FTASK_E2E_PANIC=1", "FTASK_E2E_HOLD=1", "FTASK_E2E_CRASH_BEFORE=1", "FTASK_E2E_CLOCK=x")
+	cmd.Env = append(cmd.Env, "KOAN_E2E_PANIC=1", "KOAN_E2E_HOLD=1", "KOAN_E2E_CRASH_BEFORE=1", "KOAN_E2E_CLOCK=x")
 	r := run(t, cmd)
 	envelope(t, r)
 	if r.code != 0 {
@@ -442,11 +442,11 @@ func TestStderr(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		{"failure", tr.cmd("complete", "999"), 1, "ftask: not-found: not found: task 999\n"},
-		{"usage", tr.cmd("nosuch"), 2, "ftask: usage: unknown command\n"},
-		{"warnings", tr.cmd("list"), 0, "ftask: 3 warnings (see .warnings in the output)\n"},
+		{"failure", tr.cmd("complete", "999"), 1, "koan: not-found: not found: task 999\n"},
+		{"usage", tr.cmd("nosuch"), 2, "koan: usage: unknown command\n"},
+		{"warnings", tr.cmd("list"), 0, "koan: 3 warnings (see .warnings in the output)\n"},
 		{"clean", tr.cmd("version"), 0, ""},
-		{"corrupt", tr.cmd("show", "2"), 1, "ftask: corrupt: " + filepath.Join(tr.root(), "2.json") + ": corrupt: empty\n"},
+		{"corrupt", tr.cmd("show", "2"), 1, "koan: corrupt: " + filepath.Join(tr.root(), "2.json") + ": corrupt: empty\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := run(t, tc.cmd)
@@ -469,7 +469,7 @@ func TestStderr(t *testing.T) {
 		cmd := tr.cmd("show", "999") // a failure, so it would have a line
 		cmd.Stdout = full
 		r := run(t, cmd)
-		if r.code != 3 || !strings.HasPrefix(r.stderr, "ftask: result not delivered: ") || strings.Count(r.stderr, "\n") != 1 {
+		if r.code != 3 || !strings.HasPrefix(r.stderr, "koan: result not delivered: ") || strings.Count(r.stderr, "\n") != 1 {
 			t.Errorf("exit %d, stderr %q; want 3 and only the notice", r.code, r.stderr)
 		}
 	})
@@ -482,7 +482,7 @@ func TestStderr(t *testing.T) {
 
 	// A newline in the root's path is escaped, so the line stays one line.
 	t.Run("newline in path", func(t *testing.T) {
-		cmd := ftask(t, "init", "~/a\nb")
+		cmd := koan(t, "init", "~/a\nb")
 		r := run(t, cmd)
 		envelope(t, r)
 		home := envHome(cmd)
@@ -492,7 +492,7 @@ func TestStderr(t *testing.T) {
 		show := exec.Command(binary, "show", "1")
 		show.Env = cmd.Env
 		r = run(t, show)
-		if want := "ftask: corrupt: " + home + `/a\nb/1.json: corrupt: empty` + "\n"; r.code != 1 || r.stderr != want {
+		if want := "koan: corrupt: " + home + `/a\nb/1.json: corrupt: empty` + "\n"; r.code != 1 || r.stderr != want {
 			t.Errorf("exit %d, stderr %q; want 1, %q", r.code, r.stderr, want)
 		}
 	})

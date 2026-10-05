@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
+	"github.com/phansen314/koan/internal/errs"
 )
 
 func TestFaultPassesThrough(t *testing.T) {

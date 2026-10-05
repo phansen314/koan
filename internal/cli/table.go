@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // Type is how an argument's or option's value becomes its input field
@@ -34,7 +34,7 @@ const (
 	// with io; contents that are not UTF-8 are a problem at the field.
 	TextFile
 	// EnvelopeFile names a file, "-" for stdin, holding one envelope from
-	// another ftask command; its tasks' IDs, or its own ID, become an ID
+	// another koan command; its tasks' IDs, or its own ID, become an ID
 	// list (pick-spec.md, Accepted envelopes). The file is read in full. One
 	// that can't be read stops the command with io; content that is not such
 	// an envelope is a problem at the field.

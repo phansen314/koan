@@ -10,9 +10,9 @@ import (
 
 	"github.com/mattn/go-runewidth"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // previewsFile holds each loaded task's preview, all but its notes, by line

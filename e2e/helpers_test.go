@@ -15,26 +15,26 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
-// binary is ftask built for the tests, with the e2e_hooks test hooks;
-// release is ftask built as shipped, without them.
+// binary is koan built for the tests, with the e2e_hooks test hooks;
+// release is koan built as shipped, without them.
 var binary, release string
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "ftask-e2e-")
+	dir, err := os.MkdirTemp("", "koan-e2e-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	binary = filepath.Join(dir, "ftask")
-	release = filepath.Join(dir, "ftask-release")
+	binary = filepath.Join(dir, "koan")
+	release = filepath.Join(dir, "koan-release")
 	for out, tags := range map[string][]string{binary: {"-tags", "e2e_hooks"}, release: nil} {
-		build := exec.Command("go", append(append([]string{"build"}, tags...), "-o", out, "../cmd/ftask")...)
+		build := exec.Command("go", append(append([]string{"build"}, tags...), "-o", out, "../cmd/koan")...)
 		build.Stderr = os.Stderr
 		if err := build.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "building ftask:", err)
+			fmt.Fprintln(os.Stderr, "building koan:", err)
 			os.Exit(1)
 		}
 	}
@@ -43,10 +43,10 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// ftask prepares the binary with args in its own home and config directory.
-// A write waits only briefly for a held lock (FTASK_E2E_LOCK_WAIT), so a busy
+// koan prepares the binary with args in its own home and config directory.
+// A write waits only briefly for a held lock (KOAN_E2E_LOCK_WAIT), so a busy
 // comes quickly; withoutLockWait restores the default.
-func ftask(t *testing.T, args ...string) *exec.Cmd {
+func koan(t *testing.T, args ...string) *exec.Cmd {
 	t.Helper()
 	home := t.TempDir()
 	cmd := exec.Command(binary, args...)
@@ -54,29 +54,29 @@ func ftask(t *testing.T, args ...string) *exec.Cmd {
 	return cmd
 }
 
-// lockWait is the brief wait ftask gives every command.
-const lockWait = "FTASK_E2E_LOCK_WAIT=100ms"
+// lockWait is the brief wait koan gives every command.
+const lockWait = "KOAN_E2E_LOCK_WAIT=100ms"
 
 // withoutLockWait drops lockWait from cmd's environment, so it waits for a
-// held lock as a real ftask does.
+// held lock as a real koan does.
 func withoutLockWait(cmd *exec.Cmd) *exec.Cmd {
 	cmd.Env = slices.DeleteFunc(cmd.Env, func(v string) bool { return v == lockWait })
 	return cmd
 }
 
-// configDirs is the config directory, relative to the home ftask gives a
+// configDirs is the config directory, relative to the home koan gives a
 // command, after each parent init creates for it (design-spec.md, Config
 // file); configDir is the last of them.
 var configDirs = func() []string {
 	if runtime.GOOS == "darwin" {
-		return []string{"Library", "Library/Application Support", "Library/Application Support/ftask"}
+		return []string{"Library", "Library/Application Support", "Library/Application Support/koan"}
 	}
-	return []string{".config", ".config/ftask"}
+	return []string{".config", ".config/koan"}
 }()
 
 var configDir = configDirs[len(configDirs)-1]
 
-// envHome is the home directory ftask gives cmd.
+// envHome is the home directory koan gives cmd.
 func envHome(cmd *exec.Cmd) string {
 	for _, kv := range cmd.Env {
 		if h, ok := strings.CutPrefix(kv, "HOME="); ok {
@@ -140,13 +140,13 @@ func note(t *testing.T, stdout string) string {
 	}
 	switch n := len(env.Warnings); {
 	case env.Error.Kind == "usage":
-		return "ftask: usage: " + strings.TrimPrefix(env.Error.Message, "usage: ") + "\n"
+		return "koan: usage: " + strings.TrimPrefix(env.Error.Message, "usage: ") + "\n"
 	case !env.OK:
-		return "ftask: " + env.Error.Kind + ": " + env.Error.Message + "\n"
+		return "koan: " + env.Error.Kind + ": " + env.Error.Message + "\n"
 	case n == 1:
-		return "ftask: 1 warning (see .warnings in the output)\n"
+		return "koan: 1 warning (see .warnings in the output)\n"
 	case n > 1:
-		return fmt.Sprintf("ftask: %d warnings (see .warnings in the output)\n", n)
+		return fmt.Sprintf("koan: %d warnings (see .warnings in the output)\n", n)
 	}
 	return ""
 }
@@ -160,7 +160,7 @@ type tree struct {
 
 func newTree(t *testing.T) *tree {
 	t.Helper()
-	cmd := ftask(t, "init", "~/tasks")
+	cmd := koan(t, "init", "~/tasks")
 	r := run(t, cmd)
 	envelope(t, r)
 	if r.code != 0 {
@@ -205,7 +205,7 @@ func stdin(cmd *exec.Cmd, s string) *exec.Cmd {
 	return cmd
 }
 
-// holder is a write paused with the lock held (FTASK_E2E_HOLD).
+// holder is a write paused with the lock held (KOAN_E2E_HOLD).
 type holder struct {
 	t      *testing.T
 	cmd    *exec.Cmd
@@ -215,7 +215,7 @@ type holder struct {
 	done   chan struct{}
 }
 
-// hold starts cmd with FTASK_E2E_HOLD and returns once it holds the lock.
+// hold starts cmd with KOAN_E2E_HOLD and returns once it holds the lock.
 // extra is added to its environment.
 func hold(t *testing.T, cmd *exec.Cmd, extra ...string) *holder {
 	t.Helper()
@@ -224,7 +224,7 @@ func hold(t *testing.T, cmd *exec.Cmd, extra ...string) *holder {
 		t.Fatal(err)
 	}
 	h := &holder{t: t, cmd: cmd, pw: pw, done: make(chan struct{})}
-	cmd.Env = append(append(cmd.Env, "FTASK_E2E_HOLD=1"), extra...)
+	cmd.Env = append(append(cmd.Env, "KOAN_E2E_HOLD=1"), extra...)
 	cmd.ExtraFiles = []*os.File{pr}
 	cmd.Stdout = &h.stdout
 	se, err := cmd.StderrPipe()

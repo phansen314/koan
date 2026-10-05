@@ -5,9 +5,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // InitAction is what init did with the tree.
@@ -108,9 +108,9 @@ func configExists(env Env) (bool, *errs.Error) {
 	return false, errs.FromOS(p, err)
 }
 
-// initTree attaches the tree at root if it has ftask.json, checked as File
+// initTree attaches the tree at root if it has koan.json, checked as File
 // validity says; otherwise, if root is empty but for hidden entries, it
-// creates ftask.json for a new tree.
+// creates koan.json for a new tree.
 func initTree(env Env, root string, res *InitResult) *errs.Error {
 	r, err := env.FS.OpenRoot(root)
 	if err != nil {
@@ -139,7 +139,7 @@ func initTree(env Env, root string, res *InitResult) *errs.Error {
 	}
 	data, err := model.RootFile{Schema: model.RootSchema}.Encode()
 	if err != nil {
-		return errs.Internal("encoding ftask.json: " + err.Error())
+		return errs.Internal("encoding koan.json: " + err.Error())
 	}
 	p := joinPath(root, MetaName)
 	if atLink, err := Publish(r, MetaName, data, false); err != nil {

@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // ID is a task ID: 1 to IDMax (see design-spec.md, Task IDs).
@@ -25,7 +25,7 @@ const (
 	PriorityMax = 1<<53 - 1
 )
 
-// Supported format versions: the one task file and ftask.json version this
+// Supported format versions: the one task file and koan.json version this
 // binary reads and writes.
 const (
 	TaskSchema = 1

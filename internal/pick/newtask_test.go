@@ -17,7 +17,7 @@ func TestNewAction(t *testing.T) {
 	out, line := tr.pick(map[string]any{}, fzfDoes{do: func(t *testing.T, helper func(...string) string) {
 		helper("command", "pass")
 		got := helper("act", "n")
-		if want := "show-input+unbind(" + keys + ")+disable-search+transform-prompt('/bin/ftask' __pick text 'prompt')+transform-query('/bin/ftask' __pick text 'query')+transform-header('/bin/ftask' __pick text 'header')"; got != want {
+		if want := "show-input+unbind(" + keys + ")+disable-search+transform-prompt('/bin/koan' __pick text 'prompt')+transform-query('/bin/koan' __pick text 'query')+transform-header('/bin/koan' __pick text 'header')"; got != want {
 			t.Errorf("n printed\n%q\nwant\n%q", got, want)
 		}
 		if p, q, h := text(helper, "prompt"), text(helper, "query"), text(helper, "header"); p != "new> " || q != "pass" || !strings.HasPrefix(h, "[new]\n/\n") {
@@ -25,7 +25,7 @@ func TestNewAction(t *testing.T) {
 		}
 
 		// A title create refuses: the prompt stays, the status says why.
-		if got := helper("enter", "", "1@/"); got != "transform-footer('/bin/ftask' __pick text 'footer')" {
+		if got := helper("enter", "", "1@/"); got != "transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("empty title printed %q", got)
 		}
 		if f := text(helper, "footer"); !strings.HasPrefix(f, "✗ create: invalid-input: ") {
@@ -37,8 +37,8 @@ func TestNewAction(t *testing.T) {
 		got = helper("enter", "Buy tickets", "1@/")
 		for _, part := range []string{
 			// No hide-input: on-load does it, after the reload.
-			"enable-search+change-query()+transform-prompt('/bin/ftask' __pick text 'prompt')+rebind(" + keys + ",tab)+transform-header(",
-			"+rebind(load)+clear-selection+reload-sync('/bin/ftask' __pick lines)+",
+			"enable-search+change-query()+transform-prompt('/bin/koan' __pick text 'prompt')+rebind(" + keys + ",tab)+transform-header(",
+			"+rebind(load)+clear-selection+reload-sync('/bin/koan' __pick lines)+",
 		} {
 			if !strings.Contains(got, part) {
 				t.Errorf("create printed %q, without %q", got, part)
@@ -61,7 +61,7 @@ func TestNewAction(t *testing.T) {
 			helper("act", "n")
 			helper("text", "query")
 			got := helper(cancel, "half a title")
-			if !strings.HasPrefix(got, "enable-search+transform-query(") || !strings.HasSuffix(got, "+rebind(load)+clear-selection+reload-sync('/bin/ftask' __pick lines)") {
+			if !strings.HasPrefix(got, "enable-search+transform-query(") || !strings.HasSuffix(got, "+rebind(load)+clear-selection+reload-sync('/bin/koan' __pick lines)") {
 				t.Errorf("%s printed %q", cancel, got)
 			}
 			if got := helper("on-load"); got != "hide-input+unbind(load)" {

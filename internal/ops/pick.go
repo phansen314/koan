@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // PickScope is which tasks pick shows at first (pick-spec.md, Command).

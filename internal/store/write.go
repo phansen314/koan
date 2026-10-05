@@ -4,12 +4,12 @@ import (
 	"path"
 	"syscall"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/model"
 )
 
-// FolderMode is the mode of every folder ftask creates, before the umask.
+// FolderMode is the mode of every folder koan creates, before the umask.
 const FolderMode = 0o755
 
 // Publish writes data to rel, a path within r, through a temp file in rel's
@@ -55,7 +55,7 @@ func Publish(r fsys.Root, rel string, data []byte, replace bool) (atLink bool, e
 }
 
 // Create publishes a new file at rel. A file already there is corrupt
-// (unexpected-file): under ftask's invariants none can exist.
+// (unexpected-file): under koan's invariants none can exist.
 func (tx *Tx) Create(rel string, data []byte) *errs.Error {
 	if e := tx.mustWrite("create " + rel); e != nil {
 		return e
@@ -109,7 +109,7 @@ func (tx *Tx) Mkdir(rel string) error {
 	return tx.root.Mkdir(rel, FolderMode)
 }
 
-// SetLastID records lastID in ftask.json, keeping its schema.
+// SetLastID records lastID in koan.json, keeping its schema.
 func (tx *Tx) SetLastID(lastID int64) *errs.Error {
 	m := tx.meta
 	m.LastID = lastID

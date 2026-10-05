@@ -38,10 +38,10 @@ func TestLockOneRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, root := range map[string]string{"symlink": link, "other config": tr.root()} {
-		other := ftask(t, "init", root)
+		other := koan(t, "init", root)
 		steps(t, []step{{other, 0, `"action":"attached"`}})
 		h := hold(t, tr.cmd("create", "a"))
-		second := ftask(t, "create", "b")
+		second := koan(t, "create", "b")
 		second.Env = other.Env
 		r := run(t, second)
 		envelope(t, r)
@@ -74,7 +74,7 @@ func TestLockReleaseOnCrash(t *testing.T) {
 // lets the locked descriptor be finalized (Lock 4).
 func TestLockKeepAlive(t *testing.T) {
 	tr := newTree(t)
-	h := hold(t, tr.cmd("create", "a"), "FTASK_E2E_HOLD_GC=1")
+	h := hold(t, tr.cmd("create", "a"), "KOAN_E2E_HOLD_GC=1")
 	steps(t, []step{{tr.cmd("create", "b"), 1, `"kind":"busy"`}})
 	h.release()
 	if r := h.wait(); r.code != 0 {
@@ -146,13 +146,13 @@ func TestSIGTERM(t *testing.T) {
 	steps(t, []step{{tr.cmd("create", "b"), 0, `"id":1,`}})
 }
 
-// noTemps checks that no .ftask-tmp-* file is left under root.
+// noTemps checks that no .koan-tmp-* file is left under root.
 func noTemps(t *testing.T, root string) {
 	t.Helper()
 	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			t.Error(err)
-		} else if strings.HasPrefix(d.Name(), ".ftask-tmp-") {
+		} else if strings.HasPrefix(d.Name(), ".koan-tmp-") {
 			t.Errorf("leftover temp file %s", p)
 		}
 		return nil

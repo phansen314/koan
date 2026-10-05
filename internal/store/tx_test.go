@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 func TestReadUsableRoot(t *testing.T) {
@@ -113,34 +113,34 @@ func TestRootStates(t *testing.T) {
 			must(t, os.RemoveAll(f.root))
 			must(t, os.Symlink("tasks", f.root))
 		}, errs.KindNotInitialized, func(*fixture) any { return errs.NotInitializedDetails{Missing: errs.MissingRoot} }},
-		{"missing ftask.json", func(f *fixture) { must(t, os.Remove(meta(f))) },
+		{"missing koan.json", func(f *fixture) { must(t, os.Remove(meta(f))) },
 			errs.KindNotInitialized, func(*fixture) any { return errs.NotInitializedDetails{Missing: errs.MissingMetadata} }},
-		{"ftask.json is a symlink", func(f *fixture) {
+		{"koan.json is a symlink", func(f *fixture) {
 			must(t, os.Rename(meta(f), f.root+"/real"))
 			must(t, os.Symlink("real", meta(f)))
 		}, errs.KindCorrupt, func(f *fixture) any { return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptUnexpectedFile} }},
-		{"ftask.json is a directory", func(f *fixture) {
+		{"koan.json is a directory", func(f *fixture) {
 			must(t, os.Remove(meta(f)))
 			must(t, os.Mkdir(meta(f), 0o755))
 		}, errs.KindCorrupt, func(f *fixture) any { return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptUnexpectedFile} }},
-		{"ftask.json is a FIFO", func(f *fixture) {
+		{"koan.json is a FIFO", func(f *fixture) {
 			must(t, os.Remove(meta(f)))
 			must(t, syscall.Mkfifo(meta(f), 0o644))
 		}, errs.KindCorrupt, func(f *fixture) any { return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptUnexpectedFile} }},
-		{"ftask.json not JSON", func(f *fixture) { f.write("tasks/"+MetaName, "{") },
+		{"koan.json not JSON", func(f *fixture) { f.write("tasks/"+MetaName, "{") },
 			errs.KindCorrupt, func(f *fixture) any {
 				return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptNotJSON, Detail: "not valid JSON: unexpected end of input"}
 			}},
-		{"ftask.json empty", func(f *fixture) { f.write("tasks/"+MetaName, "") },
+		{"koan.json empty", func(f *fixture) { f.write("tasks/"+MetaName, "") },
 			errs.KindCorrupt, func(f *fixture) any {
 				return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptNotJSON, Detail: "empty"}
 			}},
-		{"ftask.json invalid", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": -1}`) },
+		{"koan.json invalid", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": -1}`) },
 			errs.KindCorrupt, func(f *fixture) any {
 				return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptInvalid,
 					Problems: []errs.Problem{{Field: "/last_id", Reason: "must be between 0 and 999999999999999"}}}
 			}},
-		{"ftask.json unsupported", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 2, "whatever": true}`) },
+		{"koan.json unsupported", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 2, "whatever": true}`) },
 			errs.KindUnsupportedFormat, func(f *fixture) any {
 				return errs.UnsupportedFormatDetails{Path: meta(f), Found: 2, Supported: []int64{1}}
 			}},
@@ -255,7 +255,7 @@ func TestWriteLockError(t *testing.T) {
 	wantErr(t, Write(env, nil, nil), errs.KindIO, errs.IODetails{Path: f.root, Code: "EIO"})
 }
 
-// A write re-reads ftask.json once it holds the lock: a change made while it
+// A write re-reads koan.json once it holds the lock: a change made while it
 // waited is seen, and a problem found only then is a Root states error.
 func TestWriteRereadsMeta(t *testing.T) {
 	f := newFixture(t)

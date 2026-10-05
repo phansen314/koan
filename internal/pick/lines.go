@@ -7,7 +7,7 @@ import (
 
 	"github.com/mattn/go-runewidth"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // A line is tab-delimited (pick-spec.md, Line fields and Lines): the hidden

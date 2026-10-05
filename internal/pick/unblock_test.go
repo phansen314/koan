@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // u's choices: the target's blockers that exist, in line order, complete

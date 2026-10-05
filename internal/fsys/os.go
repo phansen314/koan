@@ -203,10 +203,10 @@ func (r *osRoot) openNoFollow(name string) (*os.File, fs.FileInfo, error) {
 	return f, fi, nil
 }
 
-// TempPrefix begins the name of every temp file ftask creates.
-const TempPrefix = ".ftask-tmp-"
+// TempPrefix begins the name of every temp file koan creates.
+const TempPrefix = ".koan-tmp-"
 
-// TempName is a fresh temp name in dir: hidden, recognizably ftask's, and
+// TempName is a fresh temp name in dir: hidden, recognizably koan's, and
 // random, so two writes never collide. For a temp that is not created by
 // CreateTemp — a hard link, or a folder renamed aside.
 func TempName(dir string) string {

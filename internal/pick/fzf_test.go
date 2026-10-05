@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 func TestParseVersion(t *testing.T) {

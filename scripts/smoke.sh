@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Smoke test: runs the ftask binary from a shell, as a user would, in a
+# Smoke test: runs the koan binary from a shell, as a user would, in a
 # throwaway home, so it never touches your real config or tasks.
 #
-#   scripts/smoke.sh                 # builds ftask from this repo
-#   FTASK=~/go/bin/ftask scripts/smoke.sh   # tests that binary instead
+#   scripts/smoke.sh                 # builds koan from this repo
+#   KOAN=~/go/bin/koan scripts/smoke.sh   # tests that binary instead
 #
 # Needs jq. Exits 0 when every check passes, 1 otherwise.
 set -uo pipefail
@@ -13,9 +13,9 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 # Build before HOME changes: go keeps its caches under the real home.
-if [[ -z ${FTASK:-} ]]; then
-	FTASK=$tmp/ftask
-	(cd "$repo" && go build -o "$FTASK" ./cmd/ftask) || { echo "build failed"; exit 1; }
+if [[ -z ${KOAN:-} ]]; then
+	KOAN=$tmp/koan
+	(cd "$repo" && go build -o "$KOAN" ./cmd/koan) || { echo "build failed"; exit 1; }
 fi
 command -v jq >/dev/null || { echo "smoke.sh needs jq"; exit 1; }
 
@@ -26,14 +26,14 @@ cd "$HOME"
 pass=0 fail=0
 out=""
 
-# check DESC WANT_EXIT JQ_EXPR -- ARGS...: runs ftask with ARGS (stdin passes
+# check DESC WANT_EXIT JQ_EXPR -- ARGS...: runs koan with ARGS (stdin passes
 # through), then checks the exit code, that the output is exactly one line,
 # and that JQ_EXPR is true of it. The output is left in $out.
 check() {
 	local desc=$1 want=$2 expr=$3
 	shift 4
 	local code=0
-	out=$("$FTASK" "$@") || code=$?
+	out=$("$KOAN" "$@") || code=$?
 	local lines
 	lines=$(printf '%s\n' "$out" | wc -l)
 	if [[ $code -ne $want ]]; then
@@ -48,10 +48,10 @@ check() {
 		return
 	fi
 	fail=$((fail + 1))
-	printf 'FAIL  %s\n      ftask %s\n      %s\n      %s\n' "$desc" "$*" "$why" "$out"
+	printf 'FAIL  %s\n      koan %s\n      %s\n      %s\n' "$desc" "$*" "$why" "$out"
 }
 
-# expect DESC CONDITION: a check of something besides ftask's output.
+# expect DESC CONDITION: a check of something besides koan's output.
 expect() {
 	if eval "$2"; then
 		pass=$((pass + 1))

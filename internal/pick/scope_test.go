@@ -31,7 +31,7 @@ func TestScopeAndReload(t *testing.T) {
 			{"open> ", "1@/ 2@/"},
 		} {
 			got := helper("act", "s")
-			if !strings.HasPrefix(got, "clear-selection+reload-sync(") || !strings.Contains(got, "+transform-prompt('/bin/ftask' __pick text 'prompt')+") {
+			if !strings.HasPrefix(got, "clear-selection+reload-sync(") || !strings.Contains(got, "+transform-prompt('/bin/koan' __pick text 'prompt')+") {
 				t.Errorf("s printed %q", got)
 			}
 			if p := helper("text", "prompt"); p != step.prompt {

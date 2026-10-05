@@ -1,8 +1,8 @@
 package pick
 
 import (
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // newAction is n (pick-spec.md, Actions): a new task, titled in the prompt

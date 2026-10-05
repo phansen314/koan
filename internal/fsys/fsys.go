@@ -52,7 +52,7 @@ type Root interface {
 	ReadDir(name string) ([]fs.DirEntry, error)
 	Mkdir(name string, perm fs.FileMode) error
 	// CreateTemp creates a new, empty temp file in dir, exclusively, with
-	// mode 0644 before the umask. Its name, .ftask-tmp-<random>, is hidden
+	// mode 0644 before the umask. Its name, .koan-tmp-<random>, is hidden
 	// from reads and recognizable to doctor. The returned name includes dir.
 	CreateTemp(dir string) (f File, name string, err error)
 	// Link publishes a new file: it fails with EEXIST rather than replace one.

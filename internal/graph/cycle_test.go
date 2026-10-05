@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 func TestCycles(t *testing.T) {

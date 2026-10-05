@@ -141,7 +141,7 @@ func TestReadFileFollowsReplacement(t *testing.T) {
 	}
 }
 
-// A file replaced over and over by concurrent renames, as ftask.json is
+// A file replaced over and over by concurrent renames, as koan.json is
 // under a burst of writes, is always read whole, in one version or another.
 func TestReadFileUnderConcurrentReplacement(t *testing.T) {
 	const writers = 4

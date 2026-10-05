@@ -21,12 +21,12 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // base is the fixed URI the schemas are loaded under; each $id resolves
 // against it, so "task-file#/properties/id" finds task-file.
-const base = "https://ftask.invalid/schemas/"
+const base = "https://koan.invalid/schemas/"
 
 var (
 	mu       sync.Mutex
@@ -175,7 +175,7 @@ func set(xs []string) []string {
 // Analyze returns where a validation error's leaves are. Errors a parent
 // reports about one of its children — a disallowed additional property, each
 // array item equal to an earlier one, a missing required property — are
-// placed at that child, where ftask's adapters report them. The exception is
+// placed at that child, where koan's adapters report them. The exception is
 // a property an alternative of an anyOf or oneOf requires: it is placed at
 // the object, since the alternative does not make it required overall, and
 // adapters report a missing form there. instance is the value validated, as

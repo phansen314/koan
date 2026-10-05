@@ -11,11 +11,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/graph"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/graph"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // Finding kinds (operations.md, Finding kinds).
@@ -263,12 +263,12 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 	case store.MetaMissing:
 		it := Item{
 			Paths: []string{metaPath}, LastID: &maxID, Action: ptr(actionCreateMetadata),
-			Suggest: ptr("ftask repair --kinds metadata-missing, unless a task with an ID above " + fmt.Sprint(maxID) + " was ever deleted; then rebuild ftask.json by hand with that ID as last_id"),
+			Suggest: ptr("koan repair --kinds metadata-missing, unless a task with an ID above " + fmt.Sprint(maxID) + " was ever deleted; then rebuild koan.json by hand with that ID as last_id"),
 		}
 		// A folder that can't be listed may hold a higher ID, so last_id
 		// can't be rebuilt from the walk.
 		if !x.Complete() {
-			it.Action, it.Suggest = nil, ptr("fix the unreadable folders first; then ftask repair --kinds metadata-missing")
+			it.Action, it.Suggest = nil, ptr("fix the unreadable folders first; then koan repair --kinds metadata-missing")
 		}
 		fs.add(kindMetadataMissing, it)
 	case store.MetaOK:
@@ -277,32 +277,32 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 			if int64(l.ID) > lastID {
 				fs.add(kindIDAboveLastID, Item{
 					Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID}, LastID: &maxID,
-					Action: ptr(actionRaiseLastID), Suggest: ptr("ftask repair"),
+					Action: ptr(actionRaiseLastID), Suggest: ptr("koan repair"),
 				})
 			}
 		}
 	default:
 		fs.add(kindMetadataUnusable, Item{
 			Paths: []string{metaPath}, Error: metaErr,
-			Suggest: ptr("fix ftask.json by hand, or restore it from git; a binary that supports its format can use it as it is"),
+			Suggest: ptr("fix koan.json by hand, or restore it from git; a binary that supports its format can use it as it is"),
 		})
 	}
 
 	for _, rel := range sv.Temps {
-		fs.add(kindTempLeftover, Item{Paths: []string{tx.Path(rel)}, Action: ptr(actionRemove), Suggest: ptr("ftask repair"), rel: rel})
+		fs.add(kindTempLeftover, Item{Paths: []string{tx.Path(rel)}, Action: ptr(actionRemove), Suggest: ptr("koan repair"), rel: rel})
 	}
 	for _, rel := range sv.Nested {
-		fs.add(kindNestedTree, Item{Paths: []string{tx.Path(rel)}, Suggest: ptr("move the tree it belongs to out of this one, or remove this ftask.json if the folder is part of this tree")})
+		fs.add(kindNestedTree, Item{Paths: []string{tx.Path(rel)}, Suggest: ptr("move the tree it belongs to out of this one, or remove this koan.json if the folder is part of this tree")})
 	}
 	for _, s := range sv.Strays {
 		p := []string{tx.Path(s.Rel)}
 		switch s.Reason {
 		case store.StraySymlink:
-			fs.add(kindSkippedEntry, Item{Paths: p, Reason: s.Reason, Suggest: ptr("ftask never follows a symlink, so what it leads to is not part of the tree: move the real folder or file in instead, or remove the link")})
+			fs.add(kindSkippedEntry, Item{Paths: p, Reason: s.Reason, Suggest: ptr("koan never follows a symlink, so what it leads to is not part of the tree: move the real folder or file in instead, or remove the link")})
 		case store.StrayType:
-			fs.add(kindSkippedEntry, Item{Paths: p, Reason: s.Reason, Suggest: ptr("rename or remove it: it has a folder's or task file's name, but the wrong type, so ftask skips it")})
+			fs.add(kindSkippedEntry, Item{Paths: p, Reason: s.Reason, Suggest: ptr("rename or remove it: it has a folder's or task file's name, but the wrong type, so koan skips it")})
 		default:
-			fs.add(kindStrayEntry, Item{Paths: p, Suggest: ptr("nothing to do: ftask ignores it")})
+			fs.add(kindStrayEntry, Item{Paths: p, Suggest: ptr("nothing to do: koan ignores it")})
 		}
 	}
 	for _, u := range x.Unreadable {
@@ -346,7 +346,7 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 				if len(x.Locations(b)) == 0 {
 					fs.add(kindDanglingReference, Item{
 						Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID, b},
-						Action: ptr(actionRemoveReference), Suggest: ptr("ftask repair"), loc: l, missing: b,
+						Action: ptr(actionRemoveReference), Suggest: ptr("koan repair"), loc: l, missing: b,
 					})
 				}
 			}
@@ -365,7 +365,7 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 		c := graph.ExampleCycle(g, edges)
 		fs.add(kindCycle, Item{
 			IDs: c, Group: g,
-			Suggest: ptr(fmt.Sprintf("remove any one blocker on the cycle, e.g. ftask unblock %d --blockers %d", c[0], c[1])),
+			Suggest: ptr(fmt.Sprintf("remove any one blocker on the cycle, e.g. koan unblock %d --blockers %d", c[0], c[1])),
 		})
 	}
 
@@ -400,7 +400,7 @@ func duplicates(tx *store.Tx, x *store.Index, fs findings) *errs.Error {
 				identical = false
 			}
 		}
-		suggest := "keep the copy that is right, and remove the others, or move their task to a new ID with ftask create"
+		suggest := "keep the copy that is right, and remove the others, or move their task to a new ID with koan create"
 		if identical {
 			suggest = "the copies are the same: remove all but one"
 		}
@@ -436,9 +436,9 @@ func orphans(tx *store.Tx, x *store.Index, fs findings) *errs.Error {
 		it.Reason, it.linked = reason, linked
 		switch reason {
 		case orphanUnreadable:
-			it.Suggest = ptr("fix its permissions, then run ftask doctor again to see what it is")
+			it.Suggest = ptr("fix its permissions, then run koan doctor again to see what it is")
 		case orphanEmpty, orphanLinked:
-			it.Action, it.Suggest = ptr(actionRemove), ptr("ftask repair")
+			it.Action, it.Suggest = ptr(actionRemove), ptr("koan repair")
 		case orphanTaskElsewhere:
 			it.Suggest = ptr("merge its text into " + tx.Path(locs[0].NotesRel()) + ", then remove it")
 		default:

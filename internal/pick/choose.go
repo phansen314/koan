@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
+	"github.com/phansen314/koan/internal/errs"
 )
 
 // Choose mode (pick-spec.md, Modes): an action swaps in a second list,

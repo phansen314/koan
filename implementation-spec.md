@@ -1,13 +1,13 @@
-# ftask implementation spec
+# koan implementation spec
 
-How ftask is built. The [design spec](design-spec.md), [operations](operations.md), and [CLI spec](cli-spec.md) say *what* ftask does; this document says *how*. Where they state a guarantee, this document gives the mechanism that provides it, and links back to the guarantee.
+How koan is built. The [design spec](design-spec.md), [operations](operations.md), and [CLI spec](cli-spec.md) say *what* koan does; this document says *how*. Where they state a guarantee, this document gives the mechanism that provides it, and links back to the guarantee.
 
 ## Mechanism
 
 How the design spec's [write lock](design-spec.md#write-lock) and [Guarantees](design-spec.md#guarantees) are provided.
 
 - **The write lock is the root directory itself.** A write opens the root with `os.OpenRoot` (see [Filesystem access](#filesystem-access)), opens the directory itself through it (`root.Open(".")`) and `flock`s that descriptor. No lock file exists anywhere: nothing can be cleaned up, deleted, or recreated out from under a holder, and the root can never be deleted (see [Folders](design-spec.md#folders)). Because `flock` locks the directory, not a path, every process reaching the root — through any path spelling, symlink, or environment — contends on the same lock.
-- **`flock`, never POSIX record locks.** A record lock (`fcntl`/`lockf`) is per process and is released when *any* descriptor to the file closes, so one incidental open-and-close inside a critical section silently drops it. Measured in an earlier prototype: a 16-way read-modify-write kept 8 updates under `lockf` and 16 under `flock`. `flock` is advisory and scoped to the open file description, which is the right scope — the hazard is two ftask processes, not two threads.
+- **`flock`, never POSIX record locks.** A record lock (`fcntl`/`lockf`) is per process and is released when *any* descriptor to the file closes, so one incidental open-and-close inside a critical section silently drops it. Measured in an earlier prototype: a 16-way read-modify-write kept 8 updates under `lockf` and 16 under `flock`. `flock` is advisory and scoped to the open file description, which is the right scope — the hazard is two koan processes, not two threads.
 - **One resolution per write.** A write resolves the root path once, in `os.OpenRoot`, locks that directory through the same handle, and performs every file operation through that handle — never by re-resolving the path. Repointing a symlinked root mid-write therefore cannot split one write across two directories.
 - **Close-on-exec.** The lock descriptor is close-on-exec so the lock cannot ride into a child program. Go opens every file close-on-exec by default.
 - **Keep the lock's file alive.** The `*os.File` from `root.Open(".")` must stay referenced until the write ends. If it becomes unreachable, Go's finalizer may close the descriptor mid-write, which releases the lock. The write holds it explicitly and closes it (releasing the lock) only when done.
@@ -16,16 +16,16 @@ How the design spec's [write lock](design-spec.md#write-lock) and [Guarantees](d
 - **Atomic file writes.** Write a complete temp file in the same directory (a hidden entry), then publish it: `rename` to replace an existing file, `link` to create a new one so an existing file is never clobbered. A process crash between writing the temp file and removing it can leave the temp file behind; it is ignored by reads and reported by [`doctor`](operations.md#doctor).
 - **Moves never replace.** [`move`](operations.md#move)'s task file and [`move-folder`](operations.md#move-folder)'s folder move with a rename that fails with `EEXIST` rather than replace what is at the new name: `renameat2` with `RENAME_NOREPLACE` on Linux, `renameatx_np` with `RENAME_EXCL` on macOS, both from `golang.org/x/sys/unix`, between the two folders opened through the `os.Root`. Plain `rename(2)` silently replaces an empty folder, so a check made beforehand under the lock would be the only guard; the no-replace rename is the backstop against an outside change, and reports it as `corrupt` (`unexpected-file`).
 - **Notes move by hard link.** `move` links the `.md` to a temp name in the destination folder, then renames that over an empty stray `.md` there (one with text is a conflict), before moving the task file; the folder is flushed after that rename, so a system crash keeps the link too; the old `.md` is removed last. The temp name is removed after the rename too, since renaming onto a second name of the same file — an interrupted move's link — does nothing and leaves it. The notes are therefore at the destination before the task is, and a crash never leaves the task without them.
-- **Folders are removed by renaming them aside.** [`delete-folder`](operations.md#delete-folder) renames the folder to a temp name in the root (`.ftask-tmp-<random>`, a hidden folder), then removes that with `RemoveAll`. The rename is the one step that takes the folder out of the tree; a crash or error during the removal leaves a hidden folder that reads ignore and `doctor` finds by its prefix.
+- **Folders are removed by renaming them aside.** [`delete-folder`](operations.md#delete-folder) renames the folder to a temp name in the root (`.koan-tmp-<random>`, a hidden folder), then removes that with `RemoveAll`. The rename is the one step that takes the folder out of the tree; a crash or error during the removal leaves a hidden folder that reads ignore and `doctor` finds by its prefix.
 
 ## Toolchain
 
 - **Go**, standard library first. The `version` operation's `go`, `commit`, `commit_time`, and `uncommitted_changes` come from the build information Go embeds (`runtime/debug.ReadBuildInfo`: the Go version and the `vcs.revision`, `vcs.time`, and `vcs.modified` settings); `version` itself is set at release build time; a build without it takes the main module's version when that is a release tag — a valid semantic version that is not a pseudo-version and has no build metadata (e.g. `+dirty`) — so `go install …@v0.1.0` reports `0.1.0`, and anything else reports `0.0.0-dev`. A **release build** must come from a git checkout, so this information is present; the release build fails otherwise. A build with no VCS information falls back to the main module's version: `go install …@<version>` builds from the module cache without git, but a pseudo-version (e.g. `v0.0.0-20260929021723-4df90bd5d3e3`) still names the commit, by its 12-character prefix, and its UTC commit time, parsed with `golang.org/x/mod/module`; `uncommitted_changes` is `false`, since a module download has none. Any other build without it — a tagged version, `(devel)` — reports `commit` `"unknown"` and `commit_time` `"1970-01-01T00:00:00Z"`, so the output still matches `version-output`.
-- **No runtime dependencies** beyond the standard library, except cobra (and pflag) in the CLI (see [Argument parsing](#argument-parsing)), `golang.org/x/mod` for reading pseudo-versions, and two that only `pick` uses: `junegunn/go-shellwords`, fzf's own parser, to split `FTASK_PICK_OPTS` exactly as fzf splits `FZF_DEFAULT_OPTS`, and `mattn/go-runewidth`, to measure the picker's columns in terminal cells. A JSON Schema library is a **test-only** dependency (see [Validation](#validation)), as are `creack/pty` and `hinshun/vt10x`, which give the picker's end-to-end tests a terminal and render its screen.
+- **No runtime dependencies** beyond the standard library, except cobra (and pflag) in the CLI (see [Argument parsing](#argument-parsing)), `golang.org/x/mod` for reading pseudo-versions, and two that only `pick` uses: `junegunn/go-shellwords`, fzf's own parser, to split `KOAN_PICK_OPTS` exactly as fzf splits `FZF_DEFAULT_OPTS`, and `mattn/go-runewidth`, to measure the picker's columns in terminal cells. A JSON Schema library is a **test-only** dependency (see [Validation](#validation)), as are `creack/pty` and `hinshun/vt10x`, which give the picker's end-to-end tests a terminal and render its screen.
 
 ## JSON reading
 
-All JSON ftask reads — operation input, task files, `ftask.json` — goes through one reader, built on the standard library's token stream: `json.Decoder` with `UseNumber()`, read with `Token()`. The standard library does all the parsing: syntax, string escapes, number syntax. Decoding straight into structs or maps (`json.Unmarshal`) is never used, because it loses exactly what the specs need: repeated keys (the last one silently wins), the text of numbers (`2.0` and `2` become the same `float64`), and key order.
+All JSON koan reads — operation input, task files, `koan.json` — goes through one reader, built on the standard library's token stream: `json.Decoder` with `UseNumber()`, read with `Token()`. The standard library does all the parsing: syntax, string escapes, number syntax. Decoding straight into structs or maps (`json.Unmarshal`) is never used, because it loses exactly what the specs need: repeated keys (the last one silently wins), the text of numbers (`2.0` and `2` become the same `float64`), and key order.
 
 The reader builds an **ordered tree**: objects as ordered lists of members, arrays, strings, `true`/`false`/`null`, and numbers as `json.Number` — the literal's exact text. Its checks, and the standard library behavior each one covers:
 
@@ -46,13 +46,13 @@ How a failure is reported:
 - **A JSON option value** (e.g. `--extra`): reported at the option's field, with any inner pointer prefixed by it (a repeated key `status` in `--extra` is `/extra/status`), and other checks still run (see [Conversion](#conversion)). Its nesting counts from the input it sits in: `--extra` (at `/extra`) may nest 9,989 levels, `--extra-merge` (at `/extra/merge`) 9,988, so the input as a whole — and the task file written from it — stays within the limit.
 - **A file:** a repeated key is a file-level rule, not a parse failure, so it must not pre-empt the version check ([File validity](design-spec.md#file-validity) step 2). The reader records it and keeps going; it is reported after the version check, as `corrupt` (`reason`: `invalid`). Every other failure above makes the file `corrupt` (`reason`: `not-json`).
 
-**Adapters** then turn the tree into domain types (one per operation input, plus the task file and `ftask.json`), validating as they go (see [Validation](#validation)).
+**Adapters** then turn the tree into domain types (one per operation input, plus the task file and `koan.json`), validating as they go (see [Validation](#validation)).
 
 **Numbers in `extra` stay `json.Number`** from reading to writing and are never converted to `float64`. That is what lets [File format](design-spec.md#file-format) write them back character for character. A test round-trips `1.10`, `-0`, `1e400`, and a 20-digit integer through `update` unchanged.
 
 ## JSON writing
 
-All JSON ftask writes — task files, `ftask.json`, and the CLI's envelope — uses the standard `json.Encoder`, configured so its output is exactly the design spec's [File format](design-spec.md#file-format) and the CLI's [Output](cli-spec.md#output):
+All JSON koan writes — task files, `koan.json`, and the CLI's envelope — uses the standard `json.Encoder`, configured so its output is exactly the design spec's [File format](design-spec.md#file-format) and the CLI's [Output](cli-spec.md#output):
 
 - **`SetEscapeHTML(false)`**, always. The encoder then escapes exactly `"`, `\`, U+0000–U+001F, U+2028, and U+2029 — the File format's list.
 - **`SetIndent("", "  ")`** for files. No indent for the CLI envelope, which is compact.
@@ -93,7 +93,7 @@ For files, the same steps implement [File validity](design-spec.md#file-validity
 
 ## Argument parsing
 
-The command line is parsed by [cobra](https://github.com/spf13/cobra) (and pflag beneath it), which implements the [Command line](cli-spec.md#command-line) rules. ftask is a task manager, not a parsing project: where a rule and cobra disagreed, the rule gave way. What ftask adds is small: turning cobra's errors into envelopes, and building the operation's input from what cobra parsed.
+The command line is parsed by [cobra](https://github.com/spf13/cobra) (and pflag beneath it), which implements the [Command line](cli-spec.md#command-line) rules. koan is a task manager, not a parsing project: where a rule and cobra disagreed, the rule gave way. What koan adds is small: turning cobra's errors into envelopes, and building the operation's input from what cobra parsed.
 
 ### Command tables
 
@@ -110,7 +110,7 @@ Each command is declared by a small table: its name, the operation it runs, and 
 
 The CLI decides shape; values are judged by the adapters. A token that does not fit its field's type is passed on as it is, and the adapter rejects it at that field — exactly as it would the same value arriving through `--input`. The one exception is JSON option values:
 
-- **Integer fields** (and each item of an ID list): a token shaped like a JSON integer (`-?(0|[1-9][0-9]*)`) becomes a number; the adapter checks its range. Anything else becomes a string, which the adapter rejects as the wrong type. `ftask show abc` builds `{"id": "abc"}` and fails at `/id`.
+- **Integer fields** (and each item of an ID list): a token shaped like a JSON integer (`-?(0|[1-9][0-9]*)`) becomes a number; the adapter checks its range. Anything else becomes a string, which the adapter rejects as the wrong type. `koan show abc` builds `{"id": "abc"}` and fails at `/id`.
 - **Nullable fields:** the token `null` becomes `null`.
 - **JSON values** (`--extra`, `--extra-merge`, `--extra-replace-all`): the CLI checks the token with `json.Valid`. A valid token is parsed (through [JSON reading](#json-reading)) into that value. An invalid one is an `invalid-input` problem at the option's field ("not valid JSON"), raised by the CLI; the field is left out of the input, the adapters still run on the rest, and the CLI's problems are merged into the adapters' list before sorting, so every problem is still reported once.
 - **Comma lists:** each occurrence split on `,` exactly, occurrences joined in order; `''` is `[]`. Items are not trimmed.
@@ -125,7 +125,7 @@ Every file operation under the root — reads and writes — goes through one `o
 
 - **One resolution.** The root path is resolved once, when the `os.Root` is opened; every open, stat, `Mkdir`, `Link`, `Rename`, `Remove`, and `RemoveAll` is relative to that handle, and the no-replace rename (see [Mechanism](#mechanism)) is made between folders opened through it. This is the [Mechanism](#mechanism)'s *one resolution per write*, in the standard library. (The `syscall` package has no `openat`, `renameat`, or `linkat` on macOS, so the handle is the portable way to get it.)
 - **The lock** is taken on `root.Open(".")` — the same directory, through the same handle.
-- **No symlinks followed.** `os.Root` follows symlinks that stay inside the root; ftask never does. `os.Root.OpenFile` ignores a caller's `O_NOFOLLOW`: it adds the flag itself and, on `ELOOP`, resolves the symlink when its target stays inside the root. So `fsys` opens a file or folder in two steps: its parent folder through the `os.Root`, then the entry itself with `openat(2)` and `O_NOFOLLOW` relative to that folder, from `golang.org/x/sys/unix`, which has `openat` on Linux and macOS alike (the `syscall` package lacks it on macOS). A symlink fails with `ELOOP`, decided by the one call: there is no window between a check and the open, so an entry swapped for a symlink is refused, and a file replaced by a concurrent write's `rename` — `ftask.json`, read before the lock by every operation, under a burst of writes — is read whole, in one version or the other. `os.Root` also follows in-root symlinks in a name's *earlier* components, which is why the path walk `Lstat`s each component in turn. Files are opened with `O_NONBLOCK`, and anything that is not a regular file or folder — a FIFO, a socket, a device — reads as empty, so it can never block or read forever. Tests confirm each case — a symlink to a file, a symlink to a folder, a swap just before the open, and reads under concurrent replacement — on both platforms.
+- **No symlinks followed.** `os.Root` follows symlinks that stay inside the root; koan never does. `os.Root.OpenFile` ignores a caller's `O_NOFOLLOW`: it adds the flag itself and, on `ELOOP`, resolves the symlink when its target stays inside the root. So `fsys` opens a file or folder in two steps: its parent folder through the `os.Root`, then the entry itself with `openat(2)` and `O_NOFOLLOW` relative to that folder, from `golang.org/x/sys/unix`, which has `openat` on Linux and macOS alike (the `syscall` package lacks it on macOS). A symlink fails with `ELOOP`, decided by the one call: there is no window between a check and the open, so an entry swapped for a symlink is refused, and a file replaced by a concurrent write's `rename` — `koan.json`, read before the lock by every operation, under a burst of writes — is read whole, in one version or the other. `os.Root` also follows in-root symlinks in a name's *earlier* components, which is why the path walk `Lstat`s each component in turn. Files are opened with `O_NONBLOCK`, and anything that is not a regular file or folder — a FIFO, a socket, a device — reads as empty, so it can never block or read forever. Tests confirm each case — a symlink to a file, a symlink to a folder, a swap just before the open, and reads under concurrent replacement — on both platforms.
 - **A non-directory root is `ENOTDIR`.** `os.OpenRoot` opens the path without `O_DIRECTORY` and checks its type only afterwards, so a FIFO would block the open, and a regular file is reported by an error with no errno inside. `fsys` therefore hands it the path with `/.` appended: resolving that requires a directory, so the kernel refuses a FIFO or regular file with `ENOTDIR` before opening anything, with no window for a swap. The error's path and the root's `Name` are the configured path. The [OS errors](#meaning-is-decided-where-the-call-is-made) row for `os.OpenRoot` applies. Every folder `fsys` opens by name through the root — a file's folder, to open the file in it or rename into or out of it, and a folder to flush — is opened the same way, so a FIFO swapped into a folder's place by an outside change fails with `ENOTDIR` instead of blocking with the write lock held.
 
 ## Tree walk
@@ -159,8 +159,8 @@ Operations use the index through a few helpers:
 [Precedence](operations.md#precedence) is the order the code runs in; each step returns on its first error:
 
 1. validate input;
-2. locate the config (`environment`), then check the root (config, `ftask.json`);
-3. take the lock (writes only), then re-read `ftask.json`;
+2. locate the config (`environment`), then check the root (config, `koan.json`);
+3. take the lock (writes only), then re-read `koan.json`;
 4. path walk of any input folder — a missing folder is held, not returned, so step 6 can report it in the same `not-found` as missing IDs; `corrupt` (`unexpected-file`) returns;
 5. tree walk — a folder that cannot be listed is `io` here, for operations that must see the whole tree;
 6. ID lookups: `not-found`, listing every missing ID together with any missing folder held from step 4. For `block`, `id`'s own task file(s) are loaded first — an unusable copy is reported then — because which blockers are new (and so looked up) depends on `id`'s `blocked_by`, across every copy;
@@ -223,7 +223,7 @@ So the first discovery of `id` yields the required path.
 
 ### Names
 
-The standard library has no errno-to-name function (`syscall.Errno.Error()` is the message, e.g. "no space left on device"), and errno numbers differ by platform (`EAGAIN` is 11 on Linux, 35 on macOS). ftask keeps its own table, one per OS (`errno_linux.go`, `errno_darwin.go`), each written with `syscall` constants — `map[syscall.Errno]string{syscall.ENOSPC: "ENOSPC", …}` — so each carries its platform's numbers. They are separate files because some names exist on only one OS (`EL2NSYNC` on Linux, `EBADRPC` on macOS), and the completeness test needs them all.
+The standard library has no errno-to-name function (`syscall.Errno.Error()` is the message, e.g. "no space left on device"), and errno numbers differ by platform (`EAGAIN` is 11 on Linux, 35 on macOS). koan keeps its own table, one per OS (`errno_linux.go`, `errno_darwin.go`), each written with `syscall` constants — `map[syscall.Errno]string{syscall.ENOSPC: "ENOSPC", …}` — so each carries its platform's numbers. They are separate files because some names exist on only one OS (`EL2NSYNC` on Linux, `EBADRPC` on macOS), and the completeness test needs them all.
 
 - **Aliases** get one fixed name on every platform: `EAGAIN` (not `EWOULDBLOCK`), `ENOTSUP` (not `EOPNOTSUPP`), `EDEADLK` (not `EDEADLOCK`). The rule is about names, not numbers: where a platform gives the other name its own number (`EOPNOTSUPP` is 102 on macOS, `ENOTSUP` 45), that number also maps to the canonical name, and the other name never appears in output. The table can therefore map two numbers to one name; a test checks that each alias maps to its canonical name on the current platform.
 - **Completeness test**, run on each platform: for every errno from 1 to 255 whose message is a real one (not "errno N"), the table must have a name. A missing name fails CI rather than shipping.
@@ -243,8 +243,8 @@ The same errno means different things in different places, so each call site cla
 | `flock` | `EINTR` | retried |
 | Path walk of an input folder | `ENOENT` | `not-found` |
 | Path walk | `ELOOP` (a symlink; see [Filesystem access](#filesystem-access)), `ENOTDIR` | `corrupt` (`unexpected-file`) |
-| Config or `ftask.json` | `ENOENT` | `not-initialized` (`missing`: `config` or `metadata`) |
-| `ftask.json` | `ELOOP` (a symlink), `EISDIR` | `corrupt` (`unexpected-file`) |
+| Config or `koan.json` | `ENOENT` | `not-initialized` (`missing`: `config` or `metadata`) |
+| `koan.json` | `ELOOP` (a symlink), `EISDIR` | `corrupt` (`unexpected-file`) |
 | `os.OpenRoot` on the root | `ENOENT`, `ENOTDIR`, `ELOOP` (a symlink loop) | `not-initialized` (`missing`: `root`) |
 | Loading a task file, in a read | `ENOENT` | skipped silently: it vanished ([Concurrent writes during a read](#concurrent-writes-during-a-read)) |
 | Loading a task file, in a read | any other | `unusable-file` warning (`reason`: `unreadable`, with `code`) |
@@ -276,13 +276,13 @@ Implements the CLI spec's [Output](cli-spec.md#output) and [Exit codes](cli-spec
 
 - The envelope and its newline are built in memory and written with one `os.Stdout.Write`, which retries short writes itself: the line is either written whole or the write returns an error.
 - `os.Stdout.Close()` is then checked, since some errors surface only at close (e.g. stdout redirected to a network filesystem).
-- Only when both succeed does ftask exit `0`, `1`, or `2`. If either fails, it writes a notice to stderr ("ftask: result not delivered: …"; human text, not part of the contract) and exits `3`.
+- Only when both succeed does koan exit `0`, `1`, or `2`. If either fails, it writes a notice to stderr ("koan: result not delivered: …"; human text, not part of the contract) and exits `3`.
 - Once both succeed, and only then, `deliver` writes the CLI spec's one [stderr](cli-spec.md#output) line for a failure or for warnings, from the envelope it just wrote: one `Write` of one line, with each control character in the message (U+0000–U+001F, U+007F–U+009F, U+2028, U+2029) written as a Go escape (`\n`, `\x1b`, ` `), so none — a newline in a root path, or in a repeated key's pointer — can split the line or drive the terminal. Quotes, backslashes, and other text are left as they are. Its write error is ignored: the result was already delivered, and with SIGPIPE caught a closed stderr is just an `EPIPE`.
 - `--help` text is written the same way, with nothing on stderr.
 
 ### SIGPIPE
 
-By default the Go runtime kills a process with SIGPIPE when it writes to a closed pipe on stdout (exit 141). ftask calls `signal.Notify` for SIGPIPE at startup, which makes such a write return `EPIPE` instead; the write fails as above, and ftask exits `3` with the notice. Every "result not delivered" case therefore has the one exit code and the notice. (The CLI spec permits death by SIGPIPE; ftask does not use that latitude.)
+By default the Go runtime kills a process with SIGPIPE when it writes to a closed pipe on stdout (exit 141). koan calls `signal.Notify` for SIGPIPE at startup, which makes such a write return `EPIPE` instead; the write fails as above, and koan exits `3` with the notice. Every "result not delivered" case therefore has the one exit code and the notice. (The CLI spec permits death by SIGPIPE; koan does not use that latitude.)
 
 ### Interrupts
 
@@ -292,12 +292,12 @@ No handlers are installed for SIGINT, SIGTERM, or SIGHUP, except by `pick`, whic
 
 An unrecovered panic or a fatal runtime error (out of memory, a detected data race) makes Go print a stack trace and exit with status **2** — the usage-error code, which tells the caller nothing ran. A crash mid-write means the opposite: the outcome is unknown.
 
-- At startup, ftask calls `debug.SetTraceback("crash")`. A panic or fatal error then ends by SIGABRT, exit 134 (`128+6`), which the CLI spec classes as *outcome unknown*.
-- **Panics are never recovered into `internal`.** Reporting `internal` (exit `1`) would claim the operation failed without effect, which a panic mid-write cannot promise. `internal` is reserved for bugs ftask detects as errors (an errno missing from the [table](#names), an impossible state); a write returns it like any other error, with `partial` where its operation defines one.
+- At startup, koan calls `debug.SetTraceback("crash")`. A panic or fatal error then ends by SIGABRT, exit 134 (`128+6`), which the CLI spec classes as *outcome unknown*.
+- **Panics are never recovered into `internal`.** Reporting `internal` (exit `1`) would claim the operation failed without effect, which a panic mid-write cannot promise. `internal` is reserved for bugs koan detects as errors (an errno missing from the [table](#names), an impossible state); a write returns it like any other error, with `partial` where its operation defines one.
 
 ### Exit and signal tests
 
-- Closed pipe: `ftask version | true`, with the reader gone before ftask writes → exit `3`, notice on stderr.
+- Closed pipe: `koan version | true`, with the reader gone before koan writes → exit `3`, notice on stderr.
 - Full disk: stdout redirected to `/dev/full` (Linux) → exit `3`.
 - Signal: SIGTERM during a write held open by a test hook → exit 143, no envelope.
 - Crash: a forced panic in a test build → exit 134, not 2.
@@ -306,10 +306,10 @@ An unrecovered panic or a fatal runtime error (out of memory, a detected data ra
 
 ## Package layout
 
-Module `github.com/phansen314/ftask`. Everything but `main` is under `internal/`: ftask's contract is the JSON its CLI emits ([Versioning](operations.md#versioning)), and a public Go API would be a second contract. The operations can be made a public package later if there is a reason to.
+Module `github.com/phansen314/koan`. Everything but `main` is under `internal/`: koan's contract is the JSON its CLI emits ([Versioning](operations.md#versioning)), and a public Go API would be a second contract. The operations can be made a public package later if there is a reason to.
 
 ```text
-cmd/ftask/                 main: SetTraceback, SIGPIPE, run(), os.Exit — nothing else
+cmd/koan/                 main: SetTraceback, SIGPIPE, run(), os.Exit — nothing else
 internal/cli/              command tables, cobra commands, conversion, envelope output, exit codes
 internal/pick/             pick: the fzf session and its helper, composing list and the write operations
 internal/ops/              one file per operation: its input adapter and its steps, in precedence order
@@ -330,13 +330,13 @@ e2e/                       end-to-end tests against the built binary
 Each package imports only packages below it:
 
 ```text
-cmd/ftask → cli → ops → store → fsys
+cmd/koan → cli → ops → store → fsys
                       ↘ graph      ↘ jsonio
                       ↘ model ←── (store, graph)
-cmd/ftask → buildinfo (and ops → buildinfo, for version)
+cmd/koan → buildinfo (and ops → buildinfo, for version)
 cli → pick → ops, model, fsys, for pick, which runs no operation of its own
-cmd/ftask → fsys, in the e2e_hooks build only (Test hooks)
-errs and jsonio may be imported by any package, and import none of ftask's own.
+cmd/koan → fsys, in the e2e_hooks build only (Test hooks)
+errs and jsonio may be imported by any package, and import none of koan's own.
 ```
 
 - **The CLI does not know the data model.** `cli` never imports `model` or `store`: it builds a `jsonio` tree from the command line, calls `ops.Run(name, tree, env)`, and writes the envelope it gets back. `pick`, which runs no operation of its own, is the one command the CLI hands to another package: `internal/pick` validates its tree with `ops.Validate`, through a `pick` input adapter that `ops` holds with the operations' adapters, and runs `list` and the write operations through `ops.Run`, each as its own call. A composed command is defined in `ops` as a named composition (see [Operations and transactions](#operations-and-transactions)) and exposed by the CLI like any other name, so `cli` still composes nothing itself. The CLI spec's "no behavior beyond parsing arguments and composing operations" is thereby enforced by the compiler. Command tables hold field pointers and value types, which is CLI-spec knowledge, not model knowledge.
@@ -345,7 +345,7 @@ errs and jsonio may be imported by any package, and import none of ftask's own.
 
 ### Operations and transactions
 
-An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Result, error)`. `store.Read(fn)` runs it without the lock; `store.Write(fn)` runs it holding the write lock, after re-reading `ftask.json`. A composed command is several operation functions inside one `store.Write` — the operations spec's "several operations under a single write lock" — so composition needs no change to this structure, with one exception. The transaction's [index](#the-index) and [task-file cache](#loading-task-files) never see its own writes, so the composition calls `tx.NextStep()` before each operation after the first. That drops both, keeping the lock and the open root, and the next operation sees what the earlier ones wrote.
+An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Result, error)`. `store.Read(fn)` runs it without the lock; `store.Write(fn)` runs it holding the write lock, after re-reading `koan.json`. A composed command is several operation functions inside one `store.Write` — the operations spec's "several operations under a single write lock" — so composition needs no change to this structure, with one exception. The transaction's [index](#the-index) and [task-file cache](#loading-task-files) never see its own writes, so the composition calls `tx.NextStep()` before each operation after the first. That drops both, keeping the lock and the open root, and the next operation sees what the earlier ones wrote.
 
 ### Environment
 
@@ -354,13 +354,13 @@ An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Re
 ### Where each kind of test runs
 
 - **In-process**, for speed: everything that does not depend on the process itself — operations, validation, the parser, the tree walk, the cycle check.
-- **`e2e/`, against the built binary**, for what only a real process shows: exit codes, SIGPIPE, `/dev/full`, signals, crashes, and the lock between processes. Each test gets its own temp directory as `HOME`, with `XDG_CONFIG_HOME` inside it; ftask keeps its config there on Linux and in `~/Library/Application Support/ftask` on macOS ([Config file](design-spec.md#config-file)).
+- **`e2e/`, against the built binary**, for what only a real process shows: exit codes, SIGPIPE, `/dev/full`, signals, crashes, and the lock between processes. Each test gets its own temp directory as `HOME`, with `XDG_CONFIG_HOME` inside it; koan keeps its config there on Linux and in `~/Library/Application Support/koan` on macOS ([Config file](design-spec.md#config-file)).
 
 ## Writing files
 
-Every file ftask writes — task files, `.md` notes, `ftask.json`, the config — is published through a temp file, per [Mechanism](#mechanism)'s atomic file writes:
+Every file koan writes — task files, `.md` notes, `koan.json`, the config — is published through a temp file, per [Mechanism](#mechanism)'s atomic file writes:
 
-- **Name.** `.ftask-tmp-<random>`, in the directory of the file it will become: hidden (so reads ignore it), recognizably ftask's (so [`doctor`](operations.md#doctor) can find leftovers), and random (so two writes never collide).
+- **Name.** `.koan-tmp-<random>`, in the directory of the file it will become: hidden (so reads ignore it), recognizably koan's (so [`doctor`](operations.md#doctor) can find leftovers), and random (so two writes never collide).
 - **Created exclusively** (`O_CREATE|O_EXCL`), written in full, flushed (`fsync`), then published: `link` to create a new file, so an existing one is never clobbered (`EEXIST` is `corrupt`, `unexpected-file`); `rename` to replace one. The folder is then flushed, and the temp file removed.
 - **Why flush.** Without it, a system crash can leave a published file empty — a new file published by `link` gets no help from ext4's `auto_da_alloc` — or keep a later step while losing it, e.g. a task file without the `last_id` increment before it, which reissues the ID. Flushing the temp file makes the published file whole; flushing the folder makes the publish itself durable before the next step starts.
 - **Flush failures.** A failed file flush fails the write, with nothing published. A failed folder flush does not: the file is already published, so an error would report a change as not made. It is ignored, like a temp file that can't be removed.
@@ -368,9 +368,9 @@ Every file ftask writes — task files, `.md` notes, `ftask.json`, the config �
 
 ## Config file
 
-**Location.** ftask derives the config directory itself, per [Config file](design-spec.md#config-file), rather than with `os.UserConfigDir`, which fails on a relative `XDG_CONFIG_HOME` instead of ignoring it. The home directory is `$HOME`, used only when set to an absolute path; otherwise it is undeterminable, and anything that needs it fails with `environment` (`variable`: `HOME`).
+**Location.** koan derives the config directory itself, per [Config file](design-spec.md#config-file), rather than with `os.UserConfigDir`, which fails on a relative `XDG_CONFIG_HOME` instead of ignoring it. The home directory is `$HOME`, used only when set to an absolute path; otherwise it is undeterminable, and anything that needs it fails with `environment` (`variable`: `HOME`).
 
-The [config](design-spec.md#config-file) has exactly one key, so ftask reads it with its own parser for a strict subset of TOML rather than a TOML library:
+The [config](design-spec.md#config-file) has exactly one key, so koan reads it with its own parser for a strict subset of TOML rather than a TOML library:
 
 - Blank lines, and comment lines starting with `#`, are ignored.
 - Exactly one other line: `root = "<string>"`, with optional spaces around `=`. The string is a TOML basic string: `\"`, `\\`, `\t`, `\n`, `\uXXXX`, and `\UXXXXXXXX` escapes are decoded; any other escape, a missing closing quote, or trailing text other than a comment is `corrupt`.
@@ -390,16 +390,16 @@ The config must be a regular file, or a symlink to one: it is checked with `stat
 `init` runs before any root exists, so it does not use the [`os.Root`](#filesystem-access) of other operations:
 
 1. Validate and clean `root` ([`init`](cli-spec.md#init) path resolution first, in the CLI).
-2. Check for an existing config (`config-exists` unless `replace_config`). Before failing with `config-exists`, remove any `.ftask-tmp-*` in the config directory, as step 5 does: a crash after the config was published leaves its temp file, and the rerun that follows fails here.
+2. Check for an existing config (`config-exists` unless `replace_config`). Before failing with `config-exists`, remove any `.koan-tmp-*` in the config directory, as step 5 does: a crash after the config was published leaves its temp file, and the rerun that follows fails here.
 3. Create the root directory if needed — `os.Mkdir`, never `MkdirAll`: `init` never creates the root's parent.
-4. Open the root with `os.OpenRoot`, then create `ftask.json` through it via a temp file and `link` (see [Writing files](#writing-files)), or read and check the existing one.
-5. Create the config directory with `os.MkdirAll`, remove any `.ftask-tmp-*` left there by an earlier interrupted `init`, and write the config via a temp file in that directory: `link` when no config exists, `rename` under `replace_config`.
+4. Open the root with `os.OpenRoot`, then create `koan.json` through it via a temp file and `link` (see [Writing files](#writing-files)), or read and check the existing one.
+5. Create the config directory with `os.MkdirAll`, remove any `.koan-tmp-*` left there by an earlier interrupted `init`, and write the config via a temp file in that directory: `link` when no config exists, `rename` under `replace_config`.
 
 The config is written last, as [`init`](operations.md#init)'s crash behavior requires. A temp file left in the config directory is outside `doctor`'s reach, which is why steps 2 and 5 remove stale ones.
 
 ## `info`
 
-`info` inspects the config and `ftask.json` and reports every problem as state ([`info`](operations.md#info)). Each output field is derived as follows:
+`info` inspects the config and `koan.json` and reports every problem as state ([`info`](operations.md#info)). Each output field is derived as follows:
 
 | Field | Value |
 |---|---|
@@ -408,12 +408,12 @@ The config is written last, as [`init`](operations.md#init)'s crash behavior req
 | `config.root` | the root, cleaned and with `~/` expanded, when `config.state` is `ok`; else `null` |
 | `tree` | `null` when `config.root` is `null` (including a `~/` root with no home directory to expand it into) |
 | `tree.root_exists` | the root path leads, through symlinks, to a directory |
-| `tree.metadata` | `missing` if there is no `ftask.json` (or no root); `unreadable` on an OS error reading it; else the [File validity](design-spec.md#file-validity) outcome: `corrupt`, `unsupported-format`, or `ok` |
-| `tree.schema` | `ftask.json`'s `schema` whenever File validity step 1 passes; else `null` |
+| `tree.metadata` | `missing` if there is no `koan.json` (or no root); `unreadable` on an OS error reading it; else the [File validity](design-spec.md#file-validity) outcome: `corrupt`, `unsupported-format`, or `ok` |
+| `tree.schema` | `koan.json`'s `schema` whenever File validity step 1 passes; else `null` |
 | `tree.last_id` | when `tree.metadata` is `ok`; else `null` |
-| `initialized` | `false` exactly when the root is *not initialized* ([Root states](operations.md#root-states)): config `missing`, root missing, or `ftask.json` `missing`; `true` otherwise, including an unusable config (then `tree` is `null`) |
+| `initialized` | `false` exactly when the root is *not initialized* ([Root states](operations.md#root-states)): config `missing`, root missing, or `koan.json` `missing`; `true` otherwise, including an unusable config (then `tree` is `null`) |
 | `usable` | `config.state` and `tree.metadata` both `ok`, and `tree.root_exists` |
-| `compatible` | `tree.schema` equals the supported `ftask.json` version; `null` when `tree.schema` is `null` |
+| `compatible` | `tree.schema` equals the supported `koan.json` version; `null` when `tree.schema` is `null` |
 
 ## `doctor` and `repair`
 
@@ -421,7 +421,7 @@ How the [diagnostic](operations.md#operation-kinds) operations, [`doctor`](opera
 
 ### Transaction
 
-`store.Diagnose(env, w, fn)` runs `fn` as [`store.Write`](#operations-and-transactions) does — locate the config, check it and the root, take the lock (`busy` on `EAGAIN`) — except that it reads `ftask.json` without failing on it. The transaction carries what it found as `MetaState()`: `ok` with the root file, or `missing`, `unreadable`, `corrupt`, or `unsupported-format` with the error each would raise. It allows writes, so `repair` uses the same `Create`, `Replace`, `SetLastID`, and `Remove` as every other write, and turns the state into its own [Preconditions](operations.md#repair) errors. `doctor` writes nothing through it.
+`store.Diagnose(env, w, fn)` runs `fn` as [`store.Write`](#operations-and-transactions) does — locate the config, check it and the root, take the lock (`busy` on `EAGAIN`) — except that it reads `koan.json` without failing on it. The transaction carries what it found as `MetaState()`: `ok` with the root file, or `missing`, `unreadable`, `corrupt`, or `unsupported-format` with the error each would raise. It allows writes, so `repair` uses the same `Create`, `Replace`, `SetLastID`, and `Remove` as every other write, and turns the state into its own [Preconditions](operations.md#repair) errors. `doctor` writes nothing through it.
 
 ### The survey
 
@@ -430,7 +430,7 @@ The [index](#the-index) walk takes an optional recorder, the **survey**. Normal 
 - each entry whose name starts with `fsys.TempPrefix`, file or folder; a temp folder is not descended into;
 - each entry the index skips that is not hidden: a symlink or a matching name of the wrong type, as a `skipped-entry` with its reason; a non-matching name, as a `stray-entry`;
 - each `.md` named like a task's notes that is a regular file, with its folder;
-- each `ftask.json` below the root, which is not also recorded as a `stray-entry`.
+- each `koan.json` below the root, which is not also recorded as a `stray-entry`.
 
 Every other hidden entry is skipped, and not descended into, as by every walk. Folders that can't be listed are already in the index. `Tx.Survey()` is built and cached with `Tx.Index()`, and `NextStep` drops both.
 
@@ -441,7 +441,7 @@ Each finding kind is one check: a function from the index, the survey, `MetaStat
 - **`duplicate-id`.** `identical` compares the copies' bytes as read: the same bytes are the same task, whatever their validity.
 - **`orphan-notes`.** `empty` is a size of zero from `Lstat`. `linked` compares the orphan's `Lstat` with that of the notes of each task with its ID, with `os.SameFile`; `fsys` passes the `FileInfo` through unchanged, so the fault-injecting implementation keeps the comparison working. An `Lstat` error other than `ENOENT` makes it `unreadable`, with its code; `ENOENT` (gone since the walk) is skipped.
 - **`cycle`.** `graph.CycleGroups(edges)` finds the strongly connected components with Tarjan's algorithm, written iteratively so a long chain of blockers can't overflow the goroutine stack. A component of one task is not a cycle: a task's own ID in its `blocked_by` makes its file corrupt, so it has no edge to itself. Groups are sorted by their lowest ID, and each group's IDs ascending. `graph.ExampleCycle(group, edges)` runs the [cycle check](#cycle-check)'s breadth-first search, over the group's edges only, from its lowest ID L until an edge leads back to L. By the same argument as [Why the first path found is the one required](#why-the-first-path-found-is-the-one-required), that is the shortest cycle through L, then lexicographically smallest. The graph is built as the cycle check's is (from usable task files only, with a duplicated ID's edges the union of its copies'), but over the whole tree.
-- **`suggest`.** Built by each check, as a command where one fits (e.g. `ftask unblock 12 --blockers 15`). Tests check only that it is present where the operations spec gives one, since it is not part of the contract.
+- **`suggest`.** Built by each check, as a command where one fits (e.g. `koan unblock 12 --blockers 15`). Tests check only that it is present where the operations spec gives one, since it is not part of the contract.
 
 ### Repair steps
 
@@ -454,11 +454,11 @@ Each finding kind is one check: a function from the index, the survey, `MetaStat
 ### `doctor` and `repair` tests
 
 - **Cycle groups.** On thousands of small random graphs, `CycleGroups` must match the groups from a transitive closure (two IDs share a group exactly when each reaches the other), and `ExampleCycle` must match enumerating every simple cycle through L and picking the shortest, then lexicographically smallest.
-- **One fixture per finding kind**, in-process: a tree built by hand, the exact item `doctor` reports for it, and what `repair` leaves. This covers the outside changes the crash matrix can't make: a `last_id` merged backwards, a duplicate ID, a cycle, a nested tree, a skipped entry, a stray entry (absent unless asked for, and healthy either way), an unreadable folder, a missing or unusable `ftask.json`.
+- **One fixture per finding kind**, in-process: a tree built by hand, the exact item `doctor` reports for it, and what `repair` leaves. This covers the outside changes the crash matrix can't make: a `last_id` merged backwards, a duplicate ID, a cycle, a nested tree, a skipped entry, a stray entry (absent unless asked for, and healthy either way), an unreadable folder, a missing or unusable `koan.json`.
 - **System-crash states**, as fixtures too, since crash injection kills processes, not machines: a task file above `last_id`, an empty task file, a removal undone.
 - **Every `orphan-notes` reason**, including a `linked` `.md` that is changed, or given a different inode, between the check and the removal: it is left, and reported.
 - **Caps.** 25 temp leftovers: 20 items, `count` 25, `truncated`; with `kinds` naming the kind, all 25.
-- **Preconditions.** `repair` with `ftask.json` missing, with and without `metadata-missing`; with it corrupt, and with a newer `schema`: an error, and nothing changed.
+- **Preconditions.** `repair` with `koan.json` missing, with and without `metadata-missing`; with it corrupt, and with a newer `schema`: an error, and nothing changed.
 
 ## Comparing values in `update`
 
@@ -468,7 +468,7 @@ Each finding kind is one check: a function from the index, the survey, `MetaStat
 
 ### Test hooks
 
-Tests that must pause a write or crash it at an exact point use hooks compiled only into a binary built with `-tags e2e_hooks`. The shipped binary contains no hooks, so no environment variable can make a real ftask pause or crash. The hooks set the process's environment before it runs — a fixed clock, a fault-injecting `fsys`, a pause once the write lock is taken — through variables named `FTASK_E2E_*`, documented in `cmd/ftask/hook_e2e.go`. `e2e/` builds and runs the tagged binary; a short smoke suite also runs the release build, to confirm the tag changes nothing else.
+Tests that must pause a write or crash it at an exact point use hooks compiled only into a binary built with `-tags e2e_hooks`. The shipped binary contains no hooks, so no environment variable can make a real koan pause or crash. The hooks set the process's environment before it runs — a fixed clock, a fault-injecting `fsys`, a pause once the write lock is taken — through variables named `KOAN_E2E_*`, documented in `cmd/koan/hook_e2e.go`. `e2e/` builds and runs the tagged binary; a short smoke suite also runs the release build, to confirm the tag changes nothing else.
 
 ### Tests specified elsewhere
 
@@ -484,7 +484,7 @@ Tests that must pause a write or crash it at an exact point use hooks compiled o
 
 ### Lock
 
-In `e2e/`, on Linux and macOS. Every command's wait for the lock is shortened to 100 ms (`FTASK_E2E_LOCK_WAIT`, a [test hook](#test-hooks)), so a `busy` comes quickly; test 8 uses the default.
+In `e2e/`, on Linux and macOS. Every command's wait for the lock is shortened to 100 ms (`KOAN_E2E_LOCK_WAIT`, a [test hook](#test-hooks)), so a `busy` comes quickly; test 8 uses the default.
 
 1. **Contention.** A write held open at a test hook; a second write gets `busy` (exit `1`), while reads still succeed.
 2. **One lock however the root is reached.** The second writer comes in through a symlinked root path, and through a different config (another `XDG_CONFIG_HOME`) naming the same root: both get `busy`.
@@ -516,7 +516,7 @@ System crashes — steps lost or reordered by power loss — are not simulated. 
 
 ### Precedence tests
 
-For each operation, a set of faults, each of which alone triggers one error kind: bad input, missing config, corrupt `ftask.json`, the lock held, a missing folder, a corrupt needed file, a duplicated ID, a cycle, and so on. Every pair of faults that applies to the operation is combined in one tree, and the error reported must be the one earlier in the operation's [precedence](operations.md#precedence) (or `init`'s own order). Two faults at the same step (e.g. two corrupt needed files) must report the first in [tree order](operations.md#tree-order).
+For each operation, a set of faults, each of which alone triggers one error kind: bad input, missing config, corrupt `koan.json`, the lock held, a missing folder, a corrupt needed file, a duplicated ID, a cycle, and so on. Every pair of faults that applies to the operation is combined in one tree, and the error reported must be the one earlier in the operation's [precedence](operations.md#precedence) (or `init`'s own order). Two faults at the same step (e.g. two corrupt needed files) must report the first in [tree order](operations.md#tree-order).
 
 ### Generated and cross-cutting
 
@@ -529,14 +529,14 @@ For each operation, a set of faults, each of which alone triggers one error kind
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request. A new commit on a pull request cancels that pull request's running check; every commit on `main` gets its own.
 
-**Go version.** The `toolchain` line in `go.mod`, which `actions/setup-go` installs; each job prints `go version`. The `go` line stays the minimum needed to build ftask. No other file names a Go version.
+**Go version.** The `toolchain` line in `go.mod`, which `actions/setup-go` installs; each job prints `go version`. The `go` line stays the minimum needed to build koan. No other file names a Go version.
 
 **Test matrix.** Linux amd64 (`ubuntu-latest`) and macOS arm64 (`macos-latest`), neither cancelled by the other's failure. Each runs, as separate steps:
 
 1. `gofmt -l .`, which must print nothing;
 2. `go vet ./...`, then `go vet -tags e2e_hooks ./...` for the [test hooks](#test-hooks);
 3. `go build ./...`;
-4. `scripts/fetch-fzf.sh`, which downloads fzf 0.63.0 and the current release, checked against pinned checksums, for the picker's [end-to-end tests](pick-spec.md#testing), which run against each fzf in `FTASK_E2E_FZF` (else the one on `PATH`, else skip);
+4. `scripts/fetch-fzf.sh`, which downloads fzf 0.63.0 and the current release, checked against pinned checksums, for the picker's [end-to-end tests](pick-spec.md#testing), which run against each fzf in `KOAN_E2E_FZF` (else the one on `PATH`, else skip);
 5. `go test ./...`, never with `-short`: the [lock](#lock) stress tests (5 and 6) skip under it, and their macOS run is the check [Mechanism](#mechanism) relies on;
 6. `scripts/smoke.sh`, installing `jq` first if the runner lacks it.
 
@@ -544,6 +544,6 @@ Every test runs on both, except the two `/dev/full` tests ([Exit and signals](#e
 
 **Race detector.** A separate Linux job runs `go test -race` over every package except `e2e/`, whose binaries are built without `-race`, so the detector would see only the test harness.
 
-**Vulnerabilities.** A separate Linux job runs `govulncheck ./...`, pinned to a version, and fails on any vulnerability ftask's code can reach, in a dependency or in the standard library of the Go version in use. Vulnerabilities only in required modules, which ftask never calls, are reported by `-show verbose` and do not fail it.
+**Vulnerabilities.** A separate Linux job runs `govulncheck ./...`, pinned to a version, and fails on any vulnerability koan's code can reach, in a dependency or in the standard library of the Go version in use. Vulnerabilities only in required modules, which koan never calls, are reported by `-show verbose` and do not fail it.
 
 **Actions** are pinned to a full commit SHA, with the version in a comment.

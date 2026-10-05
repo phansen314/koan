@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/phansen314/ftask/internal/errs"
+	"github.com/phansen314/koan/internal/errs"
 )
 
 // The picker's modes (pick-spec.md, Modes). It starts in insert mode, where
@@ -222,7 +222,7 @@ func writeHeaderAs(s *Session, env Env, mode string) (string, *errs.Error) {
 	}
 	exe, err := env.Sys.Executable()
 	if err != nil {
-		return "", errs.Internal("locating the ftask binary: " + err.Error())
+		return "", errs.Internal("locating the koan binary: " + err.Error())
 	}
 	return "transform-header(" + helperLine(exe, "text", "header") + ")", nil
 }

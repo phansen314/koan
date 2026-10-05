@@ -138,11 +138,11 @@ func TestPickSession(t *testing.T) {
 	}
 }
 
-// ftask __pick is pick's hidden helper: outside a session it is a usage
+// koan __pick is pick's hidden helper: outside a session it is a usage
 // error, and help never shows it.
 func TestPickHelper(t *testing.T) {
 	helper := func(env []string, args ...string) result {
-		cmd := ftask(t, append([]string{"__pick"}, args...)...)
+		cmd := koan(t, append([]string{"__pick"}, args...)...)
 		cmd.Env = append(cmd.Env, env...)
 		r := run(t, cmd)
 		envelope(t, r)
@@ -152,18 +152,18 @@ func TestPickHelper(t *testing.T) {
 		return r
 	}
 	helper(nil, "text", "footer")
-	helper([]string{"FTASK_PICK_SESSION=" + t.TempDir()}, "text", "footer")
+	helper([]string{"KOAN_PICK_SESSION=" + t.TempDir()}, "text", "footer")
 	// A session pick made, as pick makes it: the verb is what's wrong.
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "session"), []byte("ftask pick session 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "session"), []byte("koan pick session 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if r := helper([]string{"FTASK_PICK_SESSION=" + dir}, "nope"); !strings.Contains(r.stdout, `"argument":"nope"`) {
+	if r := helper([]string{"KOAN_PICK_SESSION=" + dir}, "nope"); !strings.Contains(r.stdout, `"argument":"nope"`) {
 		t.Errorf("unknown verb: %s", r.stdout)
 	}
 
 	for _, args := range [][]string{{"--help"}, {"help"}, {"__pik"}} {
-		r := run(t, ftask(t, args...))
+		r := run(t, koan(t, args...))
 		if strings.Contains(r.stdout, "__pick") {
 			t.Errorf("%q shows the helper: %s", args, r.stdout)
 		}
@@ -191,7 +191,7 @@ func TestPickFirstLoad(t *testing.T) {
 		cmd  *exec.Cmd
 		want string
 	}{
-		{ftask(t, "pick"), `"kind":"not-initialized"`},
+		{koan(t, "pick"), `"kind":"not-initialized"`},
 		{tr.cmd("pick", "--folder", "/a/x/y"), `"kind":"not-found","message":"not found: folder /a/x","details":{"folders":["/a/x"]`},
 		{tr.cmd("pick", "--folders", "--folder", "/nope"), `"folders":["/nope"]`},
 		{tr.cmd("pick", "--folder", "/a/b"), `"reason":"no-terminal"`},
@@ -233,7 +233,7 @@ func TestPickFolderNotFoundIsLists(t *testing.T) {
 	}
 }
 
-// FTASK_PICK_OPTS is split as fzf splits FZF_DEFAULT_OPTS; one that doesn't
+// KOAN_PICK_OPTS is split as fzf splits FZF_DEFAULT_OPTS; one that doesn't
 // split is fzf-failed, with no status or actions, since fzf never ran.
 func TestPickOptsUnsplittable(t *testing.T) {
 	fzf := t.TempDir()
@@ -242,10 +242,10 @@ func TestPickOptsUnsplittable(t *testing.T) {
 	}
 	cmd := noTTY(newTree(t).cmd("pick"))
 	cmd.Env = append(slices.DeleteFunc(cmd.Env, func(kv string) bool { return strings.HasPrefix(kv, "PATH=") }),
-		"PATH="+fzf, "FTASK_PICK_OPTS=--prompt 'x")
+		"PATH="+fzf, "KOAN_PICK_OPTS=--prompt 'x")
 	r := run(t, cmd)
 	envelope(t, r)
-	if r.code != 1 || !strings.Contains(r.stdout, `"details":{"reason":"fzf-failed"}`) || !strings.Contains(r.stdout, "FTASK_PICK_OPTS") {
+	if r.code != 1 || !strings.Contains(r.stdout, `"details":{"reason":"fzf-failed"}`) || !strings.Contains(r.stdout, "KOAN_PICK_OPTS") {
 		t.Errorf("exit %d: %s", r.code, r.stdout)
 	}
 }
@@ -282,7 +282,7 @@ func testPickAtOnce(t *testing.T, fzfDir string) {
 		{[]string{"--exit-zero", "--query", "japan"}, "", `"tasks":[],`},
 		{[]string{"--exit-zero", "--query", "travel hotel"}, "", `"reason":"no-terminal"`},
 		{[]string{"--select-one", "--query", "travel hotel"}, "", `"tasks":[{"id":2,"title":"Book hotel"}]`},
-		{[]string{"--exit-zero", "--query", "bkfl"}, "FTASK_PICK_OPTS=--exact", `"tasks":[],`},
+		{[]string{"--exit-zero", "--query", "bkfl"}, "KOAN_PICK_OPTS=--exact", `"tasks":[],`},
 		{[]string{"--exit-zero", "--query", "bkfl"}, "", `"reason":"no-terminal"`},
 		// Options that change what fzf --filter reads or writes are undone.
 		{[]string{"--select-one", "--query", "book"}, "FZF_DEFAULT_OPTS=--print0", `"reason":"no-terminal"`},
@@ -305,7 +305,7 @@ func testPickAtOnce(t *testing.T, fzfDir string) {
 		r := run(t, cmd)
 		if strings.Contains(tc.env, "--bogus") {
 			// fzf's own message comes first, on the terminal (pick-spec.md,
-			// Errors), then ftask's line.
+			// Errors), then koan's line.
 			if !strings.HasPrefix(r.stderr, "$FZF_DEFAULT_OPTS: ") || !strings.HasSuffix(r.stderr, "\n"+note(t, r.stdout)) {
 				t.Errorf("stderr %q", r.stderr)
 			}

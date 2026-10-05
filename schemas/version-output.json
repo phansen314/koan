@@ -15,7 +15,7 @@
       "required": ["task", "root"],
       "properties": {
         "task": { "type": "integer", "description": "The one task file format version this binary reads and writes." },
-        "root": { "type": "integer", "description": "The one ftask.json format version this binary reads and writes." }
+        "root": { "type": "integer", "description": "The one koan.json format version this binary reads and writes." }
       },
       "additionalProperties": false
     }

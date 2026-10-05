@@ -1,25 +1,25 @@
 package cli
 
 import (
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/ops"
-	"github.com/phansen314/ftask/internal/pick"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/ops"
+	"github.com/phansen314/koan/internal/pick"
 )
 
-// commands are ftask's commands, in help order (cli-spec.md, Commands).
+// commands are koan's commands, in help order (cli-spec.md, Commands).
 var commands = []Command{
 	{
 		Name:    "version",
 		Op:      "version",
-		Summary: "Report the version and build of the ftask binary",
-		Example: "  ftask version",
+		Summary: "Report the version and build of the koan binary",
+		Example: "  koan version",
 	},
 	{
 		Name:    "info",
 		Op:      "info",
 		Summary: "Report the state of this machine's configured root",
-		Example: "  ftask info   # ready when .result.usable is true; if not, the rest of .result says why",
+		Example: "  koan info   # ready when .result.usable is true; if not, the rest of .result says why",
 	},
 	{
 		Name:    "init",
@@ -29,10 +29,10 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "replace-config", Field: "/replace_config", Type: Bool, Help: "replace an existing config"},
 		},
-		Example: `  ftask init ~/tasks
-  ftask init tasks                    # relative to the working directory
-  ftask init /mnt/usb/tasks --replace-config
-  jq -n '{root: "~/tasks"}' | ftask init -i -`,
+		Example: `  koan init ~/tasks
+  koan init tasks                    # relative to the working directory
+  koan init /mnt/usb/tasks --replace-config
+  jq -n '{root: "~/tasks"}' | koan init -i -`,
 		Resolve: resolveRoot,
 	},
 	{
@@ -42,9 +42,9 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "kinds", Field: "/kinds", Type: StringList, Help: "report only these finding `kinds`, each in full"},
 		},
-		Example: `  ftask doctor                                   # healthy when .result.healthy is true; else .result.findings says why
-  ftask doctor --kinds cycle,duplicate-id        # just these, in full
-  ftask doctor | jq '.result.findings[] | select(.class != "manual") | .kind'   # what repair would fix`,
+		Example: `  koan doctor                                   # healthy when .result.healthy is true; else .result.findings says why
+  koan doctor --kinds cycle,duplicate-id        # just these, in full
+  koan doctor | jq '.result.findings[] | select(.class != "manual") | .kind'   # what repair would fix`,
 	},
 	{
 		Name:    "repair",
@@ -53,9 +53,9 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "kinds", Field: "/kinds", Type: StringList, Help: "repair only these finding `kinds`; metadata-missing only when named"},
 		},
-		Example: `  ftask repair                                   # every auto repair
-  ftask repair --kinds temp-leftover             # only the leftover temp files
-  ftask repair --kinds metadata-missing          # rebuild a lost ftask.json; never done by default`,
+		Example: `  koan repair                                   # every auto repair
+  koan repair --kinds temp-leftover             # only the leftover temp files
+  koan repair --kinds metadata-missing          # rebuild a lost koan.json; never done by default`,
 	},
 	{
 		Name:    "create-folder",
@@ -65,8 +65,8 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "parents", Short: "p", Field: "/parents", Type: Bool, Help: "create missing parent folders"},
 		},
-		Example: `  ftask create-folder /proj
-  ftask create-folder -p /proj/travel/2026   # .result.created: the folders it made`,
+		Example: `  koan create-folder /proj
+  koan create-folder -p /proj/travel/2026   # .result.created: the folders it made`,
 	},
 	{
 		Name:    "delete-folder",
@@ -76,8 +76,8 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "recursive", Short: "r", Field: "/recursive", Type: Bool, Help: "also remove the tasks and folders it holds"},
 		},
-		Example: `  ftask delete-folder /proj/old
-  ftask delete-folder -r /proj/travel        # .result.ids: the tasks removed; .result.dependents: the tasks they no longer block`,
+		Example: `  koan delete-folder /proj/old
+  koan delete-folder -r /proj/travel        # .result.ids: the tasks removed; .result.dependents: the tasks they no longer block`,
 	},
 	{
 		Name:    "move-folder",
@@ -88,9 +88,9 @@ var commands = []Command{
 			{Name: "to", Field: "/to", Type: String, Required: true, Help: "an existing folder to move it into, or its new `path`"},
 			{Name: "parents", Short: "p", Field: "/parents", Type: Bool, Help: "create missing folders above the new path"},
 		},
-		Example: `  ftask move-folder /proj/travel --to /archive              # → /archive/travel
-  ftask move-folder /proj/travel --to /archive/travel-2025  # → moved and renamed
-  ftask move-folder /proj/travel --to /archive/2025/trips -p  # → /archive/2025/trips, creating /archive/2025`,
+		Example: `  koan move-folder /proj/travel --to /archive              # → /archive/travel
+  koan move-folder /proj/travel --to /archive/travel-2025  # → moved and renamed
+  koan move-folder /proj/travel --to /archive/2025/trips -p  # → /archive/2025/trips, creating /archive/2025`,
 	},
 	{
 		Name:    "create",
@@ -107,10 +107,10 @@ var commands = []Command{
 			{Name: "notes-file", Field: "/notes", Type: TextFile, Help: "read the initial notes from `file` (- for stdin)"},
 		},
 		Exclusive: [][]string{{"notes", "notes-file"}},
-		Example: `  ftask create 'Book flights' --folder /proj/travel --tags travel,urgent --priority 2
-  ftask create 'Deploy' --blocked-by 41,42   # the new ID is .result.id
-  gh issue view 12 --json body -q .body | ftask create 'Fix login bug' --notes-file -
-  ftask create 'Wait on quote' --extra '{"status":"waiting"}'`,
+		Example: `  koan create 'Book flights' --folder /proj/travel --tags travel,urgent --priority 2
+  koan create 'Deploy' --blocked-by 41,42   # the new ID is .result.id
+  gh issue view 12 --json body -q .body | koan create 'Fix login bug' --notes-file -
+  koan create 'Wait on quote' --extra '{"status":"waiting"}'`,
 	},
 	{
 		Name:          "create-batch",
@@ -121,31 +121,31 @@ var commands = []Command{
     {ref: "schema", title: "Design schema", priority: 2, tags: ["db"]},
     {ref: "migrate", title: "Write migrations", blocked_by: ["schema"]},
     {title: "Deploy", blocked_by: ["migrate", 12]}
-  ]}' | ftask create-batch -i -        # creates /work/api if missing; .result.refs.schema is Design schema's ID
-  ftask create-batch -i plan.json | jq -r '.result.ids | join(",")' | xargs ftask block 41 --blockers`,
+  ]}' | koan create-batch -i -        # creates /work/api if missing; .result.refs.schema is Design schema's ID
+  koan create-batch -i plan.json | jq -r '.result.ids | join(",")' | xargs koan block 41 --blockers`,
 	},
 	{
 		Name:    "show",
 		Op:      "show",
 		Summary: "Return one task by ID, with its readiness and where its notes live",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
-		Example: `  ftask show 42                                   # readiness, blocking, notes_path: all in .result.tasks[0]
-  for id in 41 42 43; do ftask show "$id"; done   # one envelope each`,
+		Example: `  koan show 42                                   # readiness, blocking, notes_path: all in .result.tasks[0]
+  for id in 41 42 43; do koan show "$id"; done   # one envelope each`,
 	},
 	{
 		Name:    "complete",
 		Op:      "complete",
 		Summary: "Mark a task complete; completing a complete task changes nothing",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
-		Example: `  ftask complete 42                               # .result.changed is false if it was already complete
-  for id in 41 42; do ftask complete "$id"; done  # one envelope each`,
+		Example: `  koan complete 42                               # .result.changed is false if it was already complete
+  for id in 41 42; do koan complete "$id"; done  # one envelope each`,
 	},
 	{
 		Name:    "reopen",
 		Op:      "reopen",
 		Summary: "Reopen a complete task; reopening an open task changes nothing",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
-		Example: "  ftask reopen 42   # .result.completed_at is null again",
+		Example: "  koan reopen 42   # .result.completed_at is null again",
 	},
 	{
 		Name:    "update",
@@ -162,17 +162,17 @@ var commands = []Command{
 			{Name: "extra-remove", Field: "/extra/remove", Type: Repeated, Help: "a `key` to delete; repeatable"},
 			{Name: "extra-replace-all", Field: "/extra/replace_all", Type: JSON, Help: "the complete new extra, a JSON `object`; {} clears it"},
 		},
-		Example: `  ftask update 42 --priority 3 --tags-add urgent
-  ftask update 42 --extra-merge '{"status":"waiting"}'   # .result.changed names the fields that changed
-  ftask update 42 --priority null --tags-remove urgent --extra-remove status
-  ftask update 42 --tags-replace-all ''`,
+		Example: `  koan update 42 --priority 3 --tags-add urgent
+  koan update 42 --extra-merge '{"status":"waiting"}'   # .result.changed names the fields that changed
+  koan update 42 --priority null --tags-remove urgent --extra-remove status
+  koan update 42 --tags-replace-all ''`,
 	},
 	{
 		Name:    "delete",
 		Op:      "delete",
 		Summary: "Permanently remove a task, and its ID from every blocked_by; undo is git's",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
-		Example: `  ftask delete 42                                              # .result.dependents: the tasks it no longer blocks
+		Example: `  koan delete 42                                              # .result.dependents: the tasks it no longer blocks
   git log --diff-filter=D --oneline -- '*/42.json' '42.json'   # find it again later`,
 	},
 	{
@@ -184,8 +184,8 @@ var commands = []Command{
 			{Name: "to", Field: "/to", Type: String, Required: true, Help: "the folder to move it into, as an exact `path`"},
 			{Name: "parents", Short: "p", Field: "/parents", Type: Bool, Help: "create the folder, and any missing above it"},
 		},
-		Example: `  ftask move 42 --to /proj/travel
-  ftask move 42 --to /archive/2025 -p   # creates /archive/2025; the notes move too`,
+		Example: `  koan move 42 --to /proj/travel
+  koan move 42 --to /archive/2025 -p   # creates /archive/2025; the notes move too`,
 	},
 	{
 		Name:    "block",
@@ -195,8 +195,8 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "blockers", Field: "/blockers", Type: IDList, Required: true, Help: "comma-separated `ids` of the tasks that block it"},
 		},
-		Example: `  ftask block 42 --blockers 41,43   # .result.added: the ones not already there
-  ftask block 42 --blockers 7       # a cycle is refused: .error.details.cycles shows it`,
+		Example: `  koan block 42 --blockers 41,43   # .result.added: the ones not already there
+  koan block 42 --blockers 7       # a cycle is refused: .error.details.cycles shows it`,
 	},
 	{
 		Name:    "unblock",
@@ -206,8 +206,8 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "blockers", Field: "/blockers", Type: IDList, Required: true, Help: "comma-separated `ids` to remove from its blockers"},
 		},
-		Example: `  ftask unblock 42 --blockers 41   # .result.removed: the ones that were there
-  ftask unblock 42 --blockers 99   # clears a dangling reference to a task that no longer exists`,
+		Example: `  koan unblock 42 --blockers 41   # .result.removed: the ones that were there
+  koan unblock 42 --blockers 99   # clears a dangling reference to a task that no longer exists`,
 	},
 	{
 		Name:    "list",
@@ -223,12 +223,12 @@ var commands = []Command{
 			{Name: "limit", Field: "/limit", Type: Int, Help: "at most `n` tasks, the first in tree order; total and truncated say what was cut"},
 			{Name: "fields", Field: "/fields", Type: StringList, Help: "return only these comma-separated task `fields`, and id"},
 		},
-		Example: `  ftask list --limit 50 --fields id,title,readiness,folder
-  ftask list --folder /proj --readiness complete --limit 0                     # how many are done: .result.total
-  ftask list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
-  ftask list --readiness ready,blocked,complete --tags-all db,backend --fields id,title,readiness
-  ftask list --include-folders --limit 0                                      # every folder: .result.folders
-  ftask list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'`,
+		Example: `  koan list --limit 50 --fields id,title,readiness,folder
+  koan list --folder /proj --readiness complete --limit 0                     # how many are done: .result.total
+  koan list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
+  koan list --readiness ready,blocked,complete --tags-all db,backend --fields id,title,readiness
+  koan list --include-folders --limit 0                                      # every folder: .result.folders
+  koan list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'`,
 	},
 	{
 		Name:    "frontier",
@@ -242,11 +242,11 @@ var commands = []Command{
 			{Name: "limit", Field: "/limit", Type: Int, Help: "at most `n` tasks, the first in frontier order; total and truncated say what was cut"},
 			{Name: "fields", Field: "/fields", Type: StringList, Help: "return only these comma-separated task `fields`, and id"},
 		},
-		Example: `  ftask frontier --limit 10 --fields id,title,priority,folder   # the next ten, briefly
-  ftask frontier --limit 1                                     # the next task, whole
-  ftask frontier --folder /proj --limit 20 --fields id,title   # ready under /proj
-  ftask frontier --tags-any urgent,today --fields id,title
-  ftask frontier --limit 0                                     # how many are ready: .result.total`,
+		Example: `  koan frontier --limit 10 --fields id,title,priority,folder   # the next ten, briefly
+  koan frontier --limit 1                                     # the next task, whole
+  koan frontier --folder /proj --limit 20 --fields id,title   # ready under /proj
+  koan frontier --tags-any urgent,today --fields id,title
+  koan frontier --limit 0                                     # how many are ready: .result.total`,
 	},
 	{
 		Name:    "pick",
@@ -268,11 +268,11 @@ var commands = []Command{
 			{Name: "folders", Field: "/folders", Type: Bool, Help: "pick folders instead of tasks"},
 		},
 		Exclusive: [][]string{{"ids", "from"}},
-		Example: `  ftask pick                                                  # open tasks; Enter → .result.tasks
-  ftask pick --folder /work --scope ready                     # what's ready under /work
-  ftask list --readiness blocked --fields id | ftask pick --from -   # choose among the blocked ones
-  ftask pick --source 'ftask frontier --tags-any today'       # kept live
-  ftask pick --folders | jq -r '.result.folders[0]'           # a folder path`,
+		Example: `  koan pick                                                  # open tasks; Enter → .result.tasks
+  koan pick --folder /work --scope ready                     # what's ready under /work
+  koan list --readiness blocked --fields id | koan pick --from -   # choose among the blocked ones
+  koan pick --source 'koan frontier --tags-any today'       # kept live
+  koan pick --folders | jq -r '.result.folders[0]'           # a folder path`,
 		Run: func(in *jsonio.Object, problems []errs.Problem, env Env) ops.Envelope {
 			return runPick(in, problems, pick.Env{Ops: env.Ops, Sys: env.Pick})
 		},

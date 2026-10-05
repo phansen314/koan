@@ -1,7 +1,7 @@
 package pick
 
 import (
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // scopeAction is s (pick-spec.md, Actions): it cycles the readiness scope,

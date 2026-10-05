@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/errs"
+	"github.com/phansen314/koan/internal/errs"
 )
 
 func TestTitleInput(t *testing.T) {

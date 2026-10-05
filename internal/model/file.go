@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // FileStatus is the outcome of checking a versioned file (see design-spec.md,
@@ -168,7 +168,7 @@ func (p *Problems) timestampOrNull(v any, ptr string) (Timestamp, bool) {
 	return p.Timestamp(v, ptr)
 }
 
-// DecodeRootFile checks a parsed ftask.json (repeated: its repeated keys, from
+// DecodeRootFile checks a parsed koan.json (repeated: its repeated keys, from
 // jsonio) and returns its content, valid only when Status is FileOK.
 func DecodeRootFile(obj *jsonio.Object, repeated []string) (RootFile, FileResult) {
 	version, ok := checkVersion(obj, repeated, RootSchema)

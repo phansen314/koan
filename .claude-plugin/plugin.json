@@ -1,11 +1,11 @@
 {
-  "name": "ftask",
-  "description": "Track and work through your tasks with the ftask CLI: a local, file-based task tree with dependencies.",
+  "name": "koan",
+  "description": "Track and work through your tasks with the koan CLI: a local, file-based task tree with dependencies.",
   "author": {
     "name": "phansen314"
   },
-  "homepage": "https://github.com/phansen314/ftask",
-  "repository": "https://github.com/phansen314/ftask",
+  "homepage": "https://github.com/phansen314/koan",
+  "repository": "https://github.com/phansen314/koan",
   "license": "MIT",
   "skills": [
     "./claude/skills/"

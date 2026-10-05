@@ -5,7 +5,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // CycleGroups is the groups of tasks that block each other: the strongly

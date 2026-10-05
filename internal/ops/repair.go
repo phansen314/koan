@@ -5,17 +5,17 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 func decodeRepair(f *model.Fields, p *model.Problems) any {
 	kinds := optionalKinds(f, p)
 	for i, k := range kinds {
 		if c := findingClass[k]; c == classManual || c == classInformational {
-			p.AddAdditional(jsonio.Pointer(f.Ptr("kinds"), strconv.Itoa(i)), k+" is "+c+": repair never changes it; see ftask doctor --kinds "+k)
+			p.AddAdditional(jsonio.Pointer(f.Ptr("kinds"), strconv.Itoa(i)), k+" is "+c+": repair never changes it; see koan doctor --kinds "+k)
 		}
 	}
 	return KindsInput{Kinds: kinds}

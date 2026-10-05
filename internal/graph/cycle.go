@@ -3,7 +3,7 @@ package graph
 import (
 	"slices"
 
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // Cycles is the cycle check's phase 2 (implementation-spec.md, Cycle check):

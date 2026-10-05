@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/model"
 )
 
 func TestSourceIDs(t *testing.T) {
@@ -23,10 +23,10 @@ func TestSourceIDs(t *testing.T) {
 		{"list", run{`{"ok":true,"result":{"tasks":[{"id":3},{"id":1},{"id":3}]},"warnings":[]}`, "", false}, []model.ID{3, 1}, ""},
 		{"one task", run{`{"ok":true,"result":{"id":2,"title":"x"},"warnings":[]}`, "noise", false}, []model.ID{2}, ""},
 		{"empty", run{`{"ok":true,"result":{"tasks":[]},"warnings":[]}`, "", false}, []model.ID{}, ""},
-		{"upstream failed", run{`{"ok":false,"error":{"kind":"not-found","message":"not found: folder /x"},"warnings":[]}`, "ftask: not-found: …", false},
+		{"upstream failed", run{`{"ok":false,"error":{"kind":"not-found","message":"not found: folder /x"},"warnings":[]}`, "koan: not-found: …", false},
 			nil, "upstream failed with not-found: not found: folder /x"},
 		{"stderr", run{"", "sh: 1: ftsk: not found\nmore\n", false}, nil, "sh: 1: ftsk: not found"},
-		{"no stderr", run{"nope", "", false}, nil, "not an ftask envelope: "},
+		{"no stderr", run{"nope", "", false}, nil, "not a koan envelope: "},
 		{"not an ID", run{`{"ok":true,"result":{"tasks":[{"id":"x"}]},"warnings":[]}`, "", false}, nil, `not a task ID: "x"`},
 		{"timed out", run{"", "", true}, nil, "timed out after 10s"},
 	} {
@@ -112,7 +112,7 @@ func TestLiveSource(t *testing.T) {
 			t.Errorf("after r: %s", ks)
 		}
 		listed = `{"ok":false,"error":{"kind":"busy","message":"another write holds the lock"},"warnings":[]}`
-		if got := helper("act", "r"); got != "clear-selection+transform-footer('/bin/ftask' __pick text 'footer')" {
+		if got := helper("act", "r"); got != "clear-selection+transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("failed r printed %q", got)
 		}
 		if f, ks := helper("text", "footer"), lineKeys(helper); f != "✗ source: upstream failed with busy: another write holds the lock" || ks != "2@/" {

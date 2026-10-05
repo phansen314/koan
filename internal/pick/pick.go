@@ -1,14 +1,14 @@
-// Package pick is ftask pick, the interactive picker built on fzf
+// Package pick is koan pick, the interactive picker built on fzf
 // (pick-spec.md). It runs no operation of its own: it validates its input
 // through ops, like any command, and composes list and the write operations
 // its keys run, each as its own call.
 package pick
 
 import (
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 // Env is pick's environment: the operations' and the process's.
@@ -40,7 +40,7 @@ func Run(in *jsonio.Object, problems []errs.Problem, env Env) ops.Envelope {
 	if e != nil {
 		return ops.Failed(e)
 	}
-	// FTASK_PICK_OPTS is fzf's too: checked with it, before the tree is
+	// KOAN_PICK_OPTS is fzf's too: checked with it, before the tree is
 	// read.
 	environ := env.Sys.Environ()
 	opts, e := userOpts(environ)
@@ -66,7 +66,7 @@ func Run(in *jsonio.Object, problems []errs.Problem, env Env) ops.Envelope {
 	}
 	exe, err := env.Sys.Executable()
 	if err != nil {
-		return ops.Envelope{Error: errs.Internal("locating the ftask binary: " + err.Error()), Warnings: l.Warnings}
+		return ops.Envelope{Error: errs.Internal("locating the koan binary: " + err.Error()), Warnings: l.Warnings}
 	}
 	pk := picker{exe: exe, scope: scope, query: pin.Query, missing: missing, warnings: len(l.Warnings), userOpts: opts}
 	if pin.SelectOne || pin.ExitZero {

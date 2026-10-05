@@ -10,8 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // Env is what store needs from the environment. Home and ConfigDir are ""
@@ -49,15 +49,15 @@ func Locate(getenv func(string) string, goos string) (home, configDir string) {
 	}
 	if goos == "darwin" {
 		if home != "" {
-			configDir = path.Join(home, "Library", "Application Support", "ftask")
+			configDir = path.Join(home, "Library", "Application Support", "koan")
 		}
 		return home, configDir
 	}
 	switch x := getenv("XDG_CONFIG_HOME"); {
 	case strings.HasPrefix(x, "/"):
-		configDir = path.Join(x, "ftask")
+		configDir = path.Join(x, "koan")
 	case home != "":
-		configDir = path.Join(home, ".config", "ftask")
+		configDir = path.Join(home, ".config", "koan")
 	}
 	return home, configDir
 }
@@ -94,7 +94,7 @@ func ParseRootPath(raw string) (r RootPath, err error) {
 	return r, nil
 }
 
-// Expand returns the root as ftask reports it: cleaned, with "~/" expanded
+// Expand returns the root as koan reports it: cleaned, with "~/" expanded
 // into home. ok is false for a "~/" root with no home directory, which
 // counts as a missing root.
 func (r RootPath) Expand(home string) (string, bool) {
@@ -107,7 +107,7 @@ func (r RootPath) Expand(home string) (string, bool) {
 	return model.CleanPath(home + "/" + r.Path), true
 }
 
-// parseConfig reads the config with ftask's parser for a strict subset of
+// parseConfig reads the config with koan's parser for a strict subset of
 // TOML (implementation-spec.md, Config file): UTF-8 without a byte-order
 // mark; blank and comment lines; and exactly one line root = "<basic
 // string>". Anything else makes the config corrupt; the error says why,

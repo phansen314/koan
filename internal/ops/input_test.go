@@ -5,10 +5,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // bases are valid inputs per operation, mutated one place at a time.
@@ -45,7 +45,7 @@ var bases = map[string][]string{
 	"list":     {`{"folder": "/proj", "recursive": false, "readiness": ["ready", "complete"], "include_folders": true, "tags_any": ["a"], "tags_all": ["b", "c"], "limit": 0, "fields": ["readiness", "blocking"]}`},
 	"pick": {
 		`{"folder": "/proj", "recursive": false, "scope": "ready", "tags_any": ["a"], "tags_all": ["b"], "ids": [41, 42], "query": "renew", "select_one": true, "exit_zero": true, "fields": ["title", "id"], "folders": false}`,
-		`{"source": "ftask frontier --tags-any today", "scope": "all"}`,
+		`{"source": "koan frontier --tags-any today", "scope": "all"}`,
 		`{"ids": []}`,
 		`{"folders": true, "folder": "/a", "recursive": false, "query": "x", "select_one": true, "exit_zero": false}`,
 	},

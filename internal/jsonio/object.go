@@ -61,7 +61,7 @@ func (o *Object) Delete(key string) {
 func (o *Object) Len() int { return len(o.Members) }
 
 // MarshalJSON emits the members in stored order, strings escaped exactly as
-// the rest of ftask's output is (see marshal). It has a value receiver, so an
+// the rest of koan's output is (see marshal). It has a value receiver, so an
 // Object stored by value encodes the same as a *Object.
 func (o Object) MarshalJSON() ([]byte, error) {
 	var b bytes.Buffer

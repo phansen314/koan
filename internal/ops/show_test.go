@@ -6,10 +6,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // show runs show for id over f, checking the envelope and, on success,
@@ -146,12 +146,12 @@ func TestShowCases(t *testing.T) {
 			`not-initialized {"missing":"config"}`},
 		{"missing root", func(f *fixture) { f.remove("tasks") },
 			`not-initialized {"missing":"root"}`},
-		{"missing ftask.json", func(f *fixture) { f.remove("tasks/ftask.json") },
+		{"missing koan.json", func(f *fixture) { f.remove("tasks/koan.json") },
 			`not-initialized {"missing":"metadata"}`},
 		{"corrupt config", func(f *fixture) { f.write("cfg/config.toml", "root = 1\n") },
 			`corrupt {"path":"~/cfg/config.toml","reason":"invalid","detail":"line 1: root must be a double-quoted string"}`},
-		{"unsupported ftask.json", func(f *fixture) { f.write("tasks/ftask.json", `{"schema": 2}`) },
-			`unsupported-format {"path":"~/tasks/ftask.json","found":2,"supported":[1]}`},
+		{"unsupported koan.json", func(f *fixture) { f.write("tasks/koan.json", `{"schema": 2}`) },
+			`unsupported-format {"path":"~/tasks/koan.json","found":2,"supported":[1]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)

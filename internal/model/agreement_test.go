@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // verdict is an adapter's outcome for one document. Early marks a file

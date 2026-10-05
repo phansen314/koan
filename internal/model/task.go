@@ -3,7 +3,7 @@ package model
 import (
 	"slices"
 
-	"github.com/phansen314/ftask/internal/jsonio"
+	"github.com/phansen314/koan/internal/jsonio"
 )
 
 // TaskFile is a task file's content (see design-spec.md, Task file schema).
@@ -141,13 +141,13 @@ func (v TaskView) field(name string) any {
 	return nil
 }
 
-// RootFile is ftask.json's content (see design-spec.md, Root metadata).
+// RootFile is koan.json's content (see design-spec.md, Root metadata).
 type RootFile struct {
 	Schema int64 `json:"schema"`
 	LastID int64 `json:"last_id"`
 }
 
-// Encode returns ftask.json's bytes, per design-spec.md, File format.
+// Encode returns koan.json's bytes, per design-spec.md, File format.
 func (r RootFile) Encode() ([]byte, error) {
 	return jsonio.MarshalFile(r)
 }

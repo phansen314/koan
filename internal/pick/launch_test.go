@@ -8,16 +8,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/model"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 func TestPickerArgs(t *testing.T) {
 	pk := picker{
-		exe:   "/opt/my ftask/ftask",
+		exe:   "/opt/my koan/koan",
 		scope: Scope{Folder: "/", Recursive: true, Readiness: ops.PickOpen},
 		query: "renew pass",
 	}
@@ -31,10 +31,10 @@ func TestPickerArgs(t *testing.T) {
 		"--prompt", "open> ",
 		"--query", "renew pass",
 		"--header", "/\nenter: pick · tab: mark · esc: commands",
-		"--preview", "'/opt/my ftask/ftask' __pick preview {1}",
-		"--bind", "enter:transform:'/opt/my ftask/ftask' __pick enter {q} {+1}",
-		"--bind", "esc:transform:'/opt/my ftask/ftask' __pick esc {q}",
-		"--bind", "ctrl-space:transform:'/opt/my ftask/ftask' __pick command {q}",
+		"--preview", "'/opt/my koan/koan' __pick preview {1}",
+		"--bind", "enter:transform:'/opt/my koan/koan' __pick enter {q} {+1}",
+		"--bind", "esc:transform:'/opt/my koan/koan' __pick esc {q}",
+		"--bind", "ctrl-space:transform:'/opt/my koan/koan' __pick command {q}",
 		"--bind", "ctrl-d:delete-char",
 		"--bind", "ctrl-/:toggle-preview",
 		"--bind", "j:down",
@@ -42,24 +42,24 @@ func TestPickerArgs(t *testing.T) {
 		"--bind", "g:first",
 		"--bind", "G:last",
 		"--bind", "space:toggle+down",
-		"--bind", "q:transform:'/opt/my ftask/ftask' __pick quit",
-		"--bind", "i:transform:'/opt/my ftask/ftask' __pick insert",
-		"--bind", "/:transform:'/opt/my ftask/ftask' __pick insert",
-		"--bind", "?:preview:'/opt/my ftask/ftask' __pick help",
-		"--bind", "c:transform:'/opt/my ftask/ftask' __pick act 'c' {+1}",
-		"--bind", "e:transform:'/opt/my ftask/ftask' __pick act 'e' {+1}",
-		"--bind", "n:transform:'/opt/my ftask/ftask' __pick act 'n'",
-		"--bind", "p:transform:'/opt/my ftask/ftask' __pick act 'p' {+1}",
-		"--bind", "t:transform:'/opt/my ftask/ftask' __pick act 't' {+1}",
-		"--bind", "x:transform:'/opt/my ftask/ftask' __pick act 'x' {+1}",
-		"--bind", "b:transform:'/opt/my ftask/ftask' __pick act 'b' {+1}",
-		"--bind", "u:transform:'/opt/my ftask/ftask' __pick act 'u' {+1}",
-		"--bind", "m:transform:'/opt/my ftask/ftask' __pick act 'm' {+1}",
-		"--bind", "f:transform:'/opt/my ftask/ftask' __pick act 'f'",
-		"--bind", "s:transform:'/opt/my ftask/ftask' __pick act 's'",
-		"--bind", "r:transform:'/opt/my ftask/ftask' __pick act 'r'",
+		"--bind", "q:transform:'/opt/my koan/koan' __pick quit",
+		"--bind", "i:transform:'/opt/my koan/koan' __pick insert",
+		"--bind", "/:transform:'/opt/my koan/koan' __pick insert",
+		"--bind", "?:preview:'/opt/my koan/koan' __pick help",
+		"--bind", "c:transform:'/opt/my koan/koan' __pick act 'c' {+1}",
+		"--bind", "e:transform:'/opt/my koan/koan' __pick act 'e' {+1}",
+		"--bind", "n:transform:'/opt/my koan/koan' __pick act 'n'",
+		"--bind", "p:transform:'/opt/my koan/koan' __pick act 'p' {+1}",
+		"--bind", "t:transform:'/opt/my koan/koan' __pick act 't' {+1}",
+		"--bind", "x:transform:'/opt/my koan/koan' __pick act 'x' {+1}",
+		"--bind", "b:transform:'/opt/my koan/koan' __pick act 'b' {+1}",
+		"--bind", "u:transform:'/opt/my koan/koan' __pick act 'u' {+1}",
+		"--bind", "m:transform:'/opt/my koan/koan' __pick act 'm' {+1}",
+		"--bind", "f:transform:'/opt/my koan/koan' __pick act 'f'",
+		"--bind", "s:transform:'/opt/my koan/koan' __pick act 's'",
+		"--bind", "r:transform:'/opt/my koan/koan' __pick act 'r'",
 		"--bind", "start:unbind(load,j,k,g,G,space,q,i,/,?,c,e,n,p,t,x,b,u,m,f,s,r)",
-		"--bind", "load:transform:'/opt/my ftask/ftask' __pick on-load",
+		"--bind", "load:transform:'/opt/my koan/koan' __pick on-load",
 	}
 	if got := pk.args(); !slices.Equal(got, want) {
 		t.Errorf("got\n%q\nwant\n%q", got, want)
@@ -118,7 +118,7 @@ func TestUserOpts(t *testing.T) {
 	}
 }
 
-// FTASK_PICK_OPTS that doesn't split is found with fzf, before anything
+// KOAN_PICK_OPTS that doesn't split is found with fzf, before anything
 // is read from the tree (pick-spec.md, Errors): not a scope folder's
 // not-found.
 func TestRunBadOptsFirst(t *testing.T) {
@@ -153,9 +153,9 @@ func TestShQuote(t *testing.T) {
 }
 
 func TestFzfEnv(t *testing.T) {
-	s := &Session{Dir: "/run/ftask-pick-x"}
+	s := &Session{Dir: "/run/koan-pick-x"}
 	got := fzfEnv([]string{"A=1", SessionVar + "=/stale", "FZF_DEFAULT_OPTS=--exact"}, s)
-	if want := []string{"A=1", "FZF_DEFAULT_OPTS=--exact", SessionVar + "=/run/ftask-pick-x"}; !slices.Equal(got, want) {
+	if want := []string{"A=1", "FZF_DEFAULT_OPTS=--exact", SessionVar + "=/run/koan-pick-x"}; !slices.Equal(got, want) {
 		t.Errorf("got %q", got)
 	}
 }
@@ -194,7 +194,7 @@ func TestShow(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Remove()
-	pk := picker{exe: "/bin/ftask", scope: Scope{Folder: "/", Recursive: true, Readiness: ops.PickOpen}}
+	pk := picker{exe: "/bin/koan", scope: Scope{Folder: "/", Recursive: true, Readiness: ops.PickOpen}}
 	details := func(e *errs.Error) string {
 		b, _ := json.Marshal(e.Details)
 		return string(b)

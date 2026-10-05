@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/jsonio"
-	"github.com/phansen314/ftask/internal/schematest"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/schematest"
 )
 
 // op runs op with input over f, checking the envelope and, on success,
@@ -51,7 +51,7 @@ func (f *fixture) op(op, input string) string {
 	return f.rel(s)
 }
 
-// files is every entry under the root but ftask.json, as a sorted list of
+// files is every entry under the root but koan.json, as a sorted list of
 // paths, a folder's with a trailing "/"; temp entries included, so a
 // leftover shows.
 func (f *fixture) files() string {
@@ -60,7 +60,7 @@ func (f *fixture) files() string {
 	var out []string
 	for _, p := range slices.Sorted(maps.Keys(all)) {
 		rel, ok := strings.CutPrefix(p, "tasks/")
-		if !ok || rel == "ftask.json" {
+		if !ok || rel == "koan.json" {
 			continue
 		}
 		if all[p] == "/" {
@@ -227,7 +227,7 @@ func TestDeleteFolderCases(t *testing.T) {
 			`conflict {"rule":"not-empty","ids":[]}`, "p/ p/x.txt"},
 		{"not empty: notes with text and no task", `{"folder": "/p"}`, func(f *fixture) { f.write("tasks/p/77.md", "notes") },
 			`conflict {"rule":"not-empty","ids":[]}`, "p/ p/77.md"},
-		{"not empty: a folder that isn't ftask's", `{"folder": "/p"}`, func(f *fixture) { f.write("tasks/p/Photos/img.txt", "precious") },
+		{"not empty: a folder that isn't koan's", `{"folder": "/p"}`, func(f *fixture) { f.write("tasks/p/Photos/img.txt", "precious") },
 			`conflict {"rule":"not-empty","ids":[]}`, "p/ p/Photos/ p/Photos/img.txt"},
 		{"duplicated", `{"folder": "/p", "recursive": true}`, func(f *fixture) { f.task("p", 5, false); f.task("", 5, false); f.task("p", 6, false) },
 			`conflict {"rule":"duplicate-id","ids":[5]}`, "5.json p/ p/5.json p/6.json"},

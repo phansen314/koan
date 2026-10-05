@@ -46,7 +46,7 @@
     "environment": {
       "type": "object",
       "required": ["variable"],
-      "properties": { "variable": { "type": "string", "description": "The environment variable ftask needed, e.g. HOME." } },
+      "properties": { "variable": { "type": "string", "description": "The environment variable koan needed, e.g. HOME." } },
       "additionalProperties": false
     },
     "not-initialized": {

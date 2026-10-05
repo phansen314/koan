@@ -1,4 +1,4 @@
-// Command ftask is the ftask CLI. main sets up the process and exits; all
+// Command koan is the koan CLI. main sets up the process and exits; all
 // behavior is in internal/cli (implementation-spec.md, Exit and signals).
 package main
 
@@ -8,7 +8,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/phansen314/ftask/internal/cli"
+	"github.com/phansen314/koan/internal/cli"
 )
 
 // envHook runs once the process is set up, and may change its environment;

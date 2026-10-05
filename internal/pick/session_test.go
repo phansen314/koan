@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/phansen314/ftask/internal/errs"
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/ops"
+	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/ops"
 )
 
 func TestSessionBase(t *testing.T) {
@@ -271,7 +271,7 @@ func TestHelperFailed(t *testing.T) {
 		helper("command", "")
 		env := Env{Ops: tr.env, Sys: System{
 			Environ:    func() []string { return []string{SessionVar + "=" + tr.session} },
-			Executable: func() (string, error) { return "/bin/ftask", nil },
+			Executable: func() (string, error) { return "/bin/koan", nil },
 		}}
 		run := func(args ...string) (string, bool, *errs.Error) {
 			out, reported, e := Helper(args, env)
@@ -284,7 +284,7 @@ func TestHelperFailed(t *testing.T) {
 			}
 		}
 		out, reported, e := run("act", "c", "1@/")
-		if e == nil || !reported || out != "transform-footer('/bin/ftask' __pick text 'footer')" {
+		if e == nil || !reported || out != "transform-footer('/bin/koan' __pick text 'footer')" {
 			t.Errorf("act: %q, %v, %v", out, reported, e)
 		}
 		if f, _, _ := run("text", "footer"); !strings.HasPrefix(f, "✗ internal: session has no "+shownFile) {

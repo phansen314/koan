@@ -9,13 +9,13 @@ func TestLocate(t *testing.T) {
 		goos, home, xdg   string
 		wantHome, wantDir string
 	}{
-		{"linux", "/h", "/x", "/h", "/x/ftask"},
-		{"linux", "/h", "", "/h", "/h/.config/ftask"},
-		{"linux", "/h", "rel", "/h", "/h/.config/ftask"}, // a relative XDG_CONFIG_HOME is ignored
-		{"linux", "", "/x", "", "/x/ftask"},
+		{"linux", "/h", "/x", "/h", "/x/koan"},
+		{"linux", "/h", "", "/h", "/h/.config/koan"},
+		{"linux", "/h", "rel", "/h", "/h/.config/koan"}, // a relative XDG_CONFIG_HOME is ignored
+		{"linux", "", "/x", "", "/x/koan"},
 		{"linux", "rel", "", "", ""}, // a relative HOME is unusable
 		{"linux", "", "", "", ""},
-		{"darwin", "/h", "/x", "/h", "/h/Library/Application Support/ftask"},
+		{"darwin", "/h", "/x", "/h", "/h/Library/Application Support/koan"},
 		{"darwin", "", "/x", "", ""},
 	} {
 		env := map[string]string{"HOME": tc.home, "XDG_CONFIG_HOME": tc.xdg}

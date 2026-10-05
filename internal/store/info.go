@@ -1,7 +1,7 @@
 package store
 
 import (
-	"github.com/phansen314/ftask/internal/model"
+	"github.com/phansen314/koan/internal/model"
 )
 
 // ConfigState is the config's state, as info reports it.
@@ -14,7 +14,7 @@ const (
 	ConfigOK         ConfigState = "ok"
 )
 
-// MetaState is ftask.json's state, as info reports it.
+// MetaState is koan.json's state, as info reports it.
 type MetaState string
 
 const (
@@ -48,7 +48,7 @@ type TreeInfo struct {
 	LastID     *int64    `json:"last_id"`
 }
 
-// Inspect reports the config and ftask.json as state, never failing: every
+// Inspect reports the config and koan.json as state, never failing: every
 // problem with them is part of the result. It never walks the tree.
 func Inspect(env Env) Info {
 	var info Info

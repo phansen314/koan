@@ -3,8 +3,8 @@ package ops
 import (
 	"time"
 
-	"github.com/phansen314/ftask/internal/fsys"
-	"github.com/phansen314/ftask/internal/store"
+	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // Env is an invocation's environment, passed in, never global
