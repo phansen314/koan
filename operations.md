@@ -289,6 +289,7 @@ A warning reports a problem, relevant to the operation's result, that did not st
 | `dangling-reference` | A task's `blocked_by` names an ID with no task (see [Dependencies](design-spec.md#dependencies)). Not reported while a folder the walk had to list was unreadable, since the blocker may be in it; the `unreadable-folder` warning explains why the task counts as blocked. | the referring task file | `[referring, missing]`, in that order | — |
 | `unreadable-folder` | A folder the walk had to list could not be listed; its tasks are missing from the result (see [Walking the tree](design-spec.md#walking-the-tree)). | the folder's filesystem path | none | `code` |
 | `notes-missing` | A task was written but its `.md` could not be. The task is valid; its notes are empty, or stale if a stray `.md` could not be replaced. | the `.md` | the task | `code`, unless the OS error has no symbolic name |
+| `migrated` | A file ftask, koan's former name, left was moved to koan's name for it (see [Migrating from ftask](design-spec.md#migrating-from-ftask)): its config, or the root's `ftask.json`. | the old path, then the new | none | — |
 
 An `unusable-file` warning says which file and, in `reason`, one word for why — never what is wrong inside it: no `problems` or `detail` as a [`corrupt`](#error-kinds) error has. The file was one the operation did not need, a damaged tree can produce dozens, and they recur on every call that walks past them. For the diagnosis, [`show`](#show) the task: its file is needed there, so it fails with the full `corrupt` error.
 
@@ -331,7 +332,7 @@ A finding is a problem with the tree that [`doctor`](#doctor) reports and [`repa
 
 | Kind | Class | One item per | `paths` | `ids` | Other fields | `action` |
 |---|---|---|---|---|---|---|
-| `temp-leftover` | auto | koan temp file or folder (its name starts with `.koan-tmp-`) anywhere under the root: a write's leftover file, or the folder an interrupted [`delete-folder`](#delete-folder) renamed aside. Its contents are not looked at. | the entry | none | — | `remove` |
+| `temp-leftover` | auto | koan temp file or folder (its name starts with `.koan-tmp-`, or ftask's `.ftask-tmp-`) anywhere under the root: a write's leftover file, or the folder an interrupted [`delete-folder`](#delete-folder) renamed aside. Its contents are not looked at. | the entry | none | — | `remove` |
 | `metadata-missing` | on-request | root with no `koan.json`: one item. | where `koan.json` belongs | none | `last_id`: the highest ID in any task filename, or `0` | `create-metadata`; `null` while any folder can't be listed, since a task in it may have a higher ID |
 | `metadata-unusable` | manual | root whose `koan.json` is unusable: one item. | `koan.json` | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
 | `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when `koan.json` is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |

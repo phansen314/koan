@@ -7,6 +7,7 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // Envelope is the output envelope (operations.md, Output envelope): Result on
@@ -93,6 +94,11 @@ func run(name string, input *jsonio.Object, problems []errs.Problem, env Env, w 
 	r, ok := runners[name]
 	if !ok {
 		return nil, errs.Internal("operation " + name + " is not implemented")
+	}
+	if name != "version" { // version reads no file
+		if e := store.Migrate(env.Env, w); e != nil {
+			return nil, e
+		}
 	}
 	return r(env, in, w)
 }

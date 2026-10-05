@@ -122,6 +122,20 @@ func (f Fault) Lstat(p string) (fs.FileInfo, error) {
 	return f.FS.Lstat(p)
 }
 
+func (f Fault) Rename(oldpath, newpath string) error {
+	if err := f.before(Op{Name: OpRename, Path: oldpath, NewPath: newpath, Mutating: true}); err != nil {
+		return err
+	}
+	return f.FS.Rename(oldpath, newpath)
+}
+
+func (f Fault) Remove(p string) error {
+	if err := f.before(Op{Name: OpRemove, Path: p, Mutating: true}); err != nil {
+		return err
+	}
+	return f.FS.Remove(p)
+}
+
 type faultRoot struct {
 	f Fault
 	r Root

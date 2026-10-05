@@ -200,7 +200,7 @@ func (tx *Tx) walk(x *Index, f model.FolderPath) {
 		name := e.Name()
 		switch {
 		case strings.HasPrefix(name, "."):
-			if x.Survey != nil && strings.HasPrefix(name, fsys.TempPrefix) {
+			if x.Survey != nil && fsys.IsTemp(name) {
 				x.Survey.Temps = append(x.Survey.Temps, joinPath(FolderRel(f), name))
 			}
 		case folderName.MatchString(name) && e.Type().IsDir():

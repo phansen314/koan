@@ -115,6 +115,7 @@ func TestWarningsMatchSchema(t *testing.T) {
 		errs.DanglingReference("/r/4.json", 4, 9),
 		errs.UnreadableFolder("/r/p", "EACCES"),
 		errs.NotesMissing("/r/5.md", 5, "ENOSPC"),
+		errs.Migrated("/c/ftask/config.toml", "/c/koan/config.toml"),
 	} {
 		data := encode(t, w)
 		if ok, f := schematest.Check(t, "warning", data); !ok {

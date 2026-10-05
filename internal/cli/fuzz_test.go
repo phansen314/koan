@@ -24,6 +24,8 @@ func (noFiles) MkdirAll(string, fs.FileMode) error { return syscall.EROFS }
 func (noFiles) ReadFile(string) ([]byte, error)    { return nil, syscall.ENOENT }
 func (noFiles) Stat(string) (fs.FileInfo, error)   { return nil, syscall.ENOENT }
 func (noFiles) Lstat(string) (fs.FileInfo, error)  { return nil, syscall.ENOENT }
+func (noFiles) Rename(string, string) error        { return syscall.EROFS }
+func (noFiles) Remove(string) error                { return syscall.EROFS }
 
 // Any command line yields help or exactly one envelope line with exit 0-2,
 // never a panic (implementation-spec.md, Generated and cross-cutting).

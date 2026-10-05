@@ -21,6 +21,9 @@ type Env struct {
 	Home      string
 	ConfigDir string
 	LockWait  time.Duration // how long a write waits for a held write lock; 0 tries once
+	// LegacyConfigDir is where ftask, koan's former name, kept its config;
+	// "" when unknown, or when there is nothing to migrate (see Migrate).
+	LegacyConfigDir string
 }
 
 // DefaultLockWait is how long a write waits for a held write lock before
@@ -47,19 +50,30 @@ func Locate(getenv func(string) string, goos string) (home, configDir string) {
 	if h := getenv("HOME"); strings.HasPrefix(h, "/") {
 		home = h
 	}
+	return home, configDirNamed(getenv, goos, home, "koan")
+}
+
+// LocateLegacy is where ftask, koan's former name, kept its config: located
+// as Locate does, under the name ftask; "" when it cannot be determined.
+func LocateLegacy(getenv func(string) string, goos string) string {
+	home, _ := Locate(getenv, goos)
+	return configDirNamed(getenv, goos, home, "ftask")
+}
+
+func configDirNamed(getenv func(string) string, goos, home, name string) string {
 	if goos == "darwin" {
-		if home != "" {
-			configDir = path.Join(home, "Library", "Application Support", "koan")
+		if home == "" {
+			return ""
 		}
-		return home, configDir
+		return path.Join(home, "Library", "Application Support", name)
 	}
 	switch x := getenv("XDG_CONFIG_HOME"); {
 	case strings.HasPrefix(x, "/"):
-		configDir = path.Join(x, "koan")
+		return path.Join(x, name)
 	case home != "":
-		configDir = path.Join(home, ".config", "koan")
+		return path.Join(home, ".config", name)
 	}
-	return home, configDir
+	return ""
 }
 
 // RootPath is a config's root, in one of its two legal forms (see

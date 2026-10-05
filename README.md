@@ -17,6 +17,8 @@ GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest   # any
 koan init ~/koans                                                          # this machine's task tree
 ```
 
+koan was called ftask. Coming from it, skip `init`: the first koan command moves ftask's config and the tree's `ftask.json` to koan's names, and says so in its warnings (see [Migrating from ftask](design-spec.md#migrating-from-ftask)). Then uninstall ftask's agent setup and install koan's, below.
+
 ## Use it from Claude Code and OpenCode
 
 The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin (the repo is a Claude Code plugin marketplace):

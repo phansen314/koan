@@ -27,6 +27,12 @@ type FS interface {
 	// path at all, so init can tell a dangling symlink from nothing, and
 	// whether a config exists.
 	Lstat(path string) (fs.FileInfo, error)
+	// Rename moves the config ftask left into koan's config directory
+	// (store.Migrate), which runs only while koan's config is missing.
+	Rename(oldpath, newpath string) error
+	// Remove removes ftask's config directory once emptied; a non-empty one
+	// fails, and is left.
+	Remove(path string) error
 }
 
 // Root is a directory opened once, through which every call is made. Names

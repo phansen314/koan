@@ -438,6 +438,16 @@ The config must be a regular file, or a symlink to one (into a dotfiles checkout
 
 koan keeps no other per-machine state.
 
+### Migrating from ftask
+
+koan was called ftask, and a setup ftask made is moved to koan's names by the first command that reads files (every one but [`version`](operations.md#version)), before it does anything else:
+
+- **The config.** When koan's config is missing and ftask's — `config.toml` in the config directory as above, named `ftask` instead of `koan` — is there, it is moved into koan's config directory (a symlink moves as the symlink). ftask's config directory is then removed if that left it empty.
+- **The root's metadata.** When the root the config names has no `koan.json` but has `ftask.json`, the file is renamed to `koan.json`, holding the [write lock](#guarantees). Only the root's: an `ftask.json` below it is a `stray-entry`.
+- **Temp files.** A `.ftask-tmp-` file or folder anywhere under the root is ftask's [temp leftover](operations.md#finding-kinds), and counts as koan's own.
+
+Each move is reported as a [`migrated`](operations.md#warning-kinds) warning. A setup that has koan's file already is never touched, so ftask's stays where it is, ignored. A move that fails fails the command, with the [`io`](operations.md#error-kinds) error, and the next command tries again; a config or root that can't be used is left alone for the command to report as it would anyway.
+
 ### Root path
 
 - **Form.** `root` is an absolute path, or a path beginning with `~/`, which koan expands to the user's home directory when reading the config. Any other form — a relative path, `~user/` — makes the config `corrupt`. `init` always writes an absolute path.

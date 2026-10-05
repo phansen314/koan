@@ -184,7 +184,7 @@ func removeTemps(r fsys.Root) error {
 		return err
 	}
 	for _, en := range entries {
-		if strings.HasPrefix(en.Name(), fsys.TempPrefix) {
+		if fsys.IsTemp(en.Name()) {
 			r.Remove(en.Name())
 		}
 	}

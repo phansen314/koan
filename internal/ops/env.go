@@ -17,10 +17,12 @@ type Env struct {
 
 // NewEnv is the process's environment: the real filesystem, the home and
 // config directories located from getenv (design-spec.md, Config file), the
-// default lock wait, and the real clock. goos is runtime.GOOS.
+// default lock wait, ftask's config directory to migrate from, and the real
+// clock. goos is runtime.GOOS.
 func NewEnv(getenv func(string) string, goos string) Env {
 	home, configDir := store.Locate(getenv, goos)
-	return Env{Env: store.Env{FS: fsys.OS{}, Home: home, ConfigDir: configDir, LockWait: store.DefaultLockWait}, Clock: RealClock}
+	legacy := store.LocateLegacy(getenv, goos)
+	return Env{Env: store.Env{FS: fsys.OS{}, Home: home, ConfigDir: configDir, LockWait: store.DefaultLockWait, LegacyConfigDir: legacy}, Clock: RealClock}
 }
 
 // Clock returns the current time. Operations stamp files with it, so tests

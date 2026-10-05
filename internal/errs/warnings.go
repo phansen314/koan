@@ -15,6 +15,7 @@ const (
 	WarnDanglingReference WarningKind = "dangling-reference"
 	WarnUnreadableFolder  WarningKind = "unreadable-folder"
 	WarnNotesMissing      WarningKind = "notes-missing"
+	WarnMigrated          WarningKind = "migrated"
 )
 
 // UnusableReason says why an unusable-file warning's file is unusable.
@@ -171,4 +172,10 @@ func first(s []string) string {
 		return ""
 	}
 	return s[0]
+}
+
+// Migrated: from, a file ftask (koan's former name) left, was moved to to,
+// koan's name for it.
+func Migrated(from, to string) Warning {
+	return Warning{Kind: WarnMigrated, Message: fmt.Sprintf("moved ftask's %s to %s", from, to), Paths: []string{from, to}, IDs: []int64{}}
 }
