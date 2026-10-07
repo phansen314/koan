@@ -489,6 +489,10 @@ Let a task in a [`create-batch`](operations.md#create-batch) name existing tasks
 
 Let a caller set `completed_at` when completing a task (e.g. to backdate it), instead of always using the current time (see [`done`](operations.md#done)).
 
+### Event hooks
+
+Let the user name commands in koan's config that run after a task changes state — created, completed, reopened, deleted — each given the task, as [`show`](operations.md#show) returns it, as JSON on stdin. A hook runs after the operation has succeeded and never undoes it: a failing hook is a warning, not an error. Tools built on koan react to completions without polling: shingi's start and done tasks, matched by their `extra` keys, could remove a unit's worktree when it is done, archive its notes, or tell a coordinator a piece has finished. koan would know nothing of those tools; it only reports what changed.
+
 ### Tree view
 
 A command that pretty-prints the tree — folders and tasks, nested — for people. Presentation only: built on [`list`](operations.md#list) (with `include_folders`), so it needs no new operation.
