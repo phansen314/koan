@@ -852,6 +852,41 @@ koan list --include-folders --limit 0                                      # eve
 koan list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'
 ```
 
+### why
+
+Explain why a task isn't ready: the ready tasks upstream of it that would move it, and the blockers no work clears. Runs [`why`](operations.md#why).
+
+**Synopsis:** `koan why <id> [--include-tasks] [--fields <names>]`, or `koan why -i <file>`.
+
+**Operation:** [`why`](operations.md#why).
+
+**Arguments:**
+
+| Argument | Field | Notes |
+|---|---|---|
+| `<id>` | `/id` | Required unless `--input` is given. A [task ID](design-spec.md#task-ids), converted as an integer, as for [`show`](#show). |
+
+**Options:**
+
+| Option | Field | Default |
+|---|---|---|
+| `--include-tasks` | `/include_tasks` | `false`. Also return the task and every open task upstream of it. |
+| `--fields <names>` | `/fields` | None: whole task views. Comma list of task view field names; `id` is always included. Only with `--include-tasks`: without it, the operation rejects it as `invalid-input`. |
+
+**Input:** none beyond the Arguments and Options mapping.
+
+**Output:** Passthrough. `result.ready` and `result.stuck` are ID lists, so the default output stays small however large the upstream is; `result.tasks` is present only with `--include-tasks`. A done or ready task is not an error: a done one has both lists empty, a ready one is `ready` alone.
+
+**Errors:** none beyond the operation's.
+
+**Examples:**
+
+```sh
+koan why 42 | jq -c .result                                       # {"readiness":"blocked","ready":[17,23],"stuck":[]}
+koan why 42 | jq -r '.result.ready[]'                             # what to work on to move 42
+koan why 42 --include-tasks --fields id,title,readiness,blocking  # the whole upstream, briefly
+```
+
 ### pick
 
 Fuzzy-pick tasks, or folders, in an interactive [fzf](https://github.com/junegunn/fzf) picker, act on them in place, and write the ones chosen as one envelope. For people at a terminal, not agents. It is specified in its own document, [pick-spec.md](pick-spec.md), which says where it departs from this spec's global rules.
@@ -882,6 +917,6 @@ koan pick --folders | jq -r '.result.folders[0]'                  # a folder pat
 
 ## Not included
 
-- **Filters beyond [Narrowing tasks](operations.md#narrowing-tasks)** (on `extra` fields, on title text, or anything query-like): output shaping, left to `jq` (see the operations' [Parameters](operations.md#conventions) convention). `--limit`, `--fields`, and the tag and readiness filters are the exception, since `frontier`'s and `list`'s output lands in an agent's context.
+- **Filters beyond [Narrowing tasks](operations.md#narrowing-tasks)** (on `extra` fields, on title text, or anything query-like): output shaping, left to `jq` (see the operations' [Parameters](operations.md#conventions) convention). `--limit`, `--fields`, and the tag and readiness filters are the exception, since `frontier`'s and `list`'s output — and `why`'s with `--include-tasks` — lands in an agent's context.
 - **`--config` / `--root`**: there is one config and one root per user (see the design spec's [Assumptions](design-spec.md#assumptions)). A different config location is reached by setting `XDG_CONFIG_HOME` (or `HOME`), with the effects the design spec describes.
 - **Tree view**: rendering for people, which the JSON-only CLI does not do. Stays in the design spec's [Future work](design-spec.md#tree-view).

@@ -42,6 +42,7 @@ var bases = map[string][]string{
 		`{"id": 42, "priority": null}`,
 	},
 	"frontier": {`{"folder": "/proj", "recursive": false, "tags_any": ["a", "b"], "tags_all": ["c"], "limit": 10, "fields": ["title", "id"]}`},
+	"why":      {`{"id": 42, "include_tasks": true, "fields": ["title", "blocking"]}`, `{"id": 42, "include_tasks": false}`},
 	"list":     {`{"folder": "/proj", "recursive": false, "readiness": ["ready", "done"], "include_folders": true, "tags_any": ["a"], "tags_all": ["b", "c"], "limit": 0, "fields": ["readiness", "blocking"]}`},
 	"pick": {
 		`{"folder": "/proj", "recursive": false, "scope": "ready", "tags_any": ["a"], "tags_all": ["b"], "ids": [41, 42], "query": "renew", "select_one": true, "exit_zero": true, "fields": ["title", "id"], "folders": false}`,

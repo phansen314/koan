@@ -304,6 +304,22 @@ func TestListFrontier(t *testing.T) {
 	})
 }
 
+// why explains a blocked task from the command line, and narrows its tasks.
+func TestWhy(t *testing.T) {
+	same := newTree(t).cmd
+	steps(t, []step{
+		{same("create", "a"), 0, `"id":1,`},
+		{same("create", "b", "--blocked-by", "1"), 0, `"id":2,`},
+		{same("create", "c", "--blocked-by", "2"), 0, `"id":3,`},
+		{same("why", "3"), 0, `"result":{"readiness":"blocked","ready":[1],"stuck":[]},"warnings":[]`},
+		{same("why", "3", "--include-tasks", "--fields", "blocking"), 0, `"tasks":[{"id":3,"blocking":[2]},{"id":2,"blocking":[1]},{"id":1,"blocking":[]}]`},
+		{same("why", "3", "--fields", "blocking"), 1, `"field":"/fields"`},
+		{same("done", "1"), 0, `"changed":true`},
+		{same("why", "3"), 0, `"ready":[2]`},
+		{same("why", "9"), 1, `"kind":"not-found"`},
+	})
+}
+
 // frontier and list narrowed from the command line: each output shape —
 // projected, cut by a limit, the count alone, filtered — is exactly as
 // expected and passes its output schema, and a warning survives narrowing.

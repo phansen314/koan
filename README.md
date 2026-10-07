@@ -81,6 +81,7 @@ koan create-folder -p /work/api
 koan create 'Design schema' --folder /work/api --priority 2 --tags db
 koan create 'Write migrations' --folder /work/api --blocked-by 1
 koan frontier --limit 10 --fields id,title                       # the next ready tasks, in work order
+koan why 2                                                       # why 2 isn't ready: .result.ready would move it
 koan done 1
 jq -n '{folder: "/work/api", tasks: [                             # a plan in one call: refs name earlier tasks
   {ref: "endpoints", title: "Add endpoints"},

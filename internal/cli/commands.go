@@ -231,6 +231,19 @@ var commands = []Command{
   koan list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'`,
 	},
 	{
+		Name:    "why",
+		Op:      "why",
+		Summary: "Explain why a task isn't ready: the ready tasks that would move it, and the blockers no work clears",
+		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
+		Options: []Option{
+			{Name: "include-tasks", Field: "/include_tasks", Type: Bool, Help: "also return the task and every open task upstream of it"},
+			{Name: "fields", Field: "/fields", Type: StringList, Help: "return only these comma-separated task `fields`, and id (with --include-tasks)"},
+		},
+		Example: `  koan why 42 | jq -c .result                                       # {"readiness":"blocked","ready":[17,23],"stuck":[]}
+  koan why 42 | jq -r '.result.ready[]'                             # what to work on to move 42
+  koan why 42 --include-tasks --fields id,title,readiness,blocking  # the whole upstream, briefly`,
+	},
+	{
 		Name:    "frontier",
 		Op:      "frontier",
 		Summary: "Return the ready tasks — open, not blocked — in the order to work on them",

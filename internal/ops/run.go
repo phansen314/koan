@@ -52,6 +52,7 @@ var runners = map[string]runner{
 	"move-folder":   typed(runMoveFolder),
 	"list":          typed(runList),
 	"frontier":      typed(runFrontier),
+	"why":           typed(runWhy),
 }
 
 // typed adapts an operation's function over its own input type to a runner.

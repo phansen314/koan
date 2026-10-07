@@ -372,7 +372,7 @@ These rules apply to every operation that walks the tree — reads and writes al
 **Folders that can't be listed.** If the walk meets a folder it can't list (e.g. permission denied):
 
 - Operations that return a collection (`frontier`, `list`) report an [`unreadable-folder`](operations.md#warning-kinds) warning and carry on; the folder's tasks are missing from the result.
-- Operations that must find one ID, or prove it absent or unique, or find every reference to one (`show`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, `delete`, `delete-folder`, `create` with `blocked_by`), fail with `io`: they cannot answer correctly without the whole tree.
+- Operations that must find one ID, or prove it absent or unique, or find every reference to one (`show`, `why`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, `delete`, `delete-folder`, `create` with `blocked_by`), fail with `io`: they cannot answer correctly without the whole tree.
 
 ### Reads
 

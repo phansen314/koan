@@ -16,6 +16,7 @@ const (
 	WarnUnreadableFolder  WarningKind = "unreadable-folder"
 	WarnNotesMissing      WarningKind = "notes-missing"
 	WarnMigrated          WarningKind = "migrated"
+	WarnCycle             WarningKind = "cycle"
 )
 
 // UnusableReason says why an unusable-file warning's file is unusable.
@@ -178,4 +179,19 @@ func first(s []string) string {
 // koan's name for it.
 func Migrated(from, to string) Warning {
 	return Warning{Kind: WarnMigrated, Message: fmt.Sprintf("moved ftask's %s to %s", from, to), Paths: []string{from, to}, IDs: []int64{}}
+}
+
+// Cycle: tasks block each other; cycle is one cycle in their group, from its
+// lowest ID back to it (graph.ExampleCycle).
+func Cycle(cycle []int64) Warning {
+	parts := make([]string, len(cycle))
+	for i, id := range cycle {
+		parts[i] = fmt.Sprint(id)
+	}
+	return Warning{
+		Kind:    WarnCycle,
+		Message: "tasks block each other: " + strings.Join(parts, " is blocked by "),
+		Paths:   []string{},
+		IDs:     cycle,
+	}
 }

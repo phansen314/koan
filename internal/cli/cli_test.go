@@ -760,7 +760,8 @@ func TestBlockersInput(t *testing.T) {
 }
 
 // list's input: options only, --recursive a flag that --recursive=false
-// turns off. frontier shares --folder and --recursive.
+// turns off. frontier shares --folder and --recursive. why takes its ID as
+// an argument.
 func TestListInput(t *testing.T) {
 	saved := runOp
 	t.Cleanup(func() { runOp = saved })
@@ -802,7 +803,20 @@ func TestListInput(t *testing.T) {
 			t.Errorf("%q: exit %d, input %s, want %s", tc.args, r.code, got, tc.want)
 		}
 	}
-	for _, args := range [][]string{{"list", "/proj"}, {"frontier", "/proj"}, {"frontier", "--readiness", "ready"}, {"list", "--include-complete"}} {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"why", "42"}, `{"id":42}`},
+		{[]string{"why", "42", "--include-tasks", "--fields", "title,blocking"}, `{"id":42,"include_tasks":true,"fields":["title","blocking"]}`},
+		{[]string{"why", "42", "--fields", "title"}, `{"id":42,"fields":["title"]}`}, // the operation rejects it, not the CLI
+	} {
+		got = ""
+		if r := run(t, commands, "", tc.args...); r.code != ExitOK || got != tc.want {
+			t.Errorf("%q: exit %d, input %s, want %s", tc.args, r.code, got, tc.want)
+		}
+	}
+	for _, args := range [][]string{{"list", "/proj"}, {"frontier", "/proj"}, {"frontier", "--readiness", "ready"}, {"list", "--include-complete"}, {"why"}, {"why", "1", "2"}} {
 		if r := run(t, commands, "", args...); r.code != ExitUsage {
 			t.Errorf("%q: exit %d: %s", args, r.code, r.raw)
 		}

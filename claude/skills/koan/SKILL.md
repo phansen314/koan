@@ -97,6 +97,15 @@ koan list --fields id,title,extra --limit 200 | jq -c 'if .ok then .result |= {t
 
 `list` returns open tasks (`ready` and `blocked`) unless `--readiness` says otherwise: `--readiness done` for finished ones, `--readiness ready,blocked,done` for all.
 
+Why a task isn't moving — don't walk `blocking` by hand:
+
+```sh
+koan why 42                                                        # {"readiness":"blocked","ready":[17,23],"stuck":[31]}
+koan why 42 --include-tasks --fields id,title,readiness,blocking   # and every open task in between
+```
+
+`ready` is the ready tasks upstream of 42, in work order: finishing them is what moves it. `stuck` is blocking IDs no work clears: a missing, unusable or duplicated task, or tasks blocking each other in a cycle. Each comes with a warning; report them to the user rather than working around them.
+
 ## Writing
 
 ```sh

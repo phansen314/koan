@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "why-output",
+  "type": "object",
+  "required": ["readiness", "ready", "stuck"],
+  "properties": {
+    "readiness": { "$ref": "task-view#/properties/readiness", "description": "The task's own readiness." },
+    "ready": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "Every ready task upstream of the task, in frontier order: the task alone when it is ready itself; empty when it is done, or when every path from it ends at something stuck."
+    },
+    "stuck": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "Every blocking ID met upstream that no work on ready tasks clears — missing, unusable, or duplicated, or a task in a cycle — in ascending order."
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "anyOf": [{ "$ref": "task-view" }, { "$ref": "task-projection" }] },
+      "description": "Present only when include_tasks is true: the task first, then every other open task upstream of it. Task views, or Task projections with fields."
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "readiness": { "const": "done" } } }, "then": { "properties": { "ready": { "maxItems": 0 }, "stuck": { "maxItems": 0 } } }, "else": { "anyOf": [{ "properties": { "ready": { "minItems": 1 } } }, { "properties": { "stuck": { "minItems": 1 } } }] } },
+    { "if": { "properties": { "readiness": { "const": "ready" } } }, "then": { "properties": { "ready": { "minItems": 1, "maxItems": 1 }, "stuck": { "maxItems": 0 } } } }
+  ]
+}

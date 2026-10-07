@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "why-input",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id", "description": "The task to explain." },
+    "include_tasks": { "type": "boolean", "default": false, "description": "Also return the task and every open task upstream of it, as tasks." },
+    "fields": { "$ref": "frontier-input#/properties/fields", "description": "Return each of tasks as a Task projection of these fields, id always included; absent, whole Task views. Only with include_tasks." }
+  },
+  "additionalProperties": false
+}

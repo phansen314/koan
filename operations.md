@@ -10,7 +10,7 @@ Terms follow the design spec's [Terms](design-spec.md#terms).
 - **Input follows the file-level rules.** Input is held to the same [file-level rules](design-spec.md#file-validity) for integer literals (`2`, not `2.0` or `2e0`), duplicate keys (in the input itself or anywhere inside `extra`), unpaired surrogate escapes, and nesting depth. A violation is `invalid-input`.
 - **Schema identifiers.** Shared schemas have short `$id`s (`envelope`, `error`, `warning`, `task`, `task-view`, `task-projection`, `task-field`, `folder-path`, and the design spec's `task-file` and `root-file`). Each operation's schemas are `<op>-input`, `<op>-output`, and `<op>-partial`. Where a property has the same meaning and constraints as a task file field, the schema `$ref`s it, and its meaning is the one in [Fields](design-spec.md#fields).
 - **Referring to operations and kinds.** Operation names, error kinds, and warning kinds are written in code (`create`, `conflict`, `duplicate-id`), linked on their first mention in a section. Error qualifiers are written `` `kind` (`field`: `value`) ``, e.g. `conflict` (`rule`: `id-exhausted`).
-- **Parameters.** An operation takes a parameter only if it changes the meaning of the result or the work done (e.g. `frontier`'s `folder`, which limits which files are read). Narrowing or shaping output — filtering on fields, taking the first N — is left to the caller (e.g. `jq`) or the CLI. One exception: [`frontier`](#frontier) and [`list`](#list) take the few parameters of [Narrowing tasks](#narrowing-tasks) — a limit, a choice of fields, and filters on tags and readiness. Their output goes straight into the context of the agent driving koan, its main caller, where every byte is a cost that later turns pay for too; so the small result must be the one the tool itself makes easy, not one the caller has to remember to cut down. Anything past those few is still left to `jq`.
+- **Parameters.** An operation takes a parameter only if it changes the meaning of the result or the work done (e.g. `frontier`'s `folder`, which limits which files are read). Narrowing or shaping output — filtering on fields, taking the first N — is left to the caller (e.g. `jq`) or the CLI. One exception: [`frontier`](#frontier) and [`list`](#list) take the few parameters of [Narrowing tasks](#narrowing-tasks) — a limit, a choice of fields, and filters on tags and readiness — and [`why`](#why) takes its choice of fields. Their output goes straight into the context of the agent driving koan, its main caller, where every byte is a cost that later turns pay for too; so the small result must be the one the tool itself makes easy, not one the caller has to remember to cut down. Anything past those few is still left to `jq`.
 - **Versioning.** The schemas in this document are koan's public contract (see [Versioning](#versioning)).
 
 ## Operation kinds
@@ -98,7 +98,7 @@ An error means the operation failed. `kind` and `details` are the contract; `mes
 | `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, or `metadata` (meaning `koan.json`) — the first absent piece. |
 | `environment` | The process's environment lacks what koan needs to locate its files: the home directory, from which the config location is derived (see [Config file](design-spec.md#config-file)). Not a root state — no config was looked for. | `variable`: the environment variable that is unset or unusable; currently always `HOME`. |
 | `not-found` | A task or folder named by the input, or a filesystem directory it requires, does not exist. | `folders`: tree folder paths; `ids`: task IDs; `paths`: filesystem paths (e.g. `init`'s missing parent directory). All three always present, empty when not applicable. |
-| `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, or act on a task the tree cannot identify uniquely. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move), `case-clash` (a folder path names a folder whose name differs only in case from an entry already there; see [Path walk](#path-walk)). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). |
+| `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, or act on a task the tree cannot identify uniquely. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write, or [`why`](#why), names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move), `case-clash` (a folder path names a folder whose name differs only in case from an entry already there; see [Path walk](#path-walk)). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). |
 | `busy` | Another write (or `doctor`/`repair`) held the write lock for the whole wait, 5 seconds (see *Bounded wait* in [Guarantees](design-spec.md#guarantees)). Nothing was done. Safe to retry, but repeated `busy` means something is holding the lock. | none (`{}`). |
 | `corrupt` | A needed file — or an entry on an input path — is present and readable but its content or type is wrong (see [File validity](design-spec.md#file-validity)); or koan found a file where, under its own invariants, none can exist (e.g. creating a task file that already exists). | `path`; `reason`: `not-json` (not parseable, or not an object), `invalid` (fails a file-level rule, including a missing `schema` or one not written as an integer literal within ±(2^53 − 1)), or `unexpected-file` (wrong entry type, e.g. `koan.json` is a symlink or directory; or a file exists that must not). What is wrong, for `not-json` and `invalid`: `problems`, for a JSON file that is `invalid` — a list of `{field, reason}` as in `invalid-input`, but with `field` a JSON Pointer into the file (e.g. `/updated_at`), sorted the same way, and at most the first 20, with `problems_truncated: true` when more were found; or `detail`, a human-readable string — why the file is `not-json`, or why the config, which is not JSON, is `invalid`. `unexpected-file` has neither. |
 | `io` | The environment refused an operation: an unreadable file, permission denied, disk full, read-only filesystem, and similar. An OS error with no symbolic name is `internal`, not `io`. | `path`: built from the root as stored (see [Root path](design-spec.md#root-path)), or the config's own path for an error on the config; `code`: the symbolic OS error, e.g. `ENOSPC`, never a number. |
@@ -287,6 +287,7 @@ A warning reports a problem, relevant to the operation's result, that did not st
 | `unusable-file` | A task file was skipped because it is [unusable](design-spec.md#file-validity). | the file | the task, from the filename | `reason`: `unreadable`, `corrupt`, or `unsupported-format`; `code` when `unreadable` |
 | `duplicate-id` | Several task files with one ID all exist, and the duplication bears on the result (see [Walking the tree](design-spec.md#walking-the-tree)). | the files in the operation's scope, in [tree order](#tree-order) | the one ID | — |
 | `dangling-reference` | A task's `blocked_by` names an ID with no task (see [Dependencies](design-spec.md#dependencies)). Not reported while a folder the walk had to list was unreadable, since the blocker may be in it; the `unreadable-folder` warning explains why the task counts as blocked. | the referring task file | `[referring, missing]`, in that order | — |
+| `cycle` | Tasks that block each other were met by [`why`](#why): a group of them, as [`doctor`](#doctor)'s [`cycle` finding](#finding-kinds). Only an outside change or a system crash leaves one. | none | one cycle in the group, as the finding's: the shortest through its lowest ID, from that ID back to it, e.g. `[12, 15, 12]` | — |
 | `unreadable-folder` | A folder the walk had to list could not be listed; its tasks are missing from the result (see [Walking the tree](design-spec.md#walking-the-tree)). | the folder's filesystem path | none | `code` |
 | `notes-missing` | A task was written but its `.md` could not be. The task is valid; its notes are empty, or stale if a stray `.md` could not be replaced. | the `.md` | the task | `code`, unless the OS error has no symbolic name |
 | `migrated` | A file ftask, koan's former name, left was moved to koan's name for it (see [Migrating from ftask](design-spec.md#migrating-from-ftask)): its config, or the root's `ftask.json`. | the old path, then the new | none | — |
@@ -458,7 +459,7 @@ So a folder "exists" only if every entry on its path is a plain directory, not a
 - **`limit`** — return at most this many tasks: the first ones in the operation's order. `0` returns none, for the count alone.
 - **`fields`** — return each task as a [Task projection](#task-projection) holding only these fields, in the order the [Task view](#task-view) lists them. `id` is always included, named or not, so any task returned can be followed up with [`show`](#show).
 
-`list` also filters by `readiness` (see [`list`](#list)), a scope rule of its own.
+`list` also filters by `readiness` (see [`list`](#list)), a scope rule of its own. [`why`](#why) takes only `fields`, for its `tasks`; the rest of this section is about `frontier` and `list`.
 
 They apply in this order, after the tree is read and every warning recorded:
 
@@ -2677,6 +2678,124 @@ Narrowing never removes a warning: `readiness`, the filters, and `limit` apply a
 **Crash behavior:** none. `list` changes nothing.
 
 **Retry safety:** safe.
+
+### why
+
+Explain why a task isn't ready: follow its blockers, and their blockers, down to the ready tasks that would move it, and to the blockers no work clears.
+
+**Kind:** read. Takes no lock. Requires a usable root.
+
+**Input schema:**
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "why-input",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id", "description": "The task to explain." },
+    "include_tasks": { "type": "boolean", "default": false, "description": "Also return the task and every open task upstream of it, as tasks." },
+    "fields": { "$ref": "frontier-input#/properties/fields", "description": "Return each of tasks as a Task projection of these fields, id always included; absent, whole Task views. Only with include_tasks." }
+  },
+  "additionalProperties": false
+}
+```
+
+Notes: `include_tasks` changes what the result *is* — an answer versus the answer and its explanation — so it is a parameter (see [Conventions](#conventions)). It is off by default because the upstream of a task can be large, and the answer alone is a few IDs whatever its size. `fields` is the one field of [Narrowing tasks](#narrowing-tasks) `why` takes, for the same reason `frontier` and `list` take it: `tasks` lands in an agent's context.
+
+**Additional validation:** `fields` is given without `include_tasks` being `true` (`field`: `/fields`): there are no tasks for it to shape.
+
+**Preconditions:** a task with `id` exists, and only one task file has it.
+
+**Terms.** *Upstream* of the task: every task reached from it by following `blocking` — the task's own [`blocking`](#task-view), then each of those tasks', and so on — through open tasks only, since a done task blocks nothing. A blocking ID is followed only when exactly one usable task file has it; a missing, unusable, or duplicated blocker is not followed (see *Stuck*). The task itself counts as upstream of itself.
+
+- **Ready** — every upstream task that is ready. Working on these, and only these, is what moves the task. If the task itself is ready, `ready` is just the task.
+- **Stuck** — every blocking ID, met on the way, that no amount of work on ready tasks clears:
+  - a blocker with no task file, an unusable one, or several (see [Dependencies](design-spec.md#dependencies));
+  - every upstream task in a cycle: a strongly connected component of the upstream tasks, with an edge from each to the upstream tasks in its `blocking`, holding more than one task. (A task can't block itself alone: a task file whose `blocked_by` holds its own ID is unusable.) Since koan never writes a cycle (*Acyclic* in [Invariants](design-spec.md#invariants)), one is only met after an outside change or a system crash. Completing (e.g. cancelling) any task in it, or [`unblock`](#unblock)ing one of its edges, breaks it; that is a person's decision, as for [`doctor`](#doctor)'s `cycle` finding.
+
+  A task blocked only by stuck tasks is not itself stuck: it is listed in `tasks` but neither in `ready` nor in `stuck`, since clearing what is stuck is what moves it.
+
+The task is open exactly when `ready` or `stuck` is non-empty: following open blockers from an open task always ends at a ready task, a problem blocker, or a cycle. Both may be non-empty: ready work can move part of the upstream while another part stays stuck.
+
+**Needed files:** every task file whose filename ID is `id`. As for [`show`](#show), there is no index, so `why` walks the whole tree, and fails with `io` if it meets a folder it can't list: it must find one ID and prove it unique, and blockers may be in any folder. Relevant files, whose problems are warnings: the task files of every ID in the `blocked_by` of every upstream task.
+
+**Effects:** none.
+
+**Invariants at risk:** none.
+
+**Output schema:**
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "why-output",
+  "type": "object",
+  "required": ["readiness", "ready", "stuck"],
+  "properties": {
+    "readiness": { "$ref": "task-view#/properties/readiness", "description": "The task's own readiness." },
+    "ready": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "Every ready task upstream of the task, in frontier order: the task alone when it is ready itself; empty when it is done, or when every path from it ends at something stuck."
+    },
+    "stuck": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "Every blocking ID met upstream that no work on ready tasks clears — missing, unusable, or duplicated, or a task in a cycle — in ascending order."
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "anyOf": [{ "$ref": "task-view" }, { "$ref": "task-projection" }] },
+      "description": "Present only when include_tasks is true: the task first, then every other open task upstream of it. Task views, or Task projections with fields."
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "readiness": { "const": "done" } } }, "then": { "properties": { "ready": { "maxItems": 0 }, "stuck": { "maxItems": 0 } } }, "else": { "anyOf": [{ "properties": { "ready": { "minItems": 1 } } }, { "properties": { "stuck": { "minItems": 1 } } }] } },
+    { "if": { "properties": { "readiness": { "const": "ready" } } }, "then": { "properties": { "ready": { "minItems": 1, "maxItems": 1 }, "stuck": { "maxItems": 0 } } } }
+  ]
+}
+```
+
+Each item of `tasks` is a [Task view](#task-view), or with `fields` a [Task projection](#task-projection) — the same shapes `show`, `frontier`, and `list` return. No new edge schema is needed: each task's `blocking` names the tasks below it, so `tasks` holds the whole upstream graph. A stuck ID that is missing, unusable, or duplicated has no item in `tasks`; one in a cycle does.
+
+**Order:**
+
+- `ready`: [frontier order](#frontier) — the order to work on them.
+- `stuck`: ascending ID.
+- `tasks`: the task first; then by the length of the shortest path to it from the task, nearest first; then by `id`, lowest first. Each upstream task has one item, since a duplicated ID is never followed.
+
+**Errors:**
+
+| Kind | When |
+|---|---|
+| `invalid-input` | `id` is missing or not a valid task ID, `include_tasks` is not a boolean, `fields` is invalid as for [`frontier`](#frontier), or `fields` is given without `include_tasks`. |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `not-found` | No task file has ID `id` (`ids`: `[id]`). |
+| `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id`. Each copy has its own `blocked_by`, so there is no one upstream to explain; [`show`](#show) lists the copies. |
+| `corrupt`, `unsupported-format` | The task file with ID `id` is unusable. |
+
+**Warnings:**
+
+| Kind | When |
+|---|---|
+| `duplicate-id` | An ID in the `blocked_by` of an upstream task has more than one task file; it is in `stuck`. |
+| `dangling-reference` | An ID in the `blocked_by` of an upstream task has no task file; it is in `stuck`. |
+| `unusable-file` | A blocker's task file of an upstream task is unusable; it is in `stuck`. |
+| `cycle` | Upstream tasks block each other; every task in the group is in `stuck`. |
+
+`include_tasks` and `fields` never change the walk, `ready`, `stuck`, or the warnings: every call for a task does the same work and reports the same warnings.
+
+**Partial schema:** none.
+
+**Crash behavior:** none. `why` changes nothing.
+
+**Retry safety:** safe. Like every read, the result may be stale by the time it is used (see [Reads](design-spec.md#reads)).
 
 ## Planned operations
 

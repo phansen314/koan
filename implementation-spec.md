@@ -148,10 +148,11 @@ Task files are loaded on first use and cached for the rest of the operation — 
 
 Operations use the index through a few helpers:
 
-- **Find exactly one** — the targets of `show`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, and `delete` (which reads only the filename, never the file).
+- **Find exactly one** — the targets of `show`, `why`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, and `delete` (which reads only the filename, never the file).
 - **Find every reference** — `delete` and `delete-folder`: every task file outside what is removed is loaded, and those whose `blocked_by` names a removed ID are rewritten; the unusable ones are `unusable-file` warnings.
 - **Check existence** — `create`'s `blocked_by`, `create-batch`'s existing blockers, `block`'s blockers.
 - **Filter by scope** — `frontier` and `list`: tasks and folders under `folder`, recursively or not. Every open task in scope gets its readiness derived, whatever `list`'s `readiness` keeps, so the warnings don't depend on it; then [Narrowing tasks](operations.md#narrowing-tasks) applies to the views, after every warning is recorded.
+- **Follow blockers** — `why`: a breadth-first search from the target over each open task's `blocking`, deriving each task's readiness as below, so each blocker's problem is recorded once. A blocker is followed only when its one task file is usable and open; the rest are `stuck`. The cycle groups are those of `doctor`'s [Checks](#checks), over the upstream tasks and the edges among them, each reported with its example cycle as a `cycle` warning. The search's visiting order is the order of `tasks`.
 - **Derive readiness** — for an open task only, evaluating every blocker even once one is known to block, per [Dependencies](design-spec.md#dependencies): no task file → blocking, `dangling-reference` (unless a folder the walk had to list was unreadable — then no warning, per [Warning kinds](operations.md#warning-kinds)); several → blocking, `duplicate-id`; unusable → blocking, `unusable-file`; done → not blocking; open → blocking.
 
 ### Error precedence

@@ -37,6 +37,7 @@ var decoders = map[string]decoder{
 	"move-folder":   decodeMoveFolder,
 	"frontier":      decodeFrontier,
 	"list":          decodeList,
+	"why":           decodeWhy,
 	"pick":          decodePick,
 }
 

@@ -63,20 +63,27 @@ func duplicateID(tx *store.Tx, id model.ID, locs []store.Location) {
 // open task every blocker is looked up, each problem with one a warning; a
 // done task's blockers are not read.
 func view(tx *store.Tx, ld *store.Loaded) (model.TaskView, *errs.Error) {
+	v, _, e := viewStates(tx, ld)
+	return v, e
+}
+
+// viewStates is view, also returning the state of each blocker it looked
+// up: none for a done task.
+func viewStates(tx *store.Tx, ld *store.Loaded) (model.TaskView, map[model.ID]graph.BlockerState, *errs.Error) {
 	v := model.TaskView{Task: tx.Task(ld)}
 	states := map[model.ID]graph.BlockerState{}
 	if v.Open() {
 		for _, b := range v.BlockedBy {
 			s, e := blockerState(tx, ld, b)
 			if e != nil {
-				return model.TaskView{}, e
+				return model.TaskView{}, nil, e
 			}
 			states[b] = s
 		}
 	}
 	v.Readiness, v.Blocking = graph.Readiness(&v.TaskFile, func(id model.ID) graph.BlockerState { return states[id] })
 	v.Normalize()
-	return v, nil
+	return v, states, nil
 }
 
 // blockerState looks up blocker id of the open task in ref, recording the
