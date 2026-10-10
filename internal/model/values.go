@@ -19,6 +19,10 @@ type ID int64
 // it exactly.
 const IDMax = 999_999_999_999_999
 
+// MigrationMax bounds koan.json's migration: the integers every JSON reader
+// holds exactly.
+const MigrationMax = 1<<53 - 1
+
 // Priority bounds: the integers every JSON reader holds exactly.
 const (
 	PriorityMin = -(1<<53 - 1)
@@ -29,7 +33,9 @@ const (
 // binary reads and writes.
 const (
 	TaskSchema = 1
-	RootSchema = 1
+	RootSchema = 2
+	// StateSchema is the state file's.
+	StateSchema = 1
 )
 
 // ID checks v, at ptr, as a task ID.

@@ -29,7 +29,8 @@ func newFixture(t *testing.T) *fixture {
 	f.mkdir("cfg")
 	f.write("cfg/"+ConfigName, string(EncodeConfig(f.root)))
 	f.mkdir("tasks")
-	f.write("tasks/"+MetaName, "{\"schema\": 1, \"last_id\": 100}\n")
+	f.write("tasks/"+MetaName, "{\"schema\": 2, \"migration\": 1}\n")
+	f.write("cfg/"+StateName, stateJSON(f.root, 100))
 	return f
 }
 
@@ -123,5 +124,17 @@ func wantNoErr(t *testing.T, e *errs.Error) {
 	t.Helper()
 	if e != nil {
 		t.Fatalf("got %v", e)
+	}
+}
+
+// stateJSON is a state file naming root, as koan writes it.
+func stateJSON(root string, lastID int64) string {
+	return fmt.Sprintf("{\n  \"schema\": 1,\n  \"root\": %q,\n  \"last_id\": %d\n}\n", root, lastID)
+}
+
+func diagnoseTx(t *testing.T, env Env, fn func(*Tx)) {
+	t.Helper()
+	if e := Diagnose(env, nil, func(tx *Tx) *errs.Error { fn(tx); return nil }); e != nil {
+		t.Fatalf("Diagnose: %v", e)
 	}
 }

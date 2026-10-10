@@ -12,7 +12,7 @@ Operations on this data model are specified in [operations.md](operations.md).
 - **Notes are the exception.** A task's `.md` may be edited directly with any editor. Notes carry no invariants, so an outside change to them cannot violate any. It can leave stray entries, though: editor side files (e.g. `42.md~`), which koan ignores, and an orphaned `.md` if a task is moved or removed while its notes are open in an editor. Both are handled as [Walking the tree](#walking-the-tree) describes. If an editor save and a koan write to the same `.md` overlap, one of them may be lost.
 - **One user.** koan serves a single OS user. That user's config names exactly one root. Every process running as the user and reaching the root — shells, agents, editors — shares one [write lock](#write-lock). A process whose environment points to a different config location (`HOME`, `XDG_CONFIG_HOME`) sees that config, or none, and gets [`not-initialized`](operations.md#error-kinds); one that gives no config location at all gets [`environment`](operations.md#error-kinds) (see [Config file](#config-file)). Sharing one root between OS users is not supported.
 - **The root is on a local filesystem.** Network mounts (SMB, NFS, and the like) are not supported: their locking cannot be relied on, so the [write lock](#write-lock) may not exclude other writers. A synced folder is fine — its files are local, and a separate process syncs them.
-- **Syncing and committing are allowed.** The root may be a git repository or a synced folder, since those tools carry files koan wrote. Git is also the only undo for a delete (see [Undo](operations.md#undo)). Anything they leave inconsistent — a merge that introduces a cycle, a missing blocker, a conflicting file — is an outside change; finding it is the job of [`doctor`](operations.md#doctor), and repairing it, where that is safe, of [`repair`](operations.md#repair) — not of normal operation (see [Diagnosis and repair](#diagnosis-and-repair)).
+- **Syncing and committing are allowed.** The root may be a git repository or a synced folder, since those tools carry files koan wrote. Every file koan keeps in the root is content, safe to commit, sync, and restore: the one piece of state that must never go backwards, the ID counter, is kept outside the tree (see [State file](#state-file)). Git is also the only undo for a delete (see [Undo](operations.md#undo)). Anything they leave inconsistent — a merge that introduces a cycle, a missing blocker, a conflicting file — is an outside change; finding it is the job of [`doctor`](operations.md#doctor), and repairing it, where that is safe, of [`repair`](operations.md#repair) — not of normal operation (see [Diagnosis and repair](#diagnosis-and-repair)).
 - **Hidden entries are ignored.** Any entry under the root whose name starts with `.` (e.g. `.git`, `.DS_Store`) is ignored by read and write operations. Only `doctor` and `repair` look at them, to find koan's own leftover temp files; they too ignore every other hidden entry.
 
 ## Supported platforms
@@ -30,15 +30,18 @@ Terms used with one meaning throughout this spec and [operations.md](operations.
 | **task file** | A task's `.json`. |
 | **notes** | A task's prose; stored in its `.md` (the notes file). |
 | **`koan.json`** | The root's metadata file (see [Root metadata](#root-metadata)). |
+| **state file** | This machine's ID counter for the root, kept beside the config and never in the tree (see [State file](#state-file)). |
 | **config** | The file `config.toml` naming the root (see [Configuration](#configuration)). |
 | **write lock** | The lock that serializes write operations on a root (see [Write lock](#write-lock)). |
 | **invariant** | A rule spanning several files (see [Invariants](#invariants)). |
 | **file-level rule** | A rule checkable on one file alone (see [File validity](#file-validity)). |
 | **unusable** | A file that is *unreadable*, *corrupt*, or in an *unsupported format* (see [File validity](#file-validity)). |
+| **older format** | A format version below the one a binary supports, from 1 up (see [Format versions](#format-versions)). |
+| **migration step**, **latest step** | A numbered conversion of file formats, and the highest one a binary knows (see [Migrations](#migrations)). |
 | **process crash**, **system crash** | The two kinds of interruption (see [Crashes](#crashes)). |
 | **outside change** | Any change under the root not made by koan (see [Assumptions](#assumptions)). |
 | **open / done** | A task's state, determined solely by `completed_at` (see [Fields](#fields)). "Done" covers every way a task can end, including cancelled. |
-| **read / write / setup** | The kinds of [operation](operations.md#operation-kinds). "Read a file" means file I/O, not a read operation. |
+| **read / write / setup / diagnostic / migration** | The kinds of [operation](operations.md#operation-kinds). "Read a file" means file I/O, not a read operation. |
 
 ## Data model
 
@@ -102,7 +105,7 @@ Every key is required and no other top-level key is allowed. `extra` is the plac
 - **`completed_at`** — [Timestamp](#timestamps) of when the task was completed, or `null`. This is the **sole** source of truth for a task's state:
   - **Open:** `completed_at` is `null`.
   - **Done:** `completed_at` is not `null`. Done covers every way a task can end — finished, implemented, cancelled, abandoned — and koan draws no distinction between them. The user can record the distinction in `extra` (e.g. a `status` key).
-- **`updated_at`** — [Timestamp](#timestamps) of when koan last changed the task file's content: set to `created_at` at creation, then to the current time by every write that changes a field — including removing a deleted task from a dependent's `blocked_by`. A write that changes nothing does not rewrite the file, so leaves it alone. [`move`](operations.md#move) does not set it: the folder is not stored in the task file. Edits to the notes are not tracked: koan never sees them.
+- **`updated_at`** — [Timestamp](#timestamps) of when koan last changed the task file's content: set to `created_at` at creation, then to the current time by every write that changes a field — including removing a deleted task from a dependent's `blocked_by`. A write that changes nothing does not rewrite the file, so leaves it alone. [`move`](operations.md#move) does not set it: the folder is not stored in the task file. Nor does [`migrate`](operations.md#migrate): a migration changes the file's format, not the task's fields (see [Migrations](#migrations)). Edits to the notes are not tracked: koan never sees them.
 - **`blocked_by`** — Set of IDs of the tasks that must be done before this one is ready (see [Dependencies](#dependencies)).
 - **`tags`** — Set of labels for grouping and filtering tasks across folders (see [Tags](#tags)).
 - **`extra`** — Open map of user-defined data: string keys, any JSON values. Untyped and **never interpreted by koan** — koan stores it and returns it, and managing its keys and value types consistently is up to the user or agent. Entirely optional; a task that doesn't use it has an empty map. Common uses are a workflow `status` or project-specific fields.
@@ -176,8 +179,9 @@ Folders are addressed by their path from the root, written with `/` separators a
 
 - Positive integer, no leading zeros, at most 15 digits. The **ID ceiling**, 999,999,999,999,999, is below 2^53, so every ID is exact in JSON readers that store numbers as doubles (JavaScript, `jq`). Issuing an ID past it fails with [`conflict`](operations.md#error-kinds) (`rule`: `id-exhausted`).
 - Unique across the whole tree, not per folder, since `blocked_by` references tasks by ID alone (see [Invariants](#invariants)).
-- Assigned from a monotonically increasing sequence, recorded as `last_id` in [`koan.json`](#root-metadata) so it travels with the tree. The sequence may have gaps: an ID can be consumed without a task being created (e.g. by a process crash mid-create).
-- **Never reused**, even after its task is deleted — short of an outside change (e.g. a merge of `koan.json` that keeps a lower `last_id`) or a system crash on a disk that ignores flushes, either of which can cause reuse (see `create` › Crash behavior in [`create`](operations.md#create)). [`doctor`](operations.md#doctor) detects it, as `id-above-last-id` before reuse and `duplicate-id` after.
+- Assigned from a monotonically increasing sequence, recorded as `last_id` in this machine's [state file](#state-file). It is kept out of the tree on purpose: restoring, reverting, or merging the tree's files can then never lower it. The sequence may have gaps: an ID can be consumed without a task being created (e.g. by a process crash mid-create).
+- **Never reused**, even after its task is deleted — short of an outside change (e.g. a state file restored from a backup, or rebuilt after its highest tasks were deleted) or a system crash on a disk that ignores flushes, either of which can cause reuse (see `create` › Crash behavior in [`create`](operations.md#create)). [`doctor`](operations.md#doctor) detects it, as `id-above-last-id` before reuse and `duplicate-id` after.
+- **One machine issues IDs.** The counter is this machine's, so a tree is written from one machine. A copy of the tree attached on a second machine (see [`init`](operations.md#init)) starts its own counter at the highest ID it finds, and tasks created on both would get the same IDs: merging them gives `duplicate-id`. Sharing one tree between machines that both create tasks is not supported. The same holds on one machine for two config directories naming one root: they share its lock, but not its counter. One root is served by one config.
 
 #### Task filenames
 
@@ -243,41 +247,63 @@ Rules spanning several files. Every tree koan alone has written satisfies all fo
 - ***Acyclic.*** The dependency graph is a DAG: a task never blocks itself, directly or through a chain of other tasks. This holds for every task, open or done — a cycle among done tasks still violates it, since reopening any of them would expose it.
 - ***No dangling references.*** Every ID in a `blocked_by` names a task that exists. Removing a task removes its ID from every `blocked_by` that contains it.
 - ***Unique IDs.*** No two task files have the same ID.
-- ***IDs within `last_id`.*** Every task's `id` is at most `last_id`.
+- ***IDs within `last_id`.*** Every task's `id` is at most the `last_id` of this machine's [state file](#state-file).
 
 A system crash or an outside change can leave a tree violating an invariant; see [File validity](#file-validity) for how such trees are read, and [Diagnosis and repair](#diagnosis-and-repair) for how it is found and repaired.
 
 ### Root metadata
 
-The root holds one metadata file, `koan.json`, which records the tree's own state. Its normative JSON Schema:
+The root holds one metadata file, `koan.json`. It marks the directory as a koan tree, and records the format the tree's files are in. Its normative JSON Schema:
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "root-file",
   "type": "object",
-  "required": ["schema", "last_id"],
+  "required": ["schema", "migration"],
   "properties": {
-    "schema": { "const": 1 },
-    "last_id": { "type": "integer", "minimum": 0, "maximum": 999999999999999 }
+    "schema": { "const": 2 },
+    "migration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
   },
   "additionalProperties": false
 }
 ```
 
 - **`schema`** — Version of the `koan.json` format (see [Format versions](#format-versions)).
-- **`last_id`** — The highest task ID ever issued in this tree; `0` before the first task. Never decreases (see [Task IDs](#task-ids)).
+- **`migration`** — The last [migration step](#migrations) applied to the tree; `0` when none has been. Set by [`init`](operations.md#init) and [`migrate`](operations.md#migrate), and by [`repair`](operations.md#repair) when it rebuilds a lost `koan.json` (see *Starting points* in [Migrations](#migrations)). Every other write keeps it. A `koan.json` at schema 1, which predates migrations, has no `migration` and counts as `0`; it holds `last_id` instead, which now lives in the [state file](#state-file).
 
-`koan.json` lives only at the root and is reserved there. It must be a regular file, not a symlink or a directory; anything else in its place makes it `corrupt`. Its name matches neither the folder-name nor the task-filename rules, so it can never be mistaken for either. It is content, not coordination state: it belongs to the tree and moves, syncs, and commits with it.
+`koan.json` lives only at the root and is reserved there. It must be a regular file, not a symlink or a directory; anything else in its place makes it `corrupt`. Its name matches neither the folder-name nor the task-filename rules, so it can never be mistaken for either. It is content, not coordination state: it belongs to the tree and moves, syncs, and commits with it. Nothing in it is a counter: restoring an older `koan.json` together with the files beside it, as undoing a migration with git does, leaves a consistent tree.
 
 ### Format versions
 
 Data formats are versioned by the `schema` field in each task file and in `koan.json`, independently of koan releases.
 
-- **Exact match.** A binary supports exactly one format version for task files and one for `koan.json`, as reported by [`version`](operations.md#version). A file whose `schema` differs is `unsupported-format` — whether older or newer.
-- **Writes preserve format.** A write never changes a file's `schema`. Formats change only through an explicit migration (see [`migrate`](operations.md#migrate)).
-- **Before 1.0, format 1 may change in place.** Until koan 1.0, the task file format, `koan.json`, and the CLI's JSON output (`schemas/`) may change without a `schema` bump or a migration, so a new binary can read an existing tree's files as `corrupt`. Adding the required `updated_at` field was such a change. Each one bumps koan's minor version, and its release says how to fix existing trees. From 1.0, the rules above hold without exception.
-- **Whole tree.** A root is usable only when its `koan.json` has the supported version. A task file with a different version is skipped by reads with an [`unusable-file`](operations.md#warning-kinds) warning, and is an `unsupported-format` error for any write that needs it.
+- **Exact match.** A binary supports exactly one format version for task files and one for `koan.json`, as reported by [`version`](operations.md#version). Every operation but [`migrate`](operations.md#migrate) reads and writes only those: a file whose `schema` differs is `unsupported-format` — whether older or newer. `migrate` alone also reads the older formats, to convert them (see [Migrations](#migrations)).
+- **Older formats.** An **older format** is a version from 1 up to one below the supported one: a format some koan wrote, which `migrate` converts. Any other version that differs — a newer one, or one below 1, which never was a format — is one this binary doesn't know, and nothing converts it.
+- **Writes preserve format.** A write never changes a file's `schema`. Formats change only through `migrate`.
+- **Every format change is a migration.** Adding a field to a task file or `koan.json`, removing one, or changing what one may hold bumps that file's `schema` and ships a [migration step](#migrations), before 1.0 as after. A binary on either side of the change then sees the other's files as in another format, never as `corrupt`, and a tree is brought forward by running `migrate`, never fixed by hand. Adding the required `updated_at` field, before migrations existed, was the last change made in place. (The CLI's JSON output, `schemas/`, is not a data format: until 1.0 it may still change in a minor release, as [Versioning](operations.md#versioning) says.)
+- **Whole tree.** A root is usable only when its `koan.json` has the supported version and records every migration step this binary knows (see [Root states](operations.md#root-states)). A task file with a different version is skipped by reads with an [`unusable-file`](operations.md#warning-kinds) warning, and is an `unsupported-format` error for any write that needs it; [`doctor`](operations.md#doctor) reports one in an older format as [`old-format`](operations.md#finding-kinds), for `migrate` to convert.
+
+### Migrations
+
+A format change ships with a **migration step**, which [`migrate`](operations.md#migrate) applies to bring an existing tree to the new format. Steps are numbered 1, 2, 3, … in the order they were released, and a binary knows every step up to its **latest step**, which [`version`](operations.md#version) reports. `koan.json`'s `migration` records the last step applied to the tree.
+
+| Step | Name | Converts |
+|---|---|---|
+| 1 | `tree-marker` | `koan.json` 1 → 2: removes `last_id`, and adds `migration`, as `0`; `migrate` then records the latest step, as it does after every run. `migrate` itself carries the `last_id` it finds there into the [state file](#state-file) first. Task files are unchanged. |
+
+- **A step converts each file on its own.** A step takes one or more kinds of file from one `schema` to the next, and what it writes for a file depends on that file alone. (What step 1 removes from `koan.json` is kept by `migrate`, not by the step: see [`migrate`](operations.md#migrate).) So files convert in any order, and a tree converted in pieces — most of it now, a few files a merge brings in later — ends the same as one converted at once.
+- **A file's own `schema` decides what is done to it.** `migrate` applies to each file the steps from its `schema` on, in order, and writes the result once. A file already in this binary's format is left as it is, byte for byte, so no step is ever applied twice.
+- **The step recorded says whether the tree is current; the files say what to convert.** Every operation reads `koan.json`, so `migration` tells it, without walking the tree, when a step is pending (the root is not usable, and operations fail with [`migration-pending`](operations.md#error-kinds)) or when a newer binary wrote the tree ([`unsupported-format`](operations.md#error-kinds)). It never tells `migrate` what to skip: `migrate` always walks the whole tree, since a merge can bring files in an older format into a tree whose recorded step is already current.
+- **At rest, in one run.** `migrate` holds the write lock for its whole run, as [`doctor`](operations.md#doctor) and [`repair`](operations.md#repair) do, so no write ever sees a tree half migrated. It writes the state file first when it has a `last_id` to move there, then every task file, and `koan.json` last, so the step recorded moves only once every file it converts is written, and a run cut short leaves the step pending. On a large tree the run takes as long as one flushed write per task; writes that come meanwhile wait, then fail with `busy`, which is safe to retry. Run it while agents are idle.
+- **One file never holds the tree back.** A task file `migrate` can't read or convert, or a folder it can't list, is reported and left as it is; the rest is converted, and the latest step recorded. Refusing instead would leave the whole tree unusable for one stray file. What was left is not lost track of: `doctor` reports a task file in an older format as `old-format` whatever the counter says, and the next `migrate` converts it.
+- **Steps keep koan's file format.** A step's result is written as every koan write is ([File format](#file-format)): keys inside `extra` keep their order and its numbers are written back character for character, since a step never decodes and re-encodes `extra`.
+- **A migration is not an edit.** It changes no field a task had: `updated_at` keeps its value, as does every other field, unless the step's entry above says otherwise. A tree in git shows a migration as one commit that changes formats and nothing else.
+- **Released steps never change.** A step, once released, is never edited or removed, so a newer binary can always bring a tree at any step, `0` included, up to date.
+- **Forward only.** There are no steps back. A binary that finds `koan.json` in a newer format, or a `migration` past its latest step, refuses the tree with `unsupported-format` and converts nothing. Undoing a migration is git's job: commit the whole tree before running `migrate`, and restoring that commit undoes it — `koan.json` and the step it records included, since both are in the tree. The state file is not, and needs no undoing: a migration never lowers `last_id`.
+- **Starting points.** A tree [`init`](operations.md#init) creates records the latest step, since it has nothing to convert. What a lost `koan.json` recorded can't be known, so one that [`repair`](operations.md#repair) rebuilds records what `repair` found: the latest step when no task file is in an older format, and `0` when one is, so that the root needs migration until `migrate` has converted them.
+- **Several machines.** A tree copied to another machine, or restored from one, is migrated on one of them, and `koan.json` carries the step with it. Each of the others needs a binary whose latest step is at least the tree's: until it has one, the tree is refused with `unsupported-format`, and nothing is written. A machine that hasn't pulled yet goes on writing the older format in its own copy; when its commits are merged, the files they bring stay in the older format until the next `migrate`, and `doctor` reports them as `old-format`. A merge that lowers `migration` in `koan.json` makes a step pending again, and `migrate` passes over the files already current.
+- **Migrating is not repairing.** `repair` never converts a file's format, and `migrate` never repairs damage. Each has its own command, so an agent's permission rules can ask before either, and `doctor` points to `migrate` for what only it fixes (see [Diagnosis and repair](#diagnosis-and-repair)).
 
 ### File validity
 
@@ -288,10 +314,10 @@ Rules are checked at two levels, and they fail differently:
 | **File** | The one file alone | Valid JSON (per step 1 below) with no duplicate keys; integer fields written as integer literals (`42`, never `42.0` or `4.2e1`); the file's JSON Schema; the [naming and validation](#naming-and-validation) rules the schema can't express (e.g. timestamps are real calendar date-times); the task's own ID not in its `blocked_by`; the filename ID equals the `id` field | The file is **`corrupt`**. Reads skip it with an [`unusable-file`](operations.md#warning-kinds) warning; a write that needs it fails with `corrupt`. |
 | **Tree** | Several files together | The [invariants](#invariants) | The files stay usable. Reads report or absorb the violation (e.g. a dangling blocker counts as blocking); [`doctor`](operations.md#doctor) finds it (see [Diagnosis and repair](#diagnosis-and-repair)). |
 
-Every versioned file (`koan.json`, a task file) is checked in three steps, stopping at the first failure:
+Every versioned file (`koan.json`, the [state file](#state-file), a task file) is checked in three steps, stopping at the first failure:
 
 1. **Parseable and versioned.** The file is valid JSON (with no `\u` escape of an unpaired UTF-16 surrogate, e.g. `\ud800` alone, and no more than 9,990 levels of nested objects and arrays), is a JSON object, and has a `schema` written as an integer literal (`2.0` does not count) from −(2^53 − 1) to 2^53 − 1, the range every JSON reader holds exactly. Otherwise: `corrupt`.
-2. **Supported version.** `schema` is the version this binary supports. Otherwise: `unsupported-format` — and nothing further is checked, since the rest of the file follows a format this binary doesn't know (see [Format versions](#format-versions)).
+2. **Supported version.** `schema` is the version this binary supports. Otherwise: `unsupported-format` — and nothing further is checked, since the rest of the file follows a format this binary doesn't read (see [Format versions](#format-versions)). What the other version is decides only what to do about it: a file in an older format is converted by [`migrate`](operations.md#migrate), which checks it against its own version's rules first; any other needs a newer binary. `koan.json` in an older format is the one exception to *nothing further*: a binary carries the rules of every older `koan.json` format with its [migration steps](#migrations), and checks the file against them wherever it reads it. One that breaks them is `corrupt`; one that passes makes the root *need migration* (see [Root states](operations.md#root-states)).
 3. **Valid.** The file passes every file-level rule above. Otherwise: `corrupt`.
 
 A file that can't be opened or read at all is **unreadable**. A file is **unusable** when it is unreadable, `corrupt`, or `unsupported-format`.
@@ -334,7 +360,7 @@ These apply to write operations (see [Operation kinds](operations.md#operation-k
 
 - **Serialized writes.** At most one write operation runs against a root at a time. The write lock is held only for the duration of one operation — or one CLI command composing several — and nothing is held between them.
 - **Input is validated first.** A write rejects bad input (an invalid title, tag, or folder) before contending for the write lock, so malformed input is never reported as contention.
-- **Bounded wait.** A write that finds the write lock held waits for it, up to 5 seconds, then fails with a distinct error (`busy`). A write holds the lock for milliseconds, so `busy` means something held it far longer: a `doctor` or `repair` on a very large tree, or a stuck process. The wait comes after input is validated and changes no outcome, since nothing a write decides on is read until the lock is acquired. An interrupt while waiting is a crash in which nothing was done.
+- **Bounded wait.** A write that finds the write lock held waits for it, up to 5 seconds, then fails with a distinct error (`busy`). A write holds the lock for milliseconds, so `busy` means something held it far longer: a `doctor`, `repair`, or `migrate` on a very large tree, or a stuck process. The wait comes after input is validated and changes no outcome, since nothing a write decides on is read until the lock is acquired. An interrupt while waiting is a crash in which nothing was done.
 - **Writes decide on current state.** Everything a write's correctness depends on — the task it modifies, the graph it checks for cycles, the references it removes, the next ID — is read after the write lock is acquired, never before.
 - **No lost updates.** Following from the above, two writes to the same task, one after the other, both take effect.
 - **Atomic files.** Each file koan writes is replaced all-or-nothing. A reader never sees a partially written file from koan. Because each is flushed before it is published (see [Crashes](#crashes)), a file koan wrote comes back from a system crash whole: the version written, or, if the crash came before it was published, the one before. A read reports an empty or garbled task file as unusable (see [Reads](#reads)); only an outside change, or a disk that ignores flushes, can leave one.
@@ -405,7 +431,8 @@ How the lock is taken, and how files are replaced atomically, is in the implemen
 A system crash or an outside change can leave a tree that breaks an [invariant](#invariants), or that holds entries no rule accounts for. Normal operations report or absorb such damage, and never repair it (see [Guarantees](#guarantees)). Two operations do: [`doctor`](operations.md#doctor) finds it, and [`repair`](operations.md#repair) fixes what can be fixed safely. Each problem they find is a [finding](operations.md#findings), of one of a fixed set of [kinds](operations.md#finding-kinds).
 
 - **At rest.** Both take the write lock, even `doctor`, which changes nothing. With no write running, every koan temp file is a leftover, never a write in progress, and what `doctor` reports is the tree's state, not a write half done. If another write holds the lock, both wait for it like any write (see *Bounded wait* in [Guarantees](#guarantees)).
-- **They run when nothing else can.** Both need the config and the root it names, but not a usable `koan.json`: a missing or unusable `koan.json` is a finding, not an error. They are the way out of a root that every other operation refuses.
+- **They run when nothing else can.** Both need the config and the root it names. `doctor` needs nothing else: a missing or unusable `koan.json` or state file is a finding, not an error. `repair` needs each of the two usable, or missing and named for rebuilding (see its [Preconditions](operations.md#repair)). They are the way out of a root that every other operation refuses. `doctor` also runs while a migration is pending, and reports it; `repair` doesn't, since it writes only this binary's formats (see [`repair`](operations.md#repair)).
+- **Formats are `migrate`'s.** A pending migration, and each task file in an older format, are findings that `repair` never acts on: `doctor` reports them (`migration-pending`, `old-format`) with a suggestion to run [`migrate`](operations.md#migrate), which alone converts formats (see [Migrations](#migrations)).
 - **The whole tree.** Both walk every folder, and look at what other operations skip: koan's own temp files and folders, entries that match no naming rule, and `.md` files with no task file. Other hidden entries (`.git`, `.DS_Store`) are still ignored.
 - **Safe repairs only.** `repair` changes only what can't lose information or change meaning, given the tree is at rest: a temp file holds nothing anyone wrote; raising `last_id` only moves it up, as it always moves; a dangling reference names a task that isn't there; an empty `.md`, or a second name for notes that are also at their task, holds nothing that isn't kept elsewhere. Duplicate IDs, cycles, and unusable files all need someone to decide which version is right, so `doctor` explains them and suggests what to run, and `repair` leaves them to a person.
 - **Repairs are ordinary writes.** Each file `repair` changes is written atomically, as every write's is, and running it again is always safe.
@@ -415,11 +442,11 @@ Every finding kind is in one of four classes:
 | Class | What `repair` does | Kinds |
 |---|---|---|
 | ***auto*** | Repairs it whenever it runs, unless the caller names other kinds. | `temp-leftover`, `id-above-last-id`, `dangling-reference`, `orphan-notes` (only the items that are safe; see [Finding kinds](operations.md#finding-kinds)) |
-| ***on-request*** | Repairs it only when the caller names the kind. | `metadata-missing` |
-| ***manual*** | Never repairs it. `doctor` reports it, with a suggestion. | `duplicate-id`, `cycle`, `unusable-file`, `metadata-unusable`, `nested-tree`, `skipped-entry`, `unreadable-folder`, `case-clash` |
+| ***on-request*** | Repairs it only when the caller names the kind. | `metadata-missing`, `state-missing` |
+| ***manual*** | Never repairs it. `doctor` reports it, with a suggestion. | `duplicate-id`, `cycle`, `unusable-file`, `metadata-unusable`, `state-unusable`, `migration-pending`, `old-format`, `nested-tree`, `skipped-entry`, `unreadable-folder`, `case-clash` |
 | ***informational*** | Never repairs it. `doctor` reports it only when the caller names the kind, and it never makes a tree unhealthy: it is not damage. | `stray-entry` |
 
-Rebuilding a missing `koan.json` is on-request because the `last_id` it writes is the highest ID found. A task with a higher ID that was deleted before `koan.json` was lost would have its ID issued again, breaking *Never reused* (see [Task IDs](#task-ids)). Only the user knows, e.g. from git history, whether that happened.
+Rebuilding a missing state file is on-request because the `last_id` it writes is the highest ID found. A task with a higher ID that was deleted before the state file was lost would have its ID issued again, breaking *Never reused* (see [Task IDs](#task-ids)). Only the user knows, e.g. from git history, whether that happened. Rebuilding a missing `koan.json` guesses nothing, but is on-request too: it declares the directory the config names a koan tree, which is the user's call when the marker is gone.
 
 `stray-entry` is informational so that a user's own files, and whatever their editor leaves, never make a tree look damaged. koan ignores those entries safely, and listing them in every report would only bury the findings that matter.
 
@@ -442,6 +469,33 @@ root = "~/tasks"
 
 The config must be a regular file, or a symlink to one (into a dotfiles checkout, say); anything else in its place makes it `corrupt`.
 
+### State file
+
+Beside the config, in the same directory, koan keeps `state.json`: this machine's ID counter for the root. It is the only state koan keeps outside the tree, and it is there, not in the tree, so that nothing done to the tree's files — a `git restore`, a revert, a merge, a sync — can move the counter backwards (see [Task IDs](#task-ids)). Its normative JSON Schema:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "state-file",
+  "type": "object",
+  "required": ["schema", "root", "last_id"],
+  "properties": {
+    "schema": { "const": 1 },
+    "root": { "type": "string", "minLength": 1 },
+    "last_id": { "type": "integer", "minimum": 0, "maximum": 999999999999999 }
+  },
+  "additionalProperties": false
+}
+```
+
+- **`schema`** — Version of the state file's format. It is checked as every versioned file is (see [File validity](#file-validity)); there is no older format of it.
+- **`root`** — The root this counter belongs to: the absolute path the config's `root` stands for, cleaned and with `~/` expanded. A state file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never issues IDs from another tree's counter.
+- **`last_id`** — The highest task ID ever issued in this tree by this machine; `0` before the first task. Never decreases (see [Task IDs](#task-ids)).
+
+The state file is written by [`init`](operations.md#init), by every write that issues an ID, by [`repair`](operations.md#repair) (raising `last_id`, or rebuilding a lost file), and by [`migrate`](operations.md#migrate) when it moves `last_id` out of an older `koan.json`. It is written as every file koan writes is, atomically and flushed, and only while the root's [write lock](#write-lock) is held (`init` creating a new tree apart: nothing else uses that root yet). A temp file that an interrupted write leaves beside it is removed by the next write of the state file. It must be a regular file; anything else in its place makes it `corrupt`.
+
+A root with no state file, or one for another root, is *not initialized* (see [Root states](operations.md#root-states)): the tree is all there, but this machine has no counter for it. [`init`](operations.md#init) writes one when it attaches a tree, and `repair` rebuilds a lost one on request.
+
 koan keeps no other per-machine state.
 
 ### Migrating from ftask
@@ -453,6 +507,8 @@ koan was called ftask, and a setup ftask made is moved to koan's names by the fi
 - **Temp files.** A `.ftask-tmp-` file or folder anywhere under the root is ftask's [temp leftover](operations.md#finding-kinds), and counts as koan's own.
 
 Each move is reported as a [`migrated`](operations.md#warning-kinds) warning. A setup that has koan's file already is never touched, so ftask's stays where it is, ignored. A move that fails fails the command, with the [`io`](operations.md#error-kinds) error, and the next command tries again; a config or root that can't be used is left alone for the command to report as it would anyway.
+
+This move is not a [migration step](#migrations): it changes names, never a `schema`. A tree it brings over may still be in an older format, and the command that moved it then fails with `migration-pending`, like any other, until [`migrate`](operations.md#migrate) runs.
 
 ### Root path
 

@@ -158,3 +158,39 @@ func noTemps(t *testing.T, root string) {
 		return nil
 	})
 }
+
+// migrate takes the lock: held, it makes writes busy (the tree is current,
+// so the root check passes first) and diagnostics busy on a pending tree; a
+// write held makes migrate busy (Lock 7).
+func TestLockMigrate(t *testing.T) {
+	tr := newTree(t)
+	h := hold(t, tr.cmd("migrate"))
+	steps(t, []step{
+		{tr.cmd("create", "a"), 1, `"kind":"busy"`},
+		{tr.cmd("doctor"), 1, `"kind":"busy"`},
+		{tr.cmd("list"), 0, `"tasks":[]`},
+	})
+	h.release()
+	if r := h.wait(); r.code != 0 || !strings.Contains(r.stdout, `"changed":false`) {
+		t.Fatalf("migrate: exit %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+
+	h = hold(t, tr.cmd("create", "a"))
+	steps(t, []step{{tr.cmd("migrate"), 1, `"kind":"busy"`}})
+	h.release()
+	if r := h.wait(); r.code != 0 {
+		t.Fatalf("holder: exit %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+
+	// On a tree that needs migration, a held migrate makes repair busy.
+	old := newTree(t)
+	if err := os.WriteFile(filepath.Join(old.root(), "koan.json"), []byte(`{"schema": 1, "last_id": 0}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h = hold(t, old.cmd("migrate"))
+	steps(t, []step{{old.cmd("repair"), 1, `"kind":"busy"`}, {old.cmd("doctor"), 1, `"kind":"busy"`}})
+	h.release()
+	if r := h.wait(); r.code != 0 || !strings.Contains(r.stdout, `"metadata_converted":true`) {
+		t.Fatalf("migrate: exit %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+}

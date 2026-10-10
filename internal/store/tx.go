@@ -22,13 +22,17 @@ import (
 type Tx struct {
 	root     fsys.Root
 	rootPath string // the root as reported: as stored, cleaned, "~/" expanded
+	env      Env
 	meta     model.RootFile
+	state    stateResult // the state file as last read or written
 	write    bool
 	survey   bool      // a diagnostic transaction: the walk records a Survey
 	metaSt   metaState // as read under the lock, in a diagnostic transaction
 	warn     *errs.Collector
 	index    *Index
 	cache    map[Location]*Loaded
+	lock     fsys.Lock
+	keepOld  bool // a migration transaction: the cache keeps the trees of older files
 }
 
 // Read runs fn over the root without the lock, after the Root states checks
@@ -61,6 +65,9 @@ func Write(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
 		return e
 	}
 	tx.meta, tx.write = ms.meta, true
+	if e := tx.readUsableState(); e != nil {
+		return e
+	}
 	return fn(tx)
 }
 
@@ -70,26 +77,58 @@ func Write(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
 // without failing on it — MetaState says what it found. The
 // transaction allows writes, and its walk records a Survey.
 func Diagnose(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
-	if w == nil {
-		w = &errs.Collector{}
-	}
-	rootPath, e := locateRoot(env)
+	tx, e := locked(env, w)
 	if e != nil {
 		return e
 	}
-	r, e := openRoot(env, rootPath)
-	if e != nil {
-		return e
-	}
-	defer r.Close()
-	lock, e := takeLock(r, rootPath, env.LockWait)
-	if e != nil {
-		return e
-	}
-	defer lock.Unlock()
-	ms := readMeta(r)
-	tx := &Tx{root: r, rootPath: rootPath, meta: ms.meta, write: true, survey: true, metaSt: ms, warn: w, cache: map[Location]*Loaded{}}
+	defer tx.release()
+	tx.survey = true
 	return fn(tx)
+}
+
+// MigrateFormats runs fn holding the write lock, for migrate
+// (implementation-spec.md, migrate): as Diagnose does, except that koan.json
+// must be valid, in this binary's format or an older one, whatever step it
+// records; a missing, unreadable, corrupt, or unknown one is migrate's own
+// error, after busy. The cache keeps the ordered tree of a task file in an
+// older format, and Tx.OldMeta that of an older koan.json, for the steps.
+func MigrateFormats(env Env, w *errs.Collector, fn func(*Tx) *errs.Error) *errs.Error {
+	tx, e := locked(env, w)
+	if e != nil {
+		return e
+	}
+	defer tx.release()
+	if e := metaUnusable(tx.metaSt, tx.rootPath); e != nil {
+		return e
+	}
+	tx.keepOld = true
+	return fn(tx)
+}
+
+// locked is the start of a diagnostic or migration transaction: the config
+// located and the root opened, the lock taken, and koan.json read (its state
+// in metaSt) but not judged. The caller releases it.
+func locked(env Env, w *errs.Collector) (*Tx, *errs.Error) {
+	tx, e := open(env, w)
+	if e != nil {
+		return nil, e
+	}
+	lock, e := takeLock(tx.root, tx.rootPath, env.LockWait)
+	if e != nil {
+		tx.root.Close()
+		return nil, e
+	}
+	tx.lock = lock
+	tx.metaSt = readMeta(tx.root)
+	tx.meta, tx.write = tx.metaSt.meta, true
+	tx.state = readState(env, tx.rootPath)
+	return tx, nil
+}
+
+// release unlocks and closes a transaction made by locked.
+func (tx *Tx) release() {
+	tx.lock.Unlock()
+	tx.root.Close()
 }
 
 // lockPoll is how often a write retries a held write lock
@@ -122,10 +161,18 @@ func (tx *Tx) MetaState() (MetaState, *errs.Error) {
 	return tx.metaSt.state, metaError(tx.metaSt, tx.rootPath)
 }
 
+// StateState is the state file's outcome as a diagnostic or migration
+// transaction read it, whatever koan.json's state, and the error an
+// operation requiring a usable root would fail with, nil when it is ok.
+func (tx *Tx) StateState() (StateState, *errs.Error) {
+	return tx.state.state, stateError(tx.env, tx.state)
+}
+
 // CreateMeta creates koan.json, which must not exist, with this binary's
-// schema and lastID: repair's rebuild of a lost one.
-func (tx *Tx) CreateMeta(lastID int64) *errs.Error {
-	m := model.RootFile{Schema: model.RootSchema, LastID: lastID}
+// schema and the migration step its caller says to record: repair's rebuild
+// of a lost one.
+func (tx *Tx) CreateMeta(migration int64) *errs.Error {
+	m := model.RootFile{Schema: model.RootSchema, Migration: migration}
 	data, err := m.Encode()
 	if err != nil {
 		return errs.Internal("encode " + MetaName + ": " + err.Error())
@@ -137,6 +184,18 @@ func (tx *Tx) CreateMeta(lastID int64) *errs.Error {
 	return nil
 }
 
+// CreateState writes the state file naming this root with lastID, replacing
+// any there: repair's rebuild of a lost one, and migrate's move of a
+// koan.json's last_id.
+func (tx *Tx) CreateState(lastID int64) *errs.Error {
+	return tx.writeState(lastID)
+}
+
+// LastID is the state file's last_id, the highest task ID issued. It is
+// meaningful only when the state file is ok, as it is in every transaction
+// that requires a usable root.
+func (tx *Tx) LastID() int64 { return tx.state.file.LastID }
+
 // RemoveAll removes the file or folder at rel and everything under it,
 // returning the OS error.
 func (tx *Tx) RemoveAll(rel string) error {
@@ -146,7 +205,9 @@ func (tx *Tx) RemoveAll(rel string) error {
 	return tx.root.RemoveAll(rel)
 }
 
-func begin(env Env, w *errs.Collector) (*Tx, *errs.Error) {
+// open locates the config and opens the root: the start of every
+// transaction.
+func open(env Env, w *errs.Collector) (*Tx, *errs.Error) {
 	if w == nil {
 		w = &errs.Collector{}
 	}
@@ -158,12 +219,33 @@ func begin(env Env, w *errs.Collector) (*Tx, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	ms := readMeta(r)
-	if e := metaError(ms, rootPath); e != nil {
-		r.Close()
+	return &Tx{root: r, rootPath: rootPath, env: env, warn: w, cache: map[Location]*Loaded{}}, nil
+}
+
+// readUsableState reads the state file, the last of the Root states checks,
+// and returns its error: it is looked at only once koan.json is usable and
+// current.
+func (tx *Tx) readUsableState() *errs.Error {
+	tx.state = readState(tx.env, tx.rootPath)
+	return stateError(tx.env, tx.state)
+}
+
+func begin(env Env, w *errs.Collector) (*Tx, *errs.Error) {
+	tx, e := open(env, w)
+	if e != nil {
 		return nil, e
 	}
-	return &Tx{root: r, rootPath: rootPath, meta: ms.meta, warn: w, cache: map[Location]*Loaded{}}, nil
+	ms := readMeta(tx.root)
+	if e := metaError(ms, tx.rootPath); e != nil {
+		tx.root.Close()
+		return nil, e
+	}
+	tx.meta = ms.meta
+	if e := tx.readUsableState(); e != nil {
+		tx.root.Close()
+		return nil, e
+	}
+	return tx, nil
 }
 
 // NextStep starts the next operation of a composed command: it drops the
@@ -223,3 +305,6 @@ func joinPath(dir, rel string) string {
 	}
 	return dir + "/" + rel
 }
+
+// StatePath is the state file's path, which is outside the root.
+func (tx *Tx) StatePath() string { return tx.env.StatePath() }

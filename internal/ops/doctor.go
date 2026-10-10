@@ -14,6 +14,7 @@ import (
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
 	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/migrations"
 	"github.com/phansen314/koan/internal/model"
 	"github.com/phansen314/koan/internal/store"
 )
@@ -23,6 +24,10 @@ const (
 	kindTempLeftover      = "temp-leftover"
 	kindMetadataMissing   = "metadata-missing"
 	kindMetadataUnusable  = "metadata-unusable"
+	kindMigrationPending  = "migration-pending"
+	kindStateMissing      = "state-missing"
+	kindStateUnusable     = "state-unusable"
+	kindOldFormat         = "old-format"
 	kindIDAboveLastID     = "id-above-last-id"
 	kindDanglingReference = "dangling-reference"
 	kindOrphanNotes       = "orphan-notes"
@@ -51,6 +56,10 @@ var findingClass = map[string]string{
 	kindTempLeftover:      classAuto,
 	kindMetadataMissing:   classOnRequest,
 	kindMetadataUnusable:  classManual,
+	kindMigrationPending:  classManual,
+	kindStateMissing:      classOnRequest,
+	kindStateUnusable:     classManual,
+	kindOldFormat:         classManual,
 	kindIDAboveLastID:     classAuto,
 	kindDanglingReference: classAuto,
 	kindOrphanNotes:       classAuto,
@@ -71,6 +80,7 @@ var findingKinds = slices.Sorted(maps.Keys(findingClass))
 const (
 	actionRemove          = "remove"
 	actionCreateMetadata  = "create-metadata"
+	actionCreateState     = "create-state"
 	actionRaiseLastID     = "raise-last-id"
 	actionRemoveReference = "remove-reference"
 )
@@ -150,6 +160,7 @@ type Item struct {
 	Identical *bool       `json:"identical,omitempty"`
 	Group     []model.ID  `json:"group,omitempty"`
 	LastID    *int64      `json:"last_id,omitempty"`
+	Migration *int64      `json:"migration,omitempty"`
 	Error     *errs.Error `json:"error,omitempty"`
 
 	rel     string         // the entry acted on, relative to the root
@@ -157,6 +168,48 @@ type Item struct {
 	missing model.ID       // dangling-reference: the ID it names
 	linked  string         // orphan-notes linked: the task's notes it is
 }
+
+// stateFindings adds the state file's findings, read whatever koan.json's
+// state: state-missing (not while an older koan.json holds last_id, which
+// migrate moves), state-unusable, and id-above-last-id when it is usable.
+func stateFindings(tx *store.Tx, x *store.Index, fs findings, maxID int64) {
+	statePath := tx.StatePath()
+	st, stateErr := tx.StateState()
+	switch st {
+	case store.StateOK:
+		lastID := tx.LastID()
+		for _, l := range x.Tasks {
+			if int64(l.ID) > lastID {
+				fs.add(kindIDAboveLastID, Item{
+					Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID}, LastID: &maxID,
+					Action: ptr(actionRaiseLastID), Suggest: ptr("koan repair"),
+				})
+			}
+		}
+	case store.StateMissing, store.StateOtherRoot:
+		if _, holds := tx.OldLastID(); holds {
+			return
+		}
+		it := Item{
+			Paths: []string{statePath}, LastID: &maxID, Action: ptr(actionCreateState),
+			Suggest: ptr("koan repair --kinds state-missing, unless a task with an ID above " + fmt.Sprint(maxID) + " was ever deleted; then restore the state file from a backup, or write it by hand with that ID as last_id"),
+		}
+		// A folder that can't be listed may hold a higher ID, so last_id
+		// can't be rebuilt from the walk.
+		if !x.Complete() {
+			it.Action, it.Suggest = nil, ptr("fix the unreadable folders first; then koan repair --kinds state-missing")
+		}
+		fs.add(kindStateMissing, it)
+	default:
+		fs.add(kindStateUnusable, Item{
+			Paths: []string{statePath}, Error: stateErr,
+			Suggest: ptr("fix the state file by hand, or remove it and run koan repair --kinds state-missing"),
+		})
+	}
+}
+
+// suggestMigrate is what a person does about a pending migration.
+const suggestMigrate = "run koan migrate, after committing the tree when it is a git repository"
 
 // findings is every finding in a tree, by kind, unsorted and uncapped.
 type findings map[string][]Item
@@ -261,34 +314,39 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 		maxID = max(maxID, int64(l.ID))
 	}
 	metaPath := tx.Path(store.MetaName)
-	switch state, metaErr := tx.MetaState(); state {
-	case store.MetaMissing:
-		it := Item{
-			Paths: []string{metaPath}, LastID: &maxID, Action: ptr(actionCreateMetadata),
-			Suggest: ptr("koan repair --kinds metadata-missing, unless a task with an ID above " + fmt.Sprint(maxID) + " was ever deleted; then rebuild koan.json by hand with that ID as last_id"),
+	// A task file in an older format is not damage, and it decides what a
+	// rebuilt koan.json records.
+	anyOld := false
+	for _, l := range x.Tasks {
+		if ld := tx.Load(l); ld.State == store.Unsupported && ld.Older {
+			anyOld = true
 		}
-		// A folder that can't be listed may hold a higher ID, so last_id
-		// can't be rebuilt from the walk.
-		if !x.Complete() {
-			it.Action, it.Suggest = nil, ptr("fix the unreadable folders first; then koan repair --kinds metadata-missing")
+	}
+	switch state, metaErr := tx.MetaState(); {
+	case state == store.MetaMissing:
+		// Nothing to convert records the latest step; an older task file
+		// leaves the root needing migration.
+		step := migrations.Latest()
+		if anyOld {
+			step = 0
 		}
-		fs.add(kindMetadataMissing, it)
-	case store.MetaOK:
-		lastID := tx.Meta().LastID
-		for _, l := range x.Tasks {
-			if int64(l.ID) > lastID {
-				fs.add(kindIDAboveLastID, Item{
-					Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID}, LastID: &maxID,
-					Action: ptr(actionRaiseLastID), Suggest: ptr("koan repair"),
-				})
-			}
-		}
+		fs.add(kindMetadataMissing, Item{
+			Paths: []string{metaPath}, Migration: &step, Action: ptr(actionCreateMetadata),
+			Suggest: ptr("koan repair --kinds metadata-missing"),
+		})
+	case state == store.MetaOK && metaErr == nil:
+	case state == store.MetaOK || state == store.MetaOldFormat:
+		fs.add(kindMigrationPending, Item{
+			Paths: []string{metaPath}, Error: metaErr,
+			Suggest: ptr(suggestMigrate),
+		})
 	default:
 		fs.add(kindMetadataUnusable, Item{
 			Paths: []string{metaPath}, Error: metaErr,
 			Suggest: ptr("fix koan.json by hand, or restore it from git; a binary that supports its format can use it as it is"),
 		})
 	}
+	stateFindings(tx, x, fs, maxID)
 
 	for _, rel := range sv.Temps {
 		fs.add(kindTempLeftover, Item{Paths: []string{tx.Path(rel)}, Action: ptr(actionRemove), Suggest: ptr("koan repair"), rel: rel})
@@ -327,6 +385,13 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 		case store.Usable:
 			usable[l.ID] = append(usable[l.ID], ld)
 		default:
+			if ld.State == store.Unsupported && ld.Older {
+				fs.add(kindOldFormat, Item{
+					Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID},
+					Suggest: ptr(suggestMigrate + "; a file migrate lists under unconverted breaks its own format's rules, so no step can read it: fix or remove it"),
+				})
+				continue
+			}
 			fs.add(kindUnusableFile, Item{
 				Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID}, Error: tx.Needed(ld),
 				Suggest: ptr("fix the file by hand, or restore it from git"),

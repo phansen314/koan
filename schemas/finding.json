@@ -12,8 +12,9 @@
   },
   "additionalProperties": false,
   "allOf": [
-    { "if": { "properties": { "kind": { "enum": ["metadata-unusable", "unusable-file"] } } }, "then": { "properties": { "items": { "items": { "required": ["error"] } } } } },
-    { "if": { "properties": { "kind": { "enum": ["metadata-missing", "id-above-last-id"] } } }, "then": { "properties": { "items": { "items": { "required": ["last_id"] } } } } },
+    { "if": { "properties": { "kind": { "enum": ["metadata-unusable", "state-unusable", "migration-pending", "unusable-file"] } } }, "then": { "properties": { "items": { "items": { "required": ["error"] } } } } },
+    { "if": { "properties": { "kind": { "enum": ["state-missing", "id-above-last-id"] } } }, "then": { "properties": { "items": { "items": { "required": ["last_id"] } } } } },
+    { "if": { "properties": { "kind": { "const": "metadata-missing" } } }, "then": { "properties": { "items": { "items": { "required": ["migration"] } } } } },
     { "if": { "properties": { "kind": { "enum": ["orphan-notes", "skipped-entry"] } } }, "then": { "properties": { "items": { "items": { "required": ["reason"] } } } } },
     { "if": { "properties": { "kind": { "const": "duplicate-id" } } }, "then": { "properties": { "items": { "items": { "required": ["identical"] } } } } },
     { "if": { "properties": { "kind": { "const": "cycle" } } }, "then": { "properties": { "items": { "items": { "required": ["group"] } } } } },

@@ -3,6 +3,7 @@ package ops
 import (
 	"github.com/phansen314/koan/internal/buildinfo"
 	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/migrations"
 	"github.com/phansen314/koan/internal/model"
 )
 
@@ -20,13 +21,15 @@ type VersionOutput struct {
 	Go                 string          `json:"go"`
 	Platform           string          `json:"platform"`
 	Schemas            VersionSchemas  `json:"schemas"`
+	Migration          int64           `json:"migration"`
 }
 
 // VersionSchemas are the one task file and koan.json format versions this
 // binary reads and writes.
 type VersionSchemas struct {
-	Task int64 `json:"task"`
-	Root int64 `json:"root"`
+	Task  int64 `json:"task"`
+	Root  int64 `json:"root"`
+	State int64 `json:"state"`
 }
 
 // buildInfo is the binary's build information; tests replace it.
@@ -42,6 +45,7 @@ func runVersion(Env, VersionInput, *errs.Collector) (any, *errs.Error) {
 		UncommittedChanges: b.UncommittedChanges,
 		Go:                 b.Go,
 		Platform:           b.Platform,
-		Schemas:            VersionSchemas{Task: model.TaskSchema, Root: model.RootSchema},
+		Schemas:            VersionSchemas{Task: model.TaskSchema, Root: model.RootSchema, State: model.StateSchema},
+		Migration:          migrations.Latest(),
 	}, nil
 }

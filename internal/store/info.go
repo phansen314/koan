@@ -21,6 +21,7 @@ const (
 	MetaMissing     MetaState = "missing"
 	MetaUnreadable  MetaState = "unreadable"
 	MetaCorrupt     MetaState = "corrupt"
+	MetaOldFormat   MetaState = "old-format"
 	MetaUnsupported MetaState = "unsupported-format"
 	MetaOK          MetaState = "ok"
 )
@@ -30,9 +31,12 @@ const (
 type Info struct {
 	Config      ConfigInfo `json:"config"`
 	Tree        *TreeInfo  `json:"tree"`
+	State       *StateInfo `json:"state"`
 	Initialized bool       `json:"initialized"`
 	Usable      bool       `json:"usable"`
 	Compatible  *bool      `json:"compatible"`
+	// MigrationPending is nil when Tree.Migration is.
+	MigrationPending *bool `json:"migration_pending"`
 }
 
 type ConfigInfo struct {
@@ -45,7 +49,14 @@ type TreeInfo struct {
 	RootExists bool      `json:"root_exists"`
 	Metadata   MetaState `json:"metadata"`
 	Schema     *int64    `json:"schema"`
-	LastID     *int64    `json:"last_id"`
+	Migration  *int64    `json:"migration"`
+}
+
+// StateInfo is the state file's state for the configured root.
+type StateInfo struct {
+	Path   string     `json:"path"`
+	State  StateState `json:"state"`
+	LastID *int64     `json:"last_id"`
 }
 
 // Inspect reports the config and koan.json as state, never failing: every
@@ -69,18 +80,32 @@ func Inspect(env Env) Info {
 		return info // a "~/" root with no home counts as missing
 	}
 	info.Config.Root = &root
-	info.Tree = inspectTree(env, root)
-	info.Initialized = info.Tree.Metadata != MetaMissing
-	info.Usable = info.Tree.Metadata == MetaOK
-	if info.Tree.Schema != nil {
-		c := *info.Tree.Schema == model.RootSchema
+	tree, pending := inspectTree(env, root)
+	info.Tree = tree
+	sr := readState(env, root)
+	info.State = &StateInfo{Path: env.StatePath(), State: sr.state}
+	if sr.state == StateOK {
+		last := sr.file.LastID
+		info.State.LastID = &last
+	}
+	if tree.Migration != nil {
+		info.MigrationPending = &pending
+	}
+	// The state file counts only once koan.json is ok and current.
+	noCounter := sr.state == StateMissing || sr.state == StateOtherRoot
+	info.Initialized = tree.Metadata != MetaMissing && !(tree.Metadata == MetaOK && !pending && noCounter)
+	info.Usable = tree.Metadata == MetaOK && sr.state == StateOK && tree.RootExists && info.MigrationPending != nil && !*info.MigrationPending
+	if tree.Schema != nil {
+		c := *tree.Schema == model.RootSchema
 		info.Compatible = &c
 	}
 	return info
 }
 
-func inspectTree(env Env, root string) *TreeInfo {
-	t := &TreeInfo{Metadata: MetaMissing}
+// inspectTree reports the root's tree; pending is whether koan.json is valid
+// but behind (meaningful when the result's Migration is set).
+func inspectTree(env Env, root string) (t *TreeInfo, pending bool) {
+	t = &TreeInfo{Metadata: MetaMissing}
 	// Classified as openRoot does, so info agrees with Root states: only a
 	// root that is absent, or leads to something other than a directory
 	// (a symlink loop included), is missing. Any other error (EACCES on a
@@ -88,10 +113,10 @@ func inspectTree(env Env, root string) *TreeInfo {
 	r, err := env.FS.OpenRoot(root)
 	if err != nil {
 		if rootMissing(err) {
-			return t
+			return t, false
 		}
 		t.RootExists, t.Metadata = true, MetaUnreadable
-		return t
+		return t, false
 	}
 	defer r.Close()
 	t.RootExists = true
@@ -101,9 +126,9 @@ func inspectTree(env Env, root string) *TreeInfo {
 		found := ms.file.Found
 		t.Schema = &found
 	}
-	if ms.state == MetaOK {
-		last := ms.meta.LastID
-		t.LastID = &last
+	if ms.state == MetaOK || ms.state == MetaOldFormat || ms.pastLatest {
+		mig := ms.meta.Migration
+		t.Migration = &mig
 	}
-	return t
+	return t, ms.pending()
 }

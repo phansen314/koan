@@ -25,7 +25,7 @@ How the design spec's [write lock](design-spec.md#write-lock) and [Guarantees](d
 
 ## JSON reading
 
-All JSON koan reads — operation input, task files, `koan.json` — goes through one reader, built on the standard library's token stream: `json.Decoder` with `UseNumber()`, read with `Token()`. The standard library does all the parsing: syntax, string escapes, number syntax. Decoding straight into structs or maps (`json.Unmarshal`) is never used, because it loses exactly what the specs need: repeated keys (the last one silently wins), the text of numbers (`2.0` and `2` become the same `float64`), and key order.
+All JSON koan reads — operation input, task files, `koan.json`, the state file — goes through one reader, built on the standard library's token stream: `json.Decoder` with `UseNumber()`, read with `Token()`. The standard library does all the parsing: syntax, string escapes, number syntax. Decoding straight into structs or maps (`json.Unmarshal`) is never used, because it loses exactly what the specs need: repeated keys (the last one silently wins), the text of numbers (`2.0` and `2` become the same `float64`), and key order.
 
 The reader builds an **ordered tree**: objects as ordered lists of members, arrays, strings, `true`/`false`/`null`, and numbers as `json.Number` — the literal's exact text. Its checks, and the standard library behavior each one covers:
 
@@ -46,13 +46,13 @@ How a failure is reported:
 - **A JSON option value** (e.g. `--extra`): reported at the option's field, with any inner pointer prefixed by it (a repeated key `status` in `--extra` is `/extra/status`), and other checks still run (see [Conversion](#conversion)). Its nesting counts from the input it sits in: `--extra` (at `/extra`) may nest 9,989 levels, `--extra-merge` (at `/extra/merge`) 9,988, so the input as a whole — and the task file written from it — stays within the limit.
 - **A file:** a repeated key is a file-level rule, not a parse failure, so it must not pre-empt the version check ([File validity](design-spec.md#file-validity) step 2). The reader records it and keeps going; it is reported after the version check, as `corrupt` (`reason`: `invalid`). Every other failure above makes the file `corrupt` (`reason`: `not-json`).
 
-**Adapters** then turn the tree into domain types (one per operation input, plus the task file and `koan.json`), validating as they go (see [Validation](#validation)).
+**Adapters** then turn the tree into domain types (one per operation input, plus the task file, `koan.json`, and the state file), validating as they go (see [Validation](#validation)).
 
 **Numbers in `extra` stay `json.Number`** from reading to writing and are never converted to `float64`. That is what lets [File format](design-spec.md#file-format) write them back character for character. A test round-trips `1.10`, `-0`, `1e400`, and a 20-digit integer through `update` unchanged.
 
 ## JSON writing
 
-All JSON koan writes — task files, `koan.json`, and the CLI's envelope — uses the standard `json.Encoder`, configured so its output is exactly the design spec's [File format](design-spec.md#file-format) and the CLI's [Output](cli-spec.md#output):
+All JSON koan writes — task files, `koan.json`, the state file, and the CLI's envelope — uses the standard `json.Encoder`, configured so its output is exactly the design spec's [File format](design-spec.md#file-format) and the CLI's [Output](cli-spec.md#output):
 
 - **`SetEscapeHTML(false)`**, always. The encoder then escapes exactly `"`, `\`, U+0000–U+001F, U+2028, and U+2029 — the File format's list.
 - **`SetIndent("", "  ")`** for files. No indent for the CLI envelope, which is compact.
@@ -82,7 +82,7 @@ Each step adds to one list of problems; a failed step stops only what depends on
 
 Problems are sorted as [Error kinds](operations.md#error-kinds) requires (by `field`, then `reason`). A problem's `reason` is written for its field (e.g. "expected a JSON object"), never a generic validator message.
 
-For files, the same steps implement [File validity](design-spec.md#file-validity)'s three steps: after step 1, `schema` must be present as an integer literal within ±(2^53 − 1) (else `corrupt`, `reason` `invalid`) and supported (else `unsupported-format`); then a recorded repeated key, and steps 2–4, make the file `corrupt` (`reason`: `invalid`). A repeated `schema` key makes the file `corrupt` (`invalid`) with no version check, since its version is ambiguous.
+For files, the same steps implement [File validity](design-spec.md#file-validity)'s three steps: after step 1, `schema` must be present as an integer literal within ±(2^53 − 1) (else `corrupt`, `reason` `invalid`) and supported (else `unsupported-format`; a `koan.json` in an older format is then checked against that format's schema, see [`migrate`](#migrate)); then a recorded repeated key, and steps 2–4, make the file `corrupt` (`reason`: `invalid`). A repeated `schema` key makes the file `corrupt` (`invalid`) with no version check, since its version is ambiguous.
 
 ### Schemas in tests
 
@@ -138,11 +138,11 @@ Operations that must find an ID, prove it absent, or return a collection walk th
 - **Classification**, per [Walking the tree](design-spec.md#walking-the-tree): a hidden entry is skipped; a folder name that is a directory is descended into; `<id>.json` that is a regular file is a task; everything else, symlinks included, is skipped.
 - **Result:** an index from each ID to every location that has it, in tree order; the list of folders; and the folders that could not be listed, with their errno.
 
-`create` without `blocked_by`, `create-batch` without an ID in any `blocked_by`, `create-folder`, `version`, `info`, and `init` do not walk. `doctor` and `repair` walk with a recorder for what the index skips (see [The survey](#the-survey)).
+`create` without `blocked_by`, `create-batch` without an ID in any `blocked_by`, `create-folder`, `version`, `info`, and `init` creating a new tree do not walk; `init` attaching a tree walks for filenames only. `doctor` and `repair` walk with a recorder for what the index skips (see [The survey](#the-survey)).
 
 ### Loading task files
 
-Task files are loaded on first use and cached for the rest of the operation — in a composed command, until the next operation starts (see [Operations and transactions](#operations-and-transactions)). A load runs [File validity](design-spec.md#file-validity) through [JSON reading](#json-reading) and [Validation](#validation) and ends in either a usable task or an unusable one with its reason (`unreadable` with its errno, `corrupt` with its reason, or `unsupported-format`).
+Task files are loaded on first use and cached for the rest of the operation — in a composed command, until the next operation starts (see [Operations and transactions](#operations-and-transactions)). A load runs [File validity](design-spec.md#file-validity) through [JSON reading](#json-reading) and [Validation](#validation) and ends in either a usable task or an unusable one with its reason (`unreadable` with its errno, `corrupt` with its reason, or `unsupported-format` with the `schema` found, which is how [`doctor`](#doctor-and-repair) tells an `old-format` file from one in a format this binary doesn't know). Under [`store.MigrateFormats`](#migrate) the cache also keeps the ordered tree of a file in an older format, for the steps to convert.
 
 ### Queries
 
@@ -160,15 +160,15 @@ Operations use the index through a few helpers:
 [Precedence](operations.md#precedence) is the order the code runs in; each step returns on its first error:
 
 1. validate input;
-2. locate the config (`environment`), then check the root (config, `koan.json`);
-3. take the lock (writes only), then re-read `koan.json`;
+2. locate the config (`environment`), then check the root (config, `koan.json`, whether it needs migration: `migration-pending`, and last the state file);
+3. take the lock (writes only), then re-read `koan.json` and the state file;
 4. path walk of any input folder — a missing folder is held, not returned, so step 6 can report it in the same `not-found` as missing IDs; `corrupt` (`unexpected-file`) returns;
 5. tree walk — a folder that cannot be listed is `io` here, for operations that must see the whole tree;
 6. ID lookups: `not-found`, listing every missing ID together with any missing folder held from step 4. For `block`, `id`'s own task file(s) are loaded first — an unusable copy is reported then — because which blockers are new (and so looked up) depends on `id`'s `blocked_by`, across every copy;
 7. load needed files (`corrupt`, `unsupported-format`: the first in tree order);
 8. conflicts (`duplicate-id`, `acyclic`, `id-exhausted`).
 
-`io` and `internal` return wherever they occur. `init`, `doctor`, and `repair` run their own orders.
+`io` and `internal` return wherever they occur. `init`, `doctor`, `repair`, and `migrate` run their own orders.
 
 ### Warnings
 
@@ -244,8 +244,8 @@ The same errno means different things in different places, so each call site cla
 | `flock` | `EINTR` | retried |
 | Path walk of an input folder | `ENOENT` | `not-found` |
 | Path walk | `ELOOP` (a symlink; see [Filesystem access](#filesystem-access)), `ENOTDIR` | `corrupt` (`unexpected-file`) |
-| Config or `koan.json` | `ENOENT` | `not-initialized` (`missing`: `config` or `metadata`) |
-| `koan.json` | `ELOOP` (a symlink), `EISDIR` | `corrupt` (`unexpected-file`) |
+| Config, `koan.json`, or the state file | `ENOENT` | `not-initialized` (`missing`: `config`, `metadata`, or `state`) |
+| `koan.json` or the state file | `ELOOP` (a symlink), `EISDIR` | `corrupt` (`unexpected-file`) |
 | `os.OpenRoot` on the root | `ENOENT`, `ENOTDIR`, `ELOOP` (a symlink loop) | `not-initialized` (`missing`: `root`) |
 | Loading a task file, in a read | `ENOENT` | skipped silently: it vanished ([Concurrent writes during a read](#concurrent-writes-during-a-read)) |
 | Loading a task file, in a read | any other | `unusable-file` warning (`reason`: `unreadable`, with `code`) |
@@ -317,6 +317,7 @@ internal/ops/              one file per operation: its input adapter and its ste
 internal/model/            domain types: ID, Title, Tag, FolderPath, Priority, Timestamp, Extra (ordered), Task, TaskView
 internal/store/            config, root states, the lock, tree walk and index, task-file cache, file validity, atomic writes
 internal/graph/            readiness and the cycle check — pure functions, no I/O
+internal/migrations/       the migration steps, in order, with each older format's schema — pure functions, no I/O
 internal/jsonio/           token-stream reader to ordered tree; encoder configuration; the ordered-object type
 internal/fsys/             thin interface over os.Root and flock; the real implementation; a fault-injecting one
 internal/errs/             error and warning kinds, the warning collector, the errno table
@@ -346,7 +347,7 @@ errs and jsonio may be imported by any package, and import none of koan's own.
 
 ### Operations and transactions
 
-An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Result, error)`. `store.Read(fn)` runs it without the lock; `store.Write(fn)` runs it holding the write lock, after re-reading `koan.json`. A composed command is several operation functions inside one `store.Write` — the operations spec's "several operations under a single write lock" — so composition needs no change to this structure, with one exception. The transaction's [index](#the-index) and [task-file cache](#loading-task-files) never see its own writes, so the composition calls `tx.NextStep()` before each operation after the first. That drops both, keeping the lock and the open root, and the next operation sees what the earlier ones wrote.
+An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Result, error)`. `store.Read(fn)` runs it without the lock; `store.Write(fn)` runs it holding the write lock, after re-reading `koan.json` and the state file. Both refuse a root that is not usable, one that *needs migration* included (`migration-pending`). A composed command is several operation functions inside one `store.Write` — the operations spec's "several operations under a single write lock" — so composition needs no change to this structure, with one exception. The transaction's [index](#the-index) and [task-file cache](#loading-task-files) never see its own writes, so the composition calls `tx.NextStep()` before each operation after the first. That drops both, keeping the lock and the open root, and the next operation sees what the earlier ones wrote.
 
 ### Environment
 
@@ -359,7 +360,7 @@ An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Re
 
 ## Writing files
 
-Every file koan writes — task files, `.md` notes, `koan.json`, the config — is published through a temp file, per [Mechanism](#mechanism)'s atomic file writes:
+Every file koan writes — task files, `.md` notes, `koan.json`, the state file, the config — is published through a temp file, per [Mechanism](#mechanism)'s atomic file writes:
 
 - **Name.** `.koan-tmp-<random>`, in the directory of the file it will become: hidden (so reads ignore it), recognizably koan's (so [`doctor`](operations.md#doctor) can find leftovers), and random (so two writes never collide).
 - **Created exclusively** (`O_CREATE|O_EXCL`), written in full, flushed (`fsync`), then published: `link` to create a new file, so an existing one is never clobbered (`EEXIST` is `corrupt`, `unexpected-file`); `rename` to replace one. The folder is then flushed, and the temp file removed.
@@ -388,19 +389,28 @@ The config must be a regular file, or a symlink to one: it is checked with `stat
 
 ## `init`
 
-`init` runs before any root exists, so it does not use the [`os.Root`](#filesystem-access) of other operations:
+`init` may run before any root exists, so it does not start from the [`os.Root`](#filesystem-access) of other operations:
 
 1. Validate and clean `root` ([`init`](cli-spec.md#init) path resolution first, in the CLI).
 2. Check for an existing config (`config-exists` unless `replace_config`). Before failing with `config-exists`, remove any `.koan-tmp-*` in the config directory, as step 5 does: a crash after the config was published leaves its temp file, and the rerun that follows fails here.
 3. Create the root directory if needed — `os.Mkdir`, never `MkdirAll`: `init` never creates the root's parent.
-4. Open the root with `os.OpenRoot`, then create `koan.json` through it via a temp file and `link` (see [Writing files](#writing-files)), or read and check the existing one.
-5. Create the config directory with `os.MkdirAll`, remove any `.koan-tmp-*` left there by an earlier interrupted `init`, and write the config via a temp file in that directory: `link` when no config exists, `rename` under `replace_config`.
+4. Open the root with `os.OpenRoot`, then create `koan.json` through it via a temp file and `link` (see [Writing files](#writing-files)) with `migration` set to `migrations.Latest()`, or read and check the existing one — one in an older format against that format's schema, from `internal/migrations`.
+5. Create the config directory with `os.MkdirAll`, remove any `.koan-tmp-*` left there by an earlier interrupted `init`, write the [state file](#state-file) via a temp file in that directory and `rename`, replacing any there, and then write the config via a temp file in that directory: `link` when no config exists, `rename` under `replace_config`. The state file's `last_id` is as [`init`](operations.md#init)'s Effects say: when attaching, the [index](#the-index) walk gives the highest ID in any task filename, loading no task file (`io` on a folder it can't list), and a usable state file already there for this root is read first, for its floor, whether the tree is new or attached. When the root already existed, the state file is read and written holding the root's lock (`busy` as for a write).
 
 The config is written last, as [`init`](operations.md#init)'s crash behavior requires. A temp file left in the config directory is outside `doctor`'s reach, which is why steps 2 and 5 remove stale ones.
 
+## State file
+
+How the [state file](design-spec.md#state-file), `state.json` beside the config, is read and written.
+
+- **Reading.** It is read with the config, by path, not through the root's `os.Root`: it is outside the tree. It goes through the same [JSON reading](#json-reading) and [Validation](#validation) as `koan.json`, giving one of: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok` with its `last_id`. `other-root` is a valid file whose `root` is not, byte for byte, the config's root cleaned and with `~/` expanded — the form `info` reports as `config.root`. For every operation that requires a usable root, `missing` and `other-root` are both `not-initialized` (`missing`: `state`).
+- **Order.** It is looked at after `koan.json`, and only when `koan.json` is `ok` and no migration is pending (see [Root states](operations.md#root-states)); `store.Write` re-reads it under the lock, with `koan.json`.
+- **Writing.** `Tx.SetLastID` writes it — a temp file in the config directory, flushed, then `rename`, then a flush of the directory — while the root's lock is held. Before writing, it removes any `.koan-tmp-*` an interrupted earlier write left in the config directory, as `init` does: they are outside `doctor`'s reach, and under the lock none can be a write in progress. `koan.json` is no longer written by any operation that issues an ID. `Tx.CreateState(lastID)` is `repair`'s rebuild, and `init` and `migrate` write it as their sections say.
+- **Faults.** The fault-injecting `fsys` covers these calls like any other, so the crash matrix and the precedence tests see them: a kill between the state file's publish and the task file's is `create`'s "ID consumed, no task".
+
 ## `info`
 
-`info` inspects the config and `koan.json` and reports every problem as state ([`info`](operations.md#info)). Each output field is derived as follows:
+`info` inspects the config, `koan.json`, and the state file and reports every problem as state ([`info`](operations.md#info)). Each output field is derived as follows:
 
 | Field | Value |
 |---|---|
@@ -409,12 +419,17 @@ The config is written last, as [`init`](operations.md#init)'s crash behavior req
 | `config.root` | the root, cleaned and with `~/` expanded, when `config.state` is `ok`; else `null` |
 | `tree` | `null` when `config.root` is `null` (including a `~/` root with no home directory to expand it into) |
 | `tree.root_exists` | the root path leads, through symlinks, to a directory |
-| `tree.metadata` | `missing` if there is no `koan.json` (or no root); `unreadable` on an OS error reading it; else the [File validity](design-spec.md#file-validity) outcome: `corrupt`, `unsupported-format`, or `ok` |
+| `tree.metadata` | `missing` if there is no `koan.json` (or no root); `unreadable` on an OS error reading it; else the [File validity](design-spec.md#file-validity) outcome: `corrupt` (also an [older format](design-spec.md#format-versions) that breaks its own rules), `old-format` (step 2, an older format, valid by its own rules), `unsupported-format` (step 2, any other `schema`; or every step passed but `migration` is past the latest step), or `ok` |
 | `tree.schema` | `koan.json`'s `schema` whenever File validity step 1 passes; else `null` |
-| `tree.last_id` | when `tree.metadata` is `ok`; else `null` |
-| `initialized` | `false` exactly when the root is *not initialized* ([Root states](operations.md#root-states)): config `missing`, root missing, or `koan.json` `missing`; `true` otherwise, including an unusable config (then `tree` is `null`) |
-| `usable` | `config.state` and `tree.metadata` both `ok`, and `tree.root_exists` |
+| `tree.migration` | `koan.json`'s `migration` when `tree.metadata` is `ok`, or `unsupported-format` for a step past the latest; for `old-format`, what that format records (`0` at schema 1, which has no such field); else `null` |
+| `state` | `null` when `config.root` is `null` |
+| `state.path` | `state.json` in the config directory |
+| `state.state` | the [state file](#state-file)'s outcome: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok`. Reported as it is, whatever `tree.metadata` says |
+| `state.last_id` | when `state.state` is `ok`; else `null` |
+| `initialized` | `false` exactly when the root is *not initialized* ([Root states](operations.md#root-states)): config `missing`, root missing, `koan.json` `missing`, or — with `tree.metadata` `ok` and no migration pending — `state.state` `missing` or `other-root`; `true` otherwise, including an unusable config (then `tree` and `state` are `null`) |
+| `usable` | `config.state`, `tree.metadata`, and `state.state` all `ok`, `tree.root_exists`, and `migration_pending` `false` |
 | `compatible` | `tree.schema` equals the supported `koan.json` version; `null` when `tree.schema` is `null` |
+| `migration_pending` | `tree.metadata` is `old-format`, or `ok` with `tree.migration` below the latest step; `null` when `tree.migration` is `null` |
 
 ## `doctor` and `repair`
 
@@ -422,7 +437,7 @@ How the [diagnostic](operations.md#operation-kinds) operations, [`doctor`](opera
 
 ### Transaction
 
-`store.Diagnose(env, w, fn)` runs `fn` as [`store.Write`](#operations-and-transactions) does — locate the config, check it and the root, take the lock (`busy` on `EAGAIN`) — except that it reads `koan.json` without failing on it. The transaction carries what it found as `MetaState()`: `ok` with the root file, or `missing`, `unreadable`, `corrupt`, or `unsupported-format` with the error each would raise. It allows writes, so `repair` uses the same `Create`, `Replace`, `SetLastID`, and `Remove` as every other write, and turns the state into its own [Preconditions](operations.md#repair) errors. `doctor` writes nothing through it.
+`store.Diagnose(env, w, fn)` runs `fn` as [`store.Write`](#operations-and-transactions) does — locate the config, check it and the root, take the lock (`busy` on `EAGAIN`) — except that it reads `koan.json` without failing on it. The transaction carries what it found as `MetaState()`: `ok` with the root file, or `missing`, `unreadable`, `corrupt`, `unsupported-format`, or `migration-pending` (an older format, or a step behind the latest, which [`migrate`](#migrate) handles) with the error each would raise. The state file's outcome is carried the same way, as `StateState()`, read whatever `koan.json`'s state. It allows writes, so `repair` uses the same `Create`, `Replace`, `SetLastID`, and `Remove` as every other write, plus `CreateMeta` and `CreateState`, and turns the state into its own [Preconditions](operations.md#repair) errors. `doctor` writes nothing through it.
 
 ### The survey
 
@@ -455,11 +470,48 @@ Each finding kind is one check: a function from the index, the survey, `MetaStat
 ### `doctor` and `repair` tests
 
 - **Cycle groups.** On thousands of small random graphs, `CycleGroups` must match the groups from a transitive closure (two IDs share a group exactly when each reaches the other), and `ExampleCycle` must match enumerating every simple cycle through L and picking the shortest, then lexicographically smallest.
-- **One fixture per finding kind**, in-process: a tree built by hand, the exact item `doctor` reports for it, and what `repair` leaves. This covers the outside changes the crash matrix can't make: a `last_id` merged backwards, a duplicate ID, a cycle, a nested tree, a skipped entry, a stray entry (absent unless asked for, and healthy either way), an unreadable folder, sibling folders that differ only in case, a missing or unusable `koan.json`.
+- **One fixture per finding kind**, in-process: a tree built by hand, the exact item `doctor` reports for it, and what `repair` leaves. This covers the outside changes the crash matrix can't make: a `last_id` set back, a duplicate ID, a cycle, a nested tree, a skipped entry, a stray entry (absent unless asked for, and healthy either way), an unreadable folder, sibling folders that differ only in case, a missing or unusable `koan.json`.
 - **System-crash states**, as fixtures too, since crash injection kills processes, not machines: a task file above `last_id`, an empty task file, a removal undone.
 - **Every `orphan-notes` reason**, including a `linked` `.md` that is changed, or given a different inode, between the check and the removal: it is left, and reported.
 - **Caps.** 25 temp leftovers: 20 items, `count` 25, `truncated`; with `kinds` naming the kind, all 25.
-- **Preconditions.** `repair` with `koan.json` missing, with and without `metadata-missing`; with it corrupt, and with a newer `schema`: an error, and nothing changed.
+- **Preconditions.** `repair` with `koan.json` missing, with and without `metadata-missing`; with it corrupt, and with a newer `schema`: an error, and nothing changed. With a step pending: `migration-pending`, and nothing changed. With the state file missing, and with one naming another root, with and without `state-missing`; with it corrupt: the same, and `state-missing` is not reported on a tree whose `koan.json` is at schema 1.
+- **Formats are `migrate`'s.** A pending step is one `migration-pending` item; a task file in an older format, with no step pending, is an `old-format` item that `repair` leaves, with a `suggest` naming `koan migrate`. A rebuilt `koan.json` records the latest step when every task file is current, and `0` when one is in an older format; in both cases the same run goes on to its other repairs.
+
+## `migrate`
+
+How [`migrate`](operations.md#migrate) applies the [migration steps](design-spec.md#migrations).
+
+### Steps
+
+`internal/migrations` holds the steps, in order, as data: each has its number, its name, and, for each kind of file it covers (`task`, `root`), the `schema` it reads and the function that converts one file. A function takes the file's ordered tree (as [`jsonio`](#json-reading) reads it) and returns the converted tree, or an error naming the rule the file breaks; it sees nothing else, so a step can't depend on another file. `extra` stays as the ordered tree holds it, its numbers as `json.Number` text, so a step that never touches `extra` writes it back byte for byte. Each step also carries the JSON Schema of every format it reads, so a file is checked against its own format's rules before the function runs; the current formats' schemas are the specs' (see [Schemas in tests](#schemas-in-tests)). `migrations.Latest()` is the last step's number, which [`version`](operations.md#version) reports and [`init`](operations.md#init) writes.
+
+A file's conversion is every step whose `from` for its kind is at or above the file's `schema`, in order: each step's output is the next one's input. A step that doesn't cover a kind leaves that kind's files alone.
+
+The older `koan.json` formats' schemas are also what [`info`](#info), `init`, and the root-state check use to tell a `koan.json` that needs migration from a `corrupt` one (see [File validity](design-spec.md#file-validity)).
+
+### Transaction
+
+`store.MigrateFormats(env, w, fn)` runs `fn` as `store.Diagnose` does — locate the config, check it and the root, take the lock — except that it accepts a `koan.json` in an older format, reads the state file without failing on it, and fails on a `koan.json` that is missing, corrupt, in a format this binary doesn't know, or past the latest step, with the errors of `migrate`'s [Errors](operations.md#migrate). The lock is held until `fn` returns. (`store.Migrate` is taken: it is the move from ftask's names, which runs before every transaction and has nothing to do with formats; see [Migrating from ftask](design-spec.md#migrating-from-ftask).)
+
+### Two passes
+
+1. **Read and convert.** The [index](#the-index) walk lists every folder; one it can't list is an `unreadable-folder` warning. Every task file is read through the [task-file cache](#loading-task-files), which under this transaction keeps the ordered tree of a file in an older format (see [Loading task files](#loading-task-files)), so it is converted rather than reported unusable; one that can't be read, or whose format can't be told or isn't known, is an `unusable-file` warning. Each older file is converted in memory and its result validated as a current task file; a failure on either side goes to `unconverted`. `koan.json` is converted the same way, but a failure there is `corrupt`. When `koan.json` holds a `last_id`, the state file is read here too, and an unusable one fails the run, with `dry_run` as without. Nothing is written in this pass; with `dry_run` the operation ends here.
+2. **Write.** When `koan.json` held a `last_id`, the state file is written first, with `Tx.SetLastID` or `Tx.CreateState`, unless a usable one for this root already holds a `last_id` at least as high. Each converted task file is written with `Replace`, the atomic, flushed replacement every write uses, in tree order; nothing sets its `updated_at`. `koan.json` is written last, the same way, with `migration` set to `migrations.Latest()`, and only when its bytes would change. `CreateMeta`, `repair`'s rebuild of `koan.json`, takes the step to record from its caller.
+
+Peak memory is the converted files of one tree. A tree of 10,000 tasks at about 400 bytes each is about 4 MB: holding them all is what lets `dry_run` and the real run share one pass, and report the same numbers.
+
+### `migrate` tests
+
+- **A fixture tree at every step.** `internal/migrations/testdata/step-<n>/` holds a small tree as a binary whose latest step is `n` wrote it — every field set, `extra` with repeated-looking keys, big and fractional numbers, and non-ASCII strings — and `golden/` holds the same tree after migrating to the latest step. Migrating each fixture must give exactly the golden bytes. A step is added with its fixture, and a released fixture is never edited, as a released step never is.
+- **Idempotence.** Migrating the golden tree changes nothing (`changed` `false`), and migrating a fixture twice gives the bytes of migrating it once.
+- **A merge.** The golden tree with a few task files from `step-0` copied in: `migrate` with no step pending converts exactly those, `applied` empty. `koan.json` with its `migration` lowered: pending again, and `migrate` restores it, rewriting no task file.
+- **`updated_at` and `extra`.** No converted task's `updated_at` changes; every `extra` is byte-identical before and after.
+- **`last_id` moves.** A schema-1 tree with `last_id` 42 and no state file: afterwards the state file names the root with `last_id` 42, `koan.json` has none, `state_written` is `true`, and the next `create` gets 43. With a state file for this root already at 50: it stays 50. With one for another root: replaced. With a corrupt one: `corrupt`, nothing written. `dry_run` writes neither file.
+- **Unconvertible files.** A task file at an older `schema` that breaks that format's rules, and one whose converted result breaks the current rules: both left as they were, listed in `unconverted` in tree order, the latest step recorded, and `doctor` still reports both as `old-format`.
+- **Unreachable files.** An unreadable task file in an older format, and a folder that can't be listed: a warning each, the rest converted, the latest step recorded. Once readable, `doctor` reports the file as `old-format`, and a second `migrate` converts it.
+- **Crash injection**, with the [crash matrix](#crash-injection): a kill after the state file's write, after each task file write, and before `koan.json`'s leaves the step pending and every written file current; rerunning finishes it.
+- **Refusals.** A newer `koan.json`, one at `schema` `0`, and a step past the latest: `unsupported-format`, nothing written. An older `koan.json` that breaks its own format's rules: `corrupt`, from `migrate`, `info` (`metadata`: `corrupt`), and every operation that requires a usable root. `dry_run`: nothing written, and the same output as the real run but for `dry_run`.
+- **Every other operation** on a fixture tree that needs migration fails `migration-pending`, but `version`, `info`, `doctor`, and `migrate`; `init` attaches it. An ftask tree is moved to koan's names first, and then fails the same way.
 
 ## Comparing values in `update`
 
@@ -480,6 +532,7 @@ Tests that must pause a write or crash it at an exact point use hooks compiled o
 | Validation | adapter–schema agreement; output conformance of every envelope | [Schemas in tests](#schemas-in-tests) |
 | Cycle check | brute-force comparison on random graphs; corrupt file ordered after `id` | [Cycle check](#cycle-check) |
 | `doctor` and `repair` | cycle groups by brute force; a fixture per finding kind; system-crash states; orphan rechecks; caps; preconditions | [`doctor` and `repair` tests](#doctor-and-repair-tests) |
+| `migrate` | a fixture tree per step against golden bytes; idempotence; merges; unconvertible and unreachable files; crash injection; refusals | [`migrate` tests](#migrate-tests) |
 | OS errors | errno-table completeness per platform; one test per call-site row | [OS errors](#os-errors) |
 | Exit and signals | closed pipe, `/dev/full`, SIGTERM, forced panic → 134, one envelope per exit `0`/`1`/`2` | [Exit and signals](#exit-and-signals) |
 
@@ -493,7 +546,7 @@ In `e2e/`, on Linux and macOS. Every command's wait for the lock is shortened to
 4. **Keep-alive.** The hook forces a garbage collection while the lock is held; the lock is still held ([Mechanism](#mechanism)).
 5. **Stress.** 16 processes each create 50 tasks, retrying on `busy`. Afterwards: 800 tasks, all IDs distinct, `last_id` 800, no lost update.
 6. **Racing `block`s.** `block A --blockers B` and `block B --blockers A` run concurrently, each retrying on `busy`, many rounds: in each, exactly one succeeds and the other ends `conflict` (`acyclic`).
-7. **Diagnostics take the lock.** A `doctor` held open at a test hook makes a write `busy`; a write held open makes `doctor` and `repair` `busy`.
+7. **Diagnostics and `migrate` take the lock.** A `doctor` or a `migrate` held open at a test hook makes a write `busy`; a write held open makes `doctor`, `repair`, and `migrate` `busy`.
 8. **Waiting.** With the default wait, a write started while another holds the lock waits, and completes with the next ID once the holder releases.
 
 The macOS run of this suite is the empirical check [Mechanism](#mechanism)'s platform check assigns to the test suite.
@@ -517,7 +570,7 @@ System crashes — steps lost or reordered by power loss — are not simulated. 
 
 ### Precedence tests
 
-For each operation, a set of faults, each of which alone triggers one error kind: bad input, missing config, corrupt `koan.json`, the lock held, a missing folder, a corrupt needed file, a duplicated ID, a cycle, and so on. Every pair of faults that applies to the operation is combined in one tree, and the error reported must be the one earlier in the operation's [precedence](operations.md#precedence) (or `init`'s own order). Two faults at the same step (e.g. two corrupt needed files) must report the first in [tree order](operations.md#tree-order).
+For each operation, a set of faults, each of which alone triggers one error kind: bad input, missing config, corrupt `koan.json`, a pending migration, a missing state file, the lock held, a missing folder, a corrupt needed file, a duplicated ID, a cycle, and so on. Every pair of faults that applies to the operation is combined in one tree, and the error reported must be the one earlier in the operation's [precedence](operations.md#precedence) (or `init`'s own order). Two faults at the same step (e.g. two corrupt needed files) must report the first in [tree order](operations.md#tree-order).
 
 ### Generated and cross-cutting
 

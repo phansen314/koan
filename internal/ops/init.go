@@ -40,6 +40,7 @@ type InitOutput struct {
 type InitPartial struct {
 	RootCreated     bool `json:"root_created"`
 	MetadataCreated bool `json:"metadata_created"`
+	StateCreated    bool `json:"state_created"`
 }
 
 // runInit runs store.Init, which follows init's own precedence order. An
@@ -48,8 +49,8 @@ type InitPartial struct {
 func runInit(env Env, in InitInput, _ *errs.Collector) (any, *errs.Error) {
 	res, e := store.Init(env.Env, in.Root, in.ReplaceConfig)
 	if e != nil {
-		if res.RootCreated || res.MetaCreated {
-			e = e.WithPartial(InitPartial{RootCreated: res.RootCreated, MetadataCreated: res.MetaCreated})
+		if res.RootCreated || res.MetaCreated || res.StateCreated {
+			e = e.WithPartial(InitPartial{RootCreated: res.RootCreated, MetadataCreated: res.MetaCreated, StateCreated: res.StateCreated})
 		}
 		return nil, e
 	}

@@ -15,7 +15,11 @@ func decodeRepair(f *model.Fields, p *model.Problems) any {
 	kinds := optionalKinds(f, p)
 	for i, k := range kinds {
 		if c := findingClass[k]; c == classManual || c == classInformational {
-			p.AddAdditional(jsonio.Pointer(f.Ptr("kinds"), strconv.Itoa(i)), k+" is "+c+": repair never changes it; see koan doctor --kinds "+k)
+			reason := k + " is " + c + ": repair never changes it; see koan doctor --kinds " + k
+			if k == kindMigrationPending || k == kindOldFormat {
+				reason = k + " is not repaired: converting formats is koan migrate's job alone"
+			}
+			p.AddAdditional(jsonio.Pointer(f.Ptr("kinds"), strconv.Itoa(i)), reason)
 		}
 	}
 	return KindsInput{Kinds: kinds}
@@ -46,10 +50,17 @@ func runRepair(env Env, in KindsInput, w *errs.Collector) (any, *errs.Error) {
 	}
 	var out RepairOutput
 	e := store.Diagnose(env.Env, w, func(tx *store.Tx) *errs.Error {
+		// Both files are judged once, under the lock, before any repair is
+		// made: koan.json's, then the state file's.
 		switch state, metaErr := tx.MetaState(); {
 		case state == store.MetaMissing && slices.Contains(kinds, kindMetadataMissing):
 		case metaErr != nil:
 			return metaErr
+		}
+		switch state, stateErr := tx.StateState(); {
+		case (state == store.StateMissing || state == store.StateOtherRoot) && slices.Contains(kinds, kindStateMissing):
+		case stateErr != nil:
+			return stateErr
 		}
 		fs, e := diagnose(tx)
 		if e != nil {
@@ -109,14 +120,21 @@ func (r *repairer) run() *errs.Error {
 	}
 
 	if items := r.items(kindMetadataMissing); len(items) > 0 {
-		if e := tx.CreateMeta(*items[0].LastID); e != nil {
+		if e := tx.CreateMeta(*items[0].Migration); e != nil {
 			return e
 		}
 		r.done.add(kindMetadataMissing, items[0])
 	}
 
+	if items := r.items(kindStateMissing); len(items) > 0 {
+		if e := tx.CreateState(*items[0].LastID); e != nil {
+			return e
+		}
+		r.done.add(kindStateMissing, items[0])
+	}
+
 	if items := r.items(kindIDAboveLastID); len(items) > 0 {
-		if target := *items[0].LastID; target > tx.Meta().LastID {
+		if target := *items[0].LastID; target > tx.LastID() {
 			if e := tx.SetLastID(target); e != nil {
 				return e
 			}

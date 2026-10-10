@@ -20,6 +20,7 @@ const (
 	KindInvalidInput      Kind = "invalid-input"
 	KindEnvironment       Kind = "environment"
 	KindNotInitialized    Kind = "not-initialized"
+	KindMigrationPending  Kind = "migration-pending"
 	KindNotFound          Kind = "not-found"
 	KindConflict          Kind = "conflict"
 	KindBusy              Kind = "busy"
@@ -132,6 +133,7 @@ const (
 	MissingConfig   Missing = "config"
 	MissingRoot     Missing = "root"
 	MissingMetadata Missing = "metadata"
+	MissingState    Missing = "state"
 )
 
 type NotInitializedDetails struct {
@@ -147,6 +149,8 @@ func NotInitialized(missing Missing) *Error {
 		msg = "the configured root does not exist"
 	case MissingMetadata:
 		msg = "the root has no koan.json"
+	case MissingState:
+		msg = "this machine has no state file for the root: run init, or repair naming state-missing"
 	default:
 		msg = "not initialized"
 	}
@@ -339,6 +343,9 @@ type UnsupportedFormatDetails struct {
 	Path      string  `json:"path"`
 	Found     int64   `json:"found"`
 	Supported []int64 `json:"supported"`
+	// Field is "migration" when what is unsupported is the migration step
+	// koan.json records, not its schema; absent otherwise.
+	Field string `json:"field,omitempty"`
 }
 
 func UnsupportedFormat(path string, found int64, supported []int64) *Error {
@@ -346,6 +353,33 @@ func UnsupportedFormat(path string, found int64, supported []int64) *Error {
 		Kind:    KindUnsupportedFormat,
 		Message: fmt.Sprintf("%s: format version %d is not supported", path, found),
 		Details: UnsupportedFormatDetails{Path: path, Found: found, Supported: nonNil(supported)},
+	}
+}
+
+// UnsupportedMigration is unsupported-format for a koan.json that records
+// found, a migration step past this binary's latest.
+func UnsupportedMigration(path string, found, latest int64) *Error {
+	return &Error{
+		Kind:    KindUnsupportedFormat,
+		Message: fmt.Sprintf("%s: migration step %d is past this binary's latest, %d", path, found, latest),
+		Details: UnsupportedFormatDetails{Path: path, Found: found, Supported: []int64{latest}, Field: "migration"},
+	}
+}
+
+// MigrationPendingDetails are the step koan.json records and this binary's
+// latest.
+type MigrationPendingDetails struct {
+	Recorded int64 `json:"recorded"`
+	Latest   int64 `json:"latest"`
+}
+
+// MigrationPending reports a root that needs migration (operations.md, Root
+// states).
+func MigrationPending(recorded, latest int64) *Error {
+	return &Error{
+		Kind:    KindMigrationPending,
+		Message: fmt.Sprintf("the tree needs migration: it records step %d, this binary's latest is %d; run koan migrate", recorded, latest),
+		Details: MigrationPendingDetails{Recorded: recorded, Latest: latest},
 	}
 }
 

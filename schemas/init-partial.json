@@ -2,10 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "init-partial",
   "type": "object",
-  "required": ["root_created", "metadata_created"],
+  "required": ["root_created", "metadata_created", "state_created"],
   "properties": {
     "root_created": { "type": "boolean", "description": "init created the root directory." },
-    "metadata_created": { "type": "boolean", "description": "init created koan.json." }
+    "metadata_created": { "type": "boolean", "description": "init created koan.json." },
+    "state_created": { "type": "boolean", "description": "init wrote the state file." }
   },
   "additionalProperties": false
 }

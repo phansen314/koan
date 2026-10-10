@@ -5,6 +5,7 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/migrations"
 	"github.com/phansen314/koan/internal/model"
 )
 
@@ -36,6 +37,15 @@ type Loaded struct {
 	Err   error
 	Cause errs.CorruptCause
 	Found int64
+	// Versioned: the file passed File validity step 1, so a Corrupt one is
+	// corrupt in its own format, not unreadable as to which format it is.
+	Versioned bool
+	// Older: an Unsupported file whose schema is an older format that some
+	// migration step reads. Tree and Repeated are its ordered tree and
+	// repeated keys, kept only in a migration transaction.
+	Older    bool
+	Tree     *jsonio.Object
+	Repeated []string
 }
 
 // Load reads and checks the task file at l, once per operation: later calls
@@ -65,11 +75,15 @@ func (tx *Tx) load(l Location) *Loaded {
 		return ld
 	}
 	t, res := model.DecodeTaskFile(obj, repeated, l.ID)
+	ld.Versioned = res.Versioned
 	switch res.Status {
 	case model.FileOK:
 		ld.Task = t
 	case model.FileUnsupported:
 		ld.State, ld.Found = Unsupported, res.Found
+		if ld.Older = migrations.Reads(migrations.Task, res.Found); ld.Older && tx.keepOld {
+			ld.Tree, ld.Repeated = obj, repeated
+		}
 	default:
 		ld.State, ld.Cause = Corrupt, invalid(res)
 	}

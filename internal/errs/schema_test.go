@@ -49,6 +49,8 @@ func TestErrorsMatchSchema(t *testing.T) {
 		{"corrupt partial", errs.Corrupt("/r/5.json", errs.CorruptUnexpectedFile).WithPartial(map[string]int{"id": 5})},
 		{"io", errs.IO("/r/5.json", "ENOSPC")},
 		{"unsupported-format", errs.UnsupportedFormat("/r/koan.json", 2, []int64{1})},
+		{"unsupported-format migration", errs.UnsupportedMigration("/r/koan.json", 3, 1)},
+		{"migration-pending", errs.MigrationPending(0, 1)},
 		{"internal", errs.Internal("bug")},
 		{"usage", errs.Usage([]errs.UsageProblem{{Argument: &arg, Reason: "empty"}, {Reason: "missing command"}})},
 	} {

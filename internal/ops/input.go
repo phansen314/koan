@@ -21,6 +21,7 @@ var decoders = map[string]decoder{
 	"info":          decodeInfo,
 	"doctor":        decodeDoctor,
 	"repair":        decodeRepair,
+	"migrate":       decodeMigrate,
 	"init":          decodeInit,
 	"create-folder": decodeCreateFolder,
 	"create":        decodeCreate,

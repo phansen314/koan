@@ -105,7 +105,7 @@ func TestCreate(t *testing.T) {
 	for rel, want := range map[string]string{
 		"tasks/proj/101.json": "{\n  \"schema\": 1,\n  \"id\": 101,\n  \"title\": \"Book flights\",\n  \"priority\": 2,\n  \"created_at\": \"2026-09-28T12:00:00Z\",\n  \"completed_at\": null,\n  \"updated_at\": \"2026-09-28T12:00:00Z\",\n  \"blocked_by\": [\n    1,\n    3\n  ],\n  \"tags\": [\n    \"travel\",\n    \"urgent\"\n  ],\n  \"extra\": {\n    \"status\": \"waiting\",\n    \"n\": 1.50\n  }\n}\n",
 		"tasks/proj/101.md":   "call first\n",
-		"tasks/koan.json":     "{\n  \"schema\": 1,\n  \"last_id\": 101\n}\n",
+		"cfg/state.json":      st(101),
 	} {
 		if got := f.read(rel); got != want {
 			t.Errorf("%s:\n%s\nwant\n%s", rel, got, want)
@@ -129,7 +129,7 @@ func TestCreateDefaults(t *testing.T) {
 }
 
 func TestCreateCases(t *testing.T) {
-	const exhausted = "{\"schema\": 1, \"last_id\": 999999999999999}\n"
+	exhausted := st(999999999999999)
 	for _, tc := range []struct {
 		name  string
 		setup func(f *fixture)
@@ -139,7 +139,7 @@ func TestCreateCases(t *testing.T) {
 	}{
 		// The folder's path walk.
 		{"folder missing", nil, `{"title": "x", "folder": "/a/b"}`,
-			`not-found {"folders":["/a"],"ids":[],"paths":[]}`, map[string]string{"tasks/koan.json": "{\"schema\": 1, \"last_id\": 100}\n"}},
+			`not-found {"folders":["/a"],"ids":[],"paths":[]}`, map[string]string{"cfg/state.json": st(100)}},
 		{"folder's last segment missing", func(f *fixture) { f.mkdir("tasks/a") }, `{"title": "x", "folder": "/a/b"}`,
 			`not-found {"folders":["/a/b"],"ids":[],"paths":[]}`, nil},
 		{"folder a file", func(f *fixture) { f.write("tasks/a", "") }, `{"title": "x", "folder": "/a/b"}`,
@@ -158,7 +158,7 @@ func TestCreateCases(t *testing.T) {
 		{"open and done blockers", func(f *fixture) { f.task("", 1, false); f.task("x", 2, true) }, `{"title": "x", "blocked_by": [2, 1]}`,
 			`/ 101`, nil},
 		{"missing blockers", func(f *fixture) { f.task("", 1, false) }, `{"title": "x", "blocked_by": [9, 1, 5]}`,
-			`not-found {"folders":[],"ids":[5,9],"paths":[]}`, map[string]string{"tasks/koan.json": "{\"schema\": 1, \"last_id\": 100}\n"}},
+			`not-found {"folders":[],"ids":[5,9],"paths":[]}`, map[string]string{"cfg/state.json": st(100)}},
 		{"missing folder and blockers in one not-found", nil, `{"title": "x", "folder": "/a", "blocked_by": [9]}`,
 			`not-found {"folders":["/a"],"ids":[9],"paths":[]}`, nil},
 		{"corrupt folder before missing blockers", func(f *fixture) { f.write("tasks/a", "") }, `{"title": "x", "folder": "/a", "blocked_by": [9]}`,
@@ -174,7 +174,7 @@ func TestCreateCases(t *testing.T) {
 		{"blockers above last_id", func(f *fixture) { f.task("x", 102, false); f.task("x", 101, false); f.task("", 1, false) },
 			`{"title": "x", "blocked_by": [1, 102, 101]}`,
 			`conflict {"rule":"id-above-last-id","ids":[101,102]}`,
-			map[string]string{"tasks/koan.json": "{\"schema\": 1, \"last_id\": 100}\n", "tasks/101.json": "<none>"}},
+			map[string]string{"cfg/state.json": st(100), "tasks/101.json": "<none>"}},
 		{"unreadable blocker", func(f *fixture) { f.task("", 1, false); f.fail(fsys.OpReadFile, "1.json", syscall.EACCES) }, `{"title": "x", "blocked_by": [1]}`,
 			`io {"path":"~/tasks/1.json","code":"EACCES"}`, nil},
 		{"first unusable blocker in tree order", func(f *fixture) { f.write("tasks/p/1.json", "{"); f.write("tasks/2.json", "{") }, `{"title": "x", "blocked_by": [1, 2]}`,
@@ -201,15 +201,17 @@ func TestCreateCases(t *testing.T) {
 			`/ 101`, nil},
 
 		// The ID.
-		{"id exhausted", func(f *fixture) { f.write("tasks/koan.json", exhausted) }, `{"title": "x"}`,
-			`conflict {"rule":"id-exhausted","ids":[]}`, map[string]string{"tasks/koan.json": exhausted}},
-		{"not-found before id exhausted", func(f *fixture) { f.write("tasks/koan.json", exhausted) }, `{"title": "x", "blocked_by": [1]}`,
+		{"id exhausted", func(f *fixture) { f.setLastID(999999999999999) }, `{"title": "x"}`,
+			`conflict {"rule":"id-exhausted","ids":[]}`, map[string]string{"cfg/state.json": exhausted}},
+		{"not-found before id exhausted", func(f *fixture) { f.setLastID(999999999999999) }, `{"title": "x", "blocked_by": [1]}`,
 			`not-found {"folders":[],"ids":[1],"paths":[]}`, nil},
-		{"last id below the ceiling", func(f *fixture) { f.write("tasks/koan.json", `{"schema": 1, "last_id": 999999999999998}`) }, `{"title": "x"}`,
+		{"last id below the ceiling", func(f *fixture) {
+			f.setLastID(999999999999998)
+		}, `{"title": "x"}`,
 			`/ 999999999999999`, nil},
 		{"task file already there", func(f *fixture) { f.task("", 101, false) }, `{"title": "x"}`,
 			`corrupt {"path":"~/tasks/101.json","reason":"unexpected-file"} partial {"id":101}`,
-			map[string]string{"tasks/koan.json": "{\n  \"schema\": 1,\n  \"last_id\": 101\n}\n", "tasks/101.md": "<none>"}},
+			map[string]string{"cfg/state.json": st(101), "tasks/101.md": "<none>"}},
 		{"task file already there in another folder", func(f *fixture) { f.task("p", 101, false) }, `{"title": "x"}`,
 			`/ 101`, nil},
 		{"stray .md replaced", func(f *fixture) { f.write("tasks/101.md", "stale") }, `{"title": "x", "notes": "new"}`,
@@ -222,12 +224,12 @@ func TestCreateCases(t *testing.T) {
 			`not-initialized {"missing":"config"}`, nil},
 
 		// Failures midway.
-		{"koan.json not written", func(f *fixture) { f.failAt(fsys.OpRename, "koan.json", syscall.ENOSPC) }, `{"title": "x"}`,
-			`io {"path":"~/tasks/koan.json","code":"ENOSPC"}`,
-			map[string]string{"tasks/koan.json": "{\"schema\": 1, \"last_id\": 100}\n", "tasks/101.json": "<none>"}},
+		{"state file not written", func(f *fixture) { f.failAt(fsys.OpRename, "state.json", syscall.ENOSPC) }, `{"title": "x"}`,
+			`io {"path":"~/cfg/state.json","code":"ENOSPC"}`,
+			map[string]string{"cfg/state.json": st(100), "tasks/101.json": "<none>"}},
 		{"task file not written", func(f *fixture) { f.failAt(fsys.OpLink, "101.json", syscall.ENOSPC) }, `{"title": "x"}`,
 			`io {"path":"~/tasks/101.json","code":"ENOSPC"} partial {"id":101}`,
-			map[string]string{"tasks/koan.json": "{\n  \"schema\": 1,\n  \"last_id\": 101\n}\n", "tasks/101.json": "<none>", "tasks/101.md": "<none>"}},
+			map[string]string{"cfg/state.json": st(101), "tasks/101.json": "<none>", "tasks/101.md": "<none>"}},
 		{".md not written", func(f *fixture) { f.failAt(fsys.OpRename, "101.md", syscall.ENOSPC) }, `{"title": "x", "notes": "n"}`,
 			`/ 101; notes-missing [101] [~/tasks/101.md] ENOSPC`, map[string]string{"tasks/101.md": "<none>"}},
 		{".md not written, no errno name", func(f *fixture) { f.failAt(fsys.OpRename, "101.md", syscall.Errno(4000)) }, `{"title": "x", "notes": "n"}`,
@@ -281,7 +283,7 @@ func TestCreateBusy(t *testing.T) {
 	if got := f.createSummary(f.create(`{"title": "x"}`)); got != "busy {}" {
 		t.Errorf("got %s", got)
 	}
-	if got := f.read("tasks/koan.json"); got != "{\"schema\": 1, \"last_id\": 100}\n" {
+	if got := f.read(stateRel); got != st(100) {
 		t.Errorf("koan.json %q", got)
 	}
 	if got := f.read("tasks/101.json"); got != "<none>" {
@@ -332,8 +334,8 @@ func TestCreateConcurrent(t *testing.T) {
 	if len(seen) != writers*each {
 		t.Errorf("%d tasks created, want %d", len(seen), writers*each)
 	}
-	want := fmt.Sprintf("{\n  \"schema\": 1,\n  \"last_id\": %d\n}\n", 100+writers*each)
-	if got := f.read("tasks/koan.json"); got != want {
-		t.Errorf("koan.json %q, want %q", got, want)
+	want := st(int64(100 + writers*each))
+	if got := f.read(stateRel); got != want {
+		t.Errorf("state file %q, want %q", got, want)
 	}
 }

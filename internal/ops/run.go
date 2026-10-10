@@ -36,6 +36,7 @@ var runners = map[string]runner{
 	"info":          typed(runInfo),
 	"doctor":        typed(runDoctor),
 	"repair":        typed(runRepair),
+	"migrate":       typed(runMigrate),
 	"show":          typed(runShow),
 	"init":          typed(runInit),
 	"create":        typed(runCreate),

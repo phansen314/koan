@@ -44,7 +44,7 @@ func TestInit(t *testing.T) {
 		return nil
 	}}
 	got := run(failing, "init-partial")
-	want := `{"ok":false,"error":{"kind":"io","message":"~/cfg/config.toml: EACCES","details":{"path":"~/cfg/config.toml","code":"EACCES"},"partial":{"root_created":true,"metadata_created":true}},"warnings":[]}` + "\n"
+	want := `{"ok":false,"error":{"kind":"io","message":"~/cfg/config.toml: EACCES","details":{"path":"~/cfg/config.toml","code":"EACCES"},"partial":{"root_created":true,"metadata_created":true,"state_created":true}},"warnings":[]}` + "\n"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}

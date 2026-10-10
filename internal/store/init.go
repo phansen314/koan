@@ -7,6 +7,7 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/migrations"
 	"github.com/phansen314/koan/internal/model"
 )
 
@@ -21,10 +22,11 @@ const (
 // InitResult is what init did. RootCreated and MetaCreated are set as each
 // piece is created, so they hold on an error too: init's partial result.
 type InitResult struct {
-	Action      InitAction
-	LastID      int64
-	RootCreated bool
-	MetaCreated bool
+	Action       InitAction
+	LastID       int64
+	RootCreated  bool
+	MetaCreated  bool
+	StateCreated bool
 }
 
 // Init creates a new tree at root, or attaches the one there, and writes the
@@ -62,10 +64,10 @@ func Init(env Env, root string, replace bool) (InitResult, *errs.Error) {
 		}
 		res.RootCreated = true
 	}
-	if e := initTree(env, root, &res); e != nil {
+	if e := initTree(env, root, exists, cfgExists, &res); e != nil {
 		return res, e
 	}
-	return res, writeConfig(env, root, cfgExists)
+	return res, nil
 }
 
 // rootExists reports whether anything is at root; if so it must lead,
@@ -110,22 +112,66 @@ func configExists(env Env) (bool, *errs.Error) {
 
 // initTree attaches the tree at root if it has koan.json, checked as File
 // validity says; otherwise, if root is empty but for hidden entries, it
-// creates koan.json for a new tree.
-func initTree(env Env, root string, res *InitResult) *errs.Error {
+// creates koan.json for a new tree. Then it writes the state file, and last
+// the config (implementation-spec.md, init). existed: the root was there
+// before this init, so the state file is read and written under its lock.
+func initTree(env Env, root string, existed, replace bool, res *InitResult) *errs.Error {
 	r, err := env.FS.OpenRoot(root)
 	if err != nil {
 		return errs.FromOS(root, err)
 	}
 	defer r.Close()
 	ms := readMeta(r)
+	res.Action = InitAttached
+	var last int64 // the highest of the sources of the state file's last_id
 	switch ms.state {
-	case MetaOK:
-		res.Action, res.LastID = InitAttached, ms.meta.LastID
-		return nil
+	case MetaOK, MetaOldFormat: // attached whatever migrations are pending
+		if ms.oldLastID != nil {
+			last = *ms.oldLastID
+		}
 	case MetaMissing:
+		if e := createMeta(r, root, res); e != nil {
+			return e
+		}
 	default:
-		return metaError(ms, root)
+		return metaUnusable(ms, root)
 	}
+	if res.Action == InitAttached {
+		// The highest ID in any task filename: names only, no task file read.
+		tx := &Tx{root: r, rootPath: root, cache: map[Location]*Loaded{}}
+		x := tx.Index()
+		if e := tx.RequireWholeTree(x); e != nil {
+			return e
+		}
+		for _, l := range x.Tasks {
+			last = max(last, int64(l.ID))
+		}
+	}
+	if existed {
+		lock, e := takeLock(r, root, env.LockWait)
+		if e != nil {
+			return e
+		}
+		defer lock.Unlock()
+	}
+	if err := env.FS.MkdirAll(env.ConfigDir, FolderMode); err != nil {
+		return errs.FromOS(env.ConfigDir, err)
+	}
+	// The counter for a root never goes down: a usable state file already
+	// naming it is a floor; any other is replaced.
+	if sr := readState(env, root); sr.state == StateOK {
+		last = max(last, sr.file.LastID)
+	}
+	if e := writeState(env, root, last); e != nil {
+		return e
+	}
+	res.StateCreated, res.LastID = true, last
+	return writeConfig(env, root, replace)
+}
+
+// createMeta creates koan.json for a new tree: root is empty but for hidden
+// entries, or was just made.
+func createMeta(r fsys.Root, root string, res *InitResult) *errs.Error {
 	if !res.RootCreated {
 		entries, err := r.ReadDir(".")
 		if err != nil {
@@ -137,7 +183,7 @@ func initTree(env Env, root string, res *InitResult) *errs.Error {
 			}
 		}
 	}
-	data, err := model.RootFile{Schema: model.RootSchema}.Encode()
+	data, err := model.RootFile{Schema: model.RootSchema, Migration: migrations.Latest()}.Encode()
 	if err != nil {
 		return errs.Internal("encoding koan.json: " + err.Error())
 	}

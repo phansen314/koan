@@ -9,12 +9,13 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/migrations"
 )
 
 func TestReadUsableRoot(t *testing.T) {
 	f := newFixture(t)
 	readTx(t, f.env, nil, func(tx *Tx) {
-		if got := tx.Meta().LastID; got != 100 {
+		if got := tx.LastID(); got != 100 {
 			t.Errorf("last_id %d", got)
 		}
 		if got := tx.Path("proj/1.json"); got != f.root+"/proj/1.json" {
@@ -135,14 +136,36 @@ func TestRootStates(t *testing.T) {
 			errs.KindCorrupt, func(f *fixture) any {
 				return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptNotJSON, Detail: "empty"}
 			}},
-		{"koan.json invalid", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": -1}`) },
+		{"koan.json invalid", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 2, "migration": -1}`) },
+			errs.KindCorrupt, func(f *fixture) any {
+				return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptInvalid,
+					Problems: []errs.Problem{{Field: "/migration", Reason: "must be between 0 and 9007199254740991"}}}
+			}},
+		{"koan.json unsupported", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 3, "whatever": true}`) },
+			errs.KindUnsupportedFormat, func(f *fixture) any {
+				return errs.UnsupportedFormatDetails{Path: meta(f), Found: 3, Supported: []int64{2}}
+			}},
+		{"koan.json schema 0", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 0, "last_id": 1}`) },
+			errs.KindUnsupportedFormat, func(f *fixture) any {
+				return errs.UnsupportedFormatDetails{Path: meta(f), Found: 0, Supported: []int64{2}}
+			}},
+		{"koan.json past the latest step", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 2, "migration": 2}`) },
+			errs.KindUnsupportedFormat, func(f *fixture) any {
+				return errs.UnsupportedFormatDetails{Path: meta(f), Found: 2, Supported: []int64{1}, Field: "migration"}
+			}},
+		{"koan.json in an older format", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": 1}`) },
+			errs.KindMigrationPending, func(*fixture) any { return errs.MigrationPendingDetails{Recorded: 0, Latest: 1} }},
+		{"koan.json a step behind", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 2, "migration": 0}`) },
+			errs.KindMigrationPending, func(*fixture) any { return errs.MigrationPendingDetails{Recorded: 0, Latest: 1} }},
+		{"older koan.json breaking its own format", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": -1}`) },
 			errs.KindCorrupt, func(f *fixture) any {
 				return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptInvalid,
 					Problems: []errs.Problem{{Field: "/last_id", Reason: "must be between 0 and 999999999999999"}}}
 			}},
-		{"koan.json unsupported", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 2, "whatever": true}`) },
-			errs.KindUnsupportedFormat, func(f *fixture) any {
-				return errs.UnsupportedFormatDetails{Path: meta(f), Found: 2, Supported: []int64{1}}
+		{"older koan.json with the counter", func(f *fixture) { f.write("tasks/"+MetaName, `{"schema": 1, "last_id": 1, "migration": 0}`) },
+			errs.KindCorrupt, func(f *fixture) any {
+				return errs.CorruptDetails{Path: meta(f), Reason: errs.CorruptInvalid,
+					Problems: []errs.Problem{{Field: "/migration", Reason: "unknown field"}}}
 			}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -255,25 +278,45 @@ func TestWriteLockError(t *testing.T) {
 	wantErr(t, Write(env, nil, nil), errs.KindIO, errs.IODetails{Path: f.root, Code: "EIO"})
 }
 
-// A write re-reads koan.json once it holds the lock: a change made while it
-// waited is seen, and a problem found only then is a Root states error.
+// A write re-reads koan.json and the state file once it holds the lock: a
+// change made while it waited is seen, and a problem found only then is a
+// Root states error.
 func TestWriteRereadsMeta(t *testing.T) {
 	f := newFixture(t)
-	change := func(content string) fsys.Hook {
+	change := func(rel, content string) fsys.Hook {
 		return func(op fsys.Op) error {
 			if op.Name == fsys.OpLock {
-				f.write("tasks/"+MetaName, content)
+				f.write(rel, content)
 			}
 			return nil
 		}
 	}
-	writeTx(t, f.withFault(change(`{"schema": 1, "last_id": 7}`)), nil, func(tx *Tx) {
-		if got := tx.Meta().LastID; got != 7 {
+	writeTx(t, f.withFault(change("cfg/"+StateName, stateJSON(f.root, 7))), nil, func(tx *Tx) {
+		if got := tx.LastID(); got != 7 {
 			t.Errorf("last_id %d, want 7", got)
 		}
 	})
-	wantErr(t, Write(f.withFault(change(`{"schema": 3}`)), nil, nil), errs.KindUnsupportedFormat,
-		errs.UnsupportedFormatDetails{Path: f.root + "/" + MetaName, Found: 3, Supported: []int64{1}})
+	wantErr(t, Write(f.withFault(change("tasks/"+MetaName, `{"schema": 3}`)), nil, nil), errs.KindUnsupportedFormat,
+		errs.UnsupportedFormatDetails{Path: f.root + "/" + MetaName, Found: 3, Supported: []int64{2}})
+	// A step made pending while it waited is migration-pending, not a write.
+	f.write("tasks/"+MetaName, "{\"schema\": 2, \"migration\": 1}\n")
+	ran := false
+	wantErr(t, Write(f.withFault(change("tasks/"+MetaName, `{"schema": 1, "last_id": 7}`)), nil, func(*Tx) *errs.Error { ran = true; return nil }),
+		errs.KindMigrationPending, errs.MigrationPendingDetails{Recorded: 0, Latest: 1})
+	if ran {
+		t.Error("fn ran")
+	}
+	// The state file, changed while it waited.
+	f.write("tasks/"+MetaName, "{\"schema\": 2, \"migration\": 1}\n")
+	for content, want := range map[string]*errs.Error{
+		"{":                        errs.CorruptBy(f.path("cfg/"+StateName), errs.CorruptCause{Reason: errs.CorruptNotJSON, Detail: "not valid JSON: unexpected end of input"}),
+		stateJSON("/elsewhere", 1): errs.NotInitialized(errs.MissingState),
+		`{"schema": 2}`:            errs.UnsupportedFormat(f.path("cfg/"+StateName), 2, []int64{1}),
+	} {
+		f.write("cfg/"+StateName, stateJSON(f.root, 100))
+		e := Write(f.withFault(change("cfg/"+StateName, content)), nil, func(*Tx) *errs.Error { t.Error("fn ran"); return nil })
+		wantErr(t, e, want.Kind, want.Details)
+	}
 }
 
 // The error fn returns is Read's and Write's; warnings reach the collector.
@@ -302,6 +345,7 @@ func TestOneResolution(t *testing.T) {
 	link := f.path("link")
 	must(t, os.Symlink(f.root, link))
 	f.write("cfg/"+ConfigName, string(EncodeConfig(link)))
+	f.write("cfg/"+StateName, stateJSON(link, 100))
 	writeTx(t, f.env, nil, func(tx *Tx) {
 		must(t, os.Remove(link))
 		must(t, os.Symlink(other, link))
@@ -310,4 +354,48 @@ func TestOneResolution(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(f.root, "1.json")); err != nil {
 		t.Errorf("not written to the root the write locked: %v", err)
 	}
+}
+
+// MigrateFormats accepts a koan.json in an older format or behind, and keeps
+// the ordered tree of an older task file (and of koan.json); the other
+// transactions keep neither, and treat the file as unsupported.
+func TestMigrateFormatsCache(t *testing.T) {
+	step := migrations.Step{Number: 2, Name: "t", Task: &migrations.Format{From: 0}}
+	t.Cleanup(migrations.UseSteps(append(migrations.Steps(), step)))
+	f := newFixture(t)
+	f.write("tasks/koan.json", `{"schema": 1, "last_id": 5}`)
+	f.write("tasks/1.json", `{"schema": 0}`)
+	loc := Location{Folder: "/", ID: 1}
+
+	e := MigrateFormats(f.env, nil, func(tx *Tx) *errs.Error {
+		obj, schema, ok := tx.OldMeta()
+		if last, holds := tx.OldLastID(); !ok || schema != 1 || obj == nil || !holds || last != 5 {
+			t.Errorf("OldMeta = %v %d %v", obj, schema, ok)
+		}
+		ld := tx.Load(loc)
+		if ld.State != Unsupported || !ld.Older || ld.Tree == nil || ld.Found != 0 {
+			t.Errorf("loaded %+v", ld)
+		}
+		return nil
+	})
+	wantNoErr(t, e)
+
+	f.write("tasks/koan.json", `{"schema": 2, "migration": 1}`)
+	wantNoErr(t, Diagnose(f.env, nil, func(tx *Tx) *errs.Error {
+		if ld := tx.Load(loc); ld.State != Unsupported || !ld.Older || ld.Tree != nil {
+			t.Errorf("loaded %+v", ld)
+		}
+		return nil
+	}))
+
+	// Its own errors, after busy.
+	for content, kind := range map[string]errs.Kind{
+		"{": errs.KindCorrupt, `{"schema": 3}`: errs.KindUnsupportedFormat, `{"schema": 2, "migration": 9}`: errs.KindUnsupportedFormat,
+		`{"schema": 1, "last_id": -1}`: errs.KindCorrupt,
+	} {
+		f.write("tasks/koan.json", content)
+		wantKind(t, MigrateFormats(f.env, nil, func(*Tx) *errs.Error { t.Error("fn ran"); return nil }), kind)
+	}
+	must(t, os.Remove(f.path("tasks/koan.json")))
+	wantKind(t, MigrateFormats(f.env, nil, nil), errs.KindNotInitialized)
 }

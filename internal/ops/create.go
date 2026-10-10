@@ -85,11 +85,11 @@ func runCreate(env Env, in CreateInput, w *errs.Collector) (any, *errs.Error) {
 		if e := aboveLastID(tx, in.BlockedBy); e != nil {
 			return e
 		}
-		if tx.Meta().LastID >= model.IDMax {
+		if tx.LastID() >= model.IDMax {
 			return errs.Conflict(errs.RuleIDExhausted, nil)
 		}
 
-		id := model.ID(tx.Meta().LastID + 1)
+		id := model.ID(tx.LastID() + 1)
 		loc := store.Location{Folder: in.Folder, ID: id}
 		now := model.TimestampOf(env.Clock())
 		tf := model.TaskFile{

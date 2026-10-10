@@ -6,6 +6,7 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/fsys"
+	"github.com/phansen314/koan/internal/jsonio"
 	"github.com/phansen314/koan/internal/model"
 )
 
@@ -109,10 +110,26 @@ func (tx *Tx) Mkdir(rel string) error {
 	return tx.root.Mkdir(rel, FolderMode)
 }
 
-// SetLastID records lastID in koan.json, keeping its schema.
+// SetLastID records lastID in the state file, while the root's lock is held.
+// Before writing it removes any temp file an
+// interrupted write left in the config directory.
 func (tx *Tx) SetLastID(lastID int64) *errs.Error {
-	m := tx.meta
-	m.LastID = lastID
+	return tx.writeState(lastID)
+}
+
+func (tx *Tx) writeState(lastID int64) *errs.Error {
+	if e := tx.mustWrite("write " + StateName); e != nil {
+		return e
+	}
+	if e := writeState(tx.env, tx.rootPath, lastID); e != nil {
+		return e
+	}
+	tx.state = stateResult{state: StateOK, file: model.StateFile{Schema: model.StateSchema, Root: tx.rootPath, LastID: lastID}}
+	return nil
+}
+
+// SetMeta replaces koan.json with m, whole: migrate's last write.
+func (tx *Tx) SetMeta(m model.RootFile) *errs.Error {
 	data, err := m.Encode()
 	if err != nil {
 		return errs.Internal("encode " + MetaName + ": " + err.Error())
@@ -121,6 +138,24 @@ func (tx *Tx) SetLastID(lastID int64) *errs.Error {
 		return e
 	}
 	tx.meta = m
-	tx.metaSt.meta = m
+	tx.metaSt = metaState{state: MetaOK, meta: m}
 	return nil
+}
+
+// OldMeta is the ordered tree of koan.json when it is in an older format,
+// with its schema, in a migration transaction; ok is false otherwise.
+func (tx *Tx) OldMeta() (obj *jsonio.Object, schema int64, ok bool) {
+	if tx.metaSt.state != MetaOldFormat {
+		return nil, 0, false
+	}
+	return tx.metaSt.old, tx.metaSt.meta.Schema, true
+}
+
+// OldLastID is the last_id a koan.json in an older format holds, in a
+// migration transaction; ok is false when koan.json holds none.
+func (tx *Tx) OldLastID() (last int64, ok bool) {
+	if tx.metaSt.state != MetaOldFormat || tx.metaSt.oldLastID == nil {
+		return 0, false
+	}
+	return *tx.metaSt.oldLastID, true
 }

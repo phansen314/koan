@@ -243,7 +243,7 @@ func runCreateBatch(env Env, in CreateBatchInput, w *errs.Collector) (any, *errs
 				return e
 			}
 		}
-		last := tx.Meta().LastID
+		last := tx.LastID()
 		if last > model.IDMax-int64(len(in.Tasks)) {
 			return errs.Conflict(errs.RuleIDExhausted, nil)
 		}

@@ -150,8 +150,8 @@ func TestShowCases(t *testing.T) {
 			`not-initialized {"missing":"metadata"}`},
 		{"corrupt config", func(f *fixture) { f.write("cfg/config.toml", "root = 1\n") },
 			`corrupt {"path":"~/cfg/config.toml","reason":"invalid","detail":"line 1: root must be a double-quoted string"}`},
-		{"unsupported koan.json", func(f *fixture) { f.write("tasks/koan.json", `{"schema": 2}`) },
-			`unsupported-format {"path":"~/tasks/koan.json","found":2,"supported":[1]}`},
+		{"unsupported koan.json", func(f *fixture) { f.write("tasks/koan.json", `{"schema": 3}`) },
+			`unsupported-format {"path":"~/tasks/koan.json","found":3,"supported":[2]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)

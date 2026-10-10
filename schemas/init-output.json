@@ -6,7 +6,7 @@
   "properties": {
     "root": { "type": "string", "description": "Absolute root path, as recorded in the config." },
     "action": { "type": "string", "enum": ["created", "attached"], "description": "created: a new, empty tree was created. attached: an existing tree (one already containing koan.json) was attached to this machine." },
-    "last_id": { "$ref": "root-file#/properties/last_id" }
+    "last_id": { "$ref": "state-file#/properties/last_id", "description": "The last_id the state file now holds." }
   },
   "additionalProperties": false
 }

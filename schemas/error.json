@@ -14,6 +14,7 @@
     { "if": { "properties": { "kind": { "const": "invalid-input" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/invalid-input" } } } },
     { "if": { "properties": { "kind": { "const": "environment" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/environment" } } } },
     { "if": { "properties": { "kind": { "const": "not-initialized" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/not-initialized" } } } },
+    { "if": { "properties": { "kind": { "const": "migration-pending" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/migration-pending" } } } },
     { "if": { "properties": { "kind": { "const": "not-found" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/not-found" } } } },
     { "if": { "properties": { "kind": { "const": "conflict" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/conflict" } } } },
     { "if": { "properties": { "kind": { "const": "corrupt" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/corrupt" } } } },
@@ -52,7 +53,16 @@
     "not-initialized": {
       "type": "object",
       "required": ["missing"],
-      "properties": { "missing": { "type": "string", "enum": ["config", "root", "metadata"] } },
+      "properties": { "missing": { "type": "string", "enum": ["config", "root", "metadata", "state"] } },
+      "additionalProperties": false
+    },
+    "migration-pending": {
+      "type": "object",
+      "required": ["recorded", "latest"],
+      "properties": {
+        "recorded": { "$ref": "root-file#/properties/migration", "description": "The step koan.json records; 0 at schema 1." },
+        "latest": { "$ref": "root-file#/properties/migration", "description": "This binary's latest step." }
+      },
       "additionalProperties": false
     },
     "not-found": {
@@ -130,7 +140,8 @@
       "properties": {
         "path": { "type": "string" },
         "found": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
-        "supported": { "type": "array", "items": { "type": "integer" } }
+        "supported": { "type": "array", "items": { "type": "integer" } },
+        "field": { "const": "migration", "description": "Present when koan.json records a migration step past this binary's latest: found is that step, and supported is [latest]. Absent when the schema is what is unsupported." }
       },
       "additionalProperties": false
     }

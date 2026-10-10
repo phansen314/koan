@@ -56,6 +56,8 @@ func TestDetailsShapes(t *testing.T) {
 		{"corrupt", Corrupt("/r/koan.json", CorruptUnexpectedFile), `{"path":"/r/koan.json","reason":"unexpected-file"}`},
 		{"io", IO("/r/a", "EACCES"), `{"path":"/r/a","code":"EACCES"}`},
 		{"unsupported-format", UnsupportedFormat("/r/1.json", 2, []int64{1}), `{"path":"/r/1.json","found":2,"supported":[1]}`},
+		{"unsupported-format migration", UnsupportedMigration("/r/koan.json", 3, 1), `{"path":"/r/koan.json","found":3,"supported":[1],"field":"migration"}`},
+		{"migration-pending", MigrationPending(0, 1), `{"recorded":0,"latest":1}`},
 		{"usage", Usage([]UsageProblem{{Argument: &arg, Reason: "extra argument"}, {Reason: "missing <id>"}}),
 			`{"problems":[{"argument":"","reason":"extra argument"},{"reason":"missing <id>"}]}`},
 	} {

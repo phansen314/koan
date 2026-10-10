@@ -112,9 +112,25 @@ func TestRootFileAgreesWithSchema(t *testing.T) {
 		_, r := DecodeRootFile(obj, repeated)
 		return fileVerdict(r)
 	}
-	docs := append(schematest.Mutations(t, `{"schema": 1, "last_id": 42}`), `{}`, `{"last_id": 0}`)
+	docs := append(schematest.Mutations(t, `{"schema": 2, "migration": 1}`), `{}`, `{"migration": 0}`, `{"schema": 2, "last_id": 4, "migration": 0}`)
 	for _, doc := range docs {
 		agree(t, "root-file", doc, adapter)
+	}
+	t.Logf("%d documents", len(docs))
+}
+
+func TestStateFileAgreesWithSchema(t *testing.T) {
+	adapter := func(doc string) verdict {
+		obj, repeated, err := jsonio.ParseObject([]byte(doc))
+		if err != nil {
+			t.Fatalf("parse %s: %v", doc, err)
+		}
+		_, r := DecodeStateFile(obj, repeated)
+		return fileVerdict(r)
+	}
+	docs := append(schematest.Mutations(t, `{"schema": 1, "root": "/home/u/tasks", "last_id": 42}`), `{}`, `{"root": "/r", "last_id": 0}`, `{"schema": 1, "root": "", "last_id": 0}`)
+	for _, doc := range docs {
+		agree(t, "state-file", doc, adapter)
 	}
 	t.Logf("%d documents", len(docs))
 }

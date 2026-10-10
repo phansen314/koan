@@ -164,22 +164,52 @@ func TestWritesNeedWrite(t *testing.T) {
 
 func TestSetLastID(t *testing.T) {
 	f := newFixture(t)
+	koanJSON := f.read("tasks/" + MetaName)
+	f.write("cfg/.koan-tmp-stale", "x") // an interrupted write's leftover
 	writeTx(t, f.env, nil, func(tx *Tx) {
 		wantNoErr(t, tx.SetLastID(101))
-		if got := tx.Meta().LastID; got != 101 {
-			t.Errorf("Meta().LastID = %d", got)
+		if got := tx.LastID(); got != 101 {
+			t.Errorf("LastID = %d", got)
 		}
 	})
-	if got, want := f.read("tasks/"+MetaName), "{\n  \"schema\": 1,\n  \"last_id\": 101\n}\n"; got != want {
-		t.Errorf("koan.json is %q, want %q", got, want)
+	if got, want := f.read("cfg/"+StateName), stateJSON(f.root, 101); got != want {
+		t.Errorf("state file is %q, want %q", got, want)
 	}
+	if f.read("tasks/"+MetaName) != koanJSON {
+		t.Error("an ID-issuing write changed koan.json")
+	}
+	if _, err := os.Lstat(f.path("cfg/.koan-tmp-stale")); !os.IsNotExist(err) {
+		t.Error("the stale temp file in the config directory is still there")
+	}
+	f.noTemps("cfg")
 	env := f.withFault(fsys.ErrnoAt(fsys.OpRename, "", 1, syscall.EROFS))
 	writeTx(t, env, nil, func(tx *Tx) {
-		wantErr(t, tx.SetLastID(102), errs.KindIO, errs.IODetails{Path: tx.Path(MetaName), Code: "EROFS"})
-		if got := tx.Meta().LastID; got != 101 {
-			t.Errorf("Meta().LastID = %d after a failed write", got)
+		wantErr(t, tx.SetLastID(102), errs.KindIO, errs.IODetails{Path: f.path("cfg/" + StateName), Code: "EROFS"})
+		if got := tx.LastID(); got != 101 {
+			t.Errorf("LastID = %d after a failed write", got)
 		}
 	})
+	if got := f.read("cfg/" + StateName); got != stateJSON(f.root, 101) {
+		t.Errorf("state file after a failed write: %q", got)
+	}
+}
+
+// CreateState writes a state file naming the root, replacing any there.
+func TestCreateState(t *testing.T) {
+	f := newFixture(t)
+	f.write("cfg/"+StateName, stateJSON("/elsewhere", 9))
+	diagnoseTx(t, f.env, func(tx *Tx) {
+		if st, e := tx.StateState(); st != StateOtherRoot || e == nil || e.Kind != errs.KindNotInitialized {
+			t.Errorf("StateState = %v %v", st, e)
+		}
+		wantNoErr(t, tx.CreateState(42))
+		if st, e := tx.StateState(); st != StateOK || e != nil || tx.LastID() != 42 {
+			t.Errorf("after CreateState: %v %v %d", st, e, tx.LastID())
+		}
+	})
+	if got := f.read("cfg/" + StateName); got != stateJSON(f.root, 42) {
+		t.Errorf("state file %q", got)
+	}
 }
 
 func TestMkdir(t *testing.T) {

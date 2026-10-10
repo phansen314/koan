@@ -43,7 +43,7 @@ func runDelete(env Env, in IDInput, w *errs.Collector) (any, *errs.Error) {
 			return errs.NotFound(nil, []int64{int64(in.ID)}, nil)
 		case len(locs) > 1:
 			return errs.Conflict(errs.RuleDuplicateID, []int64{int64(in.ID)})
-		case int64(in.ID) > tx.Meta().LastID:
+		case int64(in.ID) > tx.LastID():
 			return errs.Conflict(errs.RuleIDAboveLastID, []int64{int64(in.ID)})
 		}
 		target := locs[0]
@@ -194,7 +194,7 @@ func runDeleteFolder(env Env, in DeleteFolderInput, w *errs.Collector) (any, *er
 				if len(tx.Copies(id)) > 1 {
 					dup = append(dup, int64(id))
 				}
-				if int64(id) > tx.Meta().LastID {
+				if int64(id) > tx.LastID() {
 					above = append(above, int64(id))
 				}
 			}

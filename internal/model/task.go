@@ -143,8 +143,21 @@ func (v TaskView) field(name string) any {
 
 // RootFile is koan.json's content (see design-spec.md, Root metadata).
 type RootFile struct {
-	Schema int64 `json:"schema"`
-	LastID int64 `json:"last_id"`
+	Schema    int64 `json:"schema"`
+	Migration int64 `json:"migration"`
+}
+
+// StateFile is the state file's content (see design-spec.md, State file):
+// this machine's ID counter for one root.
+type StateFile struct {
+	Schema int64  `json:"schema"`
+	Root   string `json:"root"`
+	LastID int64  `json:"last_id"`
+}
+
+// Encode returns the state file's bytes, per design-spec.md, File format.
+func (s StateFile) Encode() ([]byte, error) {
+	return jsonio.MarshalFile(s)
 }
 
 // Encode returns koan.json's bytes, per design-spec.md, File format.

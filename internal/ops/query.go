@@ -172,7 +172,7 @@ func requireIDs(tx *store.Tx, found map[model.ID][]*store.Loaded) *errs.Error {
 func aboveLastID(tx *store.Tx, ids []model.ID) *errs.Error {
 	var above []int64
 	for _, id := range ids {
-		if int64(id) > tx.Meta().LastID {
+		if int64(id) > tx.LastID() {
 			above = append(above, int64(id))
 		}
 	}

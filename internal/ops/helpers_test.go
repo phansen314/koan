@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,8 +41,37 @@ func newFixture(t *testing.T) *fixture {
 	f := &fixture{t: t, home: home, root: filepath.Join(home, "tasks")}
 	f.env = Env{Env: store.Env{FS: fsys.OS{}, Home: home, ConfigDir: filepath.Join(home, "cfg")}, Clock: fixedClock}
 	f.write("cfg/"+store.ConfigName, string(store.EncodeConfig(f.root)))
-	f.write("tasks/"+store.MetaName, "{\"schema\": 1, \"last_id\": 100}\n")
+	f.write("tasks/"+store.MetaName, "{\"schema\": 2, \"migration\": 1}\n")
+	f.setLastID(100)
 	return f
+}
+
+// stateRel is the state file's path under the home.
+const stateRel = "cfg/" + store.StateName
+
+// setLastID writes the state file for the root, as koan writes it.
+func (f *fixture) setLastID(last int64) {
+	f.t.Helper()
+	f.write(stateRel, fmt.Sprintf("{\n  \"schema\": 1,\n  \"root\": %q,\n  \"last_id\": %d\n}\n", f.root, last))
+}
+
+// st is a state file as koan writes it, naming the fixture's root with the
+// home written "~" (read does the same for the state file).
+func st(last int64) string {
+	return fmt.Sprintf("{\n  \"schema\": 1,\n  \"root\": \"~/tasks\",\n  \"last_id\": %d\n}\n", last)
+}
+
+// lastID is the last_id the state file holds, or -1 when there is none.
+func (f *fixture) lastID() int64 {
+	f.t.Helper()
+	var s struct {
+		LastID int64 `json:"last_id"`
+	}
+	data := f.read(stateRel)
+	if data == "<none>" || json.Unmarshal([]byte(data), &s) != nil {
+		return -1
+	}
+	return s.LastID
 }
 
 // write writes content at rel, under the home, creating its directory.
@@ -116,6 +146,9 @@ func (f *fixture) read(rel string) string {
 	}
 	if err != nil {
 		f.t.Fatal(err)
+	}
+	if rel == stateRel {
+		return f.rel(string(b))
 	}
 	return string(b)
 }

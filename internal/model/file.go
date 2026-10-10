@@ -179,8 +179,8 @@ func DecodeRootFile(obj *jsonio.Object, repeated []string) (RootFile, FileResult
 	f, _ := p.Object(obj, "")
 	r := RootFile{Schema: RootSchema}
 	f.Required("schema")
-	if v, ok := f.Required("last_id"); ok {
-		r.LastID, _ = p.Int(v, "/last_id", 0, IDMax)
+	if v, ok := f.Required("migration"); ok {
+		r.Migration, _ = p.Int(v, "/migration", 0, MigrationMax)
 	}
 	f.Done()
 	res := finish(version, repeated, &p)
@@ -188,4 +188,35 @@ func DecodeRootFile(obj *jsonio.Object, repeated []string) (RootFile, FileResult
 		return RootFile{}, res
 	}
 	return r, res
+}
+
+// DecodeStateFile checks a parsed state file (repeated: its repeated keys,
+// from jsonio) and returns its content, valid only when Status is FileOK.
+// Whether it names the right root is the caller's to compare.
+func DecodeStateFile(obj *jsonio.Object, repeated []string) (StateFile, FileResult) {
+	version, ok := checkVersion(obj, repeated, StateSchema)
+	if !ok {
+		return StateFile{}, version
+	}
+	var p Problems
+	f, _ := p.Object(obj, "")
+	s := StateFile{Schema: StateSchema}
+	f.Required("schema")
+	if v, ok := f.Required("root"); ok {
+		if str, ok := p.String(v, "/root"); ok {
+			if str == "" {
+				p.Add("/root", "must not be empty")
+			}
+			s.Root = str
+		}
+	}
+	if v, ok := f.Required("last_id"); ok {
+		s.LastID, _ = p.Int(v, "/last_id", 0, IDMax)
+	}
+	f.Done()
+	res := finish(version, repeated, &p)
+	if res.Status != FileOK {
+		return StateFile{}, res
+	}
+	return s, res
 }

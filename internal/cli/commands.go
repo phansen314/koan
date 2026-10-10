@@ -58,6 +58,16 @@ var commands = []Command{
   koan repair --kinds metadata-missing          # rebuild a lost koan.json; never done by default`,
 	},
 	{
+		Name:    "migrate",
+		Op:      "migrate",
+		Summary: "Convert the tree to this binary's formats, then record its latest migration step",
+		Options: []Option{
+			{Name: "dry-run", Field: "/dry_run", Type: Bool, Help: "report what would change, and write nothing"},
+		},
+		Example: `  koan migrate --dry-run | jq '.result | {from, to, tasks_converted}'   # what it would do, writing nothing
+  koan migrate | jq '.result | {applied, tasks_converted, unconverted}'  # unconverted: files no step could read`,
+	},
+	{
 		Name:    "create-folder",
 		Op:      "create-folder",
 		Summary: "Create a folder, and optionally any missing parent folders",

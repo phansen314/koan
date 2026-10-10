@@ -179,6 +179,7 @@ Report the version and build of the koan binary, and the data format versions it
 
 ```sh
 koan version
+koan version | jq '.result.migration'   # the latest migration step this binary knows
 ```
 
 ### info
@@ -205,6 +206,7 @@ A root that is not initialized or not usable is reported as state (`ok: true`, `
 
 ```sh
 koan info   # ready when .result.usable is true; if not, the rest of .result says why
+koan info | jq -e '.result.migration_pending'   # true: run koan migrate (see migrate, below)
 ```
 
 ### init
@@ -299,7 +301,7 @@ Apply the repairs that are safe, then report what is left. Runs [`repair`](opera
 
 | Option | Field | Default |
 |---|---|---|
-| `--kinds <kinds>` | `/kinds` | None: every *auto* kind. Comma list of [finding kinds](operations.md#finding-kinds) to repair. Naming `metadata-missing` is the only way to rebuild `koan.json`. |
+| `--kinds <kinds>` | `/kinds` | None: every *auto* kind. Comma list of [finding kinds](operations.md#finding-kinds) to repair. Naming `metadata-missing` is the only way to rebuild `koan.json`, and `state-missing` the only way to rebuild the state file. |
 
 **Input:** none beyond the Options mapping.
 
@@ -313,9 +315,44 @@ Apply the repairs that are safe, then report what is left. Runs [`repair`](opera
 koan repair                                   # every auto repair
 koan repair --kinds temp-leftover             # only the leftover temp files
 koan repair --kinds metadata-missing          # rebuild a lost koan.json; never done by default
+koan repair --kinds state-missing             # rebuild this machine's ID counter from the highest ID in the tree; never done by default
 ```
 
 There is no `doctor --fix`. Repairing is its own command, so that agent permission rules, which match a command line by its start, can ask before `koan repair` whatever options follow.
+
+### migrate
+
+Convert the tree to this binary's formats, then record its latest migration step. Runs [`migrate`](operations.md#migrate).
+
+**Synopsis:** `koan migrate [--dry-run]`, or `koan migrate -i <file>`.
+
+**Operation:** [`migrate`](operations.md#migrate).
+
+**Arguments:** none.
+
+**Options:**
+
+| Option | Field | Default |
+|---|---|---|
+| `--dry-run` | `/dry_run` | Off: convert and write. On: report what would change, and write nothing. |
+
+**Input:** none beyond the Options mapping.
+
+**Output:** Passthrough. Files `migrate` could not convert or reach don't fail the command: the first are listed in `unconverted`, the second are warnings, and it exits `0`. To turn them into an exit status, use `jq -e '.result.unconverted_count == 0 and (.warnings | length) == 0'`.
+
+**Errors:** none beyond the operation's.
+
+**Examples:**
+
+```sh
+koan info | jq '.result.migration_pending'                             # true after installing a binary with a new step
+koan migrate --dry-run | jq '.result | {from, to, tasks_converted}'    # what it would do, writing nothing
+git -C ~/koans add -A && git -C ~/koans commit -qm 'Before koan migrate'   # in a tree kept in git: the commit to go back to
+koan migrate | jq '.result | {applied, tasks_converted, unconverted}'  # unconverted: files no step could read, for a person to fix or remove
+git -C ~/koans restore .                                               # undo, until the migration is committed
+```
+
+Migrating is its own command, never a `repair` kind, for the same reason `repair` is not `doctor --fix`: agent permission rules can ask before `koan migrate`, which rewrites every task file in an older format.
 
 ### create-folder
 

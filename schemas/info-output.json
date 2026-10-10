@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "info-output",
   "type": "object",
-  "required": ["config", "tree", "initialized", "usable", "compatible"],
+  "required": ["config", "tree", "state", "initialized", "usable", "compatible", "migration_pending"],
   "properties": {
     "config": {
       "type": "object",
@@ -16,19 +16,31 @@
     },
     "tree": {
       "type": ["object", "null"],
-      "required": ["root_exists", "metadata", "schema", "last_id"],
+      "required": ["root_exists", "metadata", "schema", "migration"],
       "properties": {
         "root_exists": { "type": "boolean", "description": "Whether the root path leads, through symlinks, to a directory." },
-        "metadata": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of koan.json, per the three-step check (see File validity): corrupt fails step 1 or 3 (or is not a regular file); unsupported-format fails step 2." },
-        "schema": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991, "description": "koan.json's schema value; set whenever step 1 passes — whether metadata ends up ok, unsupported-format, or corrupt at step 3 — otherwise null." },
-        "last_id": { "anyOf": [{ "$ref": "root-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless metadata is ok." }
+        "metadata": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "old-format", "unsupported-format", "ok"], "description": "State of koan.json, per the three-step check (see File validity): corrupt fails step 1 or 3 (or is not a regular file), or is in an older format and breaks that format's rules; old-format fails step 2 with an older version, valid by its own rules, which migrate converts; unsupported-format fails step 2 with any other version, or passes every step but records a migration step past this binary's latest. ok says nothing about a step behind it: see migration_pending." },
+        "schema": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991, "description": "koan.json's schema value; set whenever step 1 passes — whether metadata ends up ok, old-format, unsupported-format, or corrupt after step 1 — otherwise null." },
+        "migration": { "anyOf": [{ "$ref": "root-file#/properties/migration" }, { "type": "null" }], "description": "The migration step koan.json records: its migration when metadata is ok, or unsupported-format for a step past the latest; for old-format, what that format records (0 at schema 1, which predates migrations); otherwise null." }
       },
       "additionalProperties": false,
       "description": "State of the configured root; null when config.root is null."
     },
-    "initialized": { "type": "boolean", "description": "True unless the root is not initialized (see Root states). True, with tree null, when the config exists but is unusable." },
+    "state": {
+      "type": ["object", "null"],
+      "required": ["path", "state", "last_id"],
+      "properties": {
+        "path": { "type": "string", "description": "Path of the state file, beside the config." },
+        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the state file, per the three-step check (see File validity). other-root: it is valid but names a root other than config.root, so this root has none. missing and other-root both make the root not initialized." },
+        "last_id": { "anyOf": [{ "$ref": "state-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless state is ok." }
+      },
+      "additionalProperties": false,
+      "description": "State of this machine's state file for the configured root; null when config.root is null."
+    },
+    "initialized": { "type": "boolean", "description": "True unless the root is not initialized (see Root states). True, with tree null, when the config exists but is unusable. A missing state file makes it false only once koan.json is ok: a root that needs migration is initialized." },
     "usable": { "type": "boolean", "description": "True when the root is usable (see Root states)." },
-    "compatible": { "type": ["boolean", "null"], "description": "Whether tree.schema equals this binary's supported koan.json version (see Format versions); null when tree.schema is null." }
+    "compatible": { "type": ["boolean", "null"], "description": "Whether tree.schema equals this binary's supported koan.json version (see Format versions); null when tree.schema is null." },
+    "migration_pending": { "type": ["boolean", "null"], "description": "Whether the root needs migration (see Root states): koan.json is old-format, or records a step behind this binary's latest. When true, run migrate. null when tree.migration is null." }
   },
   "additionalProperties": false
 }

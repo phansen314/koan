@@ -1,11 +1,14 @@
 package store
 
 import (
+	"encoding/json"
+	"strconv"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/fsys"
 	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/migrations"
 	"github.com/phansen314/koan/internal/model"
 )
 
@@ -114,7 +117,22 @@ type metaState struct {
 	err   error             // MetaUnreadable: the OS error
 	cause errs.CorruptCause // MetaCorrupt
 	file  model.FileResult  // after a parse: the File validity result
-	meta  model.RootFile    // MetaOK
+	meta  model.RootFile    // MetaOK, MetaOldFormat; also MetaUnsupported when pastLatest
+	// pastLatest: koan.json passed every File validity step but records a
+	// migration step past this binary's latest, which makes it MetaUnsupported.
+	pastLatest bool
+	// old is the ordered tree of a koan.json in an older format (MetaOldFormat),
+	// for the steps to convert.
+	old *jsonio.Object
+	// oldLastID is the last_id an older koan.json holds, when it holds one.
+	oldLastID *int64
+}
+
+// pending reports whether koan.json is valid but behind: in an older format,
+// or recording a step below this binary's latest (Root states, needs
+// migration).
+func (ms metaState) pending() bool {
+	return ms.state == MetaOldFormat || ms.state == MetaOK && ms.meta.Migration < migrations.Latest()
 }
 
 // readMeta reads koan.json through r. It must be a regular file: a symlink,
@@ -140,12 +158,49 @@ func readMeta(r fsys.Root) metaState {
 	switch res.Status {
 	case model.FileOK:
 		ms.state = MetaOK
+		if meta.Migration > migrations.Latest() {
+			ms.state, ms.pastLatest = MetaUnsupported, true
+		}
 	case model.FileUnsupported:
 		ms.state = MetaUnsupported
+		if migrations.Reads(migrations.Root, res.Found) {
+			// An older format is checked against its own rules (File
+			// validity, step 2): breaking them is corrupt.
+			if ps := migrations.Check(migrations.Root, res.Found, obj, repeated); len(ps) > 0 {
+				ms.file.Status, ms.file.Problems = model.FileCorrupt, ps
+				ms.state, ms.cause = MetaCorrupt, invalid(ms.file)
+			} else {
+				ms.state, ms.meta, ms.old = MetaOldFormat, oldRoot(obj, res.Found), obj
+				if n, ok := obj.Get("last_id"); ok {
+					last := numberOr0(n)
+					ms.oldLastID = &last
+				}
+			}
+		}
 	default:
 		ms.state, ms.cause = MetaCorrupt, invalid(res)
 	}
 	return ms
+}
+
+// oldRoot is the content of a koan.json in an older format that passed that
+// format's rules: its schema and the step it records, 0 when
+// the format has none (schema 1 predates migrations).
+func oldRoot(obj *jsonio.Object, schema int64) model.RootFile {
+	m := model.RootFile{Schema: schema}
+	if n, ok := obj.Get("migration"); ok {
+		m.Migration = numberOr0(n)
+	}
+	return m
+}
+
+func numberOr0(v any) int64 {
+	n, ok := v.(json.Number)
+	if !ok {
+		return 0
+	}
+	i, _ := strconv.ParseInt(string(n), 10, 64)
+	return i
 }
 
 // unexpectedFile is the cause of a koan.json that is not a regular file.
@@ -161,17 +216,34 @@ func metaReadError(err error) metaState {
 	return metaState{state: MetaUnreadable, err: err}
 }
 
-// metaError turns an unusable koan.json into the Root states error.
+// metaError turns koan.json's state into the Root states error, nil when the
+// root is usable: an unusable koan.json, or one that needs migration, which
+// is last (operations.md, Precedence).
 func metaError(ms metaState, root string) *errs.Error {
+	if e := metaUnusable(ms, root); e != nil {
+		return e
+	}
+	if ms.pending() {
+		return errs.MigrationPending(ms.meta.Migration, migrations.Latest())
+	}
+	return nil
+}
+
+// metaUnusable is the Root states error of a koan.json that is missing or
+// unusable; nil for one that is valid, whether or not it is behind.
+func metaUnusable(ms metaState, root string) *errs.Error {
 	p := joinPath(root, MetaName)
 	switch ms.state {
-	case MetaOK:
+	case MetaOK, MetaOldFormat:
 		return nil
 	case MetaMissing:
 		return errs.NotInitialized(errs.MissingMetadata)
 	case MetaUnreadable:
 		return errs.FromOS(p, ms.err)
 	case MetaUnsupported:
+		if ms.pastLatest {
+			return errs.UnsupportedMigration(p, ms.meta.Migration, migrations.Latest())
+		}
 		return errs.UnsupportedFormat(p, ms.file.Found, []int64{model.RootSchema})
 	}
 	return errs.CorruptBy(p, ms.cause)

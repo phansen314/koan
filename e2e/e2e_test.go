@@ -138,7 +138,8 @@ func TestShow(t *testing.T) {
 	root := filepath.Join(home, "tasks")
 	for p, content := range map[string]string{
 		filepath.Join(home, configDir, "config.toml"): `root = "` + root + "\"\n",
-		filepath.Join(root, "koan.json"):              `{"schema": 1, "last_id": 1}`,
+		filepath.Join(root, "koan.json"):              `{"schema": 2, "migration": 1}`,
+		filepath.Join(home, configDir, "state.json"):  `{"schema": 1, "root": "` + root + `", "last_id": 1}`,
 		filepath.Join(root, "proj", "1.json"):         `{"schema": 1, "id": 1, "title": "t", "priority": null, "created_at": "2026-09-27T00:00:00Z", "completed_at": null,"updated_at": "2026-09-27T00:00:00Z", "blocked_by": [2], "tags": [], "extra": {}}`,
 	} {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

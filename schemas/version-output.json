@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "version-output",
   "type": "object",
-  "required": ["version", "commit", "commit_time", "uncommitted_changes", "go", "platform", "schemas"],
+  "required": ["version", "commit", "commit_time", "uncommitted_changes", "go", "platform", "schemas", "migration"],
   "properties": {
     "version": { "type": "string", "description": "Release version (semver), e.g. 1.4.0." },
     "commit": { "type": "string", "description": "Source commit the binary was built from." },
@@ -12,13 +12,15 @@
     "platform": { "type": "string", "description": "OS and architecture, e.g. linux/amd64." },
     "schemas": {
       "type": "object",
-      "required": ["task", "root"],
+      "required": ["task", "root", "state"],
       "properties": {
         "task": { "type": "integer", "description": "The one task file format version this binary reads and writes." },
-        "root": { "type": "integer", "description": "The one koan.json format version this binary reads and writes." }
+        "root": { "type": "integer", "description": "The one koan.json format version this binary reads and writes." },
+        "state": { "type": "integer", "description": "The one state file format version this binary reads and writes." }
       },
       "additionalProperties": false
-    }
+    },
+    "migration": { "$ref": "root-file#/properties/migration", "description": "This binary's latest migration step: the step koan.json records once migrate has run (see Migrations)." }
   },
   "additionalProperties": false
 }

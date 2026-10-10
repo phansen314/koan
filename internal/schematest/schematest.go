@@ -104,15 +104,53 @@ func newCompiler() (*jsonschema.Compiler, error) {
 	return c, nil
 }
 
+// CheckSchema is Check against a schema not in schemas/: schema is its JSON
+// text, which names itself id. It is for the schemas of older formats, which
+// the migrations hold.
+func CheckSchema(t testing.TB, id, schema string, data []byte) (ok bool, failure Failure) {
+	t.Helper()
+	mu.Lock()
+	if _, ok := compiled[id]; !ok {
+		if compiler == nil {
+			c, err := newCompiler()
+			if err != nil {
+				mu.Unlock()
+				t.Fatal(err)
+			}
+			compiler = c
+		}
+		doc, err := jsonschema.UnmarshalJSON(strings.NewReader(schema))
+		if err == nil {
+			err = compiler.AddResource(base+id, doc)
+		}
+		var s *jsonschema.Schema
+		if err == nil {
+			s, err = compiler.Compile(base + id)
+		}
+		if err != nil {
+			mu.Unlock()
+			t.Fatalf("compile %s: %v", id, err)
+		}
+		compiled[id] = s
+	}
+	mu.Unlock()
+	return check(t, Schema(t, id), id, data)
+}
+
 // Check validates data, one JSON value, against the schema with the given
 // $id. On failure it returns where, per Analyze.
 func Check(t testing.TB, id string, data []byte) (ok bool, failure Failure) {
+	t.Helper()
+	return check(t, Schema(t, id), id, data)
+}
+
+func check(t testing.TB, schema *jsonschema.Schema, id string, data []byte) (ok bool, failure Failure) {
 	t.Helper()
 	v, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
 	if err != nil {
 		t.Fatalf("unmarshal %s: %v", data, err)
 	}
-	err = Schema(t, id).Validate(v)
+	err = schema.Validate(v)
 	if err == nil {
 		return true, Failure{}
 	}

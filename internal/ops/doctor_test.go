@@ -162,7 +162,7 @@ func TestDoctorKinds(t *testing.T) {
 		{
 			name: "nested-tree and skipped-entry",
 			setup: func(f *fixture) {
-				f.write("tasks/p/koan.json", `{"schema": 1, "last_id": 3}`)
+				f.write("tasks/p/koan.json", `{"schema": 2, "last_id": 3, "migration": 1}`)
 				f.write("tasks/notes.txt", "") // stray-entry: not reported unless asked for
 				if err := os.MkdirAll(filepath.Join(f.root, "18.json"), 0o755); err != nil {
 					t.Fatal(err)
@@ -198,19 +198,19 @@ func TestDoctorKinds(t *testing.T) {
 				f.write("tasks/.koan-tmp-a", "")
 			},
 			doctor: `{"healthy":false,"findings":[{"kind":"metadata-missing","class":"on-request","count":1,"truncated":false,"items":[` +
-				`{"paths":["~/tasks/koan.json"],"ids":[],"action":"create-metadata","suggest":"koan repair --kinds metadata-missing, unless a task with an ID above 9 was ever deleted; then rebuild koan.json by hand with that ID as last_id","last_id":9}]},` +
+				`{"paths":["~/tasks/koan.json"],"ids":[],"action":"create-metadata","suggest":"koan repair --kinds metadata-missing","migration":1}]},` +
 				`{"kind":"temp-leftover","class":"auto","count":1,"truncated":false,"items":[{"paths":["~/tasks/.koan-tmp-a"],"ids":[],"action":"remove","suggest":"koan repair"}]}]}`,
 		},
 		{
 			name: "metadata-unusable",
 			setup: func(f *fixture) {
-				f.write("tasks/koan.json", `{"schema": 2, "last_id": 1}`)
+				f.write("tasks/koan.json", `{"schema": 3, "last_id": 1}`)
 				f.task("", 5, false, 6)
 			},
 			doctor: `{"healthy":false,"findings":[{"kind":"dangling-reference","class":"auto","count":1,"truncated":false,"items":[{"paths":["~/tasks/5.json"],"ids":[5,6],"action":"remove-reference","suggest":"koan repair"}]},` +
 				`{"kind":"metadata-unusable","class":"manual","count":1,"truncated":false,"items":[` +
 				`{"paths":["~/tasks/koan.json"],"ids":[],"action":null,"suggest":"fix koan.json by hand, or restore it from git; a binary that supports its format can use it as it is",` +
-				`"error":{"kind":"unsupported-format","message":"~/tasks/koan.json: format version 2 is not supported","details":{"path":"~/tasks/koan.json","found":2,"supported":[1]}}}]}]}`,
+				`"error":{"kind":"unsupported-format","message":"~/tasks/koan.json: format version 3 is not supported","details":{"path":"~/tasks/koan.json","found":3,"supported":[2]}}}]}]}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -280,8 +280,8 @@ func TestRepair(t *testing.T) {
 	if got != want {
 		t.Errorf("repair:\ngot  %s\nwant %s", got, want)
 	}
-	if got := f.read("tasks/koan.json"); got != "{\n  \"schema\": 1,\n  \"last_id\": 101\n}\n" {
-		t.Errorf("koan.json %q", got)
+	if got := f.read(stateRel); got != st(101) {
+		t.Errorf("state file %q", got)
 	}
 	if got := f.blockedBy("1.json") + " " + f.updatedAt("1.json"); got != "[3] 2026-09-28T12:00:00Z" {
 		t.Errorf("1.json: %s", got)
@@ -318,7 +318,7 @@ func TestRepairPreconditions(t *testing.T) {
 		{"unknown kind", "", `{"kinds": ["nope"]}`, `invalid-input`},
 		{"missing", "<none>", `{}`, `not-initialized {"missing":"metadata"}`},
 		{"corrupt", "{", `{}`, `corrupt {"path":"~/tasks/koan.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`},
-		{"unsupported", `{"schema": 2, "last_id": 1}`, `{}`, `unsupported-format {"path":"~/tasks/koan.json","found":2,"supported":[1]}`},
+		{"unsupported", `{"schema": 3, "last_id": 1}`, `{}`, `unsupported-format {"path":"~/tasks/koan.json","found":3,"supported":[2]}`},
 		{"missing, named", "<none>", `{"kinds": ["metadata-missing"]}`, `{"repaired":[{"kind":"metadata-missing"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -347,38 +347,49 @@ func TestRepairPreconditions(t *testing.T) {
 	}
 }
 
-// A rebuilt koan.json gets the highest ID in any task filename; the other
-// auto kinds named with it are repaired against it.
+// A rebuilt koan.json holds no counter: the tree's marker and the step, and
+// the state file is untouched. The other auto kinds named with it are
+// repaired in the same run.
 func TestRepairMetadataMissing(t *testing.T) {
 	f := newFixture(t)
 	f.remove("tasks/koan.json")
 	f.task("p", 7, false, 99)
 	f.write("tasks/12.json", "{")
 	f.op("repair", `{"kinds": ["metadata-missing", "dangling-reference"]}`)
-	if got := f.read("tasks/koan.json"); got != "{\n  \"schema\": 1,\n  \"last_id\": 12\n}\n" {
+	if got := f.read("tasks/koan.json"); got != "{\n  \"schema\": 2,\n  \"migration\": 1\n}\n" {
 		t.Errorf("koan.json %q", got)
+	}
+	if got := f.read(stateRel); got != st(100) {
+		t.Errorf("state file %q", got)
 	}
 	if got := f.blockedBy("p/7.json"); got != "[]" {
 		t.Errorf("7.json blocked_by %s", got)
 	}
 }
 
-// koan.json is not rebuilt while a folder can't be listed: a task in it may
-// have a higher ID, which a too-low last_id would reissue.
-func TestRepairMetadataMissingUnreadable(t *testing.T) {
+// koan.json guesses nothing, so an unlistable folder does not stop it being
+// rebuilt; the state file's last_id does depend on the walk, and is not
+// rebuilt while a folder can't be listed: a task in it may have a higher ID,
+// which a too-low last_id would reissue.
+func TestRepairStateMissingUnreadable(t *testing.T) {
 	f := newFixture(t)
 	f.remove("tasks/koan.json")
+	f.remove(stateRel)
 	f.task("", 3, false)
 	f.task("q", 4, false)
 	f.fail(fsys.OpReadDir, "q", syscall.EACCES)
-	got := f.op("repair", `{"kinds": ["metadata-missing"]}`)
-	want := `{"repaired":[],"healthy":false,"findings":[{"kind":"metadata-missing","class":"on-request","count":1,"truncated":false,"items":[` +
-		`{"paths":["~/tasks/koan.json"],"ids":[],"action":null,"suggest":"fix the unreadable folders first; then koan repair --kinds metadata-missing","last_id":3}]},`
+	got := f.op("repair", `{"kinds": ["metadata-missing", "state-missing"]}`)
+	want := `{"repaired":[{"kind":"metadata-missing","class":"on-request","count":1,"truncated":false,"items":[{"paths":["~/tasks/koan.json"],"ids":[],"action":"create-metadata","suggest":"koan repair --kinds metadata-missing","migration":1}]}],` +
+		`"healthy":false,"findings":[{"kind":"state-missing","class":"on-request","count":1,"truncated":false,"items":[` +
+		`{"paths":["~/cfg/state.json"],"ids":[],"action":null,"suggest":"fix the unreadable folders first; then koan repair --kinds state-missing","last_id":3}]},`
 	if !strings.HasPrefix(got, want) {
 		t.Errorf("repair:\ngot  %s\nwant %s...", got, want)
 	}
-	if got := f.read("tasks/koan.json"); got != "<none>" {
-		t.Errorf("koan.json %q", got)
+	if got := f.read(stateRel); got != "<none>" {
+		t.Errorf("state file %q", got)
+	}
+	if got := f.read("tasks/koan.json"); got == "<none>" {
+		t.Error("koan.json not rebuilt")
 	}
 }
 

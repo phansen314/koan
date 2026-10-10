@@ -87,6 +87,9 @@ type crashCase struct {
 	// for a crash leaving the tree at a stage, and kept those repair leaves
 	// to a person; nil for none.
 	found, kept map[int][]string
+	// pending is the stages at which the root needs migration: repair
+	// refuses it there, so only doctor is checked.
+	pending map[int]bool
 }
 
 func safe(want string) func(int) (int, string, bool) {
@@ -97,11 +100,11 @@ var crashCases = []crashCase{
 	{
 		name: "init", init: true,
 		args:  []string{"init", "~/tasks"},
-		order: [][]string{{"tasks"}, {"tasks/koan.json"}, configDirs, {configDir + "/config.toml"}},
+		order: [][]string{{"tasks"}, {"tasks/koan.json"}, configDirs, {configDir + "/state.json"}, {configDir + "/config.toml"}},
 		// Once the config is written, init has succeeded, and a rerun is a
 		// rerun after success.
 		rerun: func(stage int) (int, string, bool) {
-			if stage == 4 {
+			if stage == 5 {
 				return 1, `"rule":"config-exists"`, true
 			}
 			return 0, `"ok":true`, true
@@ -110,7 +113,7 @@ var crashCases = []crashCase{
 	{
 		name:  "create",
 		args:  []string{"create", "Fix", "--notes", "call first"},
-		order: [][]string{{"tasks/koan.json"}, {"tasks/1.json"}, {"tasks/1.md"}},
+		order: [][]string{{configDir + "/state.json"}, {"tasks/1.json"}, {"tasks/1.md"}},
 		// Not safe after a crash: once the ID is consumed, a rerun creates
 		// a second task.
 		rerun: func(stage int) (int, string, bool) {
@@ -124,7 +127,7 @@ var crashCases = []crashCase{
 		name:  "create-batch",
 		args:  []string{"create-batch", "-i", "-"},
 		stdin: `{"tasks": [{"ref": "a", "title": "x", "folder": "/p", "notes": "n"}, {"title": "y", "blocked_by": ["a"], "notes": "m"}]}`,
-		order: [][]string{{"tasks/p"}, {"tasks/koan.json"}, {"tasks/p/1.json"}, {"tasks/p/1.md"}, {"tasks/2.json"}, {"tasks/2.md"}},
+		order: [][]string{{"tasks/p"}, {configDir + "/state.json"}, {"tasks/p/1.json"}, {"tasks/p/1.md"}, {"tasks/2.json"}, {"tasks/2.md"}},
 		// Not safe after a crash once IDs are consumed: a rerun creates the
 		// batch again, with new IDs.
 		rerun: func(stage int) (int, string, bool) {
@@ -230,24 +233,44 @@ var crashCases = []crashCase{
 		seed: func(t *testing.T, root string) {
 			for name, data := range map[string]string{
 				".koan-tmp-seed": "x",
-				"koan.json":      "{\n  \"schema\": 1,\n  \"last_id\": 0\n}\n",
 			} {
 				if err := os.WriteFile(filepath.Join(root, name), []byte(data), 0o644); err != nil {
 					t.Fatal(err)
 				}
+			}
+			// The counter set back, as a restored state file would be.
+			state := "{\n  \"schema\": 1,\n  \"root\": \"" + root + "\",\n  \"last_id\": 0\n}\n"
+			if err := os.WriteFile(filepath.Join(filepath.Dir(root), configDir, "state.json"), []byte(state), 0o644); err != nil {
+				t.Fatal(err)
 			}
 			if err := os.Remove(filepath.Join(root, "2.json")); err != nil {
 				t.Fatal(err)
 			}
 		},
 		args:  []string{"repair"},
-		order: [][]string{{"tasks/koan.json"}, {"tasks/1.json"}, {"tasks/2.md"}},
+		order: [][]string{{configDir + "/state.json"}, {"tasks/1.json"}, {"tasks/2.md"}},
 		found: map[int][]string{
 			0: {"dangling-reference", "id-above-last-id", "orphan-notes"},
 			1: {"dangling-reference", "orphan-notes"},
 			2: {"orphan-notes"},
 		},
 		rerun: safe(`"ok":true`),
+	},
+	{
+		// A schema 1 koan.json: nothing but the counter to convert here, so
+		// one change. Until it lands the root needs migration.
+		name:  "migrate",
+		setup: [][]string{{"create", "a"}},
+		seed: func(t *testing.T, root string) {
+			if err := os.WriteFile(filepath.Join(root, "koan.json"), []byte("{\n  \"schema\": 1,\n  \"last_id\": 1\n}\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
+		args:    []string{"migrate"},
+		order:   [][]string{{"tasks/koan.json"}},
+		found:   map[int][]string{0: {"migration-pending"}},
+		pending: map[int]bool{0: true},
+		rerun:   safe(`"ok":true`),
 	},
 	{
 		name:  "move-folder",
@@ -270,6 +293,10 @@ func (c crashCase) diagnose(t *testing.T, tr *tree, stage int, crashed snapshot)
 	slices.Sort(want)
 	if got := findingKinds(t, tr.cmd("doctor")); !slices.Equal(got, want) {
 		t.Errorf("stage %d: doctor found %v, want %v", stage, got, want)
+	}
+	if c.pending[stage] {
+		steps(t, []step{{tr.cmd("repair"), 1, `"kind":"migration-pending"`}})
+		return
 	}
 	if got := findingKinds(t, tr.cmd("repair")); !slices.Equal(got, c.kept[stage]) {
 		t.Errorf("stage %d: repair left %v, want %v", stage, got, c.kept[stage])

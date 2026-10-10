@@ -219,32 +219,71 @@ func TestTaskViewNormalize(t *testing.T) {
 
 func TestRootFile(t *testing.T) {
 	for _, tc := range []struct {
-		in     string
-		status FileStatus
-		lastID int64
+		in        string
+		status    FileStatus
+		migration int64
 	}{
-		{`{"schema": 1, "last_id": 0}`, FileOK, 0},
-		{`{"schema": 1, "last_id": 999999999999999}`, FileOK, IDMax},
-		{`{"schema": 1, "last_id": 1000000000000000}`, FileCorrupt, 0},
-		{`{"schema": 1, "last_id": -1}`, FileCorrupt, 0},
-		{`{"schema": 1, "last_id": 3.0}`, FileCorrupt, 0},
-		{`{"schema": 1}`, FileCorrupt, 0},
-		{`{"schema": 1, "last_id": 3, "x": 1}`, FileCorrupt, 0},
-		{`{"schema": 1, "last_id": 3, "last_id": 3}`, FileCorrupt, 0},
-		{`{"schema": 7, "last_id": "x"}`, FileUnsupported, 0},
-		{`{"last_id": 3}`, FileCorrupt, 0},
+		{`{"schema": 2, "migration": 0}`, FileOK, 0},
+		{`{"schema": 2, "migration": 1}`, FileOK, 1},
+		{`{"schema": 2, "migration": 9007199254740991}`, FileOK, MigrationMax},
+		{`{"schema": 2}`, FileCorrupt, 0},
+		{`{"schema": 2, "migration": -1}`, FileCorrupt, 0},
+		{`{"schema": 2, "migration": 1.0}`, FileCorrupt, 0},
+		{`{"schema": 2, "migration": 9007199254740992}`, FileCorrupt, 0},
+		{`{"schema": 2, "last_id": 3, "migration": 1}`, FileCorrupt, 0}, // last_id lives in the state file now
+		{`{"schema": 2, "migration": 1, "x": 1}`, FileCorrupt, 0},
+		{`{"schema": 2, "migration": 1, "migration": 1}`, FileCorrupt, 0},
+		{`{"schema": 1, "last_id": 3}`, FileUnsupported, 0},
+		{`{"schema": 7, "migration": "x"}`, FileUnsupported, 0},
+		{`{"migration": 1}`, FileCorrupt, 0},
 	} {
 		obj, repeated, err := jsonio.ParseObject([]byte(tc.in))
 		if err != nil {
 			t.Fatal(err)
 		}
 		rf, r := DecodeRootFile(obj, repeated)
-		if r.Status != tc.status || rf.LastID != tc.lastID {
-			t.Errorf("%s: status %v last_id %d, want %v %d (%v)", tc.in, r.Status, rf.LastID, tc.status, tc.lastID, problemStrings(r.Problems))
+		if r.Status != tc.status || (r.Status == FileOK && rf.Migration != tc.migration) {
+			t.Errorf("%s: status %v migration %d, want %v %d (%v)", tc.in, r.Status, rf.Migration, tc.status, tc.migration, problemStrings(r.Problems))
 		}
 	}
-	got, _ := RootFile{Schema: 1, LastID: 7}.Encode()
-	if want := "{\n  \"schema\": 1,\n  \"last_id\": 7\n}\n"; string(got) != want {
+	got, _ := RootFile{Schema: 2, Migration: 1}.Encode()
+	if want := "{\n  \"schema\": 2,\n  \"migration\": 1\n}\n"; string(got) != want {
+		t.Errorf("Encode = %q", got)
+	}
+}
+
+func TestStateFile(t *testing.T) {
+	for _, tc := range []struct {
+		in     string
+		status FileStatus
+		want   StateFile
+	}{
+		{`{"schema": 1, "root": "/r", "last_id": 0}`, FileOK, StateFile{1, "/r", 0}},
+		{`{"schema": 1, "root": "/home/u/tasks", "last_id": 999999999999999}`, FileOK, StateFile{1, "/home/u/tasks", IDMax}},
+		{`{"schema": 1, "root": "", "last_id": 0}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "root": 5, "last_id": 0}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "root": "/r", "last_id": 1000000000000000}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "root": "/r", "last_id": -1}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "root": "/r", "last_id": 3.0}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "root": "/r"}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "last_id": 1}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "root": "/r", "last_id": 1, "x": 1}`, FileCorrupt, StateFile{}},
+		{`{"schema": 1, "root": "/r", "last_id": 1, "root": "/r"}`, FileCorrupt, StateFile{}},
+		{`{"schema": 2, "root": "/r", "last_id": 1}`, FileUnsupported, StateFile{}},
+		{`{"schema": 0, "root": "/r", "last_id": 1}`, FileUnsupported, StateFile{}},
+		{`{"root": "/r", "last_id": 1}`, FileCorrupt, StateFile{}},
+	} {
+		obj, repeated, err := jsonio.ParseObject([]byte(tc.in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, r := DecodeStateFile(obj, repeated)
+		if r.Status != tc.status || (r.Status == FileOK && got != tc.want) {
+			t.Errorf("%s: status %v %+v, want %v %+v (%v)", tc.in, r.Status, got, tc.status, tc.want, problemStrings(r.Problems))
+		}
+	}
+	got, _ := StateFile{Schema: 1, Root: "/r/ü", LastID: 7}.Encode()
+	if want := "{\n  \"schema\": 1,\n  \"root\": \"/r/ü\",\n  \"last_id\": 7\n}\n"; string(got) != want {
 		t.Errorf("Encode = %q", got)
 	}
 }

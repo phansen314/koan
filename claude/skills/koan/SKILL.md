@@ -14,7 +14,7 @@ koan info
 koan version
 ```
 
-Ready when `.result.usable` is true; if not, the rest of `.result` says why. If `version`'s `.result.version` is below `0.2.0` (`0.0.0-dev` is a build from source: treat it as current), the binary is older than this skill: tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error saying `unknown command` for a command this skill names means the same. When no root is set up, tell the user and suggest `koan init ~/tasks` (or a path they choose). **Never run `init` unasked** — it changes this machine's setup. If `init` fails with `conflict` and `rule: "config-exists"`, report it; never pass `--replace-config` unless the user asks for it.
+Ready when `.result.usable` is true; if not, the rest of `.result` says why. When `.result.migration_pending` is true, the tree needs `koan migrate` after a koan upgrade: see `migration-pending` below. If `version`'s `.result.version` is below `0.2.0` (`0.0.0-dev` is a build from source: treat it as current), the binary is older than this skill: tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error saying `unknown command` for a command this skill names means the same. When no root is set up, tell the user and suggest `koan init ~/tasks` (or a path they choose). **Never run `init` unasked** — it changes this machine's setup. If `init` fails with `conflict` and `rule: "config-exists"`, report it; never pass `--replace-config` unless the user asks for it.
 
 ## Reading output
 
@@ -34,7 +34,7 @@ Branch on `.error.kind`, not the exit code. **Always tell the user about any `wa
 
 Error kinds worth handling:
 
-- `busy` — the tree's write lock stayed held for 5 seconds; koan already waited. Don't retry in a loop: tell the user something is holding the lock (a `doctor`/`repair` on a very large tree, or a stuck `koan` process), and retry once they say so.
+- `busy` — the tree's write lock stayed held for 5 seconds; koan already waited. Don't retry in a loop: tell the user something is holding the lock (a `doctor`, `repair`, or `migrate` on a very large tree, or a stuck `koan` process), and retry once they say so.
 - `not-found` — `.error.details.ids` / `.folders` name what's missing. Folders are created only by `create-folder`, `-p`, and `create-batch`.
 - `invalid-input` — `.error.details.problems[]` lists every bad field.
 - `conflict` with `rule: "acyclic"` — the block would make a cycle; `.error.details.cycles` shows it.
@@ -42,15 +42,18 @@ Error kinds worth handling:
 - `conflict` with `rule: "destination-exists"` — `move-folder` would land on a folder that already exists (folders are never merged), or `move` would overwrite a `.md` with text in the target folder; show it to the user.
 - `conflict` with `rule: "case-clash"` — a folder path differs only in case from an existing folder (e.g. `/Work` where `/work` exists); `.error.message` names it. Use the existing folder's exact name.
 - `conflict` with `rule: "duplicate-id"` or `"id-above-last-id"` — the tree is damaged; check it (below), don't work around it.
-- `corrupt`, `unsupported-format`, `io`, `internal` — stop and report to the user, quoting `.error.message` (for `corrupt` it names what is wrong); don't try to fix files by hand.
+- `not-initialized` — `.error.details.missing` says what is absent. `config` or `root`: nothing is set up here; see "Before the first command". `metadata`: the tree lost its `koan.json`. `state`: this machine has no ID counter for the tree. For the last two, `init` is not the fix: report it, offer `koan doctor`, and see the `repair --kinds` rule below.
+- `migration-pending` — koan was upgraded and the tree's files are in an older format; every command that reads or changes tasks refuses it. Stop and tell the user to run `koan migrate`, committing the tree first if it's a git repository. **Never run `migrate` unasked**: it rewrites every task file and holds the write lock while it runs.
+- `corrupt`, `unsupported-format`, `io`, `internal` — stop and report to the user, quoting `.error.message` (for `corrupt` it names what is wrong); don't try to fix files by hand. For `unsupported-format`, compare `.error.details.found` with `.error.details.supported`: above it (or with `.error.details.field == "migration"`), a newer koan wrote the file and the user needs to upgrade this machine's binary; below it, the file is in an older format, and `koan migrate` converts it.
 
 ## When the tree is damaged
 
 After a `duplicate-id`, `id-above-last-id`, or `corrupt` error, or a `dangling-reference` warning, run `koan doctor` — once per session, not after every command — and summarize `.result.findings` for the user: each finding's `kind`, its `items` (`paths`, `ids`), and its `suggest`. `doctor` changes nothing, and takes the write lock while it runs, so other writes wait for it.
 
 - Findings with a non-null `action` are what `koan repair` would fix. **Never run `repair` unasked**: offer it, saying what it would change. It asks for permission anyway.
-- **Never run `repair --kinds metadata-missing` unless the user explicitly agrees**: rebuilding `koan.json` can reissue the ID of a task that was deleted.
+- **Never run `repair --kinds state-missing` or `--kinds metadata-missing` unless the user explicitly agrees**: rebuilding this machine's ID counter can reissue the ID of a task that was deleted, and rebuilding `koan.json` declares the directory a koan tree.
 - Findings with `action: null` (duplicate IDs, cycles, unusable files, orphaned notes that may hold text) are the user's to resolve. Pass on `suggest`; don't edit files to fix them yourself.
+- `migration-pending` and `old-format` findings are fixed by `koan migrate`, never by `repair`: pass that on, as for the `migration-pending` error above.
 - Files koan ignores — the user's own, an editor's backups — are `stray-entry`, listed only by `koan doctor --kinds stray-entry`. They are not damage: ask for them only when the user wants to tidy up.
 - `--kinds` filters only `findings`: `healthy` still reflects the whole tree, so `healthy: false` with no findings listed means damage of a kind you didn't ask for.
 

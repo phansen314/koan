@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "state-file",
+  "type": "object",
+  "required": ["schema", "root", "last_id"],
+  "properties": {
+    "schema": { "const": 1 },
+    "root": { "type": "string", "minLength": 1 },
+    "last_id": { "type": "integer", "minimum": 0, "maximum": 999999999999999 }
+  },
+  "additionalProperties": false
+}

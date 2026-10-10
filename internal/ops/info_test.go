@@ -2,6 +2,7 @@ package ops
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,17 +38,18 @@ func TestInfo(t *testing.T) {
 		}
 	}
 
-	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"missing","root":null},"tree":null,"initialized":false,"usable":false,"compatible":null},"warnings":[]}` + "\n")
+	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"missing","root":null},"tree":null,"state":null,"initialized":false,"usable":false,"compatible":null,"migration_pending":null},"warnings":[]}` + "\n")
 
 	for _, err := range []error{
 		os.Mkdir(cfgDir, 0o755),
 		os.WriteFile(filepath.Join(cfgDir, store.ConfigName), store.EncodeConfig(root), 0o644),
 		os.Mkdir(root, 0o755),
-		os.WriteFile(filepath.Join(root, store.MetaName), []byte(`{"schema": 1, "last_id": 7}`), 0o644),
+		os.WriteFile(filepath.Join(root, store.MetaName), []byte(`{"schema": 2, "migration": 1}`), 0o644),
+		os.WriteFile(filepath.Join(cfgDir, store.StateName), []byte(fmt.Sprintf(`{"schema": 1, "root": %q, "last_id": 7}`, root)), 0o644),
 	} {
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"ok","root":` + q(root) + `},"tree":{"root_exists":true,"metadata":"ok","schema":1,"last_id":7},"initialized":true,"usable":true,"compatible":true},"warnings":[]}` + "\n")
+	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"ok","root":` + q(root) + `},"tree":{"root_exists":true,"metadata":"ok","schema":2,"migration":1},"state":{"path":` + q(filepath.Join(cfgDir, store.StateName)) + `,"state":"ok","last_id":7},"initialized":true,"usable":true,"compatible":true,"migration_pending":false},"warnings":[]}` + "\n")
 }

@@ -8,19 +8,20 @@ Terms follow the design spec's [Terms](design-spec.md#terms).
 
 - **JSON in, JSON out.** Input and output are always JSON with published schemas, so users and agents can construct requests and parse results without scraping text. Every result is wrapped in the [output envelope](#output-envelope).
 - **Input follows the file-level rules.** Input is held to the same [file-level rules](design-spec.md#file-validity) for integer literals (`2`, not `2.0` or `2e0`), duplicate keys (in the input itself or anywhere inside `extra`), unpaired surrogate escapes, and nesting depth. A violation is `invalid-input`.
-- **Schema identifiers.** Shared schemas have short `$id`s (`envelope`, `error`, `warning`, `task`, `task-view`, `task-projection`, `task-field`, `folder-path`, and the design spec's `task-file` and `root-file`). Each operation's schemas are `<op>-input`, `<op>-output`, and `<op>-partial`. Where a property has the same meaning and constraints as a task file field, the schema `$ref`s it, and its meaning is the one in [Fields](design-spec.md#fields).
+- **Schema identifiers.** Shared schemas have short `$id`s (`envelope`, `error`, `warning`, `task`, `task-view`, `task-projection`, `task-field`, `folder-path`, and the design spec's `task-file`, `root-file`, and `state-file`). Each operation's schemas are `<op>-input`, `<op>-output`, and `<op>-partial`. Where a property has the same meaning and constraints as a task file field, the schema `$ref`s it, and its meaning is the one in [Fields](design-spec.md#fields).
 - **Referring to operations and kinds.** Operation names, error kinds, and warning kinds are written in code (`create`, `conflict`, `duplicate-id`), linked on their first mention in a section. Error qualifiers are written `` `kind` (`field`: `value`) ``, e.g. `conflict` (`rule`: `id-exhausted`).
 - **Parameters.** An operation takes a parameter only if it changes the meaning of the result or the work done (e.g. `frontier`'s `folder`, which limits which files are read). Narrowing or shaping output — filtering on fields, taking the first N — is left to the caller (e.g. `jq`) or the CLI. One exception: [`frontier`](#frontier) and [`list`](#list) take the few parameters of [Narrowing tasks](#narrowing-tasks) — a limit, a choice of fields, and filters on tags and readiness — and [`why`](#why) takes its choice of fields. Their output goes straight into the context of the agent driving koan, its main caller, where every byte is a cost that later turns pay for too; so the small result must be the one the tool itself makes easy, not one the caller has to remember to cut down. Anything past those few is still left to `jq`.
 - **Versioning.** The schemas in this document are koan's public contract (see [Versioning](#versioning)).
 
 ## Operation kinds
 
-Every operation is one of three kinds:
+Every operation is one of these kinds:
 
 - ***read*** — Takes no lock and changes nothing. Read operations that walk the tree follow the design spec's [Walking the tree](design-spec.md#walking-the-tree) and [Reads](design-spec.md#reads) rules. Some reads (`version`, `info`) do not require a usable root.
 - ***write*** — Changes the tree. Requires a usable root, takes the write lock, and follows the design spec's [Guarantees](design-spec.md#guarantees) (and [Walking the tree](design-spec.md#walking-the-tree), when it walks). Uses the general [Precedence](#precedence).
 - ***setup*** — Creates what writes depend on. Only [`init`](#init) is a setup operation. It takes no lock, the write guarantees do not apply to it, and it defines its own error precedence.
-- ***diagnostic*** — Finds, and repairs, what a system crash or an outside change left in the tree (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). [`doctor`](#doctor) and [`repair`](#repair) are the diagnostic operations. They take the write lock, even `doctor`, which changes nothing, but do not require a usable root: they need the config and the root, and report a missing or unusable `koan.json` as a [finding](#findings). They walk the whole tree, and define their own error precedence. `repair` follows the write [Guarantees](design-spec.md#guarantees).
+- ***diagnostic*** — Finds, and repairs, what a system crash or an outside change left in the tree (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). [`doctor`](#doctor) and [`repair`](#repair) are the diagnostic operations. They take the write lock, even `doctor`, which changes nothing, but do not require a usable root: they need the config and the root, and report a missing or unusable `koan.json` or [state file](design-spec.md#state-file) as a [finding](#findings). They walk the whole tree, and define their own error precedence. `repair` follows the write [Guarantees](design-spec.md#guarantees).
+- ***migration*** — Converts the tree's files to this binary's formats (see the design spec's [Migrations](design-spec.md#migrations)). Only [`migrate`](#migrate) is a migration operation. It takes the write lock for its whole run, and does not require a usable root: it needs the config, the root, and a `koan.json` in this binary's format or an [older one](design-spec.md#format-versions). It walks the whole tree, follows the write [Guarantees](design-spec.md#guarantees), and defines its own error precedence.
 
 ## Operation template
 
@@ -95,32 +96,33 @@ An error means the operation failed. `kind` and `details` are the contract; `mes
 | Kind | Meaning | `details` |
 |---|---|---|
 | `invalid-input` | Input failed validation. Always raised before the write lock is sought, and before any needed file is read (a check on an input path itself, like `init`'s, may inspect that path). Reports **every** invalid input, not just the first. | `problems`: list of `{field, reason}`; `field` is a JSON Pointer into the input (e.g. `/tags/2`), `reason` a human-readable string. Sorted by `field`, then by `reason` (both compared as strings, byte by byte), so the same input always yields the same list; at most the first 20 are listed, with `problems_truncated: true` when more were found. |
-| `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, or `metadata` (meaning `koan.json`) — the first absent piece. |
+| `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, `metadata` (meaning `koan.json`), or `state` (the [state file](design-spec.md#state-file): absent, or naming another root) — the first absent piece. |
+| `migration-pending` | The root *needs migration* (see [Root states](#root-states)): `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest. Nothing was done; [`migrate`](#migrate) brings the tree forward. | `recorded`: the step `koan.json` records (`0` at schema 1); `latest`: this binary's latest step. |
 | `environment` | The process's environment lacks what koan needs to locate its files: the home directory, from which the config location is derived (see [Config file](design-spec.md#config-file)). Not a root state — no config was looked for. | `variable`: the environment variable that is unset or unusable; currently always `HOME`. |
 | `not-found` | A task or folder named by the input, or a filesystem directory it requires, does not exist. | `folders`: tree folder paths; `ids`: task IDs; `paths`: filesystem paths (e.g. `init`'s missing parent directory). All three always present, empty when not applicable. |
 | `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, or act on a task the tree cannot identify uniquely. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write, or [`why`](#why), names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move), `case-clash` (a folder path names a folder whose name differs only in case from an entry already there; see [Path walk](#path-walk)). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). |
-| `busy` | Another write (or `doctor`/`repair`) held the write lock for the whole wait, 5 seconds (see *Bounded wait* in [Guarantees](design-spec.md#guarantees)). Nothing was done. Safe to retry, but repeated `busy` means something is holding the lock. | none (`{}`). |
+| `busy` | Another write (or `doctor`, `repair`, or `migrate`) held the write lock for the whole wait, 5 seconds (see *Bounded wait* in [Guarantees](design-spec.md#guarantees)). Nothing was done. Safe to retry, but repeated `busy` means something is holding the lock. | none (`{}`). |
 | `corrupt` | A needed file — or an entry on an input path — is present and readable but its content or type is wrong (see [File validity](design-spec.md#file-validity)); or koan found a file where, under its own invariants, none can exist (e.g. creating a task file that already exists). | `path`; `reason`: `not-json` (not parseable, or not an object), `invalid` (fails a file-level rule, including a missing `schema` or one not written as an integer literal within ±(2^53 − 1)), or `unexpected-file` (wrong entry type, e.g. `koan.json` is a symlink or directory; or a file exists that must not). What is wrong, for `not-json` and `invalid`: `problems`, for a JSON file that is `invalid` — a list of `{field, reason}` as in `invalid-input`, but with `field` a JSON Pointer into the file (e.g. `/updated_at`), sorted the same way, and at most the first 20, with `problems_truncated: true` when more were found; or `detail`, a human-readable string — why the file is `not-json`, or why the config, which is not JSON, is `invalid`. `unexpected-file` has neither. |
-| `io` | The environment refused an operation: an unreadable file, permission denied, disk full, read-only filesystem, and similar. An OS error with no symbolic name is `internal`, not `io`. | `path`: built from the root as stored (see [Root path](design-spec.md#root-path)), or the config's own path for an error on the config; `code`: the symbolic OS error, e.g. `ENOSPC`, never a number. |
-| `unsupported-format` | A needed file's `schema` is not the version this binary supports (see [Format versions](design-spec.md#format-versions)). | `path`; `found`: the file's version; `supported`: the versions this binary supports. |
+| `io` | The environment refused an operation: an unreadable file, permission denied, disk full, read-only filesystem, and similar. An OS error with no symbolic name is `internal`, not `io`. | `path`: built from the root as stored (see [Root path](design-spec.md#root-path)), or the file's own path for an error on the config or the state file; `code`: the symbolic OS error, e.g. `ENOSPC`, never a number. |
+| `unsupported-format` | A needed file's `schema` is not the version this binary supports (see [Format versions](design-spec.md#format-versions)); or `koan.json` records a [migration step](design-spec.md#migrations) past this binary's latest, so a newer binary has written the tree. A `koan.json` in an older format is [`migration-pending`](#error-kinds) instead, wherever a usable root is required. | `path`; `found`: the file's version; `supported`: the versions this binary supports. For a step past the latest, also `field`: `migration`, with `found` the step recorded and `supported` `[latest]`; absent when what is unsupported is the `schema`. |
 | `internal` | A bug koan detects. Every failure koan reports has a kind: anything not covered above is `internal`. A crash reports nothing at all (see the CLI's [exit codes](cli-spec.md#exit-codes)). | none (`{}`). |
 
 The `reason` fields of `invalid-input` problems, of `corrupt`, and of the `unusable-file` warning are independent: each has its own values.
 
 ### Precedence
 
-An operation's **needed files** are the files it must read to do its job: the config and `koan.json` for anything that requires a usable root, the entries along any input path, plus whatever its Needed files part lists. A problem with a needed file is an error. A problem with a **relevant** file — one that changes or explains the operation's result, as its Needed files part lists — is a warning. Problems with unrelated files the operation walks past are skipped silently; [`doctor`](#doctor) is the operation for finding those. The design spec's [Walking the tree](design-spec.md#walking-the-tree) applies these rules to blockers, duplicates, and unlistable folders.
+An operation's **needed files** are the files it must read to do its job: the config, `koan.json`, and the state file for anything that requires a usable root, the entries along any input path, plus whatever its Needed files part lists. A problem with a needed file is an error. A problem with a **relevant** file — one that changes or explains the operation's result, as its Needed files part lists — is a warning. Problems with unrelated files the operation walks past are skipped silently; [`doctor`](#doctor) is the operation for finding those. The design spec's [Walking the tree](design-spec.md#walking-the-tree) applies these rules to blockers, duplicates, and unlistable folders.
 
 A read or write operation reports one error. When several apply, it reports the first in this order:
 
 1. `invalid-input` — checked before anything else is read.
-2. `environment` (the config can't be located), then `not-initialized`, and `corrupt` or `unsupported-format` for the config and `koan.json` — the [Root states](#root-states) errors.
+2. `environment` (the config can't be located), then `not-initialized`, `corrupt` or `unsupported-format` for the config and `koan.json`, `migration-pending`, and last the state file's: `not-initialized` (`missing`: `state`), `corrupt`, or `unsupported-format` — the [Root states](#root-states) errors.
 3. `busy`.
 4. `not-found`, and `corrupt` (`reason`: `unexpected-file`) for an entry on an input path — whichever the [path walk](#path-walk) meets first.
 5. `corrupt` or `unsupported-format` for needed task files.
 6. `conflict`.
 
-Steps 4–6 are checked under the write lock. A write re-reads `koan.json` after acquiring the lock (it decides on current state); a problem found only then is reported with the step 2 kinds. `io` and `internal` are reported wherever they occur. Setup and diagnostic operations define their own order (see [`init`](#init), [`doctor`](#doctor), and [`repair`](#repair)).
+Steps 4–6 are checked under the write lock. A write re-reads `koan.json` and the state file after acquiring the lock (it decides on current state); a problem found only then is reported with the step 2 kinds. `io` and `internal` are reported wherever they occur. Setup, diagnostic, and migration operations define their own order (see [`init`](#init), [`doctor`](#doctor), [`repair`](#repair), and [`migrate`](#migrate)).
 
 When several errors of one step apply and the kind reports only one (e.g. two needed task files are both `corrupt`), the one reported is the first in [tree order](#tree-order). A kind that lists every instance (e.g. `not-found`'s `ids`) lists them all.
 
@@ -149,6 +151,7 @@ A kind that lists every instance lists them across the whole step: e.g. [`create
     { "if": { "properties": { "kind": { "const": "invalid-input" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/invalid-input" } } } },
     { "if": { "properties": { "kind": { "const": "environment" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/environment" } } } },
     { "if": { "properties": { "kind": { "const": "not-initialized" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/not-initialized" } } } },
+    { "if": { "properties": { "kind": { "const": "migration-pending" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/migration-pending" } } } },
     { "if": { "properties": { "kind": { "const": "not-found" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/not-found" } } } },
     { "if": { "properties": { "kind": { "const": "conflict" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/conflict" } } } },
     { "if": { "properties": { "kind": { "const": "corrupt" } } }, "then": { "properties": { "details": { "$ref": "#/$defs/corrupt" } } } },
@@ -187,7 +190,16 @@ A kind that lists every instance lists them across the whole step: e.g. [`create
     "not-initialized": {
       "type": "object",
       "required": ["missing"],
-      "properties": { "missing": { "type": "string", "enum": ["config", "root", "metadata"] } },
+      "properties": { "missing": { "type": "string", "enum": ["config", "root", "metadata", "state"] } },
+      "additionalProperties": false
+    },
+    "migration-pending": {
+      "type": "object",
+      "required": ["recorded", "latest"],
+      "properties": {
+        "recorded": { "$ref": "root-file#/properties/migration", "description": "The step koan.json records; 0 at schema 1." },
+        "latest": { "$ref": "root-file#/properties/migration", "description": "This binary's latest step." }
+      },
       "additionalProperties": false
     },
     "not-found": {
@@ -265,7 +277,8 @@ A kind that lists every instance lists them across the whole step: e.g. [`create
       "properties": {
         "path": { "type": "string" },
         "found": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
-        "supported": { "type": "array", "items": { "type": "integer" } }
+        "supported": { "type": "array", "items": { "type": "integer" } },
+        "field": { "const": "migration", "description": "Present when koan.json records a migration step past this binary's latest: found is that step, and supported is [latest]. Absent when the schema is what is unsupported." }
       },
       "additionalProperties": false
     }
@@ -334,14 +347,18 @@ A finding is a problem with the tree that [`doctor`](#doctor) reports and [`repa
 | Kind | Class | One item per | `paths` | `ids` | Other fields | `action` |
 |---|---|---|---|---|---|---|
 | `temp-leftover` | auto | koan temp file or folder (its name starts with `.koan-tmp-`, or ftask's `.ftask-tmp-`) anywhere under the root: a write's leftover file, or the folder an interrupted [`delete-folder`](#delete-folder) renamed aside. Its contents are not looked at. | the entry | none | — | `remove` |
-| `metadata-missing` | on-request | root with no `koan.json`: one item. | where `koan.json` belongs | none | `last_id`: the highest ID in any task filename, or `0` | `create-metadata`; `null` while any folder can't be listed, since a task in it may have a higher ID |
-| `metadata-unusable` | manual | root whose `koan.json` is unusable: one item. | `koan.json` | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
-| `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when `koan.json` is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |
+| `metadata-missing` | on-request | root with no `koan.json`: one item. | where `koan.json` belongs | none | `migration`: the step `repair` would record — this binary's latest when no task file is in an older format, else `0` | `create-metadata` |
+| `metadata-unusable` | manual | root whose `koan.json` is unusable, other than in an older format: one item. | `koan.json` | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format` (a format this binary doesn't know, or a step past its latest), or `io` | `null` |
+| `state-missing` | on-request | root with no [state file](design-spec.md#state-file), or with one that names another root: one item. Not reported while `koan.json` is in an older format that holds `last_id` itself: [`migrate`](#migrate) writes the state file then. | where the state file belongs | none | `last_id`: the highest ID in any task filename, or `0` | `create-state`; `null` while any folder can't be listed, since a task in it may have a higher ID |
+| `state-unusable` | manual | root whose state file is unusable: one item. | the state file | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
+| `migration-pending` | manual | root whose `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest: one item. | `koan.json` | none | `error`: the [`migration-pending`](#error-kinds) error every operation that requires a usable root fails with | `null` |
+| `old-format` | manual | task file in an [older format](design-spec.md#format-versions) than this binary's, which [`migrate`](#migrate) converts. | the task file | its ID, from the filename | — | `null` |
+| `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when the state file is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |
 | `dangling-reference` | auto | pair of a task file and an ID in its `blocked_by` that names no task, as the [warning](#warning-kinds) of that name. Not reported while any folder can't be listed, since the task may be in it. | the referring task file | `[referring, missing]`, in that order | — | `remove-reference` |
 | `orphan-notes` | auto, for `empty` and `linked` items | `.md` named like a task's notes, with no task file of its ID beside it. | the `.md`, then each task file with its ID elsewhere, in [tree order](#tree-order) | its ID | `reason`, below; `code` when `reason` is `unreadable` | `remove` when `reason` is `empty` or `linked`; else `null` |
 | `duplicate-id` | manual | ID that more than one task file has. | every copy, in tree order | the one ID | `identical`: whether every copy is the same, byte for byte | `null` |
 | `cycle` | manual | group of tasks that block each other: a strongly connected component of the [dependency graph](design-spec.md#dependencies). | none | one cycle in the group: the shortest through its lowest ID, from that ID back to it, e.g. `[12, 15, 12]` (12 is blocked by 15, which is blocked by 12) | `group`: every ID in the group, ascending | `null` |
-| `unusable-file` | manual | task file that is [unusable](design-spec.md#file-validity). | the task file | its ID, from the filename | `error`: the error a write that needed the file would fail with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
+| `unusable-file` | manual | task file that is [unusable](design-spec.md#file-validity), other than in an older format (`old-format`). | the task file | its ID, from the filename | `error`: the error a write that needed the file would fail with — `corrupt` (with its full `problems` or `detail`), `unsupported-format` (a format this binary doesn't know), or `io` | `null` |
 | `nested-tree` | manual | `koan.json` in a folder other than the root: another tree's metadata, inside this one. | the file | none | — | `null` |
 | `skipped-entry` | manual | entry that is not hidden, and that the walk skips although it may hold part of the tree: a symlink, or an entry with a folder's or task file's name but the wrong type (see [Walking the tree](design-spec.md#walking-the-tree)). | the entry | none | `reason`, below | `null` |
 | `stray-entry` | informational | entry that is not hidden and whose name matches neither the folder-name nor the task-filename rule (e.g. `notes.txt`, `42.md~`), other than the root's `koan.json` and a nested tree's. | the entry | none | — | `null` |
@@ -361,7 +378,9 @@ Kind by kind:
 - **`skipped-entry`** — `reason` is `symlink` for a symbolic link, whatever its name and whatever it leads to: koan never follows one, so a folder linked into the tree is not part of it. It is `type` when the name is a folder's or a task file's (or its notes') but the entry's type is wrong, e.g. a directory named `42.json`, or a `.md` that is a folder. A root `koan.json` that is not a regular file is `metadata-unusable` instead.
 - **`stray-entry`** — a file or folder koan has no use for: a user's own file, or an editor's backup. koan ignores it, safely, so it is reported only when asked for.
 - **`unusable-file`** — the full diagnosis that the [`unusable-file`](#warning-kinds) warning leaves out. A task file whose filename ID differs from its `id` field is reported here, as `corrupt`.
-- **`id-above-last-id`** and **`metadata-missing`** — every task file counts, usable or not, by the ID in its filename: that is the ID it occupies (see [Tasks](design-spec.md#tasks)).
+- **`migration-pending`** and **`old-format`** — not damage `repair` can fix: converting formats is [`migrate`](#migrate)'s job alone (see the design spec's [Migrations](design-spec.md#migrations)), so `suggest` says to run `koan migrate`, after committing the tree when it is a git repository. While a step is pending, the task files it covers are `old-format`, and `count` says how many `migrate` has to convert. With no step pending, an `old-format` file came from a merge, from a copy made by a binary that hadn't migrated yet, or from a place an earlier `migrate` couldn't read. `doctor` reads an `old-format` file's `schema` only, never checking it against its own format's rules: that check is `migrate`'s. So `suggest` also says that a file `migrate` lists under `unconverted` breaks those rules, and no step can read it: a person fixes or removes it.
+- **`state-missing`** — the tree is there, but this machine has no ID counter for it: the state file was lost, the tree was copied here without [`init`](#init), or the config was pointed at it by hand. Rebuilding it is on-request because of what the rebuilt `last_id` can't know (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)).
+- **`id-above-last-id`** and **`state-missing`** — every task file counts, usable or not, by the ID in its filename: that is the ID it occupies (see [Tasks](design-spec.md#tasks)).
 
 ### Finding schema
 
@@ -380,8 +399,9 @@ Kind by kind:
   },
   "additionalProperties": false,
   "allOf": [
-    { "if": { "properties": { "kind": { "enum": ["metadata-unusable", "unusable-file"] } } }, "then": { "properties": { "items": { "items": { "required": ["error"] } } } } },
-    { "if": { "properties": { "kind": { "enum": ["metadata-missing", "id-above-last-id"] } } }, "then": { "properties": { "items": { "items": { "required": ["last_id"] } } } } },
+    { "if": { "properties": { "kind": { "enum": ["metadata-unusable", "state-unusable", "migration-pending", "unusable-file"] } } }, "then": { "properties": { "items": { "items": { "required": ["error"] } } } } },
+    { "if": { "properties": { "kind": { "enum": ["state-missing", "id-above-last-id"] } } }, "then": { "properties": { "items": { "items": { "required": ["last_id"] } } } } },
+    { "if": { "properties": { "kind": { "const": "metadata-missing" } } }, "then": { "properties": { "items": { "items": { "required": ["migration"] } } } } },
     { "if": { "properties": { "kind": { "enum": ["orphan-notes", "skipped-entry"] } } }, "then": { "properties": { "items": { "items": { "required": ["reason"] } } } } },
     { "if": { "properties": { "kind": { "const": "duplicate-id" } } }, "then": { "properties": { "items": { "items": { "required": ["identical"] } } } } },
     { "if": { "properties": { "kind": { "const": "cycle" } } }, "then": { "properties": { "items": { "items": { "required": ["group"] } } } } },
@@ -399,14 +419,15 @@ Kind by kind:
   "properties": {
     "paths": { "type": "array", "items": { "type": "string" }, "description": "Filesystem paths involved; meaning per kind (see Finding kinds)." },
     "ids": { "type": "array", "items": { "type": "integer" }, "description": "Task IDs involved; order and meaning per kind (see Finding kinds)." },
-    "action": { "type": ["string", "null"], "description": "What repair does to this item: remove, raise-last-id, remove-reference, or create-metadata; null when repair leaves it to a person. In repair's repaired list, what it did." },
+    "action": { "type": ["string", "null"], "description": "What repair does to this item: remove, raise-last-id, remove-reference, create-metadata, or create-state; null when repair leaves it to a person. In repair's repaired list, what it did." },
     "suggest": { "type": ["string", "null"], "description": "What a person could do, for humans. Not part of the contract." },
     "reason": { "type": "string", "description": "For orphan-notes: empty, linked, task-elsewhere, no-task, or unreadable. For skipped-entry: symlink or type." },
     "code": { "type": "string", "description": "For unreadable-folder, and orphan-notes with reason unreadable: the symbolic OS error (e.g. EACCES)." },
     "identical": { "type": "boolean", "description": "For duplicate-id: whether every copy is the same, byte for byte." },
     "group": { "type": "array", "items": { "type": "integer" }, "description": "For cycle: every ID in the group, ascending." },
-    "last_id": { "$ref": "root-file#/properties/last_id", "description": "For metadata-missing and id-above-last-id: the last_id repair writes." },
-    "error": { "$ref": "error", "description": "For metadata-unusable and unusable-file: the error an operation that needed the file would fail with." }
+    "last_id": { "$ref": "state-file#/properties/last_id", "description": "For state-missing and id-above-last-id: the last_id repair writes." },
+    "migration": { "$ref": "root-file#/properties/migration", "description": "For metadata-missing: the migration step repair records in the koan.json it creates." },
+    "error": { "$ref": "error", "description": "For metadata-unusable, state-unusable, migration-pending, and unusable-file: the error an operation that needed the file would fail with." }
   },
   "additionalProperties": false
 }
@@ -414,21 +435,27 @@ Kind by kind:
 
 ## Root states
 
-Whether read and write operations can run against this machine's root is one of three states. Finding the root starts with locating the config; when that is impossible, operations that require a usable root fail with `environment` before any state applies (see [Config file](design-spec.md#config-file)).
+Whether read and write operations can run against this machine's root is one of four states. Finding the root starts with locating the config; when that is impossible, operations that require a usable root fail with `environment` before any state applies (see [Config file](design-spec.md#config-file)).
 
 | State | Holds when | Operations that require a usable root fail with |
 |---|---|---|
-| ***Not initialized*** | Something is missing: the config, the root it names (the path must lead, through symlinks, to a directory), or `koan.json` in that root. | `not-initialized`, with `missing` naming the first absent piece. Remedy depends on `missing` — see below. |
-| ***Initialized, not usable*** | Nothing is missing, but the config or `koan.json` is unusable. | `corrupt` or `unsupported-format`, or `io` if the file is unreadable. Remedy: repair the file or its permissions, or use a binary that supports the format. [`doctor`](#doctor) reports `koan.json`'s problem in full. |
-| ***Usable*** | Nothing is missing, and the config and `koan.json` both pass every check in [File validity](design-spec.md#file-validity). | — |
+| ***Not initialized*** | Something is missing: the config, the root it names (the path must lead, through symlinks, to a directory), `koan.json` in that root, or this machine's [state file](design-spec.md#state-file) for that root. The state file counts only once `koan.json` is usable and current (see below). | `not-initialized`, with `missing` naming the first absent piece. Remedy depends on `missing` — see below. |
+| ***Initialized, not usable*** | The config, the root, and `koan.json` are there, but the config is unusable; or, with `koan.json` usable and current, the state file is; or `koan.json` is: unreadable, `corrupt` (by its own format's rules, when it is in an older one), in a format this binary doesn't know, or recording a [migration step](design-spec.md#migrations) past this binary's latest. | `corrupt` or `unsupported-format`, or `io` if the file is unreadable. Remedy: repair the file or its permissions, or use a binary that supports the format. [`doctor`](#doctor) reports `koan.json`'s problem in full. |
+| ***Needs migration*** | The config, the root, and `koan.json` are there, the config is usable, and `koan.json` is valid but behind, whatever the state file's state: in an [older format](design-spec.md#format-versions), by whose own rules it is valid; or in this binary's format, passing every check in [File validity](design-spec.md#file-validity), and recording a step behind this binary's latest. | `migration-pending`, with the step recorded and the latest. Remedy: run [`migrate`](#migrate), after committing the tree when it is a git repository (see the design spec's [Migrations](design-spec.md#migrations)). |
+| ***Usable*** | Nothing is missing, the config, `koan.json`, and the state file all pass every check in [File validity](design-spec.md#file-validity), and `koan.json` records this binary's latest step. | — |
 
 Remedies for *not initialized*, by `missing`:
 
 - **`config`** — nothing is set up on this machine. Run [`init`](#init).
 - **`root`** — the config names a root that isn't there. Check the path first (an unmounted drive, a moved folder). Run `init` with `replace_config` only if a new or different tree is really intended: on an unmounted drive's mount point it would create a fresh empty tree.
-- **`metadata`** — the root exists but has lost its `koan.json`. Run [`doctor`](#doctor) to see the tree's state, then [`repair`](#repair) naming `metadata-missing`, which rebuilds it (see [Finding kinds](#finding-kinds) for the risk). `init` refuses (the config exists, and the root isn't empty).
+- **`metadata`** — the root exists but has lost its `koan.json`. Run [`doctor`](#doctor) to see the tree's state, then [`repair`](#repair) naming `metadata-missing`, which rebuilds it. `init` refuses (the config exists, and the root isn't empty).
+- **`state`** — the tree is there, but this machine has no ID counter for it: no state file, or one that names another root. Run [`doctor`](#doctor), then [`repair`](#repair) naming `state-missing`, which rebuilds it from the highest ID in the tree (see [Finding kinds](#finding-kinds) for the risk). On a machine the tree was just copied to, [`init`](#init) writes it.
 
-*Initialized* is about presence; *usable* additionally about content. A file that exists but is unusable never makes a root *not initialized*. In particular, a config that exists but is unusable — it doesn't parse, or names a root in an illegal [form](design-spec.md#root-path) — leaves the root *initialized, not usable*, even though no root can be read from it; operations fail with `corrupt`.
+*Initialized* is about presence; *usable* additionally about content. A file that exists but is unusable never makes a root *not initialized*. (A state file that is valid but names another root is not this root's file at all: for this root it is absent.) In particular, a config that exists but is unusable — it doesn't parse, or names a root in an illegal [form](design-spec.md#root-path) — leaves the root *initialized, not usable*, even though no root can be read from it; operations fail with `corrupt`.
+
+A root that *needs migration* is fully there: only its formats are behind. It is not *usable*, so that no operation reads a tree whose task files it would skip as `unsupported-format`: a `frontier` that left out every task in the older format, with only warnings to say so, would be worse than an error. [`version`](#version), [`info`](#info), [`doctor`](#doctor), and [`migrate`](#migrate) don't require a usable root, and run.
+
+The state file is looked at last, once `koan.json` is usable and current: a root that *needs migration* says so whatever the state file's state. A `koan.json` in an older format holds `last_id` itself, so such a tree may have no state file yet, and `migrate`, the remedy, is what writes it.
 
 ## Shared rules
 
@@ -478,7 +505,7 @@ Every result of `frontier` and `list` carries `total` and `truncated`, whether o
 
 [`delete`](#delete) and [`delete-folder`](#delete-folder) remove files for good: koan keeps no trash and no history. Undo comes from git, when the root is a repository (see *Syncing and committing are allowed* in [Assumptions](design-spec.md#assumptions)), and reaches back only to the last commit — koan never commits. Restoring from git is an [outside change](design-spec.md#assumptions):
 
-- **Restore only the removed paths**, never the whole tree: restoring `koan.json` can lower `last_id` and let IDs be reused. A delete not yet committed is undone with `git restore -- proj/travel`; a committed one from a commit that still has the files, usually the parent of the one that removed them: `git restore --source=<commit>^ -- proj/travel`. A task is two paths, `42.json` and `42.md`.
+- **Restore only the removed paths.** Restoring the whole tree would undo every other change made since that commit. It can't make koan reuse an ID, though: `last_id` is kept outside the tree, in the [state file](design-spec.md#state-file), and no git command moves it. A delete not yet committed is undone with `git restore -- proj/travel`; a committed one from a commit that still has the files, usually the parent of the one that removed them: `git restore --source=<commit>^ -- proj/travel`. A task is two paths, `42.json` and `42.md`.
 - **References don't come back.** The delete removed the task's ID from its dependents' `blocked_by`, and restoring their files too would undo any other change to them since. Re-[`block`](#block) the `dependents` the delete reported instead.
 - **What koan would have checked is left to [`doctor`](#doctor):** a restored task's `blocked_by` may name tasks removed since (`dangling-reference`, which [`repair`](#repair) removes), and its edges may close a cycle added while it was gone (`cycle`, which a person breaks).
 
@@ -610,19 +637,19 @@ A [folder path](design-spec.md#folder-paths).
 
 koan releases follow [semantic versioning](https://semver.org/). The operation input, output, partial, error, warning, and finding schemas are koan's public contract: a breaking change to any of them requires a new major version. There is no separate API version.
 
-**Before 1.0**, the contract is not yet stable: a breaking change bumps the **minor** version instead (0.1 → 0.2), and its release says what changed. The same holds for the data formats; see [Format versions](design-spec.md#format-versions).
+**Before 1.0**, the contract is not yet stable: a breaking change bumps the **minor** version instead (0.1 → 0.2), and its release says what changed. The data formats are not part of this allowance: they change only through a [migration step](design-spec.md#migrations), before 1.0 as after (see [Format versions](design-spec.md#format-versions)).
 
 Adding a new error kind, warning kind, finding kind, or `conflict` rule is a **minor** change. Callers must therefore treat an unknown error kind as a generic failure, and ignore unknown warning kinds and finding kinds. For the same reason the published schemas type `kind` (and `rule`) as a plain string, not a closed enum; the known values are listed in this document.
 
-Data formats are versioned separately; see the design spec's [Format versions](design-spec.md#format-versions). A release reports its format versions via [`version`](#version).
+Data formats are versioned separately; see the design spec's [Format versions](design-spec.md#format-versions). A release reports its format versions, and its latest migration step, via [`version`](#version).
 
 ## Setup and diagnostics
 
 ### init
 
-Create a new tree, or attach an existing one, and make it this machine's configured root. A new tree gets a fresh `koan.json`; an existing tree — one that already contains `koan.json`, e.g. cloned or moved from another machine — is left untouched, and `init` only writes the config naming it. Afterwards the root is at least *initialized* (see [Root states](#root-states)).
+Create a new tree, or attach an existing one, and make it this machine's configured root. A new tree gets a fresh `koan.json`; an existing tree — one that already contains `koan.json`, e.g. cloned or moved from another machine — is left untouched: `init` writes only this machine's files for it, the [state file](design-spec.md#state-file) and the config naming it. Afterwards the root is at least *initialized* (see [Root states](#root-states)).
 
-**Kind:** setup. Takes no lock — a new tree's root may not exist until `init` creates it, and `init` never changes an existing tree's content. Does not require a usable root. Concurrent `init` runs are not supported.
+**Kind:** setup. Takes no lock to create a new tree — its root may not exist until `init` creates it — and never changes an existing tree's content. When the root already exists, it takes the write lock while it reads and writes the state file, so that a write still running under an earlier config can't have its `last_id` overwritten. Does not require a usable root. Concurrent `init` runs are not supported.
 
 **Input schema:**
 
@@ -650,15 +677,16 @@ Create a new tree, or attach an existing one, and make it this machine's configu
 | Does not exist, parent directory missing | `not-found`. `init` never creates the root's parent directories. |
 | Empty directory (hidden entries allowed, e.g. `.git`) | Initialized as a new tree. |
 | Non-empty directory without `koan.json` | `conflict` (`rule`: `root-not-empty`) — koan never adopts a directory with other contents. |
-| Directory containing `koan.json` | Attached as-is. |
+| Directory containing `koan.json` | Attached as-is — also when `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest. The root then *needs migration* (see [Root states](#root-states)), and [`migrate`](#migrate), which needs the config `init` writes, is the next step. |
 
 If a config already exists — whatever it names, and whether or not it parses — and `replace_config` is false: `conflict` (`rule`: `config-exists`). `init` never compares roots and never overwrites a config unless told to.
 
-**Needed files:** `koan.json` in `root`, when present, checked as [File validity](design-spec.md#file-validity) describes. `init` never reads the config; it only checks whether one exists.
+**Needed files:** `koan.json` in `root`, when present, checked as [File validity](design-spec.md#file-validity) describes — one in an older format against that format's own rules. `init` never reads the config; it only checks whether one exists. When attaching, it also lists every folder of the tree, for the highest ID in any task filename (a folder it can't list fails with `io`); it reads no task file. A state file already there is read, for a new tree as for an attached one: one that is usable and names `root` gives its `last_id` as a floor, and any other is replaced.
 
 **Effects:**
 
-- `root` is a directory containing `koan.json`. A new tree has `{"schema": 1, "last_id": 0}`; an existing tree's `koan.json` is unchanged.
+- `root` is a directory containing `koan.json`. A new tree has `{"schema": 2, "migration": <latest>}`, with this binary's latest [migration step](design-spec.md#migrations), since it has nothing to convert; an existing tree's `koan.json` is unchanged, whatever its format.
+- The state file names `root`. Its `last_id` is the highest of: `0`; for an attached tree, the highest ID in any task filename, and the `last_id` of a `koan.json` in an older format that holds one; and, for a new tree too, the `last_id` of a usable state file that already names `root`, so that the counter for a root never goes down. So a tree attached on this machine never has an ID issued that one of its tasks holds. (An ID whose task was deleted before the copy was made can be issued again: see [Task IDs](design-spec.md#task-ids).)
 - The config names `root`. `init` creates the config directory, and any missing ancestors of it, as needed.
 - With `replace_config`, the config file itself is replaced: a config that is a symlink (into a dotfiles checkout, say) becomes a regular file, and the file it pointed to is left as it was.
 
@@ -675,7 +703,7 @@ If a config already exists — whatever it names, and whether or not it parses �
   "properties": {
     "root": { "type": "string", "description": "Absolute root path, as recorded in the config." },
     "action": { "type": "string", "enum": ["created", "attached"], "description": "created: a new, empty tree was created. attached: an existing tree (one already containing koan.json) was attached to this machine." },
-    "last_id": { "$ref": "root-file#/properties/last_id" }
+    "last_id": { "$ref": "state-file#/properties/last_id", "description": "The last_id the state file now holds." }
   },
   "additionalProperties": false
 }
@@ -690,8 +718,9 @@ If a config already exists — whatever it names, and whether or not it parses �
 | `conflict` | (`rule`: `config-exists`) A config already exists and `replace_config` is false. |
 | `not-found` | `root` does not exist and neither does its parent directory (the parent in `paths`). |
 | `conflict` | (`rule`: `root-not-empty`) `root` is a non-empty directory without `koan.json`. |
-| `corrupt` | `koan.json` exists but is corrupt, including not being a regular file. |
-| `unsupported-format` | `koan.json` exists with an unsupported `schema`. |
+| `corrupt` | `koan.json` exists but is corrupt, including not being a regular file, and breaking its own format's rules when it is in an older one. |
+| `unsupported-format` | `koan.json` exists in a format this binary doesn't know, or records a migration step past this binary's latest (`field`: `migration`). |
+| `busy` | `root` exists, and another write holds its write lock. |
 
 **Warnings:** none.
 
@@ -702,18 +731,19 @@ If a config already exists — whatever it names, and whether or not it parses �
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "init-partial",
   "type": "object",
-  "required": ["root_created", "metadata_created"],
+  "required": ["root_created", "metadata_created", "state_created"],
   "properties": {
     "root_created": { "type": "boolean", "description": "init created the root directory." },
-    "metadata_created": { "type": "boolean", "description": "init created koan.json." }
+    "metadata_created": { "type": "boolean", "description": "init created koan.json." },
+    "state_created": { "type": "boolean", "description": "init wrote the state file." }
   },
   "additionalProperties": false
 }
 ```
 
-Present when `init` fails after creating the root directory or `koan.json` — e.g. the config cannot be written. What it created stays; rerunning `init` with the same input completes it.
+Present when `init` fails after creating the root directory, `koan.json`, or the state file — e.g. the config cannot be written. What it created stays; rerunning `init` with the same input completes it.
 
-**Crash behavior:** a crash may leave some of the pieces in place and not others — e.g. a new root directory without `koan.json`, or a tree with `koan.json` but no config. The config is written last, so until it exists nothing else uses the root, and a partial `init` is never mistaken for a usable one. Apart from possible leftover temp files — in the root, which [`doctor`](#doctor) finds as `temp-leftover`, or in the config directory, which the next `init` removes — there is nothing for `doctor` to find.
+**Crash behavior:** a crash may leave some of the pieces in place and not others — e.g. a new root directory without `koan.json`, or a tree with `koan.json` and a state file but no config. `koan.json` is written first, then the state file, and the config last, so until it exists nothing else uses the root, and a partial `init` is never mistaken for a usable one. With `replace_config` naming a different root there is one window: once the state file is written and before the config is, the old config still names the old root while the state file names the new one, so the old root is *not initialized* (`missing`: `state`). Rerunning `init` finishes the switch; to stay with the old root instead, [`repair`](#repair) naming `state-missing` rebuilds its counter. Apart from possible leftover temp files — in the root, which [`doctor`](#doctor) finds as `temp-leftover`, or in the config directory, which the next `init` removes — there is nothing for `doctor` to find.
 
 **Retry safety:** after a crash or an error with `partial`, safe: the config is written last, so an interrupted `init` did not change the config, and rerunning it with the same input finishes the job (reporting `attached` if it had already written `koan.json` — an empty tree it created itself). After a success, rerunning fails with `conflict` (`rule`: `config-exists`). A crash after the config is written — while only its temp file remains to remove — is a success, and a rerun fails the same way.
 
@@ -752,7 +782,7 @@ Report the version and build of the koan binary, and the data format versions it
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "version-output",
   "type": "object",
-  "required": ["version", "commit", "commit_time", "uncommitted_changes", "go", "platform", "schemas"],
+  "required": ["version", "commit", "commit_time", "uncommitted_changes", "go", "platform", "schemas", "migration"],
   "properties": {
     "version": { "type": "string", "description": "Release version (semver), e.g. 1.4.0." },
     "commit": { "type": "string", "description": "Source commit the binary was built from." },
@@ -762,13 +792,15 @@ Report the version and build of the koan binary, and the data format versions it
     "platform": { "type": "string", "description": "OS and architecture, e.g. linux/amd64." },
     "schemas": {
       "type": "object",
-      "required": ["task", "root"],
+      "required": ["task", "root", "state"],
       "properties": {
         "task": { "type": "integer", "description": "The one task file format version this binary reads and writes." },
-        "root": { "type": "integer", "description": "The one koan.json format version this binary reads and writes." }
+        "root": { "type": "integer", "description": "The one koan.json format version this binary reads and writes." },
+        "state": { "type": "integer", "description": "The one state file format version this binary reads and writes." }
       },
       "additionalProperties": false
-    }
+    },
+    "migration": { "$ref": "root-file#/properties/migration", "description": "This binary's latest migration step: the step koan.json records once migrate has run (see Migrations)." }
   },
   "additionalProperties": false
 }
@@ -810,7 +842,7 @@ Report the state of this machine's configured root: what is configured, what exi
 
 **Preconditions:** none.
 
-**Needed files:** none. `info` inspects the config and `koan.json` but reports any problem with them as state, not as an error.
+**Needed files:** none. `info` inspects the config, `koan.json`, and the state file but reports any problem with them as state, not as an error.
 
 **Effects:** none.
 
@@ -823,7 +855,7 @@ Report the state of this machine's configured root: what is configured, what exi
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "info-output",
   "type": "object",
-  "required": ["config", "tree", "initialized", "usable", "compatible"],
+  "required": ["config", "tree", "state", "initialized", "usable", "compatible", "migration_pending"],
   "properties": {
     "config": {
       "type": "object",
@@ -837,19 +869,31 @@ Report the state of this machine's configured root: what is configured, what exi
     },
     "tree": {
       "type": ["object", "null"],
-      "required": ["root_exists", "metadata", "schema", "last_id"],
+      "required": ["root_exists", "metadata", "schema", "migration"],
       "properties": {
         "root_exists": { "type": "boolean", "description": "Whether the root path leads, through symlinks, to a directory." },
-        "metadata": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of koan.json, per the three-step check (see File validity): corrupt fails step 1 or 3 (or is not a regular file); unsupported-format fails step 2." },
-        "schema": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991, "description": "koan.json's schema value; set whenever step 1 passes — whether metadata ends up ok, unsupported-format, or corrupt at step 3 — otherwise null." },
-        "last_id": { "anyOf": [{ "$ref": "root-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless metadata is ok." }
+        "metadata": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "old-format", "unsupported-format", "ok"], "description": "State of koan.json, per the three-step check (see File validity): corrupt fails step 1 or 3 (or is not a regular file), or is in an older format and breaks that format's rules; old-format fails step 2 with an older version, valid by its own rules, which migrate converts; unsupported-format fails step 2 with any other version, or passes every step but records a migration step past this binary's latest. ok says nothing about a step behind it: see migration_pending." },
+        "schema": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991, "description": "koan.json's schema value; set whenever step 1 passes — whether metadata ends up ok, old-format, unsupported-format, or corrupt after step 1 — otherwise null." },
+        "migration": { "anyOf": [{ "$ref": "root-file#/properties/migration" }, { "type": "null" }], "description": "The migration step koan.json records: its migration when metadata is ok, or unsupported-format for a step past the latest; for old-format, what that format records (0 at schema 1, which predates migrations); otherwise null." }
       },
       "additionalProperties": false,
       "description": "State of the configured root; null when config.root is null."
     },
-    "initialized": { "type": "boolean", "description": "True unless the root is not initialized (see Root states). True, with tree null, when the config exists but is unusable." },
+    "state": {
+      "type": ["object", "null"],
+      "required": ["path", "state", "last_id"],
+      "properties": {
+        "path": { "type": "string", "description": "Path of the state file, beside the config." },
+        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the state file, per the three-step check (see File validity). other-root: it is valid but names a root other than config.root, so this root has none. missing and other-root both make the root not initialized." },
+        "last_id": { "anyOf": [{ "$ref": "state-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless state is ok." }
+      },
+      "additionalProperties": false,
+      "description": "State of this machine's state file for the configured root; null when config.root is null."
+    },
+    "initialized": { "type": "boolean", "description": "True unless the root is not initialized (see Root states). True, with tree null, when the config exists but is unusable. A missing state file makes it false only once koan.json is ok: a root that needs migration is initialized." },
     "usable": { "type": "boolean", "description": "True when the root is usable (see Root states)." },
-    "compatible": { "type": ["boolean", "null"], "description": "Whether tree.schema equals this binary's supported koan.json version (see Format versions); null when tree.schema is null." }
+    "compatible": { "type": ["boolean", "null"], "description": "Whether tree.schema equals this binary's supported koan.json version (see Format versions); null when tree.schema is null." },
+    "migration_pending": { "type": ["boolean", "null"], "description": "Whether the root needs migration (see Root states): koan.json is old-format, or records a step behind this binary's latest. When true, run migrate. null when tree.migration is null." }
   },
   "additionalProperties": false
 }
@@ -875,7 +919,7 @@ Every problem with the root is reported as state in the output, not as an error.
 
 Report everything wrong with the tree, as [findings](#findings): what each is, and what [`repair`](#repair) would do about it, or what a person could. Changes nothing.
 
-**Kind:** diagnostic. Takes the write lock, so that what it reports is the tree at rest (see [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). Does not require a usable root: it needs the config and the root, and reports a missing or unusable `koan.json` as a finding. Walks the whole tree.
+**Kind:** diagnostic. Takes the write lock, so that what it reports is the tree at rest (see [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). Does not require a usable root: it needs the config and the root, and reports a missing or unusable `koan.json` or state file as a finding. Walks the whole tree.
 
 **Input schema:**
 
@@ -893,9 +937,9 @@ Report everything wrong with the tree, as [findings](#findings): what each is, a
 
 **Additional validation:** each of `kinds` is one of the [finding kinds](#finding-kinds).
 
-**Preconditions:** the config is usable and names a root that exists.
+**Preconditions:** the config is usable and names a root that exists. A pending migration is not an error: it is the `migration-pending` finding, and each task file in an older format is an `old-format` one.
 
-**Needed files:** the config, and the root directory, which `doctor` opens and locks. Nothing else is needed: a problem with `koan.json`, or with any entry under the root, is a finding, never an error. `doctor` lists every folder; reads `koan.json` and every task file in full; and checks each `.md` named like a task's notes that has no task file beside it, for its size and its identity (see `orphan-notes`).
+**Needed files:** the config, and the root directory, which `doctor` opens and locks. Nothing else is needed: a problem with `koan.json`, with the state file, or with any entry under the root, is a finding, never an error. `doctor` lists every folder; reads `koan.json`, the state file, and every task file in full; and checks each `.md` named like a task's notes that has no task file beside it, for its size and its identity (see `orphan-notes`).
 
 **Effects:** none.
 
@@ -925,7 +969,7 @@ Report everything wrong with the tree, as [findings](#findings): what each is, a
 |---|---|
 | `invalid-input` | `kinds` is empty, repeats a kind, or names a kind that is not a finding kind. |
 | `environment` | The config can't be located. |
-| `not-initialized` | `missing`: `config` or `root`. Never `metadata`: a missing `koan.json` is the `metadata-missing` finding. |
+| `not-initialized` | `missing`: `config` or `root`. Never `metadata` or `state`: a missing `koan.json` is the `metadata-missing` finding, and a missing state file the `state-missing` one. |
 | `corrupt` | The config is corrupt. |
 | `busy` | Another write holds the write lock. |
 
@@ -943,7 +987,7 @@ Errors are checked in the order above. Everything found after the lock is taken 
 
 Apply the safe repairs: for each kind it repairs, every item whose `action` is not `null` (see [Finding kinds](#finding-kinds)). Then report what is left, as [`doctor`](#doctor) would.
 
-**Kind:** diagnostic. Takes the write lock. Does not require a usable root: it needs the config and the root, and a usable `koan.json`, or none when it is asked to create one. Walks the whole tree.
+**Kind:** diagnostic. Takes the write lock. Does not require a usable root: it needs the config and the root, and a usable `koan.json` and state file — or, for either, none when it is asked to create it. Walks the whole tree.
 
 **Input schema:**
 
@@ -959,7 +1003,9 @@ Apply the safe repairs: for each kind it repairs, every item whose `action` is n
 }
 ```
 
-**Additional validation:** each of `kinds` is one of the [finding kinds](#finding-kinds), and not a *manual* or *informational* one: those are never repaired, and the problem's reason says to see `doctor`.
+**Additional validation:** each of `kinds` is one of the [finding kinds](#finding-kinds), and not a *manual* or *informational* one: those are never repaired, and the problem's reason says to see `doctor` — or, for `migration-pending` and `old-format`, to run [`migrate`](#migrate).
+
+A task file in an older format that `repair` meets is left as it is and reported among the remaining findings as `old-format`, whose `suggest` says to run `migrate`.
 
 **Preconditions:**
 
@@ -967,18 +1013,31 @@ Apply the safe repairs: for each kind it repairs, every item whose `action` is n
 |---|---|
 | usable | `repair` runs. |
 | missing, and `kinds` names `metadata-missing` | `repair` runs, and creates it. |
-| missing, otherwise | `not-initialized` (`missing`: `metadata`). Raising `last_id` and every later step need it, and creating it is the user's decision. |
-| present but unusable | `corrupt`, `unsupported-format`, or `io`. `repair` changes nothing in a tree whose `koan.json` it can't read, or whose format it doesn't know. `doctor` reports the problem in full, for a person to fix. |
+| missing, otherwise | `not-initialized` (`missing`: `metadata`). Creating it is the user's decision. |
+| in an older format, or recording a [migration step](design-spec.md#migrations) behind this binary's latest | `migration-pending`. `repair` writes only this binary's formats, and converting the tree is [`migrate`](#migrate)'s job: run it first, then `repair`. |
+| present but otherwise unusable | `corrupt`, `unsupported-format`, or `io`. `repair` changes nothing in a tree whose `koan.json` it can't read, or whose format it doesn't know. `doctor` reports the problem in full, for a person to fix. |
 
-Naming `metadata-missing` when `koan.json` is present is not an error: there is nothing to repair for it.
+And, for a `koan.json` that is usable or is about to be created:
 
-**Needed files:** as for `doctor`, plus `koan.json`, and each task file it rewrites (a usable file, since `doctor` read its `blocked_by`).
+| State file | Outcome |
+|---|---|
+| usable, and naming this root | `repair` runs. |
+| missing or naming another root, and `kinds` names `state-missing` | `repair` runs, and creates it. |
+| missing or naming another root, otherwise | `not-initialized` (`missing`: `state`). Raising `last_id` needs it, and rebuilding it is the user's decision. |
+| unusable | `corrupt`, `unsupported-format`, or `io`. `doctor` reports the problem in full, for a person to fix. |
+
+Naming `metadata-missing` when `koan.json` is present, or `state-missing` when the state file is, is not an error: there is nothing to repair for it.
+
+Both are judged once, under the lock and before any repair is made, so a refusal changes nothing. A run that creates `koan.json` carries on with its other repairs whatever step the new file records: they touch only files in this binary's format.
+
+**Needed files:** as for `doctor`, plus `koan.json`, the state file, and each task file it rewrites (a usable file, since `doctor` read its `blocked_by`).
 
 **Effects:** for each kind it repairs, each item's `action` is applied:
 
 - **`remove`** — the entry is removed: a `temp-leftover` file, or folder with everything in it; an `orphan-notes` `.md`.
-- **`create-metadata`** — `koan.json` is created, with this binary's `schema` and the item's `last_id`.
-- **`raise-last-id`** — `last_id` is set to the item's `last_id`, the highest ID in any task filename. One write for every item.
+- **`create-metadata`** — `koan.json` is created, with this binary's `schema` and the item's `migration`. The step says what `repair` found, since what the lost file recorded can't be known: this binary's latest step when no task file is in an older format, so there is nothing to convert and the root is *usable*; `0` when one is, so the root *needs migration*, and the next [`migrate`](#migrate) converts those files and records the latest step (see the design spec's [Migrations](design-spec.md#migrations)).
+- **`create-state`** — the state file is created, naming this root, with the item's `last_id`: the highest ID in any task filename.
+- **`raise-last-id`** — the state file's `last_id` is set to the item's `last_id`, the highest ID in any task filename. One write for every item.
 - **`remove-reference`** — the missing ID is removed from the task file's `blocked_by`, and `updated_at` is set to now, as [`unblock`](#unblock) does. A copy of a duplicated ID is rewritten like any other task file: the change is to that file alone.
 
 Afterwards, the findings that remain are reported, for every kind, as `doctor` would report them for the same `kinds`.
@@ -1010,12 +1069,13 @@ Afterwards, the findings that remain are reported, for every kind, as `doctor` w
 |---|---|
 | `invalid-input` | `kinds` is empty, repeats a kind, or names a kind that is not a finding kind, or a *manual* or *informational* one. |
 | `environment` | The config can't be located. |
-| `not-initialized` | `missing`: `config` or `root`; or `metadata`, when `koan.json` is missing and `kinds` doesn't name `metadata-missing`. |
-| `corrupt` | The config, or `koan.json`, is corrupt. |
+| `not-initialized` | `missing`: `config` or `root`; or `metadata`, when `koan.json` is missing and `kinds` doesn't name `metadata-missing`; or `state`, when the state file is missing, or names another root, and `kinds` doesn't name `state-missing`. |
+| `corrupt` | The config, `koan.json`, or the state file is corrupt. |
 | `busy` | Another write holds the write lock. |
-| `unsupported-format` | `koan.json`'s `schema` is not the version this binary supports. |
+| `unsupported-format` | `koan.json` is in a format this binary doesn't know, or records a migration step past this binary's latest (`field`: `migration`); or the state file is in a format this binary doesn't know. |
+| `migration-pending` | `koan.json` is in an older format, or records a migration step behind this binary's latest. Nothing is repaired: run [`migrate`](#migrate) first. |
 
-Errors are checked in the order above, except that `koan.json` is read only once the lock is taken, since `repair` decides on current state: its `not-initialized`, `corrupt`, and `unsupported-format` come after `busy`.
+Errors are checked in the order above, except that `koan.json` and the state file are read only once the lock is taken, since `repair` decides on current state: their `not-initialized`, `corrupt`, `unsupported-format`, and `migration-pending` come after `busy`, `koan.json`'s before the state file's.
 
 **Warnings:** none. Every problem `repair` finds is a finding.
 
@@ -1040,13 +1100,172 @@ Present only when an error (e.g. `io`) comes after at least one repair. Each rep
 
 1. `temp-leftover` items are removed. A crash while a temp folder is being removed leaves part of it, still a `temp-leftover`.
 2. `koan.json` is created, when `kinds` names `metadata-missing` and its item's `action` is not `null`.
-3. `last_id` is raised.
-4. `dangling-reference` items are removed, one task file at a time.
-5. `orphan-notes` items are removed. Each is checked again just before: an `empty` one must still be empty, a `linked` one still the same file as its task's notes. One that changed is left, and reported among the remaining findings.
+3. The state file is created, when `kinds` names `state-missing` and its item's `action` is not `null`.
+4. `last_id` is raised.
+5. `dangling-reference` items are removed, one task file at a time.
+6. `orphan-notes` items are removed. Each is checked again just before: an `empty` one must still be empty, a `linked` one still the same file as its task's notes. One that changed is left, and reported among the remaining findings.
 
-Creating `koan.json` before raising `last_id` means a rebuilt `koan.json` never needs raising. A [process crash](design-spec.md#crashes) between any two steps leaves a tree with fewer findings, and no new ones. A [system crash](design-spec.md#crashes) keeps the order of the files `repair` writes — `koan.json` and rewritten task files are flushed like any write's — but can undo removals, which are not flushed; `doctor` then reports those items again.
+Creating the state file before raising `last_id` means a rebuilt one never needs raising. A [process crash](design-spec.md#crashes) between any two steps leaves a tree with fewer findings, and no new ones. A [system crash](design-spec.md#crashes) keeps the order of the files `repair` writes — `koan.json`, the state file, and rewritten task files are flushed like any write's — but can undo removals, which are not flushed; `doctor` then reports those items again.
 
 **Retry safety:** safe. After `busy`, an error with `partial`, or a crash, rerunning repairs what is left. After success, rerunning repairs nothing and returns an empty `repaired`.
+
+## Migration
+
+### migrate
+
+Bring the tree to this binary's formats: convert every file in an [older format](design-spec.md#format-versions) by the [migration steps](design-spec.md#migrations) from its `schema` on, then record this binary's latest step in `koan.json`. koan never runs it on its own: run it after installing a binary that reports the root *needs migration* (see [Root states](#root-states)).
+
+**Kind:** migration. Takes the write lock, and holds it for the whole run. Does not require a usable root: it needs the config, the root, and a `koan.json` in this binary's format or an older one. Walks the whole tree.
+
+**Input schema:**
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migrate-input",
+  "type": "object",
+  "properties": {
+    "dry_run": { "type": "boolean", "default": false, "description": "Report what would change, and write nothing." }
+  },
+  "additionalProperties": false
+}
+```
+
+**Additional validation:** none.
+
+**Preconditions:**
+
+| `koan.json` | Outcome |
+|---|---|
+| In this binary's format or an older one, recording a step at or behind this binary's latest | `migrate` runs. With every file already current and the latest step recorded, it changes nothing: `changed` is `false`. |
+| Missing | `not-initialized` (`missing`: `metadata`). [`repair`](#repair) naming `metadata-missing` rebuilds it; then run `migrate`, if the root *needs migration*. |
+| In a format this binary doesn't know, or recording a step past this binary's latest | `unsupported-format`: a newer binary wrote the tree. Nothing is converted down. |
+| Corrupt, or unreadable | `corrupt` or `io`. For one in an older format, `corrupt` means it breaks that format's own rules, so no step can read it. [`doctor`](#doctor) reports the problem in full, for a person to fix. |
+
+`migrate` issues no ID, so it doesn't need the [state file](design-spec.md#state-file) — except to write it. A `koan.json` at schema 1 holds `last_id`, which the state file holds now, and `migrate` moves it there. A state file that is missing, or names another root, is written. One that is unusable stops the run before anything is written, with its `corrupt`, `unsupported-format`, or `io`: `migrate` never overwrites a counter it can't read.
+
+**Needed files:** the config, and `koan.json`. Relevant files, whose problems are warnings: every folder, and every task file. `migrate` converts what it can reach, and leaves the rest as it is:
+
+- A folder that can't be listed, and a task file that can't be read.
+- A task file that fails the first step of [File validity](design-spec.md#file-validity), so that its format can't be told.
+- A task file in a format this binary doesn't know.
+
+None of these stops the run or keeps the latest step from being recorded: one stray file must not leave the whole tree refused. A file in an older format that the run couldn't reach is [`doctor`](#doctor)'s `old-format` finding once it can be read, and the next `migrate` converts it.
+
+A task file in an older format is checked against its own format's rules before any step is applied to it. One in this binary's format is checked for its `schema` only, and left as it is, byte for byte: damage in it is `doctor`'s to find.
+
+**Effects:**
+
+1. **Every file is read and converted, in memory.** Each task file in an older format, and `koan.json` if it is in one, has the steps from its `schema` on applied in order, and the result is checked against this binary's rules. When `koan.json` holds a `last_id`, the state file is read too, and an unusable one fails the run here, with `dry_run` as without. Nothing is written in this pass.
+2. **With `dry_run`, it stops here**, and reports what the run would change.
+3. **The state file is written first**, when `koan.json` is in a format that holds `last_id`: naming this root, with that `last_id`, or the `last_id` of a usable state file that already names this root if that is higher. The counter is in its new place before the file that held it is replaced, so no interruption can lose it. A state file that already says exactly this is not rewritten.
+4. **Each converted task file is written**, in [tree order](#tree-order), replacing the old one. Its `.md` is untouched, and so is every field's value, `updated_at` included: a migration changes formats, not tasks.
+5. **`koan.json` is written last**, converted if it was in an older format, with `migration` set to this binary's latest step. It is not rewritten when nothing about it would change.
+
+A task file in an older format that breaks its own format's rules, or whose converted result breaks this binary's, can only come from an outside change. It is left as it is and listed in `unconverted`, and the latest step is recorded anyway: every step ran, and the file stays an `old-format` finding until a person fixes or removes it.
+
+Afterwards the root is *usable*, unless something other than its formats keeps it from being so.
+
+**Invariants at risk:** none. A step converts one file on its own, and changes no ID, `blocked_by`, or `last_id` (see the design spec's [Migrations](design-spec.md#migrations)), so every invariant holds after a migration exactly when it held before.
+
+**Output schema:**
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migrate-output",
+  "type": "object",
+  "required": ["dry_run", "from", "to", "applied", "changed", "metadata_converted", "state_written", "tasks_converted", "unconverted", "unconverted_count"],
+  "properties": {
+    "dry_run": { "type": "boolean" },
+    "from": { "$ref": "root-file#/properties/migration", "description": "The step koan.json recorded before the run; 0 at schema 1." },
+    "to": { "$ref": "root-file#/properties/migration", "description": "This binary's latest step, which koan.json now records (with dry_run, would record)." },
+    "applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step", "name"],
+        "properties": {
+          "step": { "type": "integer", "minimum": 1 },
+          "name": { "type": "string", "description": "The step's name in the design spec's table, e.g. tree-marker." }
+        },
+        "additionalProperties": false
+      },
+      "description": "The steps after from, up to to; empty when none was pending, even if files a merge brought in were converted."
+    },
+    "changed": { "type": "boolean", "description": "Whether any file was written (with dry_run, would be)." },
+    "metadata_converted": { "type": "boolean", "description": "Whether koan.json's format was converted (with dry_run, would be). Recording a new step alone doesn't count." },
+    "state_written": { "type": "boolean", "description": "Whether the state file was written, to take the last_id an older koan.json held (with dry_run, would be)." },
+    "tasks_converted": { "type": "integer", "minimum": 0, "description": "How many task files were converted (with dry_run, would be)." },
+    "unconverted": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["path", "id", "schema", "detail"],
+        "properties": {
+          "path": { "type": "string" },
+          "id": { "$ref": "task-file#/properties/id", "description": "From the filename." },
+          "schema": { "type": "integer", "description": "The file's own format version." },
+          "detail": { "type": "string", "description": "Human-readable: which rule it breaks, its own format's or, after conversion, this binary's." }
+        },
+        "additionalProperties": false
+      },
+      "description": "Task files in an older format that no step could convert, left as they are; the first 20."
+    },
+    "unconverted_count": { "type": "integer", "minimum": 0, "description": "How many there are, including any not listed." }
+  },
+  "additionalProperties": false
+}
+```
+
+The converted tasks are not listed: a migration usually converts every task in the tree, and the list would land in the caller's context. [`doctor`](#doctor) lists what is left in an older format, as `old-format`.
+
+**Order:** `applied` by step; `unconverted` in [tree order](#tree-order).
+
+**Errors,** in `migrate`'s own precedence order:
+
+| Kind | When |
+|---|---|
+| `invalid-input` | A bad field. |
+| `environment` | The config can't be located. |
+| `not-initialized` | `missing`: `config`, `root`, or `metadata`. |
+| `corrupt` | The config is corrupt. |
+| `busy` | Another write holds the write lock. |
+| `corrupt` | `koan.json` is corrupt: it fails the first step of [File validity](design-spec.md#file-validity), isn't a regular file, or breaks its own format's rules. |
+| `unsupported-format` | `koan.json` is in a format this binary doesn't know, or records a step past this binary's latest (`field`: `migration`). |
+| `corrupt`, `unsupported-format` | The state file is unusable, and `koan.json` holds a `last_id` to move into it. |
+
+`koan.json` and the state file are read only once the lock is taken, since `migrate` decides on current state: their `not-initialized` (`metadata`), `corrupt`, `unsupported-format`, and `io` come after `busy`. An `io` while writing ends the run with a `partial`.
+
+**Warnings:**
+
+| Kind | When |
+|---|---|
+| `unusable-file` | A task file can't be read (`reason`: `unreadable`); fails the first step of [File validity](design-spec.md#file-validity), so its format can't be told (`reason`: `corrupt`); or is in a format this binary doesn't know (`reason`: `unsupported-format`). It is left as it is. |
+| `unreadable-folder` | A folder could not be listed; the task files in it are left as they are. |
+
+**Partial schema:**
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migrate-partial",
+  "type": "object",
+  "required": ["state_written", "tasks_converted"],
+  "properties": {
+    "state_written": { "type": "boolean", "description": "Whether the state file was written before the failure." },
+    "tasks_converted": { "type": "integer", "minimum": 0, "description": "Task files written before the failure. koan.json was not, so the step is still pending." }
+  },
+  "additionalProperties": false
+}
+```
+
+Present only when an error (e.g. `io` for a full disk) comes after the state file or at least one task file was written, or while `koan.json` is being written. The converted files stay converted; the rest, and `koan.json`, are as they were, so a root that needed migration still does.
+
+**Crash behavior:** the state file is written first, when it is written at all; then task files, in tree order, each flushed before it is published; `koan.json` is written last. A crash after the state file leaves the counter in both places, which is harmless: the root still *needs migration*, and the rerun finds the state file already right. A [process crash](design-spec.md#crashes) leaves some task files converted and `koan.json` as it was: the step is still pending, and the root refuses every operation that requires a usable root until `migrate` runs again. A [system crash](design-spec.md#crashes) keeps that order too, so `koan.json` never records the latest step before every file the run converted is on disk (short of a disk that ignores flushes). A leftover temp file is a `temp-leftover`, which [`repair`](#repair) removes once the migration is done.
+
+**Retry safety:** safe, after anything. A file already converted is left as it is, and the latest step is recorded only once every file the run converts is written. After success, rerunning walks the tree again and changes nothing — unless files in an older format have arrived, or become readable, since, which it then converts.
 
 ## Folder operations
 
@@ -1111,7 +1330,7 @@ Create a folder, and optionally any missing parent folders.
 | Kind | When |
 |---|---|
 | `invalid-input` | `folder` is not a valid folder path. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found`, `corrupt` | Whichever the [path walk](#path-walk) meets first: a missing parent while `parents` is false (`not-found`, `folders`: the outermost missing parent); an entry that is not a directory, or is a symlink (`corrupt`, `reason`: `unexpected-file`). |
 
@@ -1211,7 +1430,7 @@ Tasks that were blocked only by tasks under `folder` become ready, as they would
 | Kind | When |
 |---|---|
 | `invalid-input` | `folder` is not a valid folder path, or is `/`. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found`, `corrupt` | `folder` fails the [path walk](#path-walk) (`not-found`, `folders`: the outermost missing folder; or `corrupt`, `reason`: `unexpected-file`). |
 | `conflict` | (`rule`: `not-empty`) `recursive` is false and `folder` holds a task, a folder, or another entry that is neither hidden nor an empty `.md`. `ids`: the tasks under `folder`, ascending (empty if it holds none). |
@@ -1328,7 +1547,7 @@ Then:
 | Kind | When |
 |---|---|
 | `invalid-input` | `folder` or `to` is not a valid folder path, `folder` is `/`, or `to` is `folder` or under it. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found`, `corrupt` | Whichever the [path walk](#path-walk) meets first, `folder`'s path before `to`'s: a missing `folder`, or a missing folder above `to` while `parents` is false (`not-found`, `folders`: every missing one, both paths together); an entry that is not a directory, or is a symlink (`corrupt`, `reason`: `unexpected-file`). |
 | `conflict` | (`rule`: `destination-exists`) Something already exists at the target (`ids`: `[]`). (`rule`: `case-clash`) An entry differing from the target, or from a folder on `folder`'s or `to`'s path, only in case exists (`ids`: `[]`). |
@@ -1410,7 +1629,7 @@ Create a new, open task.
 | Kind | When |
 |---|---|
 | `invalid-input` | Any input fails validation (bad title, tag, folder path, types, non-integer literals, duplicate keys). |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found`, `corrupt` | `folder` fails the [path walk](#path-walk) (`not-found`, or `corrupt` with `reason` `unexpected-file`); or an ID in `blocked_by` has no task file (`not-found`). A missing folder and missing blockers are reported in one `not-found`. |
 | `corrupt`, `unsupported-format` | A needed task file is corrupt or has an unsupported `schema`; or the new task's task file already exists in `folder` (`corrupt`, `reason`: `unexpected-file`). |
@@ -1449,7 +1668,7 @@ Present only when the failure came after `last_id` was incremented. Once the tas
 2. The task file is created. A process crash here leaves a valid task whose `.md` is missing, which reads as empty notes.
 3. The `.md` is created.
 
-A [system crash](design-spec.md#crashes) keeps this order too: `koan.json` is flushed before the task file is created. Only an outside change, such as a merge of `koan.json`, or a system crash on a disk that ignores flushes, can leave the task file without the `last_id` increment. The task then has an ID above `last_id`, and the next `create` issues that ID again:
+A [system crash](design-spec.md#crashes) keeps this order too: the state file is flushed before the task file is created. Only an outside change — a state file restored from a backup or rebuilt too low, or task files brought in from another copy of the tree — or a system crash on a disk that ignores flushes, can leave a task file without the `last_id` increment. The task then has an ID above `last_id`, and the next `create` issues that ID again:
 
 - **In a different folder**, it succeeds, producing two tasks with one ID. Reads report them as `duplicate-id`.
 - **In the same folder**, the existing task file blocks it: `create` fails with `corrupt` (`reason`: `unexpected-file`) and a `partial` for the consumed ID. A retry uses the next ID and succeeds.
@@ -1587,7 +1806,7 @@ The tasks themselves are not returned: the caller wrote them, and the result of 
 | Kind | When |
 |---|---|
 | `invalid-input` | Any input fails validation: a bad title, tag, folder path, or type; a duplicate `ref`; a string in `blocked_by` that names no earlier task in the batch; more than 1,000 tasks, or none. Every problem in every task is reported. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found`, `corrupt` | An entry on a folder's path is not a plain directory, or is a symlink (`corrupt`, `reason`: `unexpected-file`); or an integer in a `blocked_by` has no task file (`not-found`, `ids`: every missing one, across all tasks). A missing folder is never an error: it is created. |
 | `corrupt`, `unsupported-format` | A needed task file is corrupt or has an unsupported `schema`; or a new task's task file already exists in its folder (`corrupt`, `reason`: `unexpected-file`, with a `partial`). |
@@ -1649,7 +1868,7 @@ Present only when the failure came after something was written: a folder created
 2. `last_id` is raised by *n*. A crash here consumes *n* IDs without creating a task — allowed gaps.
 3. For each task in input order: its task file is created, then its `.md`. A crash here leaves the tasks before it created, the one in progress either created (with its `.md` possibly missing, which reads as empty notes) or not, and the rest not. Each created task's blockers exist: refs name earlier tasks, which were written first.
 
-A [system crash](design-spec.md#crashes) keeps the order of steps 2 and 3, since `koan.json` and each task file are flushed before the next step. Creating a folder is not flushed (see [Crashes](design-spec.md#crashes)), so a system crash can lose a new folder and, with it, the tasks written into it: their IDs become gaps, and a task elsewhere that a lost one blocked is left with a `dangling-reference`, which `doctor` finds and [`repair`](#repair) removes. The other exception is the one [`create`](#create) describes: an outside change, or a disk that ignores flushes, can leave tasks with IDs above `last_id`, which the batch's IDs may then collide with. A collision in the same folder fails the batch at that task with `corrupt` and a `partial`; in a different folder it produces a `duplicate-id`. `doctor` finds both, as for `create`.
+A [system crash](design-spec.md#crashes) keeps the order of steps 2 and 3, since the state file and each task file are flushed before the next step. Creating a folder is not flushed (see [Crashes](design-spec.md#crashes)), so a system crash can lose a new folder and, with it, the tasks written into it: their IDs become gaps, and a task elsewhere that a lost one blocked is left with a `dangling-reference`, which `doctor` finds and [`repair`](#repair) removes. The other exception is the one [`create`](#create) describes: an outside change, or a disk that ignores flushes, can leave tasks with IDs above `last_id`, which the batch's IDs may then collide with. A collision in the same folder fails the batch at that task with `corrupt` and a `partial`; in a different folder it produces a `duplicate-id`. `doctor` finds both, as for `create`.
 
 **Retry safety:** after `busy`, safe — nothing happened. After an error before the writes (every kind but those with a `partial`), safe — nothing changed. After an error with `partial`, rerunning the whole batch is safe only if `ids` is empty: folders already created are not an error, and the IDs are consumed afresh. Otherwise it is **not** safe: it creates the tasks in `ids` again, with new IDs. Rerun only the tasks not created — `tasks` from index `len(ids)` on — with each string in their `blocked_by` that names a created task replaced by its ID from `partial.refs`. After a crash or an unclear outcome, **not** safe, as for `create`: check which tasks exist first, e.g. by title with [`list`](#list). See [Idempotent create](design-spec.md#idempotent-create), which would cover a batch with one key.
 
@@ -1713,7 +1932,7 @@ Each item is a [Task view](#task-view). Notes are not included; `notes_path` loc
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` is missing or not a valid task ID. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | A task file with ID `id` is unusable — including one copy of a duplicated ID. |
 
@@ -1801,7 +2020,7 @@ The task after the operation, per the [Task](#task) schema, plus `changed`.
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` is missing or not a valid task ID. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The task file is unusable. |
@@ -1885,7 +2104,7 @@ The task after the operation, per the [Task](#task) schema, plus `changed`.
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` is missing or not a valid task ID. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The task file is unusable. |
@@ -1987,7 +2206,7 @@ The task after the operation, per the [Task](#task) schema, plus `added`.
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` or `blockers` is missing or invalid, `blockers` is empty or repeats an ID, or `blockers` contains `id`. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found` | `id`, or a blocker, has no task file (`ids`: every missing one). |
 | `corrupt`, `unsupported-format` | The task file, or a task file the cycle check reaches, is unusable. |
@@ -2078,7 +2297,7 @@ The task after the operation, per the [Task](#task) schema, plus `removed`.
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` or `blockers` is missing or invalid, or `blockers` is empty or repeats an ID. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The task file is unusable. |
@@ -2227,7 +2446,7 @@ The task after the operation, per the [Task](#task) schema, plus `changed`.
 | Kind | When |
 |---|---|
 | `invalid-input` | Any input fails validation — including no field to change, `replace_all` combined with another form, or `add`/`remove` (`merge`/`remove`) sharing an entry. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The task file is unusable. |
@@ -2308,7 +2527,7 @@ Tasks that were blocked only by this one become ready, as they would if it had b
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` is missing or not a valid task ID. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it removes; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
@@ -2431,7 +2650,7 @@ The task after the operation, per the [Task](#task) schema, plus `from`, `create
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` or `to` is missing or invalid. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found`, `corrupt` | `to` fails the [path walk](#path-walk) while `parents` is false (`not-found`, or `corrupt` with `reason` `unexpected-file`); or no task file has ID `id` (`not-found`). A missing folder and a missing task are reported in one `not-found`. |
 | `corrupt`, `unsupported-format` | The task file is unusable. |
@@ -2556,7 +2775,7 @@ A `limit` takes a prefix of this order, and the filters leave it unchanged (see 
 | Kind | When |
 |---|---|
 | `invalid-input` | `folder` is not a valid folder path, `recursive` is not a boolean, or a [narrowing](#narrowing-tasks) field is invalid: a tag set empty, repeating a tag, or holding an invalid one; `limit` not an integer from 0 up; `fields` empty, repeating a name, or naming no Task view field. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `not-found`, `corrupt` | `folder` fails the [path walk](#path-walk) (`not-found`, or `corrupt` with `reason` `unexpected-file`). |
 
 **Warnings:**
@@ -2659,7 +2878,7 @@ Each task is a [Task view](#task-view), the same shape `show` and `frontier` ret
 | Kind | When |
 |---|---|
 | `invalid-input` | `folder` is not a valid folder path, a flag is not a boolean, `readiness` is empty or repeats or doesn't name a readiness value, or a [narrowing](#narrowing-tasks) field is invalid, as for [`frontier`](#frontier). |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `not-found`, `corrupt` | `folder` fails the [path walk](#path-walk) (`not-found`, or `corrupt` with `reason` `unexpected-file`). |
 
 **Warnings:**
@@ -2775,7 +2994,7 @@ Each item of `tasks` is a [Task view](#task-view), or with `fields` a [Task proj
 | Kind | When |
 |---|---|
 | `invalid-input` | `id` is missing or not a valid task ID, `include_tasks` is not a boolean, `fields` is invalid as for [`frontier`](#frontier), or `fields` is given without `include_tasks`. |
-| `environment`, `not-initialized`, `corrupt`, `unsupported-format` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
+| `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id`. Each copy has its own `blocked_by`, so there is no one upstream to explain; [`show`](#show) lists the copies. |
 | `corrupt`, `unsupported-format` | The task file with ID `id` is unusable. |
@@ -2796,11 +3015,3 @@ Each item of `tasks` is a [Task view](#task-view), or with `fields` a [Task proj
 **Crash behavior:** none. `why` changes nothing.
 
 **Retry safety:** safe. Like every read, the result may be stale by the time it is used (see [Reads](design-spec.md#reads)).
-
-## Planned operations
-
-Operations not yet specified, with the constraints already decided.
-
-### migrate
-
-Upgrade a tree from one format version to the next — `koan.json` and every task file — as a single explicit operation (see [Format versions](design-spec.md#format-versions)). Until then, a binary that supports a different format than the tree's cannot use it.

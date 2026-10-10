@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migrate-output",
+  "type": "object",
+  "required": ["dry_run", "from", "to", "applied", "changed", "metadata_converted", "state_written", "tasks_converted", "unconverted", "unconverted_count"],
+  "properties": {
+    "dry_run": { "type": "boolean" },
+    "from": { "$ref": "root-file#/properties/migration", "description": "The step koan.json recorded before the run; 0 at schema 1." },
+    "to": { "$ref": "root-file#/properties/migration", "description": "This binary's latest step, which koan.json now records (with dry_run, would record)." },
+    "applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step", "name"],
+        "properties": {
+          "step": { "type": "integer", "minimum": 1 },
+          "name": { "type": "string", "description": "The step's name in the design spec's table, e.g. tree-marker." }
+        },
+        "additionalProperties": false
+      },
+      "description": "The steps after from, up to to; empty when none was pending, even if files a merge brought in were converted."
+    },
+    "changed": { "type": "boolean", "description": "Whether any file was written (with dry_run, would be)." },
+    "metadata_converted": { "type": "boolean", "description": "Whether koan.json's format was converted (with dry_run, would be). Recording a new step alone doesn't count." },
+    "state_written": { "type": "boolean", "description": "Whether the state file was written, to take the last_id an older koan.json held (with dry_run, would be)." },
+    "tasks_converted": { "type": "integer", "minimum": 0, "description": "How many task files were converted (with dry_run, would be)." },
+    "unconverted": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["path", "id", "schema", "detail"],
+        "properties": {
+          "path": { "type": "string" },
+          "id": { "$ref": "task-file#/properties/id", "description": "From the filename." },
+          "schema": { "type": "integer", "description": "The file's own format version." },
+          "detail": { "type": "string", "description": "Human-readable: which rule it breaks, its own format's or, after conversion, this binary's." }
+        },
+        "additionalProperties": false
+      },
+      "description": "Task files in an older format that no step could convert, left as they are; the first 20."
+    },
+    "unconverted_count": { "type": "integer", "minimum": 0, "description": "How many there are, including any not listed." }
+  },
+  "additionalProperties": false
+}

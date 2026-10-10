@@ -201,10 +201,10 @@ func TestLocations(t *testing.T) {
 		in   string
 		want []string
 	}{
-		{`{"schema": 1, "last_id": 0}`, nil},
-		{`{"schema": 1}`, []string{"/last_id"}},
-		{`{"schema": 1, "last_id": 0, "x": 1, "a/b": 2}`, []string{"/a~1b", "/x"}},
-		{`{"schema": 2, "last_id": -1}`, []string{"/last_id", "/schema"}},
+		{`{"schema": 2, "migration": 0}`, nil},
+		{`{"schema": 2}`, []string{"/migration"}},
+		{`{"schema": 2, "migration": 0, "x": 1, "a/b": 2}`, []string{"/a~1b", "/x"}},
+		{`{"schema": 1, "migration": -1}`, []string{"/migration", "/schema"}},
 	} {
 		ok, f := Check(t, "root-file", []byte(tc.in))
 		if got := f.Fields; ok != (tc.want == nil) || !reflect.DeepEqual(got, tc.want) || f.Alternatives != nil {

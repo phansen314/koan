@@ -6,7 +6,7 @@ Task management on one machine, with the filesystem as the database: tasks are J
 
 Linux and macOS only.
 
-**Pre-1.0:** until 1.0, the task file format, `koan.json`, and the JSON output may change in place, with no `schema` bump or migration, so a new version can report an existing tree's files as `corrupt`. Each such change bumps the minor version (0.1 → 0.2), and its release notes say how to fix existing trees. See [Format versions](design-spec.md#format-versions).
+**Pre-1.0:** until 1.0, the JSON output may change in a minor release (0.1 → 0.2), and its release notes say what changed. The files a tree is made of don't change that way: every change to the task file format or `koan.json` bumps its `schema` and ships a migration, which `koan migrate` applies (see [Upgrading](#upgrading)).
 
 ## Install
 
@@ -18,6 +18,25 @@ koan init ~/koans                                                          # thi
 ```
 
 koan was called ftask. Coming from it, skip `init`: the first koan command moves ftask's config and the tree's `ftask.json` to koan's names, and says so in its warnings (see [Migrating from ftask](design-spec.md#migrating-from-ftask)). Then uninstall ftask's agent setup and install koan's, below.
+
+## Upgrading
+
+```sh
+GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest
+koan info | jq '.result.migration_pending'
+```
+
+When a release changes the files a tree is made of, every command that reads or changes tasks refuses the tree with `migration-pending` until you run `koan migrate`, rather than skipping the tasks it can no longer read. Then:
+
+```sh
+cd ~/koans && git add -A && git commit -qm 'Before koan migrate'   # if the tree is in git: the commit to go back to
+koan migrate --dry-run | jq '.result | {from, to, tasks_converted}'
+koan migrate
+```
+
+`migrate` holds the tree's lock while it runs, so run it while agents are idle; their commands wait, then fail with `busy`, safe to retry. It changes formats only: no task's fields, `updated_at` included. To undo it, `git restore .` in the tree before you commit the result. A tree copied between machines is migrated once, on one of them; each other machine needs the new binary before it can use the tree again, and files an older binary writes in the meantime are converted by the next `migrate`. There are no migrations back. See [Migrations](design-spec.md#migrations).
+
+A release can also add a permission rule, as the one that added `migrate` did. Rules already installed don't change by themselves: run `scripts/install.sh` again after upgrading, or add the rule by hand ([below](#the-rules-to-add-by-hand)). Until then the agent can run the new command without asking.
 
 ## Use it from Claude Code and OpenCode
 
@@ -40,6 +59,8 @@ It needs `jq`, backs a settings file up (to `.bak.<timestamp>`, a new one each t
 
 Then ask your agent things like "what should I work on next?" or "add a task to review the migration PR, blocked by 12".
 
+`migrate` asks too: it rewrites every task file in an older format, and holds the tree's lock while it runs.
+
 ### The rules, to add by hand
 
 Claude Code, in `~/.claude/settings.json`:
@@ -48,7 +69,7 @@ Claude Code, in `~/.claude/settings.json`:
 {
   "permissions": {
     "allow": ["Bash(koan:*)", "Bash(jq:*)"],
-    "ask": ["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)"]
+    "ask": ["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]
   }
 }
 ```
@@ -64,7 +85,8 @@ OpenCode, in `~/.config/opencode/opencode.json` (the script leaves an `opencode.
       "koan init*": "ask",
       "koan delete *": "ask",
       "koan delete-folder *": "ask",
-      "koan repair*": "ask"
+      "koan repair*": "ask",
+      "koan migrate*": "ask"
     }
   }
 }
@@ -141,9 +163,12 @@ A crash, a git merge, or a hand edit can leave the tree damaged: a leftover temp
 koan doctor                         # .result.healthy, and .result.findings: what is wrong, and what repair would do
 koan repair                         # remove leftovers and dangling blockers, raise last_id; the rest is left to you
 koan repair --kinds metadata-missing   # rebuild a lost koan.json; never done by default
+koan repair --kinds state-missing      # rebuild this machine's ID counter; never done by default
 ```
 
 `repair` never decides between versions: duplicate IDs, dependency cycles, and corrupt files are reported, with a suggestion, for you to resolve. See [Diagnosis and repair](design-spec.md#diagnosis-and-repair).
+
+`repair` never converts formats either: task files in an older format, and a pending migration, are `doctor` findings whose suggestion is `koan migrate` (see [Upgrading](#upgrading)).
 
 ## Undoing a delete
 
@@ -156,7 +181,11 @@ git restore -- proj/42.json proj/42.md                          # not yet commit
 git restore --source=<commit>^ -- proj/42.json proj/42.md       # committed: from the commit before
 ```
 
-Restore only the removed paths, never the whole tree: `koan.json` holds the last issued ID, and rolling it back lets IDs be reused. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to re-`block` after restoring. Then run `koan doctor`: a restored task may name blockers deleted since. See [Undo](operations.md#undo).
+Restore only the removed paths: restoring the whole tree would undo every other change since that commit. It can't make koan reuse an ID, though. Every file in the tree is safe to commit and restore, with no `.gitignore` needed, because the last issued ID is kept outside it, in `state.json` beside koan's config. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to re-`block` after restoring. Then run `koan doctor`: a restored task may name blockers deleted since. See [Undo](operations.md#undo).
+
+## More than one machine
+
+A tree is written from one machine. The last issued ID is that machine's, kept in `state.json` beside its config and never in the tree, so that nothing git does to the tree can set it back. To use a tree on another machine, clone or copy it there and run `koan init <path>`: it attaches the tree and starts that machine's counter at the highest ID it finds. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve. See [Task IDs](design-spec.md#task-ids).
 
 ## Specs
 

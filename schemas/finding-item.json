@@ -6,14 +6,15 @@
   "properties": {
     "paths": { "type": "array", "items": { "type": "string" }, "description": "Filesystem paths involved; meaning per kind (see Finding kinds)." },
     "ids": { "type": "array", "items": { "type": "integer" }, "description": "Task IDs involved; order and meaning per kind (see Finding kinds)." },
-    "action": { "type": ["string", "null"], "description": "What repair does to this item: remove, raise-last-id, remove-reference, or create-metadata; null when repair leaves it to a person. In repair's repaired list, what it did." },
+    "action": { "type": ["string", "null"], "description": "What repair does to this item: remove, raise-last-id, remove-reference, create-metadata, or create-state; null when repair leaves it to a person. In repair's repaired list, what it did." },
     "suggest": { "type": ["string", "null"], "description": "What a person could do, for humans. Not part of the contract." },
     "reason": { "type": "string", "description": "For orphan-notes: empty, linked, task-elsewhere, no-task, or unreadable. For skipped-entry: symlink or type." },
     "code": { "type": "string", "description": "For unreadable-folder, and orphan-notes with reason unreadable: the symbolic OS error (e.g. EACCES)." },
     "identical": { "type": "boolean", "description": "For duplicate-id: whether every copy is the same, byte for byte." },
     "group": { "type": "array", "items": { "type": "integer" }, "description": "For cycle: every ID in the group, ascending." },
-    "last_id": { "$ref": "root-file#/properties/last_id", "description": "For metadata-missing and id-above-last-id: the last_id repair writes." },
-    "error": { "$ref": "error", "description": "For metadata-unusable and unusable-file: the error an operation that needed the file would fail with." }
+    "last_id": { "$ref": "state-file#/properties/last_id", "description": "For state-missing and id-above-last-id: the last_id repair writes." },
+    "migration": { "$ref": "root-file#/properties/migration", "description": "For metadata-missing: the migration step repair records in the koan.json it creates." },
+    "error": { "$ref": "error", "description": "For metadata-unusable, state-unusable, migration-pending, and unusable-file: the error an operation that needed the file would fail with." }
   },
   "additionalProperties": false
 }

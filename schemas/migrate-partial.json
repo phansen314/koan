@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migrate-partial",
+  "type": "object",
+  "required": ["state_written", "tasks_converted"],
+  "properties": {
+    "state_written": { "type": "boolean", "description": "Whether the state file was written before the failure." },
+    "tasks_converted": { "type": "integer", "minimum": 0, "description": "Task files written before the failure. koan.json was not, so the step is still pending." }
+  },
+  "additionalProperties": false
+}

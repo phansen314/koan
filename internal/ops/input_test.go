@@ -17,6 +17,7 @@ var bases = map[string][]string{
 	"info":          {`{}`},
 	"doctor":        {`{"kinds": ["cycle", "temp-leftover"]}`, `{}`},
 	"repair":        {`{"kinds": ["temp-leftover", "metadata-missing"]}`, `{}`},
+	"migrate":       {`{"dry_run": true}`, `{}`},
 	"init":          {`{"root": "/home/u/tasks", "replace_config": true}`},
 	"create-folder": {`{"folder": "/proj/travel", "parents": true}`},
 	"create": {

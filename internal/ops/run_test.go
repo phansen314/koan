@@ -49,7 +49,7 @@ func fixedBuild(t *testing.T) {
 func TestVersion(t *testing.T) {
 	fixedBuild(t)
 	got := line(t, Run("version", parse(t, `{}`), nil, Env{}))
-	want := `{"ok":true,"result":{"version":"1.4.0","commit":"abc123","commit_time":"2026-09-27T12:34:56Z","uncommitted_changes":true,"go":"go1.25.1","platform":"linux/amd64","schemas":{"task":1,"root":1}},"warnings":[]}` + "\n"
+	want := `{"ok":true,"result":{"version":"1.4.0","commit":"abc123","commit_time":"2026-09-27T12:34:56Z","uncommitted_changes":true,"go":"go1.25.1","platform":"linux/amd64","schemas":{"task":1,"root":2,"state":1},"migration":1},"warnings":[]}` + "\n"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
