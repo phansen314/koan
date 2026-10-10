@@ -114,8 +114,9 @@ func configExists(env Env) (bool, *errs.Error) {
 // validity says; otherwise, if root is empty but for hidden entries, it
 // creates koan.json for a new tree. Then it writes the state file, and last
 // the config (implementation-spec.md, init). existed: the root was there
-// before this init, so the state file is read and written under its lock.
-func initTree(env Env, root string, existed, replace bool, res *InitResult) *errs.Error {
+// before this init, so the tree is walked and the state file read and
+// written under its lock.
+func initTree(env Env, root string, existed, cfgExists bool, res *InitResult) *errs.Error {
 	r, err := env.FS.OpenRoot(root)
 	if err != nil {
 		return errs.FromOS(root, err)
@@ -136,6 +137,15 @@ func initTree(env Env, root string, existed, replace bool, res *InitResult) *err
 	default:
 		return metaUnusable(ms, root)
 	}
+	// Locked before the walk, so no ID is issued between it and the state
+	// file's write.
+	if existed {
+		lock, e := takeLock(r, root, env.LockWait)
+		if e != nil {
+			return e
+		}
+		defer lock.Unlock()
+	}
 	if res.Action == InitAttached {
 		// The highest ID in any task filename: names only, no task file read.
 		tx := &Tx{root: r, rootPath: root, cache: map[Location]*Loaded{}}
@@ -146,13 +156,6 @@ func initTree(env Env, root string, existed, replace bool, res *InitResult) *err
 		for _, l := range x.Tasks {
 			last = max(last, int64(l.ID))
 		}
-	}
-	if existed {
-		lock, e := takeLock(r, root, env.LockWait)
-		if e != nil {
-			return e
-		}
-		defer lock.Unlock()
 	}
 	if err := env.FS.MkdirAll(env.ConfigDir, FolderMode); err != nil {
 		return errs.FromOS(env.ConfigDir, err)
@@ -166,7 +169,7 @@ func initTree(env Env, root string, existed, replace bool, res *InitResult) *err
 		return e
 	}
 	res.StateCreated, res.LastID = true, last
-	return writeConfig(env, root, replace)
+	return writeConfig(env, root, cfgExists)
 }
 
 // createMeta creates koan.json for a new tree: root is empty but for hidden

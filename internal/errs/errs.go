@@ -150,7 +150,7 @@ func NotInitialized(missing Missing) *Error {
 	case MissingMetadata:
 		msg = "the root has no koan.json"
 	case MissingState:
-		msg = "this machine has no state file for the root: run init, or repair naming state-missing"
+		msg = "this machine has no state file for the root: run koan doctor, then koan repair --kinds state-missing"
 	default:
 		msg = "not initialized"
 	}

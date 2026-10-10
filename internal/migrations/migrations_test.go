@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/model"
 	"github.com/phansen314/koan/internal/schematest"
 )
 
@@ -122,5 +123,33 @@ func TestCheckRepeatedKey(t *testing.T) {
 	ps := Check(Root, 1, obj, repeated)
 	if len(ps) != 1 || ps[0].Field != "/last_id" || ps[0].Reason != "repeated key" {
 		t.Errorf("problems %v", ps)
+	}
+}
+
+// TestStepsChain holds the table to what Convert relies on: for each kind,
+// each step reads the schema the one before it wrote, and the last writes
+// this binary's.
+func TestStepsChain(t *testing.T) {
+	for _, tc := range []struct {
+		kind    Kind
+		current int64
+	}{
+		{Task, model.TaskSchema},
+		{Root, model.RootSchema},
+	} {
+		var next int64
+		for _, s := range Steps() {
+			f := s.For(tc.kind)
+			if f == nil {
+				continue
+			}
+			if next != 0 && f.From != next {
+				t.Errorf("%s: step %d reads schema %d, want %d", tc.kind, s.Number, f.From, next)
+			}
+			next = f.From + 1
+		}
+		if next != 0 && next != tc.current {
+			t.Errorf("%s: the steps end at schema %d, this binary's is %d", tc.kind, next, tc.current)
+		}
 	}
 }

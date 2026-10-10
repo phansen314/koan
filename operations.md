@@ -649,7 +649,7 @@ Data formats are versioned separately; see the design spec's [Format versions](d
 
 Create a new tree, or attach an existing one, and make it this machine's configured root. A new tree gets a fresh `koan.json`; an existing tree — one that already contains `koan.json`, e.g. cloned or moved from another machine — is left untouched: `init` writes only this machine's files for it, the [state file](design-spec.md#state-file) and the config naming it. Afterwards the root is at least *initialized* (see [Root states](#root-states)).
 
-**Kind:** setup. Takes no lock to create a new tree — its root may not exist until `init` creates it — and never changes an existing tree's content. When the root already exists, it takes the write lock while it reads and writes the state file, so that a write still running under an earlier config can't have its `last_id` overwritten. Does not require a usable root. Concurrent `init` runs are not supported.
+**Kind:** setup. Takes no lock to create a new tree — its root may not exist until `init` creates it — and never changes an existing tree's content. When the root already exists, it takes the write lock while it walks the tree and reads and writes the state file, so that a write still running under an earlier config can't have its `last_id` overwritten. Does not require a usable root. Concurrent `init` runs are not supported.
 
 **Input schema:**
 

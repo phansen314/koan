@@ -104,12 +104,13 @@ func Check(kind Kind, schema int64, obj *jsonio.Object, repeated []string) []err
 
 // Convert applies to obj, a file of kind at schema, every step from its
 // schema on, in order: each step's output is the next one's input. A step
-// that doesn't cover kind leaves the file alone. A file whose schema no step
-// reads is returned as it is.
+// that doesn't cover kind, or reads another schema than the file has reached,
+// leaves the file alone. A file whose schema no step reads is returned as it
+// is.
 func Convert(kind Kind, schema int64, obj *jsonio.Object) (*jsonio.Object, error) {
 	for _, s := range steps {
 		f := s.For(kind)
-		if f == nil || f.From < schema {
+		if f == nil || f.From != schema {
 			continue
 		}
 		var err error
