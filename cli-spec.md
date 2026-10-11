@@ -411,7 +411,7 @@ Permanently remove a folder and everything under it, and the removed tasks' IDs 
 
 **Output:** Passthrough: the folders removed, the IDs of the tasks removed, and the `dependents` that lost references to them. There is no undo but git (see [Undo](operations.md#undo)).
 
-**Errors:** none beyond the operation's.
+**Errors:** none beyond the operation's. There is no `--token`: a folder holding a task with a locked claim is refused (`conflict`, `rule`: `token-mismatch`) until those claims are released.
 
 **Examples:**
 
@@ -578,7 +578,7 @@ for id in 41 42 43; do koan show "$id"; done   # one envelope each
 
 Mark a task done. Marking an already done task changes nothing. Runs [`done`](operations.md#done).
 
-**Synopsis:** `koan done <id>`, or `koan done -i <file>`.
+**Synopsis:** `koan done <id> [--token <token>]`, or `koan done -i <file>`.
 
 **Operation:** [`done`](operations.md#done).
 
@@ -588,11 +588,15 @@ Mark a task done. Marking an already done task changes nothing. Runs [`done`](op
 |---|---|---|
 | `<id>` | `/id` | Required unless `--input` is given. Bare digits, as for [`show`](#show). One ID per call. |
 
-**Options:** none.
+**Options:**
 
-**Input:** none beyond the Arguments mapping.
+| Option | Field | Default |
+|---|---|---|
+| `--token <token>` | `/token` | None. The token of the caller's locked claim on the task, from [`claim`](#claim) or [`claim-next`](#claim-next) with `--use-token`. Needed when the task is locked, and refused when it is not. |
 
-**Output:** Passthrough: the task, plus `changed`. An already done task exits `0` with `changed: false`.
+**Input:** none beyond the Arguments and Options mapping.
+
+**Output:** Passthrough: the task, plus `changed`. An already done task exits `0` with `changed: false`. Marking a task done ends its claim.
 
 **Errors:** none beyond the operation's.
 
@@ -601,6 +605,7 @@ Mark a task done. Marking an already done task changes nothing. Runs [`done`](op
 ```sh
 koan done 42                               # .result.changed is false if it was already done
 for id in 41 42; do koan done "$id"; done  # one envelope each
+koan done 42 --token 3f9c0a7e5b1d48c2a6e4f0b9d7c3a185   # a task locked with --use-token
 ```
 
 ### reopen
@@ -635,7 +640,7 @@ koan reopen 42   # .result.completed_at is null again
 
 Add one or more blockers to a task's `blocked_by`, all-or-nothing. Runs [`block`](operations.md#block).
 
-**Synopsis:** `koan block <id> --blockers <id,id,…>`, or `koan block -i <file>`.
+**Synopsis:** `koan block <id> --blockers <id,id,…> [--token <token>]`, or `koan block -i <file>`.
 
 **Operation:** [`block`](operations.md#block).
 
@@ -650,6 +655,7 @@ Add one or more blockers to a task's `blocked_by`, all-or-nothing. Runs [`block`
 | Option | Field | Default |
 |---|---|---|
 | `--blockers <id,id,…>` | `/blockers` | Required unless `--input` is given. |
+| `--token <token>` | `/token` | None. The token of the caller's locked claim on `<id>`, never on a blocker, from [`claim`](#claim) or [`claim-next`](#claim-next) with `--use-token`. Needed when the task is locked, and refused when it is not. |
 
 `--blockers` is an option rather than a second argument so that the direction is explicit: in `koan block 42 41` nothing would say which ID blocks which, and a swap would silently add the reverse dependency.
 
@@ -670,7 +676,7 @@ koan block 42 --blockers 7       # a cycle is refused: .error.details.cycles sho
 
 Remove one or more blockers from a task's `blocked_by`. Removing an ID that isn't there changes nothing. The counterpart of [`block`](#block). Runs [`unblock`](operations.md#unblock).
 
-**Synopsis:** `koan unblock <id> --blockers <id,id,…>`, or `koan unblock -i <file>`.
+**Synopsis:** `koan unblock <id> --blockers <id,id,…> [--token <token>]`, or `koan unblock -i <file>`.
 
 **Operation:** [`unblock`](operations.md#unblock).
 
@@ -685,6 +691,7 @@ Remove one or more blockers from a task's `blocked_by`. Removing an ID that isn'
 | Option | Field | Default |
 |---|---|---|
 | `--blockers <id,id,…>` | `/blockers` | Required unless `--input` is given. |
+| `--token <token>` | `/token` | None. The token of the caller's locked claim on the task, from [`claim`](#claim) or [`claim-next`](#claim-next) with `--use-token`. Needed when the task is locked, and refused when it is not. |
 
 **Input:** none beyond the Arguments and Options mapping.
 
@@ -725,8 +732,9 @@ Change one or more of a task's `title`, `priority`, `tags`, and `extra`. Fields 
 | `--extra-merge <json>` | `/extra/merge` | Unchanged. A JSON object. |
 | `--extra-remove <key>` | `/extra/remove` | Unchanged. **Repeatable**, one key per occurrence. |
 | `--extra-replace-all <json>` | `/extra/replace_all` | Unchanged. A JSON object; `{}` clears `extra`. |
+| `--token <token>` | `/token` | None. The token of the caller's locked claim on the task, from [`claim`](#claim) or [`claim-next`](#claim-next) with `--use-token`. Needed when the task is locked, and refused when it is not. |
 
-At least one option is needed, and the operation's rules on combining them (e.g. `--tags-replace-all` stands alone; a tag may not be both added and removed) are the operation's: breaking them is `invalid-input`, not a usage error (see [Command line](#command-line)).
+At least one option besides `--token` is needed, and the operation's rules on combining them (e.g. `--tags-replace-all` stands alone; a tag may not be both added and removed) are the operation's: breaking them is `invalid-input`, not a usage error (see [Command line](#command-line)).
 
 **Input:** none beyond the Arguments and Options mapping.
 
@@ -749,7 +757,7 @@ koan update 42 --tags-replace-all ''
 
 Permanently remove a task, and its ID from every other task's `blocked_by`. Runs [`delete`](operations.md#delete).
 
-**Synopsis:** `koan delete <id>`, or `koan delete -i <file>`.
+**Synopsis:** `koan delete <id> [--token <token>]`, or `koan delete -i <file>`.
 
 **Operation:** [`delete`](operations.md#delete).
 
@@ -759,9 +767,13 @@ Permanently remove a task, and its ID from every other task's `blocked_by`. Runs
 |---|---|---|
 | `<id>` | `/id` | Required unless `--input` is given. Bare digits, as for [`show`](#show). One ID per call. |
 
-**Options:** none.
+**Options:**
 
-**Input:** none beyond the Arguments mapping.
+| Option | Field | Default |
+|---|---|---|
+| `--token <token>` | `/token` | None. The token of the caller's locked claim on the task, from [`claim`](#claim) or [`claim-next`](#claim-next) with `--use-token`. Needed when the task is locked, and refused when it is not. |
+
+**Input:** none beyond the Arguments and Options mapping.
 
 **Output:** Passthrough: the task's ID and folder, and the `dependents` that lost their reference to it. There is no undo but git (see [Undo](operations.md#undo)).
 
@@ -778,7 +790,7 @@ git log --diff-filter=D --oneline -- '*/42.json' '42.json'   # find it again lat
 
 Move a task into a folder. Runs [`move`](operations.md#move).
 
-**Synopsis:** `koan move <id> --to <folder> [-p]`, or `koan move -i <file>`.
+**Synopsis:** `koan move <id> --to <folder> [-p] [--token <token>]`, or `koan move -i <file>`.
 
 **Operation:** [`move`](operations.md#move).
 
@@ -794,6 +806,7 @@ Move a task into a folder. Runs [`move`](operations.md#move).
 |---|---|---|
 | `--to <folder>` | `/to` | Required unless `--input` is given. |
 | `-p, --parents` | `/parents` | `false`. Creates `--to` and any missing folders above it. |
+| `--token <token>` | `/token` | None. The token of the caller's locked claim on the task, from [`claim`](#claim) or [`claim-next`](#claim-next) with `--use-token`. Needed when the task is locked, and refused when it is not. |
 
 **Input:** none beyond the Arguments and Options mapping.
 
@@ -808,11 +821,155 @@ koan move 42 --to /proj/travel
 koan move 42 --to /archive/2025 -p   # creates /archive/2025; the notes move too
 ```
 
+### claim
+
+Claim a task, so that no other caller can claim it until it is released or done. With `--use-token`, the claim also locks the task. Runs [`claim`](operations.md#claim).
+
+**Synopsis:** `koan claim <id> [--extra <json>] [--use-token]`, or `koan claim -i <file>`.
+
+**Operation:** [`claim`](operations.md#claim).
+
+**Arguments:**
+
+| Argument | Field | Notes |
+|---|---|---|
+| `<id>` | `/id` | Required unless `--input` is given. Bare digits, as for [`show`](#show). One ID per call. |
+
+**Options:**
+
+| Option | Field | Default |
+|---|---|---|
+| `--extra <json>` | `/extra` | `{}`. A JSON object, kept with the claim and never interpreted. |
+| `--use-token` | `/use_token` | `false`. Lock the task: `result.token` is then needed by every write that targets it. |
+
+**Input:** none beyond the Arguments and Options mapping.
+
+**Output:** Passthrough: `task`, the task claimed, and, with `--use-token`, `token`. A task that is already claimed is an error, `conflict` (`rule`: `claimed`), and exits `1`.
+
+The token is printed here and nowhere else: no other command shows it. Keep it from this output.
+
+**Errors:** none beyond the operation's.
+
+A `claim` that exits `3` or with any other [outcome-unknown](#exit-codes) status may have made the claim. Per the operation's Retry safety, a rerun then says so (`claimed`); with `--use-token`, the token is lost, and the task stays locked until a [`force-release`](#force-release).
+
+**Examples:**
+
+```sh
+koan claim 42                                               # .result.task.claim: the claim just made
+koan claim 42 --extra '{"agent":"shingi-3","worktree":"/w/42"}'     # kept with the claim, shown by show and list
+koan claim 42 --use-token | jq -r '.result.token'           # lock it; pass the token to done, update, and the rest
+koan claim 42 | jq '.error.details.claims[0].extra'         # already claimed: by whom, as far as its extra says
+```
+
+There is no bare `koan claim`: a missing `<id>` is a usage error, never a claim on whatever comes next. That is [`claim-next`](#claim-next).
+
+### claim-next
+
+Claim the next task: the first task of the frontier that nobody has claimed. Runs [`claim-next`](operations.md#claim-next).
+
+**Synopsis:** `koan claim-next [--folder <path>] [--recursive=false] [--tags-any <tags>] [--tags-all <tags>] [--extra <json>] [--use-token]`, or `koan claim-next -i <file>`.
+
+**Operation:** [`claim-next`](operations.md#claim-next).
+
+**Arguments:** none.
+
+**Options:**
+
+| Option | Field | Default |
+|---|---|---|
+| `--folder <path>` | `/folder` | `/`. An exact [folder path](#command-line). |
+| `--recursive` | `/recursive` | `true`. `--recursive=false` leaves out tasks in subfolders. |
+| `--tags-any <tags>` | `/tags_any` | None. Comma list: only tasks with at least one of them. |
+| `--tags-all <tags>` | `/tags_all` | None. Comma list: only tasks with every one of them. |
+| `--extra <json>` | `/extra` | `{}`. A JSON object, kept with the claim and never interpreted. |
+| `--use-token` | `/use_token` | `false`. Lock the task: `result.token` is then needed by every write that targets it. |
+
+**Input:** none beyond the Options mapping.
+
+**Output:** Passthrough: `task`, the task claimed, and, with `--use-token`, `token`. With nothing left to claim, it exits `0` with `task: null`.
+
+**Errors:** none beyond the operation's.
+
+A `claim-next` that exits `3` or with any other [outcome-unknown](#exit-codes) status may have claimed a task. Per the operation's Retry safety, a rerun may claim a second one: check with `koan list --claimed` before rerunning.
+
+**Examples:**
+
+```sh
+koan claim-next | jq '.result.task.id'                      # the next free task; null if there is none
+koan claim-next --folder /proj --tags-any today --extra '{"agent":"shingi-3"}'
+koan claim-next --use-token | jq -r '.result | "\(.task.id) \(.token)"'
+koan list --folder /proj --limit 0 | jq '.result.total'     # after a null: open tasks left there, so wait or stop
+```
+
+### release
+
+Clear a task's claim, so that it can be claimed again. Releasing a task with no claim changes nothing. Runs [`release`](operations.md#release).
+
+**Synopsis:** `koan release <id> [--token <token>]`, or `koan release -i <file>`.
+
+**Operation:** [`release`](operations.md#release).
+
+**Arguments:**
+
+| Argument | Field | Notes |
+|---|---|---|
+| `<id>` | `/id` | Required unless `--input` is given. Bare digits, as for [`show`](#show). One ID per call. |
+
+**Options:**
+
+| Option | Field | Default |
+|---|---|---|
+| `--token <token>` | `/token` | None. The token [`claim`](#claim) or [`claim-next`](#claim-next) returned with `--use-token`: needed to release a locked claim, and refused for any other. |
+
+**Input:** none beyond the Arguments and Options mapping.
+
+**Output:** Passthrough: the task, plus `changed`. A task with no claim exits `0` with `changed: false`.
+
+**Errors:** none beyond the operation's.
+
+**Examples:**
+
+```sh
+koan release 42                 # .result.changed is false if it wasn't claimed
+koan release 42 --token 3f9c0a7e5b1d48c2a6e4f0b9d7c3a185
+```
+
+### force-release
+
+Clear a task's claim, locked or not, without its token: the one way past a lock. Runs [`force-release`](operations.md#force-release).
+
+**Synopsis:** `koan force-release <id>`, or `koan force-release -i <file>`.
+
+**Operation:** [`force-release`](operations.md#force-release).
+
+**Arguments:**
+
+| Argument | Field | Notes |
+|---|---|---|
+| `<id>` | `/id` | Required unless `--input` is given. Bare digits, as for [`show`](#show). One ID per call. |
+
+**Options:** none.
+
+**Input:** none beyond the Arguments mapping.
+
+**Output:** Passthrough: the task, plus `changed`. A task with no claim exits `0` with `changed: false`.
+
+**Errors:** none beyond the operation's.
+
+**Examples:**
+
+```sh
+koan list --claimed --fields id,title,claim   # what is claimed, since when, and whether it is locked
+koan force-release 42                         # its holder is gone, or the token is lost
+```
+
+There is no `release --force`. Forcing is its own command, so that agent permission rules, which match a command line by its start, can ask before `koan force-release` while `koan release` runs unasked — as for [`repair`](#repair).
+
 ### frontier
 
 Return the ready tasks — open, and not blocked — in the order to work on them. Runs [`frontier`](operations.md#frontier).
 
-**Synopsis:** `koan frontier [--folder <path>] [--recursive=false] [--tags-any <tags>] [--tags-all <tags>] [--limit <n>] [--fields <names>]`, or `koan frontier -i <file>`.
+**Synopsis:** `koan frontier [--folder <path>] [--recursive=false] [--tags-any <tags>] [--tags-all <tags>] [--claimed[=false]] [--limit <n>] [--fields <names>]`, or `koan frontier -i <file>`.
 
 **Operation:** [`frontier`](operations.md#frontier).
 
@@ -826,6 +983,7 @@ Return the ready tasks — open, and not blocked — in the order to work on the
 | `--recursive` | `/recursive` | `true`. `--recursive=false` leaves out tasks in subfolders. |
 | `--tags-any <tags>` | `/tags_any` | None. Comma list: only tasks with at least one of them. |
 | `--tags-all <tags>` | `/tags_all` | None. Comma list: only tasks with every one of them. |
+| `--claimed` | `/claimed` | None: claimed or not. `--claimed` keeps only claimed tasks; `--claimed=false` only unclaimed ones. |
 | `--limit <n>` | `/limit` | None: every task. At most `n`, the first in frontier order. |
 | `--fields <names>` | `/fields` | None: whole task views. Comma list of task view field names; `id` is always included. |
 
@@ -845,13 +1003,14 @@ koan frontier --limit 1                                     # the next task, who
 koan frontier --folder /proj --limit 20 --fields id,title   # ready under /proj
 koan frontier --tags-any urgent,today --fields id,title
 koan frontier --limit 0                                     # how many are ready: .result.total
+koan frontier --claimed=false --limit 10 --fields id,title  # what's free to claim
 ```
 
 ### list
 
 Return every task in scope, whatever its readiness, with its readiness shown — and optionally the folders in scope. Done tasks are included only on request. Runs [`list`](operations.md#list).
 
-**Synopsis:** `koan list [--folder <path>] [--recursive=false] [--readiness <states>] [--include-folders] [--tags-any <tags>] [--tags-all <tags>] [--limit <n>] [--fields <names>]`, or `koan list -i <file>`.
+**Synopsis:** `koan list [--folder <path>] [--recursive=false] [--readiness <states>] [--include-folders] [--tags-any <tags>] [--tags-all <tags>] [--claimed[=false]] [--limit <n>] [--fields <names>]`, or `koan list -i <file>`.
 
 **Operation:** [`list`](operations.md#list).
 
@@ -867,6 +1026,7 @@ Return every task in scope, whatever its readiness, with its readiness shown —
 | `--include-folders` | `/include_folders` | `false`. |
 | `--tags-any <tags>` | `/tags_any` | None. Comma list: only tasks with at least one of them. |
 | `--tags-all <tags>` | `/tags_all` | None. Comma list: only tasks with every one of them. |
+| `--claimed` | `/claimed` | None: claimed or not. `--claimed` keeps only claimed tasks; `--claimed=false` only unclaimed ones. |
 | `--limit <n>` | `/limit` | None: every task. At most `n`, the first in tree order. |
 | `--fields <names>` | `/fields` | None: whole task views. Comma list of task view field names; `id` is always included. |
 
@@ -886,6 +1046,8 @@ koan list --folder /proj --readiness done --limit 0                         # ho
 koan list --readiness blocked --fields id,title,blocking                    # what's stuck, and on what
 koan list --readiness ready,blocked,done --tags-all db,backend --fields id,title,readiness
 koan list --include-folders --limit 0                                      # every folder: .result.folders
+koan list --claimed --fields id,title,claim                                # what's taken, since when, and whether it is locked
+koan list --claimed --fields id,claim | jq -c '.result.tasks[] | select(.claim.extra.agent == "shingi-3")'   # one caller's claims, by its own extra
 koan list --fields folder | jq -c 'if .ok then .result |= (.tasks |= (group_by(.folder) | map({folder: .[0].folder, ids: map(.id)}))) else . end'
 ```
 
@@ -954,6 +1116,6 @@ koan pick --folders | jq -r '.result.folders[0]'                  # a folder pat
 
 ## Not included
 
-- **Filters beyond [Narrowing tasks](operations.md#narrowing-tasks)** (on `extra` fields, on title text, or anything query-like): output shaping, left to `jq` (see the operations' [Parameters](operations.md#conventions) convention). `--limit`, `--fields`, and the tag and readiness filters are the exception, since `frontier`'s and `list`'s output — and `why`'s with `--include-tasks` — lands in an agent's context.
+- **Filters beyond [Narrowing tasks](operations.md#narrowing-tasks)** (on `extra` fields, on title text, or anything query-like): output shaping, left to `jq` (see the operations' [Parameters](operations.md#conventions) convention). `--limit`, `--fields`, and the tag, readiness, and claim filters are the exception, since `frontier`'s and `list`'s output — and `why`'s with `--include-tasks` — lands in an agent's context.
 - **`--config` / `--root`**: there is one config and one root per user (see the design spec's [Assumptions](design-spec.md#assumptions)). A different config location is reached by setting `XDG_CONFIG_HOME` (or `HOME`), with the effects the design spec describes.
 - **Tree view**: rendering for people, which the JSON-only CLI does not do. Stays in the design spec's [Future work](design-spec.md#tree-view).

@@ -188,6 +188,7 @@ Each line has these columns, the title last:
 - **Only the title and tags are matched.** The query never matches the ID, the folder or the state. Narrowing by folder is the [`f` action](#actions). (fzf's `--nth`.)
 - **Color.** Blocked and done lines are dimmed, and tags and folder are muted. With `NO_COLOR` set to a non-empty value, lines carry no color.
 - **Duplicate IDs** show as one line per copy. The preview, marks and the selection follow the copy, by its [key](#line-keys). An action names the ID, so on a duplicated ID it fails with `conflict` (`rule`: `duplicate-id`), shown in the [status line](#status-line).
+- **Locked tasks** show like any other. `pick` passes no `token`, so an action on a task with a locked [claim](design-spec.md#claims) fails with `conflict` (`rule`: `token-mismatch`), shown in the status line like any failed action. A claim without a token changes nothing for `pick`.
 
 ### Header, prompt and status line
 
@@ -510,6 +511,10 @@ Done with the implementation, not before, since they describe a command that exi
 ### Fields at creation
 
 A mini-language in `n`'s prompt that sets more than the title, e.g. `Book hotel #travel !2` for tags `travel` and priority 2. Left out for now: titles are otherwise taken literally, and this would mean escaping `#` and `!` in them. Meanwhile, after `n` the cursor is on the new task when it is listed, so `t`, `p` and `x` are one key away.
+
+### Claims
+
+A marker on the lines of claimed and locked tasks, the claim in the preview, and actions to claim, release and force-release. Left out for now: `pick` is for a person, who is the one handing out the work, and [`claim`](operations.md#claim), [`claim-next`](operations.md#claim-next), [`release`](operations.md#release) and [`force-release`](operations.md#force-release) are a command away. The load already carries each task's `claim`, so the marker needs no operation change.
 
 ### Concurrent updates
 

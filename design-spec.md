@@ -32,6 +32,11 @@ Terms used with one meaning throughout this spec and [operations.md](operations.
 | **`koan.json`** | The root's metadata file (see [Root metadata](#root-metadata)). |
 | **state file** | This machine's ID counter for the root, kept beside the config and never in the tree (see [State file](#state-file)). |
 | **config** | The file `config.toml` naming the root (see [Configuration](#configuration)). |
+| **claim** | A reservation of one task, which refuses every other claim of it (see [Claims](#claims)). |
+| **claims file** | This machine's claims for the root, kept beside the config and never in the tree (see [Claims file](#claims-file)). |
+| **effective claim** | A claim whose task is open and has exactly one usable task file; any other entry in the claims file is **inert** (see [Effective claims](#effective-claims)). |
+| **token**, **locked claim** | The value koan makes for a claim on request, and a claim that has one: writes that target its task must present it (see [Tokens](#tokens)). |
+| **targeting write** | A write that changes or removes a task named by ID, and so is checked against a locked claim (see [Targeting writes](#targeting-writes)). |
 | **write lock** | The lock that serializes write operations on a root (see [Write lock](#write-lock)). |
 | **invariant** | A rule spanning several files (see [Invariants](#invariants)). |
 | **file-level rule** | A rule checkable on one file alone (see [File validity](#file-validity)). |
@@ -181,7 +186,7 @@ Folders are addressed by their path from the root, written with `/` separators a
 - Unique across the whole tree, not per folder, since `blocked_by` references tasks by ID alone (see [Invariants](#invariants)).
 - Assigned from a monotonically increasing sequence, recorded as `last_id` in this machine's [state file](#state-file). It is kept out of the tree on purpose: restoring, reverting, or merging the tree's files can then never lower it. The sequence may have gaps: an ID can be consumed without a task being created (e.g. by a process crash mid-create).
 - **Never reused**, even after its task is deleted — short of an outside change (e.g. a state file restored from a backup, or rebuilt after its highest tasks were deleted) or a system crash on a disk that ignores flushes, either of which can cause reuse (see `create` › Crash behavior in [`create`](operations.md#create)). [`doctor`](operations.md#doctor) detects it, as `id-above-last-id` before reuse and `duplicate-id` after.
-- **One machine issues IDs.** The counter is this machine's, so a tree is written from one machine. A copy of the tree attached on a second machine (see [`init`](operations.md#init)) starts its own counter at the highest ID it finds, and tasks created on both would get the same IDs: merging them gives `duplicate-id`. Sharing one tree between machines that both create tasks is not supported. The same holds on one machine for two config directories naming one root: they share its lock, but not its counter. One root is served by one config.
+- **One machine issues IDs.** The counter is this machine's, so a tree is written from one machine. A copy of the tree attached on a second machine (see [`init`](operations.md#init)) starts its own counter at the highest ID it finds, and tasks created on both would get the same IDs: merging them gives `duplicate-id`. Sharing one tree between machines that both create tasks is not supported. The same holds on one machine for two config directories naming one root: they share its lock, but neither its counter nor its [claims](#claims). One root is served by one config.
 
 #### Task filenames
 
@@ -314,7 +319,7 @@ Rules are checked at two levels, and they fail differently:
 | **File** | The one file alone | Valid JSON (per step 1 below) with no duplicate keys; integer fields written as integer literals (`42`, never `42.0` or `4.2e1`); the file's JSON Schema; the [naming and validation](#naming-and-validation) rules the schema can't express (e.g. timestamps are real calendar date-times); the task's own ID not in its `blocked_by`; the filename ID equals the `id` field | The file is **`corrupt`**. Reads skip it with an [`unusable-file`](operations.md#warning-kinds) warning; a write that needs it fails with `corrupt`. |
 | **Tree** | Several files together | The [invariants](#invariants) | The files stay usable. Reads report or absorb the violation (e.g. a dangling blocker counts as blocking); [`doctor`](operations.md#doctor) finds it (see [Diagnosis and repair](#diagnosis-and-repair)). |
 
-Every versioned file (`koan.json`, the [state file](#state-file), a task file) is checked in three steps, stopping at the first failure:
+Every versioned file (`koan.json`, the [state file](#state-file), the [claims file](#claims-file), a task file) is checked in three steps, stopping at the first failure:
 
 1. **Parseable and versioned.** The file is valid JSON (with no `\u` escape of an unpaired UTF-16 surrogate, e.g. `\ud800` alone, and no more than 9,990 levels of nested objects and arrays), is a JSON object, and has a `schema` written as an integer literal (`2.0` does not count) from −(2^53 − 1) to 2^53 − 1, the range every JSON reader holds exactly. Otherwise: `corrupt`.
 2. **Supported version.** `schema` is the version this binary supports. Otherwise: `unsupported-format` — and nothing further is checked, since the rest of the file follows a format this binary doesn't read (see [Format versions](#format-versions)). What the other version is decides only what to do about it: a file in an older format is converted by [`migrate`](operations.md#migrate), which checks it against its own version's rules first; any other needs a newer binary. `koan.json` in an older format is the one exception to *nothing further*: a binary carries the rules of every older `koan.json` format with its [migration steps](#migrations), and checks the file against them wherever it reads it. One that breaks them is `corrupt`; one that passes makes the root *need migration* (see [Root states](operations.md#root-states)).
@@ -412,7 +417,7 @@ A read absorbs what concurrent writes cause:
 
 ### Non-guarantees
 
-- **No reservation.** Asking which tasks are ready ([`frontier`](operations.md#frontier)) takes no lock, writes nothing, and marks nothing. Two callers asking a second apart are told the same task, and neither learns about the other. That is fine while a person hands out work, and a silent collision once agents pick work for themselves — see [Claims](#claims).
+- **No reservation by reading.** Asking which tasks are ready ([`frontier`](operations.md#frontier)) takes no lock, writes nothing, and marks nothing. Two callers asking a second apart are told the same task, and neither learns about the other. That is fine while a person hands out work, and a silent collision once agents pick work for themselves. A caller that needs the task to itself [claims](#claims) it: [`claim`](operations.md#claim) and [`claim-next`](operations.md#claim-next) are the reservation, and `frontier` stays a read.
 
 ### Write lock
 
@@ -426,27 +431,159 @@ The write lock that serializes writes (see [Guarantees](#guarantees)) is the **r
 
 How the lock is taken, and how files are replaced atomically, is in the implementation spec's [Mechanism](implementation-spec.md#mechanism).
 
+## Claims
+
+A **claim** reserves a task. Once a caller has claimed a task, no other caller can, until the claim is released or the task is done. It is what [`frontier`](operations.md#frontier) does not give (see [Non-guarantees](#non-guarantees)): two agents working from one tree, each asking for work, are not handed the same task.
+
+A claim is an advisory, durable try-lock on a task, with an `extra` map koan never interprets; a claim made with a token is a mandatory one. Both are built on the [write lock](#write-lock).
+
+- **A try-lock.** [`claim`](operations.md#claim) never waits for a task. One that is already claimed is refused at once (`conflict`, `rule`: `claimed`), and [`claim-next`](operations.md#claim-next), which claims the first unclaimed task of the frontier, passes over it.
+- **Durable.** A claim is an entry in this machine's [claims file](#claims-file), not something a process holds. It outlasts the command that made it, and the death of whoever made it.
+- **No expiry.** A claim lasts until it is released, or its task is done or deleted. There is no lease and no renewal, and nothing koan does depends on a clock: `claimed_at` is information for the caller.
+- **Advisory.** A claim made without a token refuses other claims, and changes nothing else: every write to the task proceeds as if it were unclaimed.
+- **Mandatory, with a token.** A claim made with a [token](#tokens) also locks the task: a write that [targets](#targeting-writes) it must present the token.
+
+**koan guarantees exclusion, and nothing else.** It is not a coordinator. Who is working on a task, whether they are still alive, when a claim should be released, and what to do after a failure are the caller's to decide — a coordinator's, or a person's. koan identifies no agent and watches no process.
+
+**`extra` is the caller's.** A claim carries an `extra` map, exactly like a task's (see [Fields](#fields)): koan stores it and returns it, and never reads or compares it. Whatever a caller wants to record about a claim goes there, e.g. `{"agent": "shingi-3", "worktree": "/w/42"}`.
+
+**Claims are per machine.** They are kept beside the config, not in the tree, so they do not travel through git or a sync: two people sharing a tree through git do not see each other's claims. A claim coordinates processes on one machine, as the write lock does.
+
+**Claims are opt-in, at every level.** The level is chosen when the claim is made:
+
+| Task | Writes that target it |
+|---|---|
+| Unclaimed | Proceed. |
+| Claimed ([`claim`](operations.md#claim) or [`claim-next`](operations.md#claim-next)) | Proceed. Only another claim is refused. |
+| Claimed with a token (either, with `use_token`) | Must present the token. [`force-release`](operations.md#force-release) is the only way past it. |
+
+A tree where nobody has ever claimed has no claims file, and every operation behaves as it does without claims. Once there is one, it must be usable: an unusable claims file stops every targeting write, for every caller, until it is repaired (see [Claims file](#claims-file)).
+
+### Effective claims
+
+A claim is **effective** when its entry is in the claims file and its ID has exactly one task file, which is usable and open. Every other entry is **inert**: one whose task is done or missing, or whose ID has several task files or an unusable one.
+
+- **Reads** show an effective claim in the task's [`claim`](operations.md#task-view), and ignore an inert entry: the task reads as unclaimed.
+- **Writes** check only an effective claim's token.
+- **`claim`** is refused, and **`claim-next`** turned away, only by an effective claim. A task with an inert entry cannot be claimed anyway: it is done, or it is one a write refuses to act on.
+
+An inert entry reserves nothing, and stays in the file until an operation that ends a claim removes it, or [`repair`](operations.md#repair) drops it as [`claim-inert`](operations.md#finding-kinds). So the order in which [`done`](operations.md#done) and [`delete`](operations.md#delete) write is safe: each changes the task first, which makes the entry inert, and drops the entry after. An interruption between the two leaves nothing a caller can observe.
+
+Whether an entry is effective is judged from the tree as it is when the entry is read. An entry is never removed because its task could not be found: a folder that can't be listed, or a task file a restore brings back, must not cost a caller its claim. Only the operations below remove entries:
+
+| Operation | Removes |
+|---|---|
+| [`release`](operations.md#release), [`force-release`](operations.md#force-release) | The task's entry. |
+| [`done`](operations.md#done) | The task's entry, once the task is done. |
+| [`reopen`](operations.md#reopen) | A done task's entry, before the task is open again, so that a reopened task always starts unclaimed. |
+| [`delete`](operations.md#delete), [`delete-folder`](operations.md#delete-folder) | The entries of the tasks removed, once they are gone. |
+| [`repair`](operations.md#repair) | Inert entries of done and missing tasks; or, on request, every entry of an unusable claims file. |
+
+### Tokens
+
+- **koan makes the token.** A claim made with `use_token` gets 128 random bits from the operating system's secure random source, written as 32 lowercase hexadecimal digits. The token is stored with the claim and returned once, in the result of the `claim` or `claim-next` that made it. A caller never supplies one, so a token is unique to one claim: it cannot be a name a caller reuses, and it names that claim, never a caller.
+- **The token appears in no read.** Not in a task's `claim`, which says only that the claim is `locked`, and not in any error's `details`. Only the result of the operation that made it carries it.
+- **koan compares the token for equality**, and does nothing else with it.
+- **Tokens are not access control.** The claims file is readable by every process running as the user, and `force-release` clears any claim. A token guards against mistakes — a write from a process that does not hold the claim, or no longer does — so it only has to be something an agent cannot copy out of [`show`](operations.md#show).
+
+### Targeting writes
+
+A write **targets** a task when it changes that task, or removes it, by ID:
+
+- [`done`](operations.md#done), [`update`](operations.md#update), [`move`](operations.md#move), [`delete`](operations.md#delete), and [`release`](operations.md#release), for the task named;
+- [`block`](operations.md#block) and [`unblock`](operations.md#unblock), for the task whose `blocked_by` changes;
+- [`delete-folder`](operations.md#delete-folder), for every task under the folder.
+
+A lock guards a task against writes addressed to it by ID, and against being destroyed. It does not pin where the task lives: `move` is a targeting write because it is addressed by ID, not because it moves the task.
+
+Each of these but `delete-folder` takes an optional `token`. For each task it targets:
+
+| The task's claim | No `token` given | `token` given |
+|---|---|---|
+| None, or inert | Proceeds. | `conflict` (`rule`: `token-mismatch`). |
+| Without a token | Proceeds. | `conflict` (`token-mismatch`). |
+| With token T | `conflict` (`token-mismatch`). | Proceeds if it equals T; otherwise `conflict` (`token-mismatch`). |
+
+The middle column is why a caller that uses no tokens is never affected by claims it did not lock. The right column is **fencing**: a caller that passes a token believes it holds a locked claim. If that claim is gone — released, forced, or ended by `done` — its write is refused, instead of landing on a task someone else may now hold.
+
+The check does not depend on what the write would change: one that would change nothing (e.g. `done` on a done task) is checked like any other.
+
+`delete-folder` cannot carry one token per task, so it takes none: a folder holding a task with a locked claim is refused (`token-mismatch`, naming those tasks) until the claims are released.
+
+Not targeting, and so never checked:
+
+- **Incidental changes.** [`delete`](operations.md#delete) removing its task's ID from a locked task's `blocked_by`, and `block` naming a locked task as a blocker, which changes the blocked task and not the blocker. The first keeps an [invariant](#invariants), and the second changes another task; refusing either would let a lock on one task make writes to others fail.
+- **`create` and `create-batch`.** A new task has no claim.
+- **`move-folder`.** It reads only paths and destroys nothing (see [Walking the tree](#walking-the-tree)), so a locked task moves with the rest of its folder. The holder finds it again by ID, with [`show`](operations.md#show). `delete-folder` differs because it destroys the tasks, and already reads the folder's entries.
+- **`reopen`.** A done task's claim is always inert, so there is nothing to check, and `reopen` takes no `token`.
+- **Notes.** A task's `.md` is edited directly (see [Assumptions](#assumptions)), and no lock covers it.
+
+### Past a lock
+
+A lock that is durable and mandatory eventually strands a task: its holder dies, or the token is lost with a result that never arrived (see the CLI's [exit codes](cli-spec.md#exit-codes)). So there is exactly one way past a lock, [`force-release`](operations.md#force-release), which clears any task's claim, with or without a token. No other write takes an override: to act on a task someone else has locked, force-release it, then write.
+
+It is an operation of its own, not an option of `release`, so that an agent's permission rules, which match a command line by its start, can ask before it — as for [`repair`](operations.md#repair) and [`migrate`](operations.md#migrate).
+
+### Left to the caller
+
+koan enforces no policy about claims. These cases are allowed, and are the caller's to handle:
+
+- **A dead holder.** Its claim stays until someone releases it. Nothing tells koan the holder is gone.
+- **A lost token.** A `claim` or `claim-next` with `use_token` whose result never reached the caller leaves the task locked against everyone, its claimer included, until a `force-release`. The outcome is a stranded task, never duplicated work.
+- **A second claim on a rerun.** Rerunning a `claim-next`, after an outcome that is unknown, may claim a second task. koan cannot tell that both callers are one.
+- **Whose claim it is.** `claim` on a task already claimed is refused whoever holds it, the caller itself included. The error carries the claim's `extra`, for the caller to compare with its own; koan never makes that comparison.
+- **Releasing someone else's claim.** `release` clears a claim without a token whoever made it, and `done` completes a task whoever claimed it.
+- **A claim on a blocked task.** It reserves work that cannot start yet, which is the caller's business.
+- **A moved task.** `move-folder` moves a locked task with its folder.
+
+### Why claims hold
+
+**Exclusion.** If two claims of a task T both succeed, each by `claim` or `claim-next`, then between them a `release`, `force-release`, `done`, `reopen`, `delete`, or `delete-folder` of T took effect.
+
+1. Every operation that writes the claims file holds the root's write lock (*Serialized writes* in [Guarantees](#guarantees)), so those operations are totally ordered.
+2. Each reads the claims file, and T's task file, after acquiring the lock (*Writes decide on current state*).
+3. Each replaces the claims file all-or-nothing, flushed before it is published (*Atomic files*).
+4. Let c1, then c2, be successful claims of T. By 1–3, the claims file c2 read holds c1's entry, unless an operation in between removed it. Only the operations listed above remove an entry, and `repair`, which removes only inert ones — and c1's entry is inert only once T is done or deleted, which takes a `done`, a `delete`, or a `delete-folder`. If the entry is there and T is open, T's claim is effective, and c2 is refused. ∎
+
+**Locks.** If a write that targets T succeeds while T's effective claim has token K, the write was given K.
+
+- The write holds the write lock, and reads the claims file after acquiring it. Every operation that adds or removes T's entry holds the same lock, so T's claim cannot change between the write's check and its effect: the check sees the claim as it is when the write takes effect, and lets the write through only when the tokens are equal. ∎
+- **Fencing** is the same argument from the holder's side. A write given K succeeds only if T's claim, at that moment, has token K. Every token is made fresh for one claim, so that claim is the one K was returned for: a late write from a holder whose claim was released and then taken by someone else is always refused.
+
+**The next task.** `claim-next` claims the first unclaimed task of the frontier. Under the write lock the tree changes only through outside changes, so the frontier computed there is the frontier at the moment the claim is recorded.
+
+Outside these arguments, as outside every guarantee koan makes:
+
+- an [outside change](#assumptions) to the claims file or to a task file;
+- notes, which any editor writes;
+- two config directories naming one root, which share its lock but not its claims file (see [Task IDs](#task-ids));
+- a system crash on a disk that ignores flushes.
+
+Beyond those, two callers work on one task only when someone releases, or force-releases, a claim whose holder is still working. That is a coordinator's decision, or a person's.
+
 ## Diagnosis and repair
 
 A system crash or an outside change can leave a tree that breaks an [invariant](#invariants), or that holds entries no rule accounts for. Normal operations report or absorb such damage, and never repair it (see [Guarantees](#guarantees)). Two operations do: [`doctor`](operations.md#doctor) finds it, and [`repair`](operations.md#repair) fixes what can be fixed safely. Each problem they find is a [finding](operations.md#findings), of one of a fixed set of [kinds](operations.md#finding-kinds).
 
 - **At rest.** Both take the write lock, even `doctor`, which changes nothing. With no write running, every koan temp file is a leftover, never a write in progress, and what `doctor` reports is the tree's state, not a write half done. If another write holds the lock, both wait for it like any write (see *Bounded wait* in [Guarantees](#guarantees)).
-- **They run when nothing else can.** Both need the config and the root it names. `doctor` needs nothing else: a missing or unusable `koan.json` or state file is a finding, not an error. `repair` needs each of the two usable, or missing and named for rebuilding (see its [Preconditions](operations.md#repair)). They are the way out of a root that every other operation refuses. `doctor` also runs while a migration is pending, and reports it; `repair` doesn't, since it writes only this binary's formats (see [`repair`](operations.md#repair)).
+- **They run when nothing else can.** Both need the config and the root it names. `doctor` needs nothing else: a missing or unusable `koan.json` or state file, and an unusable [claims file](#claims-file), is a finding, not an error. `repair` needs each of the two usable, or missing and named for rebuilding (see its [Preconditions](operations.md#repair)). They are the way out of a root that every other operation refuses. `doctor` also runs while a migration is pending, and reports it; `repair` doesn't, since it writes only this binary's formats (see [`repair`](operations.md#repair)).
 - **Formats are `migrate`'s.** A pending migration, and each task file in an older format, are findings that `repair` never acts on: `doctor` reports them (`migration-pending`, `old-format`) with a suggestion to run [`migrate`](operations.md#migrate), which alone converts formats (see [Migrations](#migrations)).
 - **The whole tree.** Both walk every folder, and look at what other operations skip: koan's own temp files and folders, entries that match no naming rule, and `.md` files with no task file. Other hidden entries (`.git`, `.DS_Store`) are still ignored.
-- **Safe repairs only.** `repair` changes only what can't lose information or change meaning, given the tree is at rest: a temp file holds nothing anyone wrote; raising `last_id` only moves it up, as it always moves; a dangling reference names a task that isn't there; an empty `.md`, or a second name for notes that are also at their task, holds nothing that isn't kept elsewhere. Duplicate IDs, cycles, and unusable files all need someone to decide which version is right, so `doctor` explains them and suggests what to run, and `repair` leaves them to a person.
+- **Safe repairs only.** `repair` changes only what can't lose information or change meaning, given the tree is at rest: a temp file holds nothing anyone wrote; raising `last_id` only moves it up, as it always moves; a dangling reference names a task that isn't there; an empty `.md`, or a second name for notes that are also at their task, holds nothing that isn't kept elsewhere; an [inert](#effective-claims) claim reserves nothing. Duplicate IDs, cycles, and unusable files all need someone to decide which version is right, so `doctor` explains them and suggests what to run, and `repair` leaves them to a person.
 - **Repairs are ordinary writes.** Each file `repair` changes is written atomically, as every write's is, and running it again is always safe.
 
 Every finding kind is in one of four classes:
 
 | Class | What `repair` does | Kinds |
 |---|---|---|
-| ***auto*** | Repairs it whenever it runs, unless the caller names other kinds. | `temp-leftover`, `id-above-last-id`, `dangling-reference`, `orphan-notes` (only the items that are safe; see [Finding kinds](operations.md#finding-kinds)) |
-| ***on-request*** | Repairs it only when the caller names the kind. | `metadata-missing`, `state-missing` |
+| ***auto*** | Repairs it whenever it runs, unless the caller names other kinds. | `temp-leftover`, `id-above-last-id`, `dangling-reference`, `orphan-notes` (only the items that are safe; see [Finding kinds](operations.md#finding-kinds)), `claim-inert` |
+| ***on-request*** | Repairs it only when the caller names the kind. | `metadata-missing`, `state-missing`, `claims-unusable` |
 | ***manual*** | Never repairs it. `doctor` reports it, with a suggestion. | `duplicate-id`, `cycle`, `unusable-file`, `metadata-unusable`, `state-unusable`, `migration-pending`, `old-format`, `nested-tree`, `skipped-entry`, `unreadable-folder`, `case-clash` |
 | ***informational*** | Never repairs it. `doctor` reports it only when the caller names the kind, and it never makes a tree unhealthy: it is not damage. | `stray-entry` |
 
 Rebuilding a missing state file is on-request because the `last_id` it writes is the highest ID found. A task with a higher ID that was deleted before the state file was lost would have its ID issued again, breaking *Never reused* (see [Task IDs](#task-ids)). Only the user knows, e.g. from git history, whether that happened. Rebuilding a missing `koan.json` guesses nothing, but is on-request too: it declares the directory the config names a koan tree, which is the user's call when the marker is gone.
+
+Replacing an unusable claims file is on-request because the empty file `repair` writes forgets every claim and every lock on this machine. While the file is unusable no claim can be read anyway, but whether to give up on recovering it (fixing its permissions, restoring a copy) is the user's call.
 
 `stray-entry` is informational so that a user's own files, and whatever their editor leaves, never make a tree look damaged. koan ignores those entries safely, and listing them in every report would only bury the findings that matter.
 
@@ -471,7 +608,7 @@ The config must be a regular file, or a symlink to one (into a dotfiles checkout
 
 ### State file
 
-Beside the config, in the same directory, koan keeps `state.json`: this machine's ID counter for the root. It is the only state koan keeps outside the tree, and it is there, not in the tree, so that nothing done to the tree's files — a `git restore`, a revert, a merge, a sync — can move the counter backwards (see [Task IDs](#task-ids)). Its normative JSON Schema:
+Beside the config, in the same directory, koan keeps `state.json`: this machine's ID counter for the root. It is there, not in the tree, so that nothing done to the tree's files — a `git restore`, a revert, a merge, a sync — can move the counter backwards (see [Task IDs](#task-ids)). Its normative JSON Schema:
 
 ```json
 {
@@ -496,7 +633,88 @@ The state file is written by [`init`](operations.md#init), by every write that i
 
 A root with no state file, or one for another root, is *not initialized* (see [Root states](operations.md#root-states)): the tree is all there, but this machine has no counter for it. [`init`](operations.md#init) writes one when it attaches a tree, and `repair` rebuilds a lost one on request.
 
-koan keeps no other per-machine state.
+Besides the state file and the [claims file](#claims-file), koan keeps no per-machine state.
+
+### Claims file
+
+Beside the config and the state file, koan keeps `claims.json`: this machine's [claims](#claims) on the root's tasks. It is outside the tree, and outside the task files, for three reasons:
+
+- **A claim is coordination state**, between processes on one machine, like the write lock and the ID counter. Neither of those travels with the tree.
+- **A claim is not a change to its task.** In a task file, every claim and release would be a diff in git, and would either set `updated_at` or leave it stale; a `git restore` could bring a claim back, or drop one; and the field would be a format change, with a [migration step](#migrations) for every tree.
+- **It fails differently from the state file.** Losing the claims file leaves every task unclaimed. Losing the state file risks issuing an ID twice. So they are two files.
+
+Its normative JSON Schema:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claims-file",
+  "type": "object",
+  "required": ["schema", "root", "claims"],
+  "properties": {
+    "schema": { "const": 1 },
+    "root": { "type": "string", "minLength": 1 },
+    "claims": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[1-9][0-9]{0,14}$" },
+      "additionalProperties": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["claimed_at", "extra"],
+      "properties": {
+        "claimed_at": { "$ref": "task-file#/$defs/timestamp" },
+        "extra": { "type": "object" },
+        "token": { "$ref": "#/$defs/token" }
+      },
+      "additionalProperties": false
+    },
+    "token": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+  }
+}
+```
+
+An example, with one claim and one locked claim:
+
+```json
+{
+  "schema": 1,
+  "root": "/home/paul/koans",
+  "claims": {
+    "42": {
+      "claimed_at": "2026-10-10T14:02:11Z",
+      "extra": {
+        "agent": "shingi-3"
+      }
+    },
+    "57": {
+      "claimed_at": "2026-10-10T14:05:40Z",
+      "extra": {},
+      "token": "3f9c0a7e5b1d48c2a6e4f0b9d7c3a185"
+    }
+  }
+}
+```
+
+- **`schema`** — Version of the claims file's format. It is checked as every versioned file is (see [File validity](#file-validity)); there is no older format of it.
+- **`root`** — The root these claims belong to, as in the [state file](#state-file). A claims file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never applies one tree's claims to another's tasks.
+- **`claims`** — One entry per claimed task, keyed by its [task ID](#task-ids) written in decimal, in ascending numeric order.
+  - **`claimed_at`** — [Timestamp](#timestamps) of when the claim was made. Information only.
+  - **`extra`** — The claim's `extra`, as given to `claim`: any keys, any JSON values, never validated beyond being an object.
+  - **`token`** — Present only for a claim made with a [token](#tokens).
+
+**Missing means no claims.** A root with no claims file, or with one for another root, has no claims. That is not a [root state](operations.md#root-states) and never an error: [`init`](operations.md#init) writes no claims file, and the first claim creates it.
+
+**Unusable stops targeting writes.** A claims file that is unusable — unreadable, `corrupt`, or `unsupported-format` — could hold a lock koan cannot read, so koan does not guess:
+
+- [`claim`](operations.md#claim), [`claim-next`](operations.md#claim-next), [`release`](operations.md#release), [`force-release`](operations.md#force-release), [`reopen`](operations.md#reopen), and every [targeting write](#targeting-writes) fail, with or without a `token`. The file is one of their [needed files](#walking-the-tree).
+- Reads carry on: the file is a relevant file for them, so they report it as [`unusable-file`](operations.md#warning-kinds), and every task reads as unclaimed.
+- [`doctor`](operations.md#doctor) reports it as `claims-unusable`, which [`repair`](operations.md#repair) fixes on request, by writing an empty file.
+
+The claims file is written as every file koan writes is, atomically and flushed and in koan's [file format](#file-format) — keys inside an `extra` keep their order, and its numbers are written back character for character — and only while the root's [write lock](#write-lock) is held. A temp file that an interrupted write leaves beside it is removed by the next write of the claims file. It must be a regular file; anything else in its place makes it `corrupt`.
 
 ### Migrating from ftask
 
@@ -529,9 +747,9 @@ Check a candidate path before [`init`](operations.md#init), with no root configu
 
 Let [`repair`](operations.md#repair) give one copy of a [`duplicate-id`](operations.md#finding-kinds) a fresh ID, when the user names the copy to keep. Which copy keeps the ID is the user's decision; doing the renumbering is not.
 
-### Claims
+### Caller-supplied tokens
 
-Let a caller reserve a ready task so that concurrent callers are not handed the same one (see *No reservation* in [Non-guarantees](#non-guarantees)).
+Let a caller give [`claim`](operations.md#claim) or [`claim-next`](operations.md#claim-next) the [token](#tokens) to lock a task with, so that rerunning a claim whose result was lost returns the same lock instead of stranding the task. Left out for now: a token a caller chooses can be a name it reuses, which would bring identity in through the token.
 
 ### Idempotent create
 
