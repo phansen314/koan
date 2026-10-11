@@ -365,7 +365,7 @@ A finding is a problem with the tree that [`doctor`](#doctor) reports and [`repa
 | `state-unusable` | manual | root whose state file is unusable: one item. | the state file | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
 | `migration-pending` | manual | root whose `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest: one item. | `koan.json` | none | `error`: the [`migration-pending`](#error-kinds) error every operation that requires a usable root fails with | `null` |
 | `old-format` | manual | task file in an [older format](design-spec.md#format-versions) than this binary's, which [`migrate`](#migrate) converts. | the task file | its ID, from the filename | — | `null` |
-| `claims-unusable` | on-request | root whose [claims file](design-spec.md#claims-file) is unusable: one item. | the claims file | none | `error`: the error every operation that needs the claims file fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `reset-claims` |
+| `claims-unusable` | on-request | root whose [claims file](design-spec.md#claims-file) is unusable: one item. | the claims file | none | `error`: the error every operation that needs the claims file fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `reset-claims`; `null` when a directory is in the file's place, which a person removes |
 | `claim-inert` | auto | entry in the claims file whose task is done, or is gone: no entry of any type has its task file's name, anywhere in the tree. Not reported for an ID with several task files or an unusable one, or with a symlink or a directory in its task file's place (a `skipped-entry`), nor, for a task that is gone, while any folder can't be listed, since the task may be in it. | the claims file | the entry's ID | `reason`: `done` or `missing` | `drop-claim` |
 | `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when the state file is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |
 | `dangling-reference` | auto | pair of a task file and an ID in its `blocked_by` that names no task, as the [warning](#warning-kinds) of that name. Not reported while any folder can't be listed, since the task may be in it. | the referring task file | `[referring, missing]`, in that order | — | `remove-reference` |
@@ -529,8 +529,8 @@ Every result of `frontier` and `list` carries `total` and `truncated`, whether o
 - **The check.** For each task targeted, by the table in the design spec's [Targeting writes](design-spec.md#targeting-writes): a task with a locked [effective claim](design-spec.md#effective-claims) needs that claim's token, and any other task needs no token and refuses one. A write that fails the check is refused with `conflict` (`rule`: `token-mismatch`): `ids` are the tasks refused, in ascending order, and `claims[i]` is the effective claim on `ids[i]`, as its [Task view](#task-view) shows it, or `null` when it has none. Nothing is written.
 - **Checked whatever the write would do.** A write that would change nothing — [`done`](#done) on a done task, [`move`](#move) to the folder the task is in — is checked like any other.
 - **Order.** `token-mismatch` comes after `duplicate-id`: a duplicated ID's claim is inert, and the write is refused anyway. It comes before the operation's other `conflict` rules (e.g. `acyclic`), so that a caller without the right token is told that first.
-- **Reading the task file.** Whether a claim is effective depends on the task's own file. `delete` and `delete-folder` otherwise need only filenames, so they read a task file for this alone, and only when the claims file holds an entry with a token for that task. An unusable task file there makes the claim inert; it never fails the write.
-- **Dropping the entry.** `done`, `delete`, and `delete-folder` end the claims of the tasks they complete or remove: once the task files are written or removed, the tasks' entries are removed from the claims file. The entries are inert from the moment the task is done or gone, so this step is best-effort: if the claims file can't be written, the operation still succeeds, with a [`claims-not-updated`](#warning-kinds) warning, and [`repair`](#repair) drops what is left as `claim-inert`.
+- **Reading the task file.** Whether a claim is effective depends on the task's own file. `delete` and `delete-folder` otherwise need only filenames, so they read a task file for this alone, and only when the claims file holds an entry for that task and either the entry has a token or the write was given one: the cases where it changes the outcome, or the `claims` an error reports. An unusable task file there makes the claim inert; it never fails the write.
+- **Dropping the entry.** `done`, `delete`, and `delete-folder` end the claims of the tasks they complete or remove: as their last step, the tasks' entries are removed from the claims file. The entries are inert from the moment the task is done or gone, so this step is best-effort: if the claims file can't be written, the operation still succeeds, with a [`claims-not-updated`](#warning-kinds) warning, and [`repair`](#repair) drops what is left as `claim-inert`.
 
 [`claim`](#claim), [`claim-next`](#claim-next), [`reopen`](#reopen), and [`force-release`](#force-release) are not targeting writes, and check no token, but need the claims file as these do. [`move-folder`](#move-folder) reads neither claims nor task files.
 
@@ -1464,7 +1464,7 @@ The tasks under `folder` may be open or done, and their task files may be unusab
 
 - Every task file outside `folder` whose `blocked_by` contains an ID of a task under `folder` has those IDs removed and its `updated_at` set to the current time. Every other field, the task file's `schema`, and the `.md` are unchanged.
 - `folder` no longer exists, nor does anything under it: its tasks and their notes, its folders, and every other entry, hidden ones included.
-- The removed tasks' entries are removed from the claims file, once the folder is gone.
+- The removed tasks' entries are removed from the claims file, last, once the folder is gone.
 
 Tasks that were blocked only by tasks under `folder` become ready, as they would if those tasks had been completed. References between tasks under `folder` go with it.
 
@@ -1540,8 +1540,8 @@ Present only when an error (e.g. `io`) comes after at least one dependent was re
 
 1. Each dependent is rewritten, one file at a time. A process crash here leaves some references removed and the folder in place — a valid tree.
 2. `folder` is renamed to a hidden temp name in the root — one atomic step, however large the folder. From here the folder is gone from the tree, and the operation has succeeded.
-3. The removed tasks' entries are removed from the claims file, in one write. A crash before this, or a failure of the write (a `claims-not-updated` warning), leaves entries for tasks that are gone: inert, and `doctor`'s `claim-inert`, which `repair` drops.
-4. The temp folder is removed. A process crash, or an error, here leaves a hidden leftover, which reads ignore, `doctor` reports as `temp-leftover`, and [`repair`](#repair) removes; the operation still succeeds.
+3. The temp folder is removed. A process crash, or an error, here leaves a hidden leftover, which reads ignore, `doctor` reports as `temp-leftover`, and [`repair`](#repair) removes; the operation still succeeds.
+4. The removed tasks' entries are removed from the claims file, in one write. A crash before this, or a failure of the write (a `claims-not-updated` warning), leaves entries for tasks that are gone: inert, and `doctor`'s `claim-inert`, which `repair` drops.
 
 A [system crash](design-spec.md#crashes) keeps this order too: each dependent is flushed before the rename. The rename and the removal are not flushed, so a system crash can undo them, bringing the folder back — a valid tree — or leaving the hidden leftover. The claims file's write is flushed, so tasks that come back this way have lost their claims.
 
@@ -2587,13 +2587,13 @@ Permanently remove a task, and remove its ID from every other task's `blocked_by
 - The task's claim allows the write (see [Targeting writes](#targeting-writes)). Only `id` is targeted: a dependent that loses its reference to `id` is rewritten whatever its claim, since that keeps *No dangling references*.
 - `id` is at most `last_id`: a task above it only arises from a system crash or an outside change, and removing it would let its ID be reissued undetectably (see [Task IDs](design-spec.md#task-ids)).
 
-**Needed files:** the claims file; every task file whose filename ID is `id` — by name only, unless the claims file holds an entry with a token for `id`, when the file is read to tell whether that claim is effective (see [Targeting writes](#targeting-writes)); and every task file whose `blocked_by` contains `id` — those are rewritten. There is no index, so `delete` walks the whole tree, and fails with `io` if it meets a folder it can't list: it must find every reference. Relevant files: every other task file — one that is unusable may hold a reference that can't be removed, so it is a warning, and the reference is left for [`doctor`](#doctor).
+**Needed files:** the claims file; every task file whose filename ID is `id` — by name only, unless the claims file holds an entry for `id` and either that entry has a token or a `token` was given, when the file is read to tell whether that claim is effective (see [Targeting writes](#targeting-writes)); and every task file whose `blocked_by` contains `id` — those are rewritten. There is no index, so `delete` walks the whole tree, and fails with `io` if it meets a folder it can't list: it must find every reference. Relevant files: every other task file — one that is unusable may hold a reference that can't be removed, so it is a warning, and the reference is left for [`doctor`](#doctor).
 
 **Effects:**
 
 - Every task file whose `blocked_by` contains `id` has it removed and its `updated_at` set to the current time. Every other field, the task file's `schema`, and the `.md` are unchanged.
 - The task no longer exists, nor does its `.md`.
-- The task's entry in the claims file, if it has one, is removed once the task is gone.
+- The task's entry in the claims file, if it has one, is removed last, once the task and its notes are gone.
 
 Tasks that were blocked only by this one become ready, as they would if it had been completed: deleting a task says its work won't happen, like cancelling it.
 
@@ -2667,12 +2667,12 @@ Present only when an error (e.g. `io`) comes after at least one dependent was re
 
 1. Each dependent is rewritten, one file at a time. A crash here leaves some references removed and the task in place.
 2. The task file is removed. This is the moment the task is gone. Removing it before the `.md` means a failure never leaves a surviving task without its notes.
-3. The task's entry is removed from the claims file, if it has one. A crash before this, or a failure of the write (a `claims-not-updated` warning), leaves an entry for a task that is gone: inert, and `doctor`'s `claim-inert`, which `repair` drops.
-4. The `.md` is removed. A crash before this leaves an orphaned `.md`, which reads ignore and `doctor` reports as `orphan-notes`. `repair` removes it if it is empty; otherwise it is `no-task`, left to a person, since notes the user asked to delete can't be told from notes kept on purpose.
+3. The `.md` is removed. A crash before this leaves an orphaned `.md`, which reads ignore and `doctor` reports as `orphan-notes`. `repair` removes it if it is empty; otherwise it is `no-task`, left to a person, since notes the user asked to delete can't be told from notes kept on purpose.
+4. The task's entry is removed from the claims file, if it has one. A crash before this, or a failure of the write (a `claims-not-updated` warning), leaves an entry for a task that is gone: inert, and `doctor`'s `claim-inert`, which `repair` drops.
 
 A [system crash](design-spec.md#crashes) keeps this order too: each dependent is flushed before the task file is removed. The removals are not flushed, so a system crash can undo them, bringing the task back — a valid tree — or leaving the orphaned `.md`. The claims file's write is flushed, so a task that comes back this way has lost its claim.
 
-**Retry safety:** after `busy`, an error with `partial`, or a crash before step 2, safe: rerunning removes what is left, and reports only the dependents it rewrote itself. After step 2, rerunning fails with `not-found`, with a `token` as without; an orphaned `.md`, or an inert claim entry, is left for `doctor`.
+**Retry safety:** after `busy`, an error with `partial`, or a crash before step 2, safe: rerunning removes what is left, and reports only the dependents it rewrote itself. After step 2, rerunning fails with `not-found`, with a `token` as without; an orphaned `.md`, or an inert claim entry, is left for `doctor` and `repair`.
 
 ### move
 
