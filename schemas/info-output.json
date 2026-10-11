@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "info-output",
   "type": "object",
-  "required": ["config", "tree", "state", "initialized", "usable", "compatible", "migration_pending"],
+  "required": ["config", "tree", "state", "claims", "initialized", "usable", "compatible", "migration_pending"],
   "properties": {
     "config": {
       "type": "object",
@@ -36,6 +36,16 @@
       },
       "additionalProperties": false,
       "description": "State of this machine's state file for the configured root; null when config.root is null."
+    },
+    "claims": {
+      "type": ["object", "null"],
+      "required": ["path", "state"],
+      "properties": {
+        "path": { "type": "string", "description": "Path of the claims file, beside the config." },
+        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the claims file, per the three-step check (see File validity). missing and other-root both mean the root has no claims, which is normal. Any state but those two and ok fails every operation that needs the claims file (see Claims file)." }
+      },
+      "additionalProperties": false,
+      "description": "State of this machine's claims file for the configured root; null when config.root is null. It never affects initialized or usable."
     },
     "initialized": { "type": "boolean", "description": "True unless the root is not initialized (see Root states). True, with tree null, when the config exists but is unusable. A missing state file makes it false only once koan.json is ok: a root that needs migration is initialized." },
     "usable": { "type": "boolean", "description": "True when the root is usable (see Root states)." },

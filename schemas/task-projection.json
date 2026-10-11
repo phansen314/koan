@@ -17,7 +17,8 @@
     "folder": { "$ref": "task-view#/properties/folder" },
     "notes_path": { "$ref": "task-view#/properties/notes_path" },
     "readiness": { "$ref": "task-view#/properties/readiness" },
-    "blocking": { "$ref": "task-view#/properties/blocking" }
+    "blocking": { "$ref": "task-view#/properties/blocking" },
+    "claim": { "$ref": "task-view#/properties/claim" }
   },
   "additionalProperties": false
 }

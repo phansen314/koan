@@ -16,6 +16,7 @@
     "include_folders": { "type": "boolean", "default": false, "description": "Also return the folders in scope: with recursive, every folder under folder; without, folder and its immediate subfolders." },
     "tags_any": { "$ref": "frontier-input#/properties/tags_any" },
     "tags_all": { "$ref": "frontier-input#/properties/tags_all" },
+    "claimed": { "$ref": "frontier-input#/properties/claimed" },
     "limit": { "$ref": "frontier-input#/properties/limit" },
     "fields": { "$ref": "frontier-input#/properties/fields" }
   },

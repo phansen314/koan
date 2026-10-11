@@ -86,12 +86,19 @@
           "minItems": 1,
           "items": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" } },
           "description": "For rule acyclic: cycles[i] is the cycle for ids[i], as a list of distinct IDs, each task blocked by the next, and the last blocked by the first."
+        },
+        "claims": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "anyOf": [{ "$ref": "task-view#/$defs/claim" }, { "type": "null" }] },
+          "description": "For rules claimed and token-mismatch: claims[i] is the effective claim on ids[i], or null when it has none. Never a token."
         }
       },
       "additionalProperties": false,
-      "if": { "properties": { "rule": { "const": "acyclic" } } },
-      "then": { "required": ["cycles"] },
-      "else": { "not": { "required": ["cycles"] } }
+      "allOf": [
+        { "if": { "properties": { "rule": { "const": "acyclic" } } }, "then": { "required": ["cycles"] }, "else": { "not": { "required": ["cycles"] } } },
+        { "if": { "properties": { "rule": { "enum": ["claimed", "token-mismatch"] } } }, "then": { "required": ["claims"] }, "else": { "not": { "required": ["claims"] } } }
+      ]
     },
     "corrupt": {
       "type": "object",

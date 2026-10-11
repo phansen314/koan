@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "task-view",
   "type": "object",
-  "required": ["schema", "id", "title", "priority", "created_at", "completed_at", "updated_at", "blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "blocking"],
+  "required": ["schema", "id", "title", "priority", "created_at", "completed_at", "updated_at", "blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "blocking", "claim"],
   "properties": {
     "schema": { "$ref": "task#/properties/schema" },
     "id": { "$ref": "task#/properties/id" },
@@ -22,11 +22,27 @@
       "items": { "$ref": "task-file#/properties/id" },
       "uniqueItems": true,
       "description": "IDs in blocked_by that currently block the task — open, missing, unusable, or duplicated — in ascending order. Non-empty exactly when readiness is blocked."
+    },
+    "claim": {
+      "anyOf": [{ "$ref": "#/$defs/claim" }, { "type": "null" }],
+      "description": "The task's effective claim (see Effective claims), or null when it has none. Always null for a done task, and for a copy of a duplicated ID."
     }
   },
   "additionalProperties": false,
   "allOf": [
     { "if": { "properties": { "readiness": { "const": "blocked" } } }, "then": { "properties": { "blocking": { "minItems": 1 } } }, "else": { "properties": { "blocking": { "maxItems": 0 } } } },
-    { "if": { "properties": { "readiness": { "const": "done" } } }, "then": { "properties": { "completed_at": { "type": "string" } } }, "else": { "properties": { "completed_at": { "type": "null" } } } }
-  ]
+    { "if": { "properties": { "readiness": { "const": "done" } } }, "then": { "properties": { "completed_at": { "type": "string" }, "claim": { "type": "null" } } }, "else": { "properties": { "completed_at": { "type": "null" } } } }
+  ],
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "required": ["claimed_at", "extra", "locked"],
+      "properties": {
+        "claimed_at": { "$ref": "claims-file#/$defs/entry/properties/claimed_at", "description": "When the claim was made. Information only: nothing depends on it." },
+        "extra": { "$ref": "claims-file#/$defs/entry/properties/extra", "description": "The claim's extra, as given to claim; never interpreted." },
+        "locked": { "type": "boolean", "description": "Whether the claim was made with a token, so that writes targeting the task must present it. The token itself is never shown." }
+      },
+      "additionalProperties": false
+    }
+  }
 }

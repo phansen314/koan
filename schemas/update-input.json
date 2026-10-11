@@ -5,6 +5,7 @@
   "required": ["id"],
   "properties": {
     "id": { "$ref": "task-file#/properties/id", "description": "The task to update." },
+    "token": { "$ref": "claims-file#/$defs/token", "description": "The token of the caller's locked claim on the task (see Targeting writes). Absent: the caller holds no lock." },
     "title": { "type": "string", "description": "Replace the title. Untrimmed; trimmed and validated per Titles (see Additional validation)." },
     "priority": { "$ref": "task-file#/properties/priority", "description": "Set the priority; null clears it." },
     "tags": {

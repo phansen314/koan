@@ -314,8 +314,8 @@ cmd/koan/                 main: SetTraceback, SIGPIPE, run(), os.Exit — nothin
 internal/cli/              command tables, cobra commands, conversion, envelope output, exit codes
 internal/pick/             pick: the fzf session and its helper, composing list and the write operations
 internal/ops/              one file per operation: its input adapter and its steps, in precedence order
-internal/model/            domain types: ID, Title, Tag, FolderPath, Priority, Timestamp, Extra (ordered), Task, TaskView
-internal/store/            config, root states, the lock, tree walk and index, task-file cache, file validity, atomic writes
+internal/model/            domain types: ID, Title, Tag, FolderPath, Priority, Timestamp, Extra (ordered), Task, TaskView, ClaimsFile, Claim
+internal/store/            config, root states, the lock, tree walk and index, task-file cache, the state and claims files, file validity, atomic writes
 internal/graph/            readiness and the cycle check — pure functions, no I/O
 internal/migrations/       the migration steps, in order, with each older format's schema — pure functions, no I/O
 internal/jsonio/           token-stream reader to ordered tree; encoder configuration; the ordered-object type
@@ -347,11 +347,11 @@ errs and jsonio may be imported by any package, and import none of koan's own.
 
 ### Operations and transactions
 
-An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Result, error)`. `store.Read(fn)` runs it without the lock; `store.Write(fn)` runs it holding the write lock, after re-reading `koan.json` and the state file. Both refuse a root that is not usable, one that *needs migration* included (`migration-pending`). A composed command is several operation functions inside one `store.Write` — the operations spec's "several operations under a single write lock" — so composition needs no change to this structure, with one exception. The transaction's [index](#the-index) and [task-file cache](#loading-task-files) never see its own writes, so the composition calls `tx.NextStep()` before each operation after the first. That drops both, keeping the lock and the open root, and the next operation sees what the earlier ones wrote.
+An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Result, error)`. `store.Read(fn)` runs it without the lock; `store.Write(fn)` runs it holding the write lock, after re-reading `koan.json` and the state file. Neither reads the [claims file](#claims-file): an operation that uses it asks the transaction for it. Both refuse a root that is not usable, one that *needs migration* included (`migration-pending`). A composed command is several operation functions inside one `store.Write` — the operations spec's "several operations under a single write lock" — so composition needs no change to this structure, with one exception. The transaction's [index](#the-index) and [task-file cache](#loading-task-files) never see its own writes, so the composition calls `tx.NextStep()` before each operation after the first. That drops both, keeping the lock and the open root, and the next operation sees what the earlier ones wrote.
 
 ### Environment
 
-`ops.Env` is passed in, never global: the config directory, the filesystem (real or fault-injecting), and a **clock**. The real clock returns UTC truncated to whole seconds ([Timestamps](design-spec.md#timestamps)); tests use a fixed clock, so written files can be compared byte for byte.
+`ops.Env` is passed in, never global: the config directory, the filesystem (real or fault-injecting), a **clock**, and a **token source** (see [Claims file](#claims-file)). The real clock returns UTC truncated to whole seconds ([Timestamps](design-spec.md#timestamps)); tests use a fixed clock, so written files can be compared byte for byte.
 
 ### Where each kind of test runs
 
@@ -360,7 +360,7 @@ An operation is a function over a transaction: `func(tx *store.Tx, in Input) (Re
 
 ## Writing files
 
-Every file koan writes — task files, `.md` notes, `koan.json`, the state file, the config — is published through a temp file, per [Mechanism](#mechanism)'s atomic file writes:
+Every file koan writes — task files, `.md` notes, `koan.json`, the state file, the [claims file](#claims-file), the config — is published through a temp file, per [Mechanism](#mechanism)'s atomic file writes:
 
 - **Name.** `.koan-tmp-<random>`, in the directory of the file it will become: hidden (so reads ignore it), recognizably koan's (so [`doctor`](operations.md#doctor) can find leftovers), and random (so two writes never collide).
 - **Created exclusively** (`O_CREATE|O_EXCL`), written in full, flushed (`fsync`), then published: `link` to create a new file, so an existing one is never clobbered (`EEXIST` is `corrupt`, `unexpected-file`); `rename` to replace one. The folder is then flushed, and the temp file removed.
@@ -408,9 +408,38 @@ How the [state file](design-spec.md#state-file), `state.json` beside the config,
 - **Writing.** `Tx.SetLastID` writes it — a temp file in the config directory, flushed, then `rename`, then a flush of the directory — while the root's lock is held. Before writing, it removes any `.koan-tmp-*` an interrupted earlier write left in the config directory, as `init` does: they are outside `doctor`'s reach, and under the lock none can be a write in progress. `koan.json` is no longer written by any operation that issues an ID. `Tx.CreateState(lastID)` is `repair`'s rebuild, and `init` and `migrate` write it as their sections say.
 - **Faults.** The fault-injecting `fsys` covers these calls like any other, so the crash matrix and the precedence tests see them: a kill between the state file's publish and the task file's is `create`'s "ID consumed, no task".
 
+## Claims file
+
+How the [claims file](design-spec.md#claims-file), `claims.json` beside the config, is read and written, and how the operations build [claims](design-spec.md#claims) on it.
+
+- **Reading.** It is read by path, like the [state file](#state-file), not through the root's `os.Root`: it is outside the tree. It is checked with `Lstat` first, and anything but a regular file is `corrupt` (`unexpected-file`) and is never read. It then goes through the same [JSON reading](#json-reading) and [Validation](#validation) as the state file, in `model.DecodeClaimsFile`, giving one of: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok` with its entries. `other-root` is judged as for the state file. `missing` and `other-root` both mean a root with no claims.
+- **Not part of opening a root.** `store.Read` and `store.Write` do not read it, since no [root state](operations.md#root-states) depends on it. `Tx.Claims()` loads it on first use and caches it for the transaction step; `NextStep` drops it with the index and the task-file cache. In a write the first use is therefore under the lock, as *Writes decide on current state* requires; in a read it is not, and the file may be a moment older or newer than the task files beside it.
+- **Two ways to ask.** `Tx.Claims()` returns the entries or the error the file's state raises (`corrupt`, `unsupported-format`, or `io`), for the operations that need the file. `Tx.ClaimsForRead()` never fails: for an unusable file it returns no entries and records one `unusable-file` warning, with the file's path and no IDs, in the [warning collector](#warnings).
+- **When a write asks.** After it has found its tasks — after the [index](#the-index) walk and any [path walk](operations.md#path-walk) — and before it writes anything. So `not-found` precedes every claims-file error, `io` included, as [Precedence](operations.md#precedence) orders them.
+- **The model.** `model.ClaimsFile` holds the root and the entries, keyed by `model.ID`. An entry, `model.ClaimEntry`, has `ClaimedAt`, `Extra`, and `Token` (empty for none). `Extra` is the ordered `jsonio` object a task's `extra` is, so its key order and its numbers survive a rewrite character for character. The encoder writes the entries in ascending numeric order of ID. `model.Claim` is what a [Task view](operations.md#task-view) and an error's `claims` carry: `ClaimedAt`, `Extra`, and `Locked`. It has no token field, so nothing built from it can show one.
+- **Effective.** One function, `ops.effectiveClaim(tx, id)`, decides whether an ID's entry is [effective](design-spec.md#effective-claims): the index holds exactly one task file for the ID in the whole tree, that file loads as usable through the [task-file cache](#loading-task-files), and it is open. Task views, `claim`, `claim-next`, and the token check all go through it, so they cannot disagree. It loads a task file only when the claims file holds an entry for the ID.
+- **The token check.** One function, `ops.checkTokens(tx, ids, token)`, is the [targeting rule](operations.md#targeting-writes). Every targeting write calls it once, with the tasks it targets, after its `duplicate-id` check and before its other `conflict` rules and its first write. It returns `nil`, or the `conflict` (`token-mismatch`) with every refused ID, ascending, and each one's `model.Claim` or `null`. For [`delete`](operations.md#delete) and [`delete-folder`](operations.md#delete-folder), which otherwise read no task file, `effectiveClaim` loads one only for an entry that has a token, and a file that fails to load makes the claim inert, not the write fail.
+- **Tokens.** `ops.Env` carries a token source beside its clock ([Environment](#environment)). The real one reads 16 bytes from `crypto/rand` and writes them as 32 lowercase hexadecimal digits; tests use a fixed sequence, so written files and results can be compared byte for byte. Tokens are compared with `==`: they are not secrets (see [Tokens](design-spec.md#tokens)), so a constant-time comparison would claim a property koan does not offer.
+- **Writing.** `Tx.PutClaim(id, entry)`, `Tx.DropClaims(ids)`, and `Tx.ResetClaims()` each write the whole file: a temp file in the config directory, flushed, then published, then a flush of the directory, while the root's lock is held. It is published with `rename` when anything is at its path — this root's file, another root's, which is thereby replaced, or an unusable one `repair` resets — and with `link` when nothing is. Before writing, each removes any `.koan-tmp-*` an interrupted earlier write left in the config directory, as `Tx.SetLastID` does. A drop that would remove nothing writes nothing.
+- **Drops that may fail.** [`done`](operations.md#done), `delete`, and `delete-folder` call `Tx.DropClaims` after their last step in the tree, and turn an error from it into a `claims-not-updated` warning with the IDs it was dropping; they never fail on it. [`reopen`](operations.md#reopen) calls it before its task-file write, and [`release`](operations.md#release) and [`force-release`](operations.md#force-release) as their only write: for those three an error is the operation's error.
+- **`claim-next`.** It runs `frontier`'s query ([Queries](#queries)) inside `store.Write`, with the same scope and tag filters and no limit, then walks the result in order, taking the first task that `effectiveClaim` says is free and whose ID the index holds once. A task passed over for a second copy gets a `duplicate-id` warning with every copy's path.
+- **`doctor` and `repair`.** `store.Diagnose` carries the file's outcome as `ClaimsState()`, read whatever `koan.json`'s and the state file's states are. `claims-unusable` is one item when that state is `unreadable`, `corrupt`, or `unsupported-format`. `claim-inert` is computed only when it is `ok`: an entry is `done` when its ID has exactly one task file, usable and done; and `missing` when the index holds no task file for the ID, the [survey](#the-survey) holds no skipped entry with the task file's name, and every folder was listed. `repair` applies `reset-claims` with `Tx.ResetClaims()`, and every `drop-claim` in one `Tx.DropClaims`.
+- **Faults.** The fault-injecting `fsys` covers these calls like any other. A kill between `done`'s task-file publish and its `DropClaims` is the "done task with an inert entry" state; one between `reopen`'s `DropClaims` and its task-file publish is "done task with no entry"; an injected error on `done`'s `DropClaims` is the `claims-not-updated` warning.
+
+### Claims tests
+
+- **The targeting table**, in-process: each of its six cells, for each targeting write, with the fixed token source — and, for each, a write that would change nothing.
+- **No token in any output.** Every envelope any test produces is searched for every token the fixed source has issued. It may appear only in the `result.token` of the `claim` or `claim-next` that made it.
+- **No entry but the named task's is removed.** After every write in the suite but `repair`, the claims file holds every entry it held before, except those of the tasks that write named or removed. This includes a `claim-next` run while a folder can't be listed.
+- **An unusable claims file**, in each of its three states: every targeting write, `claim`, `claim-next`, `release`, `force-release`, and `reopen` fails, with and without a `token`, and changes nothing; every read succeeds with one `unusable-file` warning and every `claim` `null`; `delete-folder` of a folder with no tasks fails too.
+- **`reopen` fails closed:** with an injected error on its `DropClaims`, the task is still done and its entry still there.
+- **Crash injection**, through the fault `fsys`, between the two writes of `done`, `reopen`, `delete`, and `delete-folder`: after each, the entry is absent or inert, `doctor` reports at most `claim-inert`, and a rerun completes.
+- **Agreement.** `model.DecodeClaimsFile` against the `claims-file` schema, as for every file schema ([Schemas in tests](#schemas-in-tests)), and the adapters of `claim`, `claim-next`, `release`, and `force-release`, and of every input that gained `token` or `claimed`, against theirs.
+- **`e2e/`, between processes.** N processes run `claim-next` at once on a tree of M ready tasks, each retrying on `busy`: every task is claimed at most once, and exactly min(N, M) in all, on every run. And a holder's `done` with its token races a `force-release` followed by a `claim` with `use_token`: the `done` and the new `claim` never both succeed, and when the `claim` succeeds the task is open and claimed with the new token.
+
 ## `info`
 
-`info` inspects the config, `koan.json`, and the state file and reports every problem as state ([`info`](operations.md#info)). Each output field is derived as follows:
+`info` inspects the config, `koan.json`, the state file, and the claims file and reports every problem as state ([`info`](operations.md#info)). Each output field is derived as follows:
 
 | Field | Value |
 |---|---|
@@ -426,6 +455,9 @@ How the [state file](design-spec.md#state-file), `state.json` beside the config,
 | `state.path` | `state.json` in the config directory |
 | `state.state` | the [state file](#state-file)'s outcome: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok`. Reported as it is, whatever `tree.metadata` says |
 | `state.last_id` | when `state.state` is `ok`; else `null` |
+| `claims` | `null` when `config.root` is `null` |
+| `claims.path` | `claims.json` in the config directory |
+| `claims.state` | the [claims file](#claims-file)'s outcome: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok`. It enters into neither `initialized` nor `usable` |
 | `initialized` | `false` exactly when the root is *not initialized* ([Root states](operations.md#root-states)): config `missing`, root missing, `koan.json` `missing`, or — with `tree.metadata` `ok` and no migration pending — `state.state` `missing` or `other-root`; `true` otherwise, including an unusable config (then `tree` and `state` are `null`) |
 | `usable` | `config.state`, `tree.metadata`, and `state.state` all `ok`, `tree.root_exists`, and `migration_pending` `false` |
 | `compatible` | `tree.schema` equals the supported `koan.json` version; `null` when `tree.schema` is `null` |
@@ -437,7 +469,7 @@ How the [diagnostic](operations.md#operation-kinds) operations, [`doctor`](opera
 
 ### Transaction
 
-`store.Diagnose(env, w, fn)` runs `fn` as [`store.Write`](#operations-and-transactions) does — locate the config, check it and the root, take the lock (`busy` on `EAGAIN`) — except that it reads `koan.json` without failing on it. The transaction carries what it found as `MetaState()`: `ok` with the root file, or `missing`, `unreadable`, `corrupt`, `unsupported-format`, or `migration-pending` (an older format, or a step behind the latest, which [`migrate`](#migrate) handles) with the error each would raise. The state file's outcome is carried the same way, as `StateState()`, read whatever `koan.json`'s state. It allows writes, so `repair` uses the same `Create`, `Replace`, `SetLastID`, and `Remove` as every other write, plus `CreateMeta` and `CreateState`, and turns the state into its own [Preconditions](operations.md#repair) errors. `doctor` writes nothing through it.
+`store.Diagnose(env, w, fn)` runs `fn` as [`store.Write`](#operations-and-transactions) does — locate the config, check it and the root, take the lock (`busy` on `EAGAIN`) — except that it reads `koan.json` without failing on it. The transaction carries what it found as `MetaState()`: `ok` with the root file, or `missing`, `unreadable`, `corrupt`, `unsupported-format`, or `migration-pending` (an older format, or a step behind the latest, which [`migrate`](#migrate) handles) with the error each would raise. The state file's outcome is carried the same way, as `StateState()`, read whatever `koan.json`'s state, and the claims file's as `ClaimsState()` (see [Claims file](#claims-file)). It allows writes, so `repair` uses the same `Create`, `Replace`, `SetLastID`, and `Remove` as every other write, plus `CreateMeta` and `CreateState`, and turns the state into its own [Preconditions](operations.md#repair) errors. `doctor` writes nothing through it.
 
 ### The survey
 
@@ -470,7 +502,7 @@ Each finding kind is one check: a function from the index, the survey, `MetaStat
 ### `doctor` and `repair` tests
 
 - **Cycle groups.** On thousands of small random graphs, `CycleGroups` must match the groups from a transitive closure (two IDs share a group exactly when each reaches the other), and `ExampleCycle` must match enumerating every simple cycle through L and picking the shortest, then lexicographically smallest.
-- **One fixture per finding kind**, in-process: a tree built by hand, the exact item `doctor` reports for it, and what `repair` leaves. This covers the outside changes the crash matrix can't make: a `last_id` set back, a duplicate ID, a cycle, a nested tree, a skipped entry, a stray entry (absent unless asked for, and healthy either way), an unreadable folder, sibling folders that differ only in case, a missing or unusable `koan.json`.
+- **One fixture per finding kind**, in-process: a tree built by hand, the exact item `doctor` reports for it, and what `repair` leaves. This covers the outside changes the crash matrix can't make: a `last_id` set back, a duplicate ID, a cycle, a nested tree, a skipped entry, a stray entry (absent unless asked for, and healthy either way), an unreadable folder, sibling folders that differ only in case, a missing or unusable `koan.json`, an unusable claims file, and a claims entry for a done task, for a task that is gone, and for one with a symlink in its place (kept).
 - **System-crash states**, as fixtures too, since crash injection kills processes, not machines: a task file above `last_id`, an empty task file, a removal undone.
 - **Every `orphan-notes` reason**, including a `linked` `.md` that is changed, or given a different inode, between the check and the removal: it is left, and reported.
 - **Caps.** 25 temp leftovers: 20 items, `count` 25, `truncated`; with `kinds` naming the kind, all 25.

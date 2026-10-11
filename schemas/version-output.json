@@ -12,11 +12,12 @@
     "platform": { "type": "string", "description": "OS and architecture, e.g. linux/amd64." },
     "schemas": {
       "type": "object",
-      "required": ["task", "root", "state"],
+      "required": ["task", "root", "state", "claims"],
       "properties": {
         "task": { "type": "integer", "description": "The one task file format version this binary reads and writes." },
         "root": { "type": "integer", "description": "The one koan.json format version this binary reads and writes." },
-        "state": { "type": "integer", "description": "The one state file format version this binary reads and writes." }
+        "state": { "type": "integer", "description": "The one state file format version this binary reads and writes." },
+        "claims": { "type": "integer", "description": "The one claims file format version this binary reads and writes." }
       },
       "additionalProperties": false
     },
