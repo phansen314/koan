@@ -301,7 +301,7 @@ The claims file is not part of a [root state](#root-states): a missing one is ne
 
 A warning reports a problem, relevant to the operation's result, that did not stop the operation. Operations never fail because of a warning, and never warn about files unrelated to their result (see [Precedence](#precedence)). Which entries produce no warning at all — non-matching entries, hidden entries — is set out in the design spec's [Walking the tree](design-spec.md#walking-the-tree).
 
-- **One warning per distinct problem:** per file for `unusable-file`, per folder for `unreadable-folder`, per ID for `duplicate-id`, per (referring, missing) pair for `dangling-reference`, per `.md` for `notes-missing`, per operation for `claims-not-updated` — however many tasks the problem affects.
+- **One warning per distinct problem:** per file for `unusable-file`, per folder for `unreadable-folder`, per ID for `duplicate-id`, per (referring, missing) pair for `dangling-reference`, per `.md` for `notes-missing`, per operation for `claims-not-updated` and `claims-replaced` — however many tasks the problem affects.
 - **Deterministic order:** `warnings` is sorted by `kind`, then by the first entry of `paths`, then by `ids` (compared element by element, as numbers). The same tree always yields the same warnings in the same order.
 
 ### Warning kinds
@@ -315,6 +315,7 @@ A warning reports a problem, relevant to the operation's result, that did not st
 | `unreadable-folder` | A folder the walk had to list could not be listed; its tasks are missing from the result (see [Walking the tree](design-spec.md#walking-the-tree)). | the folder's filesystem path | none | `code` |
 | `notes-missing` | A task was written but its `.md` could not be. The task is valid; its notes are empty, or stale if a stray `.md` could not be replaced. | the `.md` | the task | `code`, unless the OS error has no symbolic name |
 | `claims-not-updated` | A task was completed or removed, but its entry could not then be removed from the [claims file](design-spec.md#claims-file) (see [Targeting writes](#targeting-writes)). The entries left are [inert](design-spec.md#effective-claims): they reserve nothing, and [`repair`](#repair) drops them. | the claims file | the tasks whose entries remain, ascending | `code`, unless the OS error has no symbolic name |
+| `claims-replaced` | A [`claim`](#claim) or [`claim-next`](#claim-next) replaced a [claims file](design-spec.md#claims-file) that named another root and held claims. Those claims, and their locks, are gone: a holder's `token` is now refused, and its task can be claimed again. Only changing the root leaves such a file (see [Why claims hold](design-spec.md#why-claims-hold)). | the claims file | the IDs the replaced file held entries for, ascending: tasks of the root it named | — |
 | `migrated` | A file ftask, koan's former name, left was moved to koan's name for it (see [Migrating from ftask](design-spec.md#migrating-from-ftask)): its config, or the root's `ftask.json`. | the old path, then the new | none | — |
 
 An `unusable-file` warning says which file and, in `reason`, one word for why — never what is wrong inside it: no `problems` or `detail` as a [`corrupt`](#error-kinds) error has. The file was one the operation did not need, a damaged tree can produce dozens, and they recur on every call that walks past them. For the diagnosis, [`show`](#show) the task: its file is needed there, so it fails with the full `corrupt` error. For the claims file's, run [`doctor`](#doctor), whose `claims-unusable` finding carries it.
@@ -528,6 +529,7 @@ Every result of `frontier` and `list` carries `total` and `truncated`, whether o
 - **The claims file is a needed file.** It is read under the write lock, before anything is written, and after the operation has found the tasks it targets: so a task that doesn't exist is `not-found` even when the claims file can't be read (`io`). Missing, or naming another root, it holds no claims. Unusable, it fails the write, with or without a `token`: `corrupt`, `unsupported-format`, or `io` (see [Claims file](design-spec.md#claims-file)).
 - **The check.** For each task targeted, by the table in the design spec's [Targeting writes](design-spec.md#targeting-writes): a task with a locked [effective claim](design-spec.md#effective-claims) needs that claim's token, and any other task needs no token and refuses one. A write that fails the check is refused with `conflict` (`rule`: `token-mismatch`): `ids` are the tasks refused, in ascending order, and `claims[i]` is the effective claim on `ids[i]`, as its [Task view](#task-view) shows it, or `null` when it has none. Nothing is written.
 - **Checked whatever the write would do.** A write that would change nothing — [`done`](#done) on a done task, [`move`](#move) to the folder the task is in — is checked like any other.
+- **A rerun of `done` is the one exception.** [`done`](#done) on a done task whose entry in the claims file holds exactly the `token` given proceeds, though that claim is inert: it is the holder finishing a `done` that marked the task done and could not then remove the entry. With any other token, or once the entry is gone, it is refused as the table says.
 - **Order.** `token-mismatch` comes after `duplicate-id`: a duplicated ID's claim is inert, and the write is refused anyway. It comes before the operation's other `conflict` rules (e.g. `acyclic`), so that a caller without the right token is told that first.
 - **Reading the task file.** Whether a claim is effective depends on the task's own file. `delete` and `delete-folder` otherwise need only filenames, so they read a task file for this alone, and only when the claims file holds an entry for that task and either the entry has a token or the write was given one: the cases where it changes the outcome, or the `claims` an error reports. An unusable task file there makes the claim inert; it never fails the write.
 - **Dropping the entry.** `done`, `delete`, and `delete-folder` end the claims of the tasks they complete or remove: as their last step, the tasks' entries are removed from the claims file. The entries are inert from the moment the task is done or gone, so this step is best-effort: if the claims file can't be written, the operation still succeeds, with a [`claims-not-updated`](#warning-kinds) warning, and [`repair`](#repair) drops what is left as `claim-inert`.
@@ -2055,7 +2057,7 @@ Mark a task done by setting its `completed_at` to the current time, which ends i
 
 - If the task is open: its `completed_at` and `updated_at` are set to the current time. Every other field, the task file's `schema`, and the `.md` are unchanged.
 - If the task is already done: nothing changes; `completed_at` keeps its original value.
-- Either way, the task's entry in the claims file, if it has one, is removed once the task is done: a done task has no claim. So a rerun also clears an entry that an interrupted `done` left.
+- Either way, the task's entry in the claims file, if it has one, is removed once the task is done: a done task has no claim. So a rerun also clears an entry that an interrupted `done` left — with the same `token`, when the claim was locked (see [Targeting writes](#targeting-writes)).
 
 Marking a task done can make its dependents ready. Readiness is always derived when read (see [Dependencies](design-spec.md#dependencies)), so no other file is rewritten.
 
@@ -2114,7 +2116,7 @@ The `conflict` rules are checked in the order listed; the first that applies is 
 
 **Crash behavior:** the task file is written first, then the claims file. The task file is either the old version or the new one. A crash between the two leaves a done task with its entry still in the claims file: inert, so no caller can observe it, and `doctor`'s `claim-inert`, which [`repair`](#repair) drops — as a rerun of `done` without a `token` does. Beyond that there is nothing for `doctor` to find but a possible `temp-leftover`.
 
-**Retry safety:** without a `token`, safe. Rerunning on a task that is now done changes nothing and returns `changed: false`. With a `token`, rerunning after a success fails with `conflict` (`token-mismatch`, `claims`: `[null]`): the task is done, so the claim the token belonged to is gone. The caller confirms with [`show`](#show) that the task is done.
+**Retry safety:** without a `token`, safe. Rerunning on a task that is now done changes nothing and returns `changed: false`. With a `token`, rerunning after a success fails with `conflict` (`token-mismatch`, `claims`: `[null]`): the task is done, so the claim the token belonged to is gone. The caller confirms with [`show`](#show) that the task is done. Rerunning after a crash, or after a `claims-not-updated` warning, is safe with the same `token`: if the task was marked done and its entry is still there, the rerun removes the entry and returns `changed: false`.
 
 ### reopen
 
@@ -2884,8 +2886,9 @@ The `conflict` rules are checked in the order listed; the first that applies is 
 | `duplicate-id` | An ID in the task's `blocked_by` has more than one task file. |
 | `dangling-reference` | An ID in the task's `blocked_by` has no task file. |
 | `unusable-file` | A blocker's task file is unusable; the blocker counts as blocking. |
+| `claims-replaced` | The claims file named another root and held claims; this claim replaced it. |
 
-Never about the claims file: it is a needed file here, so its problems are errors.
+Never about an unusable claims file: it is a needed file here, so its problems are errors.
 
 **Partial schema:** none. `claim` replaces a single file, all-or-nothing.
 
@@ -2976,8 +2979,9 @@ Never `conflict`: a candidate that is duplicated or already claimed is passed ov
 | `duplicate-id` | A candidate's ID has more than one task file, in scope or anywhere else in the tree, so it is passed over (`paths`: every copy, in tree order); or a blocker's ID of an open task in scope does, so that task counts as blocked. |
 | `dangling-reference` | An open task in scope has a `blocked_by` ID with no task file, so it counts as blocked. |
 | `unreadable-folder` | A folder could not be listed; tasks in it are not candidates, and tasks blocked by tasks in it count as blocked. |
+| `claims-replaced` | The claims file named another root and held claims; this claim replaced it. Not when there was nothing to claim: nothing is written then. |
 
-Never about the claims file: it is a needed file here, so its problems are errors.
+Never about an unusable claims file: it is a needed file here, so its problems are errors.
 
 **Partial schema:** none. `claim-next` replaces a single file, all-or-nothing.
 

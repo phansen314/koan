@@ -191,7 +191,7 @@ func createMeta(r fsys.Root, root string, res *InitResult) *errs.Error {
 		return errs.Internal("encoding koan.json: " + err.Error())
 	}
 	p := joinPath(root, MetaName)
-	if atLink, err := Publish(r, MetaName, data, false); err != nil {
+	if atLink, err := Publish(r, MetaName, data, FileMode, false); err != nil {
 		if atLink && isErrno(err, syscall.EEXIST) {
 			return errs.Corrupt(p, errs.CorruptUnexpectedFile)
 		}
@@ -216,7 +216,7 @@ func writeConfig(env Env, root string, replace bool) *errs.Error {
 	if err := removeTemps(r); err != nil {
 		return errs.FromOS(env.ConfigDir, err)
 	}
-	if atLink, err := Publish(r, ConfigName, EncodeConfig(root), replace); err != nil {
+	if atLink, err := Publish(r, ConfigName, EncodeConfig(root), FileMode, replace); err != nil {
 		if atLink && isErrno(err, syscall.EEXIST) {
 			return errs.Conflict(errs.RuleConfigExists, nil) // written since the check
 		}

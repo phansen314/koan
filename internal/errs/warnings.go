@@ -18,6 +18,7 @@ const (
 	WarnMigrated          WarningKind = "migrated"
 	WarnCycle             WarningKind = "cycle"
 	WarnClaimsNotUpdated  WarningKind = "claims-not-updated"
+	WarnClaimsReplaced    WarningKind = "claims-replaced"
 )
 
 // UnusableReason says why an unusable-file warning's file is unusable.
@@ -218,4 +219,12 @@ func ClaimsNotUpdated(path string, ids []int64, code string) Warning {
 		msg += " (" + code + ")"
 	}
 	return Warning{Kind: WarnClaimsNotUpdated, Message: msg, Paths: []string{path}, IDs: nonNil(ids), Code: code}
+}
+
+// ClaimsReplaced: a claim replaced the claims file at path, which named
+// another root, otherRoot, and held entries for ids, ascending. Those claims,
+// and their locks, are gone.
+func ClaimsReplaced(path, otherRoot string, ids []int64) Warning {
+	msg := fmt.Sprintf("%s: replaced the claims of another root, %s: the claim entries of task %s are gone", path, otherRoot, joinIDs(ids))
+	return Warning{Kind: WarnClaimsReplaced, Message: msg, Paths: []string{path}, IDs: nonNil(ids)}
 }

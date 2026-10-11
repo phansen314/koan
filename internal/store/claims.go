@@ -43,7 +43,7 @@ type claimsResult struct {
 	cause errs.CorruptCause // ClaimsCorrupt
 	found int64             // ClaimsUnsupported: its schema
 	dir   bool              // ClaimsCorrupt: a directory is in its place
-	file  model.ClaimsFile  // ClaimsOK
+	file  model.ClaimsFile  // ClaimsOK, ClaimsOtherRoot
 }
 
 // readClaims reads the claims file by path, outside the root, as a regular
@@ -78,7 +78,7 @@ func readClaims(env Env, root string) claimsResult {
 		return claimsResult{state: ClaimsCorrupt, cause: invalid(res)}
 	}
 	if file.Root != root {
-		return claimsResult{state: ClaimsOtherRoot}
+		return claimsResult{state: ClaimsOtherRoot, file: file}
 	}
 	return claimsResult{state: ClaimsOK, file: file}
 }
@@ -159,11 +159,19 @@ func (tx *Tx) Claim(id model.ID) (model.ClaimEntry, bool) {
 	return e, ok
 }
 
-// ClaimIDs is the IDs the claims file holds an entry for, ascending.
+// ClaimIDs is the IDs the claims file holds an entry for, ascending: none
+// when it is not usable, or another root's.
 func (tx *Tx) ClaimIDs() []model.ID {
 	cr := tx.loadClaims()
-	ids := make([]model.ID, 0, len(cr.file.Claims))
-	for id := range cr.file.Claims {
+	if cr.state != ClaimsOK {
+		return []model.ID{}
+	}
+	return claimIDs(cr.file)
+}
+
+func claimIDs(file model.ClaimsFile) []model.ID {
+	ids := make([]model.ID, 0, len(file.Claims))
+	for id := range file.Claims {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
@@ -183,14 +191,28 @@ func (tx *Tx) ClaimsState() (state ClaimsState, dir bool, e *errs.Error) {
 func (tx *Tx) ClaimsPath() string { return tx.env.ClaimsPath() }
 
 // PutClaim records entry as id's claim, replacing the claims file whole. The
-// caller has loaded the file with Claims, and it is usable.
+// caller has loaded the file with Claims, and it is usable. Over a file that
+// names another root, the claims it held are gone with it: when it held any,
+// that is the claims-replaced warning.
 func (tx *Tx) PutClaim(id model.ID, entry model.ClaimEntry) *errs.Error {
 	claims, e := tx.currentClaims("put a claim")
 	if e != nil {
 		return e
 	}
+	replaced := tx.claims
 	claims[id] = entry
-	return tx.claimsWriteError(tx.writeClaims(claims))
+	if e := tx.claimsWriteError(tx.writeClaims(claims)); e != nil {
+		return e
+	}
+	if replaced.state == ClaimsOtherRoot && len(replaced.file.Claims) > 0 {
+		ids := claimIDs(replaced.file)
+		lost := make([]int64, len(ids))
+		for i, id := range ids {
+			lost[i] = int64(id)
+		}
+		tx.Warn(errs.ClaimsReplaced(tx.env.ClaimsPath(), replaced.file.Root, lost))
+	}
+	return nil
 }
 
 // DropClaims removes the entries of ids from the claims file, in one write,
@@ -257,8 +279,10 @@ func (tx *Tx) currentClaims(what string) (map[model.ID]model.ClaimEntry, *errs.E
 		return nil, errs.Internal(what + " in an unusable " + ClaimsName)
 	}
 	out := map[model.ID]model.ClaimEntry{}
-	for id, e := range tx.claims.file.Claims {
-		out[id] = e
+	if tx.claims.state == ClaimsOK {
+		for id, e := range tx.claims.file.Claims {
+			out[id] = e
+		}
 	}
 	return out, nil
 }
@@ -274,7 +298,7 @@ func (tx *Tx) claimsWriteError(e *errs.Error, err error) *errs.Error {
 
 // writeClaims publishes the claims file naming this root with claims, as the
 // state file is published (publishBesideConfig), over whatever is at its
-// path. The transaction then holds what it wrote. err is the OS error of a
+// path, and readable by the user alone, since it holds tokens. The transaction then holds what it wrote. err is the OS error of a
 // failed write, with nothing published; e is any other failure.
 func (tx *Tx) writeClaims(claims map[model.ID]model.ClaimEntry) (e *errs.Error, err error) {
 	if e := tx.mustWrite("write " + ClaimsName); e != nil {
@@ -285,7 +309,7 @@ func (tx *Tx) writeClaims(claims map[model.ID]model.ClaimEntry) (e *errs.Error, 
 	if encErr != nil {
 		return errs.Internal("encode " + ClaimsName + ": " + encErr.Error()), nil
 	}
-	if _, err := publishBesideConfig(tx.env, ClaimsName, data); err != nil {
+	if _, err := publishBesideConfig(tx.env, ClaimsName, data, PrivateMode); err != nil {
 		return nil, err
 	}
 	tx.claims, tx.claimsRead = claimsResult{state: ClaimsOK, file: file}, true

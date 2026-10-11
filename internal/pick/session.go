@@ -137,7 +137,7 @@ func notInSession(why string) *errs.Error {
 // in the session, renamed over the old one. Nothing is synced: a session
 // does not outlive a crash.
 func (s *Session) Write(name string, data []byte) *errs.Error {
-	f, tmp, err := s.root.CreateTemp(".")
+	f, tmp, err := s.root.CreateTemp(".", 0o644)
 	if err != nil {
 		return errs.FromOS(s.Dir, err)
 	}

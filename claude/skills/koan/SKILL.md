@@ -112,6 +112,7 @@ koan release 42                                        # you won't do it after a
 - Keep the token from `.result.token`: no other command ever shows it. Pass it as `--token` to every write on that task (`done`, `update`, `move`, `delete`, `release`, and `block` or `unblock` when it is the task being blocked, not a blocker) while you hold the claim. Never pass it to a write on another task.
 - `done` and `release` end the claim: after either succeeds, drop the token, and later writes on that task take none.
 - A `token-mismatch` on your own token means your claim is gone: stop and tell the user. The one exception is a rerun of `done` or `release` after an unknown outcome: check `koan show` first, since the first run may have succeeded.
+- A `claims-replaced` warning on a `claim` or `claim-next` means the root was changed and the claims made under the old one, locks included, were just discarded. Tell the user at once, with the warning's `ids`: other holders' tokens no longer work.
 - A `token-mismatch` with no token of your own means someone else locked the task: leave it alone, and tell the user if they asked for it.
 - If a `claim` or `claim-next` with `--use-token` ended with its outcome unknown, check `koan show`: if the task's `claim.locked` is true, the first run may have succeeded, and then its token is lost and the task is locked against everyone, you included. Tell the user; only `force-release` clears it.
 

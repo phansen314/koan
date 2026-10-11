@@ -228,9 +228,9 @@ func TempName(dir string) string {
 	return path.Join(dir, TempPrefix+hex.EncodeToString(b[:]))
 }
 
-func (r *osRoot) CreateTemp(dir string) (File, string, error) {
+func (r *osRoot) CreateTemp(dir string, perm fs.FileMode) (File, string, error) {
 	name := TempName(dir)
-	f, err := r.r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := r.r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
 		return nil, "", err
 	}

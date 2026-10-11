@@ -1,6 +1,7 @@
 package store
 
 import (
+	"io/fs"
 	"path"
 	"syscall"
 
@@ -114,18 +115,19 @@ func writeState(env Env, root string, lastID int64) *errs.Error {
 	if err != nil {
 		return errs.Internal("encode " + StateName + ": " + err.Error())
 	}
-	if p, err := publishBesideConfig(env, StateName, data); err != nil {
+	if p, err := publishBesideConfig(env, StateName, data, FileMode); err != nil {
 		return errs.FromOS(p, err)
 	}
 	return nil
 }
 
 // publishBesideConfig publishes data as the file name in the config
-// directory, for the state file and the claims file: a temp file there,
-// flushed, then renamed over anything at its path, and the directory flushed.
+// directory, for the state file and the claims file: a temp file there with
+// mode perm, flushed, then renamed over anything at its path, which takes
+// that mode whatever the old file's was, and the directory flushed.
 // Any temp file an interrupted write left there is removed first. On failure
 // it returns the OS error and the path it is about, with nothing published.
-func publishBesideConfig(env Env, name string, data []byte) (string, error) {
+func publishBesideConfig(env Env, name string, data []byte, perm fs.FileMode) (string, error) {
 	r, err := env.FS.OpenRoot(env.ConfigDir)
 	if err != nil {
 		return env.ConfigDir, err
@@ -134,7 +136,7 @@ func publishBesideConfig(env Env, name string, data []byte) (string, error) {
 	if err := removeTemps(r); err != nil {
 		return env.ConfigDir, err
 	}
-	if _, err := Publish(r, name, data, true); err != nil {
+	if _, err := Publish(r, name, data, perm, true); err != nil {
 		return path.Join(env.ConfigDir, name), err
 	}
 	return "", nil

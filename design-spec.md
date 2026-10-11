@@ -508,6 +508,8 @@ The middle column is why a caller that uses no tokens is never affected by claim
 
 The check does not depend on what the write would change: one that would change nothing (e.g. `done` on a done task) is checked like any other.
 
+There is one exception, for a `done` that was interrupted. `done` writes the task file, then removes the entry; stopped between the two, it leaves a done task whose entry still has its token, and the holder's rerun presents that token to a claim that is now inert. So `done` on a done task proceeds when the task's entry holds exactly the token given, and removes the entry. This cannot land on someone else's claim: no one has claimed the task since, as `claim` refuses a done task and `reopen` removes the entry first. Once the entry is gone, the token is refused like any other.
+
 `delete-folder` cannot carry one token per task, so it takes none: a folder holding a task with a locked claim is refused (`token-mismatch`, naming those tasks) until the claims are released.
 
 Not targeting, and so never checked:
@@ -703,8 +705,8 @@ An example, with one claim and one locked claim:
 }
 ```
 
-- **`schema`** — Version of the claims file's format. It is checked as every versioned file is (see [File validity](#file-validity)); there is no older format of it.
-- **`root`** — The root these claims belong to, as in the [state file](#state-file). A claims file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never applies one tree's claims to another's tasks. The first claim on this root then replaces that file, and the other root's claims are gone: koan keeps one claims file, for the root the config names.
+- **`schema`** — Version of the claims file's format. It is checked as every versioned file is (see [File validity](#file-validity)); there is no older format of it. When there is one, koan will read it: a later format's reader accepts every earlier `schema`, and the next write of the file, which is always the whole file, puts it in the current one. So a change of this format needs no [`migrate`](operations.md#migrate) step, which is for files in the tree, and never stops a write. A file in a newer format than the binary knows — after going back to an older koan — is `unsupported-format`, and unusable as below.
+- **`root`** — The root these claims belong to, as in the [state file](#state-file). A claims file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never applies one tree's claims to another's tasks. The first claim on this root then replaces that file, and the other root's claims are gone: koan keeps one claims file, for the root the config names. When the file held claims, that claim says so, with a [`claims-replaced`](operations.md#warning-kinds) warning.
 - **`claims`** — One entry per claimed task, keyed by its [task ID](#task-ids) written in decimal, in ascending numeric order.
   - **`claimed_at`** — [Timestamp](#timestamps) of when the claim was made. Information only.
   - **`extra`** — The claim's `extra`, as given to `claim`: any keys, any JSON values, never validated beyond being an object.

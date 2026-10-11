@@ -173,7 +173,7 @@ Operations use the index through a few helpers:
 
 ### Warnings
 
-One collector per invocation receives every warning, drops repeats by the spec's key (per file for `unusable-file`, per folder for `unreadable-folder`, per ID for `duplicate-id`, per (referring, missing) pair for `dangling-reference`, per `.md` for `notes-missing`, per operation for `claims-not-updated`), and sorts once at the end: by `kind`, then the first entry of `paths`, then `ids` ([Warnings](operations.md#warnings)).
+One collector per invocation receives every warning, drops repeats by the spec's key (per file for `unusable-file`, per folder for `unreadable-folder`, per ID for `duplicate-id`, per (referring, missing) pair for `dangling-reference`, per `.md` for `notes-missing`, per operation for `claims-not-updated` and `claims-replaced`), and sorts once at the end: by `kind`, then the first entry of `paths`, then `ids` ([Warnings](operations.md#warnings)).
 
 ### Concurrent writes during a read
 
@@ -371,7 +371,7 @@ Every file koan writes — task files, `.md` notes, `koan.json`, the state file,
 - **Created exclusively** (`O_CREATE|O_EXCL`), written in full, flushed (`fsync`), then published: `link` to create a new file, so an existing one is never clobbered (`EEXIST` is `corrupt`, `unexpected-file`); `rename` to replace one. The folder is then flushed, and the temp file removed.
 - **Why flush.** Without it, a system crash can leave a published file empty — a new file published by `link` gets no help from ext4's `auto_da_alloc` — or keep a later step while losing it, e.g. a task file without the `last_id` increment before it, which reissues the ID. Flushing the temp file makes the published file whole; flushing the folder makes the publish itself durable before the next step starts.
 - **Flush failures.** A failed file flush fails the write, with nothing published. A failed folder flush does not: the file is already published, so an error would report a change as not made. It is ignored, like a temp file that can't be removed.
-- **Mode** `0644` for files, `0755` for folders, before the umask.
+- **Mode** `0644` for files, `0755` for folders, before the umask. The [claims file](#claims-file) alone is `0600`.
 
 ## Config file
 
@@ -419,7 +419,7 @@ How the [claims file](design-spec.md#claims-file), `claims.json` beside the conf
 
 ### Reading and caching
 
-- **By path.** It is read like the [state file](#state-file), not through the root's `os.Root`: it is outside the tree. It is checked with `Lstat` first, and anything but a regular file is `corrupt` (`unexpected-file`) and is never read. It then goes through the same [JSON reading](#json-reading) and [Validation](#validation) as the state file, in `model.DecodeClaimsFile`, giving one of: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok` with its entries. `other-root` is judged as for the state file. `missing` and `other-root` both mean a root with no claims.
+- **By path.** It is read like the [state file](#state-file), not through the root's `os.Root`: it is outside the tree. It is checked with `Lstat` first, and anything but a regular file is `corrupt` (`unexpected-file`) and is never read. It then goes through the same [JSON reading](#json-reading) and [Validation](#validation) as the state file, in `model.DecodeClaimsFile`, giving one of: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok` with its entries. `other-root` is judged as for the state file, and keeps what the file held, for the warning below. `missing` and `other-root` both mean a root with no claims.
 - **Not part of opening a root.** `store.Read` and `store.Write` do not read it, since no [root state](operations.md#root-states) depends on it. The transaction loads it on the first call that asks, and caches the outcome for the transaction step; `NextStep` drops it with the index and the task-file cache.
 - **`Tx.Claims()`** loads the file and returns the error its state raises (`corrupt`, `unsupported-format`, or `io`), or none. It is for the operations that need the file.
 - **`Tx.ClaimsForRead()`** loads the file and never fails on its state. An unusable file holds no entries for the transaction, and is recorded as one `unusable-file` warning, with the file's path and no IDs, in the [warning collector](#warnings). It is for reads. Its one error is `internal`, for an OS error with no symbolic name, as for a task file ([OS errors](#os-errors)).
@@ -460,6 +460,8 @@ It reads the entry through `Tx.Claim`, after its caller has called `Tx.Claims()`
 
 One function, `ops.checkTokens(tx, ids, token)`, is the [targeting rule](operations.md#targeting-writes). Every targeting write calls it once, with the tasks it targets, after its `duplicate-id` check and before its other `conflict` rules and its first write. It returns `nil`, or the `conflict` (`token-mismatch`) with every refused ID, ascending, and each one's `model.Claim` or `nil`.
 
+`done` skips the call in one case, which `ops.leftoverOwn` decides: the task is done, a `token` was given, and the task's entry holds that token. That is the rerun of a `done` that could not remove its entry.
+
 [`delete`](operations.md#delete) and [`delete-folder`](operations.md#delete-folder) otherwise read no task file. For them the check loads a task's file only when the claims file holds an entry for it and either the entry has a token or the write was given one: those are the cases where whether the claim is effective changes the outcome or the error's `claims`. A file that fails to load makes the claim inert; it never fails the write.
 
 ### Tokens
@@ -469,7 +471,8 @@ One function, `ops.checkTokens(tx, ids, token)`, is the [targeting rule](operati
 ### Writing
 
 - **Each write is the whole file.** `Tx.PutClaim(id, entry)`, `Tx.DropClaims(ids)`, and `Tx.ResetClaims()` write a temp file in the config directory, flushed, then published, then a flush of the directory, while the root's lock is held.
-- **Published with `rename`**, as the state file is, by the one function both use: over this root's file, over another root's, which is thereby replaced, over an unusable one `repair` resets, or into an empty place. Before writing, it removes any `.koan-tmp-*` an interrupted earlier write left in the config directory.
+- **Published with `rename`**, as the state file is, by the one function both use: over this root's file, over another root's, which is thereby replaced, over an unusable one `repair` resets, or into an empty place. Its temp file is created with mode `0600`, where every other file koan writes gets `0644`: it holds tokens, which are not secrets but are no one else's to read. A rename gives the file the temp's mode, so a claims file an older koan wrote as `0644` is `0600` after the next write. Before writing, it removes any `.koan-tmp-*` an interrupted earlier write left in the config directory.
+- **`PutClaim` warns when it replaces another root's claims.** When the file it loaded was `other-root` and held at least one entry, it records a `claims-replaced` warning once its write has succeeded, with the claims file's path and the IDs that file held; the other root's path is in the message only. `DropClaims` never replaces such a file, since it has nothing to remove and so writes nothing, and `ResetClaims` replaces only an unusable one.
 - **`DropClaims` returns the IDs whose entries it removed.** With none to remove it writes nothing. On a failed write it returns the error and those same IDs, whose entries remain.
 - **Where each operation drops:**
 
@@ -510,7 +513,7 @@ The query `frontier` runs — scope, readiness, tag filters, and [frontier order
 
 - **The targeting table**, in-process: each of its six cells, for each targeting write, with the fixed token source — and, for each, a write that would change nothing.
 - **No token in any output.** A dedicated test runs every operation — reads, writes, and each one's errors — over a tree that holds locked claims, and searches each envelope for every token the fixed source issued. A token may appear only in the `result.token` of the `claim` or `claim-next` that made it.
-- **No entry but the named task's is removed.** A table test runs each write but `repair` on a tree with claims on several tasks, and compares the claims file before and after: only the entries of the tasks the write named or removed are gone, and every other entry is as it was, byte for byte. `claim-next` runs with one of the claimed tasks in a folder that can't be listed; the other writes need the whole tree, so they don't. The first claim over another root's file, which replaces it, is tested apart.
+- **No entry but the named task's is removed.** A table test runs each write but `repair` on a tree with claims on several tasks, and compares the claims file before and after: only the entries of the tasks the write named or removed are gone, and every other entry is as it was, byte for byte. `claim-next` runs with one of the claimed tasks in a folder that can't be listed; the other writes need the whole tree, so they don't. The first claim over another root's file, which replaces it, is tested apart: it carries the `claims-replaced` warning when that file held claims and none when it held none, shows no token, and a read or a write that puts no claim leaves the file as it was.
 - **An unusable claims file**, in each of its three states: every targeting write, `claim`, `claim-next`, `release`, `force-release`, and `reopen` fails, with and without a `token`, and changes nothing; every read succeeds with one `unusable-file` warning and every `claim` `null`, also over an empty scope; `delete-folder` of a folder with no tasks fails too.
 - **Precedence.** The claims file joins the [precedence tests](#precedence-tests) as a fault: unusable, it loses to a missing task or folder, and wins over a corrupt task file and over every `conflict`.
 - **`reopen` fails closed.** A fault hook that matches the claims file as the target of the publishing `rename` — the temp file's own name is random — fails `reopen`'s drop: the task is still done and its entry still there.

@@ -301,7 +301,7 @@ func TestCreateTemp(t *testing.T) {
 	r, dir := newRoot(t, func(dir string) {
 		must(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
 	})
-	f, name, err := r.CreateTemp("sub")
+	f, name, err := r.CreateTemp("sub", 0o644)
 	must(t, err)
 	if !strings.HasPrefix(name, "sub/"+TempPrefix) {
 		t.Fatalf("name %q", name)
@@ -321,12 +321,12 @@ func TestCreateTemp(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 
-	_, name2, err := r.CreateTemp("sub")
+	_, name2, err := r.CreateTemp("sub", 0o644)
 	must(t, err)
 	if name2 == name {
 		t.Errorf("two temp files named %q", name)
 	}
-	_, root, err := r.CreateTemp(".")
+	_, root, err := r.CreateTemp(".", 0o644)
 	must(t, err)
 	if !strings.HasPrefix(root, TempPrefix) {
 		t.Errorf("name %q", root)

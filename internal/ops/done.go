@@ -30,6 +30,8 @@ func runDone(env Env, in TokenInput, w *errs.Collector) (any, *errs.Error) {
 // Marking done is a targeting write: token is checked against the task's
 // claim, and the task's claim entry is dropped last, once the task is done —
 // also when it was done already, which clears what an interrupted done left.
+// The holder of a locked claim reruns with its token, so that one case skips
+// the check (leftoverOwn).
 // Reopening checks no token, since a done task's claim is inert; it drops the
 // entry first, and fails with nothing done if it can't, so a reopened task
 // never comes back with an old claim. An open task's claim is left alone.
@@ -40,11 +42,11 @@ func setCompleted(env Env, id model.ID, complete bool, token string, w *errs.Col
 		if e != nil {
 			return e
 		}
-		if complete {
+		if complete && !leftoverOwn(tx, ld, token) {
 			if e := checkTokens(tx, []model.ID{id}, token); e != nil {
 				return e
 			}
-		} else if !ld.Task.Open() {
+		} else if !complete && !ld.Task.Open() {
 			if _, e := tx.DropClaims([]model.ID{id}); e != nil {
 				return e
 			}
@@ -70,4 +72,17 @@ func setCompleted(env Env, id model.ID, complete bool, token string, w *errs.Col
 		return nil, e
 	}
 	return out, nil
+}
+
+// leftoverOwn reports that ld is done and its entry in the claims file still
+// holds token: what a done that could not drop its entry left, presented by
+// the claim's own holder. No one has claimed the task since, as reopen drops
+// the entry first and claim refuses a done task, so the rerun is let through
+// to drop it, though the claim is inert and would refuse any token.
+func leftoverOwn(tx *store.Tx, ld *store.Loaded, token string) bool {
+	if token == "" || ld.Task.Open() {
+		return false
+	}
+	entry, ok := tx.Claim(ld.Task.ID)
+	return ok && entry.Token == token
 }

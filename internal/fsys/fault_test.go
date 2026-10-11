@@ -18,7 +18,7 @@ func TestFaultPassesThrough(t *testing.T) {
 	must(t, err)
 	defer r.Close()
 
-	f, name, err := r.CreateTemp(".")
+	f, name, err := r.CreateTemp(".", 0o644)
 	must(t, err)
 	_, err = f.Write([]byte("x"))
 	must(t, err)
@@ -69,7 +69,7 @@ func TestErrnoAt(t *testing.T) {
 	must(t, err)
 	defer r.Close()
 
-	f, name, err := r.CreateTemp(".")
+	f, name, err := r.CreateTemp(".", 0o644)
 	must(t, err)
 	_, err = f.Write([]byte("a"))
 	must(t, err)

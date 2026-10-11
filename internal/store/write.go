@@ -1,6 +1,7 @@
 package store
 
 import (
+	"io/fs"
 	"path"
 	"syscall"
 
@@ -13,8 +14,16 @@ import (
 // FolderMode is the mode of every folder koan creates, before the umask.
 const FolderMode = 0o755
 
+// FileMode is the mode of every file koan creates, before the umask, but the
+// claims file's: PrivateMode, since that one holds tokens.
+const (
+	FileMode    = 0o644
+	PrivateMode = 0o600
+)
+
 // Publish writes data to rel, a path within r, through a temp file in rel's
-// directory (implementation-spec.md, Writing files): created exclusively,
+// directory (implementation-spec.md, Writing files): created exclusively
+// with mode perm,
 // written in full and flushed to disk, then published — by rename when
 // replace is set, else by link, which never clobbers an existing file — and
 // the directory flushed, so the file survives a system crash whole and before
@@ -22,8 +31,8 @@ const FolderMode = 0o755
 // directory or to remove the temp file is not an error: the file is already
 // published (doctor finds leftovers). Any other failure returns the OS error,
 // with nothing published; atLink reports that it came from link.
-func Publish(r fsys.Root, rel string, data []byte, replace bool) (atLink bool, err error) {
-	f, tmp, err := r.CreateTemp(path.Dir(rel))
+func Publish(r fsys.Root, rel string, data []byte, perm fs.FileMode, replace bool) (atLink bool, err error) {
+	f, tmp, err := r.CreateTemp(path.Dir(rel), perm)
 	if err != nil {
 		return false, err
 	}
@@ -61,7 +70,7 @@ func (tx *Tx) Create(rel string, data []byte) *errs.Error {
 	if e := tx.mustWrite("create " + rel); e != nil {
 		return e
 	}
-	atLink, err := Publish(tx.root, rel, data, false)
+	atLink, err := Publish(tx.root, rel, data, FileMode, false)
 	switch {
 	case err == nil:
 		return nil
@@ -76,7 +85,7 @@ func (tx *Tx) Replace(rel string, data []byte) *errs.Error {
 	if e := tx.mustWrite("replace " + rel); e != nil {
 		return e
 	}
-	if _, err := Publish(tx.root, rel, data, true); err != nil {
+	if _, err := Publish(tx.root, rel, data, FileMode, true); err != nil {
 		return tx.OSError(rel, err)
 	}
 	return nil
@@ -88,7 +97,7 @@ func (tx *Tx) ReplaceRaw(rel string, data []byte) error {
 	if e := tx.mustWrite("replace " + rel); e != nil {
 		return e
 	}
-	_, err := Publish(tx.root, rel, data, true)
+	_, err := Publish(tx.root, rel, data, FileMode, true)
 	return err
 }
 

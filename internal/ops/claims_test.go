@@ -224,6 +224,10 @@ func TestClaim(t *testing.T) {
 	if got := f.read("tasks/proj/7.json"); got != before {
 		t.Errorf("the task file changed:\n%s", got)
 	}
+	// The file holds tokens, so only the user can read it.
+	if fi, err := os.Stat(filepath.Join(f.home, claimsRel)); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("claims file mode %v, %v", fi.Mode(), err)
+	}
 
 	// A blocked task can be claimed, with a token: the token is in the
 	// result and the file, and the view says only that it is locked.
@@ -401,6 +405,11 @@ func TestTargetingTable(t *testing.T) {
 			for _, st := range states {
 				for i, token := range []string{"", K, wrong} {
 					want := []string{st.none, st.right, st.other}[i]
+					// The one exception: done lets the holder of a done
+					// task's leftover entry through, to drop it.
+					if w.op == "done" && st.name == "inert" && token == K {
+						want = "ok"
+					}
 					f := newFixture(t)
 					f.task("", 1, false)
 					f.task("", 2, false)
@@ -585,19 +594,42 @@ func TestWritesKeepOtherEntries(t *testing.T) {
 	}
 }
 
-// The first claim on a root replaces a claims file that names another root.
+// The first claim on a root replaces a claims file that names another root,
+// and warns of the claims that went with it. Nothing else does either: a
+// read, and a write that puts no claim, leave the file as it is.
 func TestClaimReplacesOtherRoot(t *testing.T) {
 	f := newFixture(t)
 	f.task("", 1, false)
-	f.write(claimsRel, "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"claims\": {\n    \"1\": {\n      \"claimed_at\": \"2026-09-25T09:00:00Z\",\n      \"extra\": {}\n    }\n  }\n}\n")
+	f.task("", 2, false)
+	other := "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"claims\": {\n    \"1\": {\n      \"claimed_at\": \"2026-09-25T09:00:00Z\",\n      \"extra\": {}\n    },\n    \"5\": {\n      \"claimed_at\": \"2026-09-25T09:00:00Z\",\n      \"extra\": {},\n      \"token\": \"" + tok(9) + "\"\n    }\n  }\n}\n"
+	f.write(claimsRel, other)
 	if _, l := f.do("show", `{"id": 1}`); !strings.Contains(l, `"claim":null`) || warningKinds(t, l) != "" {
 		t.Errorf("show: %s", l)
 	}
-	if _, l := f.do("claim", `{"id": 1}`); outcome(t, l) != "ok" {
+	for _, op := range []string{"release", "done"} {
+		if _, l := f.do(op, `{"id": 2}`); outcome(t, l) != "ok" || warningKinds(t, l) != "" {
+			t.Errorf("%s: %s", op, l)
+		}
+	}
+	if got := f.read(claimsRel); got != other {
+		t.Fatalf("claims file changed before any claim:\n%s", got)
+	}
+	_, l := f.do("claim", `{"id": 1}`)
+	if outcome(t, l) != "ok" {
 		t.Fatalf("claim: %s", l)
 	}
-	if got := f.read(claimsRel); !strings.Contains(got, f.root) || strings.Contains(got, "/elsewhere") {
+	if got, want := warningKinds(t, l), "claims-replaced [~/"+claimsRel+"] [1 5]"; got != want || !strings.Contains(l, "/elsewhere") || strings.Contains(l, tok(9)) {
+		t.Errorf("warnings %s, want %s: %s", got, want, l)
+	}
+	if got := f.read(claimsRel); !strings.Contains(got, f.root) || strings.Contains(got, "/elsewhere") || f.claimed() != "1" {
 		t.Errorf("claims file:\n%s", got)
+	}
+
+	// Another root's file that holds no claim is replaced with no warning,
+	// by claim-next as by claim.
+	f.write(claimsRel, "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"claims\": {}\n}\n")
+	if _, l := f.do("claim-next", `{}`); outcome(t, l) != "ok" || warningKinds(t, l) != "" || f.claimed() != "1" {
+		t.Errorf("claim-next: %s, claimed %q", l, f.claimed())
 	}
 }
 
@@ -796,6 +828,34 @@ func TestDoneDropsClaim(t *testing.T) {
 	e, l = f.do("done", `{"id": 8}`)
 	if !e.OK || e.Result.(ChangedOutput).Changed || f.claimed() != "" {
 		t.Errorf("rerun: %s, claimed %q", l, f.claimed())
+	}
+}
+
+// A done that could not drop a locked claim's entry leaves it to its holder:
+// a rerun with the token is let through and drops it, where any other token
+// is refused, as the token is once the entry is gone.
+func TestDoneRerunDropsOwnEntry(t *testing.T) {
+	f := newFixture(t)
+	f.task("proj", 7, false)
+	f.claimsFile("7:" + tok(1))
+	doc := `{"id": 7, "token": "` + tok(1) + `"}`
+	f.failClaimsWrite(syscall.ENOSPC)
+	if e, l := f.do("done", doc); !e.OK || warningKinds(t, l) != "claims-not-updated [~/"+claimsRel+"] [7]" {
+		t.Fatalf("done: %s", l)
+	}
+	f.env.FS = fsys.OS{}
+	if _, l := f.do("done", `{"id": 7, "token": "`+tok(2)+`"}`); outcome(t, l) != "conflict token-mismatch [7] null" {
+		t.Errorf("another token: %s", l)
+	}
+	if got := f.claimed(); got != "7:locked" {
+		t.Fatalf("claimed %s", got)
+	}
+	e, l := f.do("done", doc)
+	if !e.OK || e.Result.(ChangedOutput).Changed || warningKinds(t, l) != "" || f.claimed() != "" {
+		t.Errorf("rerun: %s, claimed %q", l, f.claimed())
+	}
+	if _, l := f.do("done", doc); outcome(t, l) != "conflict token-mismatch [7] null" {
+		t.Errorf("rerun with the entry gone: %s", l)
 	}
 }
 

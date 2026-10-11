@@ -176,11 +176,11 @@ func (r *faultRoot) Mkdir(name string, perm fs.FileMode) error {
 	return r.r.Mkdir(name, perm)
 }
 
-func (r *faultRoot) CreateTemp(dir string) (File, string, error) {
+func (r *faultRoot) CreateTemp(dir string, perm fs.FileMode) (File, string, error) {
 	if err := r.before(Op{Name: OpCreateTemp, Path: dir, Mutating: true}); err != nil {
 		return nil, "", err
 	}
-	f, name, err := r.r.CreateTemp(dir)
+	f, name, err := r.r.CreateTemp(dir, perm)
 	if err != nil {
 		return nil, "", err
 	}
