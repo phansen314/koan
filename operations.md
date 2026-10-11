@@ -100,10 +100,10 @@ An error means the operation failed. `kind` and `details` are the contract; `mes
 | `migration-pending` | The root *needs migration* (see [Root states](#root-states)): `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest. Nothing was done; [`migrate`](#migrate) brings the tree forward. | `recorded`: the step `koan.json` records (`0` at schema 1); `latest`: this binary's latest step. |
 | `environment` | The process's environment lacks what koan needs to locate its files: the home directory, from which the config location is derived (see [Config file](design-spec.md#config-file)). Not a root state — no config was looked for. | `variable`: the environment variable that is unset or unusable; currently always `HOME`. |
 | `not-found` | A task or folder named by the input, or a filesystem directory it requires, does not exist. | `folders`: tree folder paths; `ids`: task IDs; `paths`: filesystem paths (e.g. `init`'s missing parent directory). All three always present, empty when not applicable. |
-| `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, or act on a task the tree cannot identify uniquely. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write, or [`why`](#why), names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move), `case-clash` (a folder path names a folder whose name differs only in case from an entry already there; see [Path walk](#path-walk)), `claimed` ([`claim`](#claim) names a task that has an [effective claim](design-spec.md#effective-claims)), `task-done` (`claim` names a done task), `token-mismatch` (a [targeting write](#targeting-writes) lacks the token of a task's locked claim, or was given a token the task's claim does not have). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). For `claimed` and `token-mismatch`, also `claims`: `claims[i]` is the effective claim on `ids[i]`, as its [Task view](#task-view) shows it — `claimed_at`, `extra`, and `locked`, never the token — or `null` for a task with none. |
+| `conflict` | The operation was refused because it would violate an invariant, overwrite state it must not, act on a task the tree cannot identify uniquely, or go against a [claim](design-spec.md#claims) on the task. | `rule`: the rule that refused it — currently `acyclic`, `id-exhausted` (no ID left under the [ID ceiling](design-spec.md#task-ids)), `config-exists`, `root-not-empty`, `duplicate-id` (a write, or [`why`](#why), names an ID that more than one task file has), `id-above-last-id` (a task the write removes, or names as a blocker, has an ID above `last_id`), `not-empty` (a folder to delete holds tasks, folders, or other files), `destination-exists` (something is already where a folder, or a task's notes, would move), `case-clash` (a folder path names a folder whose name differs only in case from an entry already there; see [Path walk](#path-walk)), `claimed` ([`claim`](#claim) names a task that has an [effective claim](design-spec.md#effective-claims)), `task-done` (`claim` names a done task), `token-mismatch` (a [targeting write](#targeting-writes) lacks the token of a task's locked claim, or was given a token the task's claim does not have). `ids`: the tasks involved, always present, possibly empty. For `acyclic`, also `cycles`: `cycles[i]` is one cycle through `ids[i]`, chosen deterministically (see [`block`](#block)). For `claimed` and `token-mismatch`, also `claims`: `claims[i]` is the effective claim on `ids[i]`, as its [Task view](#task-view) shows it — `claimed_at`, `extra`, and `locked`, never the token — or `null` for a task with none. |
 | `busy` | Another write (or `doctor`, `repair`, or `migrate`) held the write lock for the whole wait, 5 seconds (see *Bounded wait* in [Guarantees](design-spec.md#guarantees)). Nothing was done. Safe to retry, but repeated `busy` means something is holding the lock. | none (`{}`). |
 | `corrupt` | A needed file — or an entry on an input path — is present and readable but its content or type is wrong (see [File validity](design-spec.md#file-validity)); or koan found a file where, under its own invariants, none can exist (e.g. creating a task file that already exists). | `path`; `reason`: `not-json` (not parseable, or not an object), `invalid` (fails a file-level rule, including a missing `schema` or one not written as an integer literal within ±(2^53 − 1)), or `unexpected-file` (wrong entry type, e.g. `koan.json` is a symlink or directory; or a file exists that must not). What is wrong, for `not-json` and `invalid`: `problems`, for a JSON file that is `invalid` — a list of `{field, reason}` as in `invalid-input`, but with `field` a JSON Pointer into the file (e.g. `/updated_at`), sorted the same way, and at most the first 20, with `problems_truncated: true` when more were found; or `detail`, a human-readable string — why the file is `not-json`, or why the config, which is not JSON, is `invalid`. `unexpected-file` has neither. |
-| `io` | The environment refused an operation: an unreadable file, permission denied, disk full, read-only filesystem, and similar. An OS error with no symbolic name is `internal`, not `io`. | `path`: built from the root as stored (see [Root path](design-spec.md#root-path)), or the file's own path for an error on the config or the state file; `code`: the symbolic OS error, e.g. `ENOSPC`, never a number. |
+| `io` | The environment refused an operation: an unreadable file, permission denied, disk full, read-only filesystem, and similar. An OS error with no symbolic name is `internal`, not `io`. | `path`: built from the root as stored (see [Root path](design-spec.md#root-path)), or the file's own path for an error on the config, the state file, or the claims file; `code`: the symbolic OS error, e.g. `ENOSPC`, never a number. |
 | `unsupported-format` | A needed file's `schema` is not the version this binary supports (see [Format versions](design-spec.md#format-versions)); or `koan.json` records a [migration step](design-spec.md#migrations) past this binary's latest, so a newer binary has written the tree. A `koan.json` in an older format is [`migration-pending`](#error-kinds) instead, wherever a usable root is required. | `path`; `found`: the file's version; `supported`: the versions this binary supports. For a step past the latest, also `field`: `migration`, with `found` the step recorded and `supported` `[latest]`; absent when what is unsupported is the `schema`. |
 | `internal` | A bug koan detects. Every failure koan reports has a kind: anything not covered above is `internal`. A crash reports nothing at all (see the CLI's [exit codes](cli-spec.md#exit-codes)). | none (`{}`). |
 
@@ -132,7 +132,7 @@ A kind that lists every instance lists them across the whole step: e.g. [`create
 
 Within step 6, when several `conflict` rules apply, an operation reports the first in the order its Errors part lists. Across operations that order is: `duplicate-id`; then, for [`claim`](#claim), `task-done`, then `claimed`; then, for a [targeting write](#targeting-writes), `token-mismatch`; then the operation's other rules. The one rule ahead of `duplicate-id` is [`delete-folder`](#delete-folder)'s `not-empty`, which is about the request, not about any one task.
 
-The claims file is not part of a [root state](#root-states): a missing one is never `not-initialized`, and an unusable one is reported at step 5, under the write lock, by the operations that need it, and as a warning by reads.
+The claims file is not part of a [root state](#root-states): a missing one is never `not-initialized`, and an unusable one is reported at step 5, under the write lock, by the operations that need it, and as a warning by reads. Those operations read it only after steps 1–4, so an `io` on it, too, comes after `not-found`.
 
 [`block`](#block) reads its own task file(s) before looking up its blockers, since which blockers are new depends on the task's `blocked_by`: an unusable copy of `id` is therefore reported before a missing blocker. When `id` is duplicated, a new blocker is one that is in no copy's `blocked_by`.
 
@@ -366,7 +366,7 @@ A finding is a problem with the tree that [`doctor`](#doctor) reports and [`repa
 | `migration-pending` | manual | root whose `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest: one item. | `koan.json` | none | `error`: the [`migration-pending`](#error-kinds) error every operation that requires a usable root fails with | `null` |
 | `old-format` | manual | task file in an [older format](design-spec.md#format-versions) than this binary's, which [`migrate`](#migrate) converts. | the task file | its ID, from the filename | — | `null` |
 | `claims-unusable` | on-request | root whose [claims file](design-spec.md#claims-file) is unusable: one item. | the claims file | none | `error`: the error every operation that needs the claims file fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `reset-claims` |
-| `claim-inert` | auto | entry in the claims file whose task is done, or has no task file. Not reported for an ID with several task files or an unusable one, nor, for a missing task, while any folder can't be listed, since the task may be in it. | the claims file | the entry's ID | `reason`: `done` or `missing` | `drop-claim` |
+| `claim-inert` | auto | entry in the claims file whose task is done, or is gone: no entry of any type has its task file's name, anywhere in the tree. Not reported for an ID with several task files or an unusable one, or with a symlink or a directory in its task file's place (a `skipped-entry`), nor, for a task that is gone, while any folder can't be listed, since the task may be in it. | the claims file | the entry's ID | `reason`: `done` or `missing` | `drop-claim` |
 | `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when the state file is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |
 | `dangling-reference` | auto | pair of a task file and an ID in its `blocked_by` that names no task, as the [warning](#warning-kinds) of that name. Not reported while any folder can't be listed, since the task may be in it. | the referring task file | `[referring, missing]`, in that order | — | `remove-reference` |
 | `orphan-notes` | auto, for `empty` and `linked` items | `.md` named like a task's notes, with no task file of its ID beside it. | the `.md`, then each task file with its ID elsewhere, in [tree order](#tree-order) | its ID | `reason`, below; `code` when `reason` is `unreadable` | `remove` when `reason` is `empty` or `linked`; else `null` |
@@ -394,7 +394,7 @@ Kind by kind:
 - **`unusable-file`** — the full diagnosis that the [`unusable-file`](#warning-kinds) warning leaves out. A task file whose filename ID differs from its `id` field is reported here, as `corrupt`.
 - **`migration-pending`** and **`old-format`** — not damage `repair` can fix: converting formats is [`migrate`](#migrate)'s job alone (see the design spec's [Migrations](design-spec.md#migrations)), so `suggest` says to run `koan migrate`, after committing the tree when it is a git repository. While a step is pending, the task files it covers are `old-format`, and `count` says how many `migrate` has to convert. With no step pending, an `old-format` file came from a merge, from a copy made by a binary that hadn't migrated yet, or from a place an earlier `migrate` couldn't read. `doctor` reads an `old-format` file's `schema` only, never checking it against its own format's rules: that check is `migrate`'s. So `suggest` also says that a file `migrate` lists under `unconverted` breaks those rules, and no step can read it: a person fixes or removes it.
 - **`claims-unusable`** — until it is fixed, [`claim`](#claim), [`claim-next`](#claim-next), [`release`](#release), [`force-release`](#force-release), [`reopen`](#reopen), and every [targeting write](#targeting-writes) fail, and reads show every task as unclaimed. `reset-claims` replaces the file with an empty one, which forgets every claim and every lock on this machine: that is why it is on-request (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). `suggest` says to fix the file's permissions, or restore it, first, when that is possible. A missing claims file is no finding: it holds no claims.
-- **`claim-inert`** — an [inert](design-spec.md#effective-claims) entry reserves nothing, and reads never show it, so dropping it changes nothing a caller can observe. One is left when a [`done`](#done), [`delete`](#delete), or [`delete-folder`](#delete-folder) could not write the claims file after its task was done or gone (the `claims-not-updated` warning), when it was interrupted there, or by an outside change. An entry whose ID has several task files, or an unusable one, is inert too, but is kept: the task may come back, and its claim with it.
+- **`claim-inert`** — an [inert](design-spec.md#effective-claims) entry reserves nothing, and reads never show it, so dropping it changes nothing a caller can observe. One is left when a [`done`](#done), [`delete`](#delete), or [`delete-folder`](#delete-folder) could not write the claims file after its task was done or gone (the `claims-not-updated` warning), when it was interrupted there, or by an outside change. An entry whose ID has several task files, an unusable one, or a skipped entry in its place, is inert too, but is kept: the task may come back, and its claim with it.
 - **`state-missing`** — the tree is there, but this machine has no ID counter for it: the state file was lost, the tree was copied here without [`init`](#init), or the config was pointed at it by hand. Rebuilding it is on-request because of what the rebuilt `last_id` can't know (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)).
 - **`id-above-last-id`** and **`state-missing`** — every task file counts, usable or not, by the ID in its filename: that is the ID it occupies (see [Tasks](design-spec.md#tasks)).
 
@@ -522,10 +522,10 @@ Every result of `frontier` and `list` carries `total` and `truncated`, whether o
 
 ### Targeting writes
 
-[`done`](#done), [`update`](#update), [`move`](#move), [`delete`](#delete), [`block`](#block), [`unblock`](#unblock), and [`release`](#release) each change or remove the one task their `id` names, and [`delete-folder`](#delete-folder) removes every task under its folder. These are the [targeting writes](design-spec.md#targeting-writes), and each checks the claims on the tasks it targets in the same way:
+[`done`](#done), [`update`](#update), [`move`](#move), [`delete`](#delete), [`block`](#block), and [`unblock`](#unblock) each change or remove the one task their `id` names, [`release`](#release) clears that task's claim, and [`delete-folder`](#delete-folder) removes every task under its folder. These are the [targeting writes](design-spec.md#targeting-writes), and each checks the claims on the tasks it targets in the same way:
 
 - **`token`.** Each but `delete-folder` takes an optional `token`: the one [`claim`](#claim) or [`claim-next`](#claim-next) returned for the caller's locked claim. Its form is checked with the rest of the input (`invalid-input`); whether it is the right one, under the write lock.
-- **The claims file is a needed file.** It is read under the write lock, before anything is written. Missing, or naming another root, it holds no claims. Unusable, it fails the write, with or without a `token`: `corrupt`, `unsupported-format`, or `io` (see [Claims file](design-spec.md#claims-file)).
+- **The claims file is a needed file.** It is read under the write lock, before anything is written, and after the operation has found the tasks it targets: so a task that doesn't exist is `not-found` even when the claims file can't be read (`io`). Missing, or naming another root, it holds no claims. Unusable, it fails the write, with or without a `token`: `corrupt`, `unsupported-format`, or `io` (see [Claims file](design-spec.md#claims-file)).
 - **The check.** For each task targeted, by the table in the design spec's [Targeting writes](design-spec.md#targeting-writes): a task with a locked [effective claim](design-spec.md#effective-claims) needs that claim's token, and any other task needs no token and refuses one. A write that fails the check is refused with `conflict` (`rule`: `token-mismatch`): `ids` are the tasks refused, in ascending order, and `claims[i]` is the effective claim on `ids[i]`, as its [Task view](#task-view) shows it, or `null` when it has none. Nothing is written.
 - **Checked whatever the write would do.** A write that would change nothing — [`done`](#done) on a done task, [`move`](#move) to the folder the task is in — is checked like any other.
 - **Order.** `token-mismatch` comes after `duplicate-id`: a duplicated ID's claim is inert, and the write is refused anyway. It comes before the operation's other `conflict` rules (e.g. `acyclic`), so that a caller without the right token is told that first.
@@ -1089,7 +1089,7 @@ And, for a `koan.json` that is usable or is about to be created:
 | missing or naming another root, otherwise | `not-initialized` (`missing`: `state`). Raising `last_id` needs it, and rebuilding it is the user's decision. |
 | unusable | `corrupt`, `unsupported-format`, or `io`. `doctor` reports the problem in full, for a person to fix. |
 
-Naming `metadata-missing` when `koan.json` is present, or `state-missing` when the state file is, is not an error: there is nothing to repair for it.
+Naming `metadata-missing` when `koan.json` is present, `state-missing` when the state file is, or `claims-unusable` when the claims file is usable or missing, is not an error: there is nothing to repair for it.
 
 Both are judged once, under the lock and before any repair is made, so a refusal changes nothing. A run that creates `koan.json` carries on with its other repairs whatever step the new file records: they touch only files in this binary's format.
 
@@ -1543,7 +1543,7 @@ Present only when an error (e.g. `io`) comes after at least one dependent was re
 3. The removed tasks' entries are removed from the claims file, in one write. A crash before this, or a failure of the write (a `claims-not-updated` warning), leaves entries for tasks that are gone: inert, and `doctor`'s `claim-inert`, which `repair` drops.
 4. The temp folder is removed. A process crash, or an error, here leaves a hidden leftover, which reads ignore, `doctor` reports as `temp-leftover`, and [`repair`](#repair) removes; the operation still succeeds.
 
-A [system crash](design-spec.md#crashes) keeps this order too: each dependent is flushed before the rename. The rename and the removal are not flushed, so a system crash can undo them, bringing the folder back — a valid tree — or leaving the hidden leftover.
+A [system crash](design-spec.md#crashes) keeps this order too: each dependent is flushed before the rename. The rename and the removal are not flushed, so a system crash can undo them, bringing the folder back — a valid tree — or leaving the hidden leftover. The claims file's write is flushed, so tasks that come back this way have lost their claims.
 
 **Retry safety:** after `busy`, an error with `partial`, or a crash before step 2, safe: rerunning removes what is left. After success, rerunning fails with `not-found`.
 
@@ -2100,7 +2100,7 @@ The task after the operation, per the [Task](#task) schema, plus `changed`.
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The claims file is unusable; or the task file is. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it changes; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
-| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: its claim, or `null`). See [Targeting writes](#targeting-writes). |
+| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: `[its claim]`, or `[null]` when it has none). See [Targeting writes](#targeting-writes). |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
 
@@ -2297,7 +2297,7 @@ The task after the operation, per the [Task](#task) schema, plus `added`.
 | `not-found` | `id`, or a blocker, has no task file (`ids`: every missing one). |
 | `corrupt`, `unsupported-format` | The claims file is unusable; or the task file, or a task file the cycle check reaches, is. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it changes; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
-| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: its claim, or `null`). See [Targeting writes](#targeting-writes). |
+| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: `[its claim]`, or `[null]` when it has none). See [Targeting writes](#targeting-writes). |
 | `conflict` | (`rule`: `acyclic`) A blocker would create a cycle. `ids`: every offending blocker, ascending; `cycles[i]`: the shortest cycle through `ids[i]` (ties by smallest ID sequence), starting at `id`. |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
@@ -2392,7 +2392,7 @@ The task after the operation, per the [Task](#task) schema, plus `removed`.
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The claims file is unusable; or the task file is. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it changes; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
-| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: its claim, or `null`). See [Targeting writes](#targeting-writes). |
+| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: `[its claim]`, or `[null]` when it has none). See [Targeting writes](#targeting-writes). |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
 
@@ -2545,7 +2545,7 @@ The task after the operation, per the [Task](#task) schema, plus `changed`.
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The claims file is unusable; or the task file is. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it changes; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
-| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: its claim, or `null`). See [Targeting writes](#targeting-writes). |
+| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: `[its claim]`, or `[null]` when it has none). See [Targeting writes](#targeting-writes). |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
 
@@ -2630,9 +2630,9 @@ Tasks that were blocked only by this one become ready, as they would if it had b
 | `environment`, `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The config can't be located, or the root is not usable (see [Root states](#root-states)). |
 | `busy` | Another write holds the write lock. |
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
-| `corrupt`, `unsupported-format` | The claims file is unusable. Never the task's own file: unusable, it makes the task's claim inert, and the task is still removed. |
+| `corrupt`, `unsupported-format` | The claims file is unusable. Never the task's own file: unusable, it makes the task's claim inert, and the task is still removed — without a `token`. Given one, even the lock's own, the write is `token-mismatch` (`claims`: `[null]`), as for any task with no effective claim. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it removes; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
-| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: its claim, or `null`). See [Targeting writes](#targeting-writes). |
+| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: `[its claim]`, or `[null]` when it has none). See [Targeting writes](#targeting-writes). |
 | `conflict` | (`rule`: `id-above-last-id`) `id` is above `last_id` (`ids`: `[id]`). Run [`repair`](#repair) first, which raises `last_id`. |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
@@ -2670,7 +2670,7 @@ Present only when an error (e.g. `io`) comes after at least one dependent was re
 3. The task's entry is removed from the claims file, if it has one. A crash before this, or a failure of the write (a `claims-not-updated` warning), leaves an entry for a task that is gone: inert, and `doctor`'s `claim-inert`, which `repair` drops.
 4. The `.md` is removed. A crash before this leaves an orphaned `.md`, which reads ignore and `doctor` reports as `orphan-notes`. `repair` removes it if it is empty; otherwise it is `no-task`, left to a person, since notes the user asked to delete can't be told from notes kept on purpose.
 
-A [system crash](design-spec.md#crashes) keeps this order too: each dependent is flushed before the task file is removed. The removals are not flushed, so a system crash can undo them, bringing the task back — a valid tree — or leaving the orphaned `.md`.
+A [system crash](design-spec.md#crashes) keeps this order too: each dependent is flushed before the task file is removed. The removals are not flushed, so a system crash can undo them, bringing the task back — a valid tree — or leaving the orphaned `.md`. The claims file's write is flushed, so a task that comes back this way has lost its claim.
 
 **Retry safety:** after `busy`, an error with `partial`, or a crash before step 2, safe: rerunning removes what is left, and reports only the dependents it rewrote itself. After step 2, rerunning fails with `not-found`, with a `token` as without; an orphaned `.md`, or an inert claim entry, is left for `doctor`.
 
@@ -2760,7 +2760,7 @@ The task after the operation, per the [Task](#task) schema, plus `from`, `create
 | `not-found`, `corrupt` | `to` fails the [path walk](#path-walk) while `parents` is false (`not-found`, or `corrupt` with `reason` `unexpected-file`); or no task file has ID `id` (`not-found`). A missing folder and a missing task are reported in one `not-found`. |
 | `corrupt`, `unsupported-format` | The claims file is unusable; or the task file is. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it moves; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
-| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: its claim, or `null`). See [Targeting writes](#targeting-writes). |
+| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: `[its claim]`, or `[null]` when it has none). See [Targeting writes](#targeting-writes). |
 | `conflict` | (`rule`: `destination-exists`) A `.md` with text is in `to` under the task's name, and is not the same file as the task's notes (`ids`: `[id]`). Merge its text into the task's notes, or remove it, first; [`doctor`](#doctor) reports it as `orphan-notes` (`task-elsewhere`). |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
@@ -2873,7 +2873,7 @@ There is no `token` input: koan makes the token (see [Tokens](design-spec.md#tok
 | `corrupt`, `unsupported-format` | The claims file is unusable; or the task file is. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). A write must know which task it claims; [`doctor`](#doctor) reports the copies, for a person to resolve first. |
 | `conflict` | (`rule`: `task-done`) The task is done (`ids`: `[id]`). |
-| `conflict` | (`rule`: `claimed`) The task has an effective claim (`ids`: `[id]`; `claims`: that claim, with its `claimed_at`, `extra`, and `locked`, never its token). |
+| `conflict` | (`rule`: `claimed`) The task has an effective claim (`ids`: `[id]`; `claims`: `[that claim]`, with its `claimed_at`, `extra`, and `locked`, never its token). |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
 
@@ -2925,7 +2925,7 @@ Claim the next task: the first task of the frontier that nobody has claimed. It 
 
 **Additional validation:** none. `extra` is held to the [input conventions](#conventions), as a task's is.
 
-**Preconditions:** `folder` exists. The **candidates** are the tasks [`frontier`](#frontier) returns for the same `folder`, `recursive`, `tags_any`, and `tags_all`, in [frontier order](#frontier). The first candidate whose ID has exactly one task file, and which has no [effective claim](design-spec.md#effective-claims), is claimed. "Next" means only that: the first unclaimed task of that frontier. With no such candidate, `claim-next` succeeds with `task` `null` and writes nothing.
+**Preconditions:** `folder` exists. The **candidates** are the tasks [`frontier`](#frontier) returns for the same `folder`, `recursive`, `tags_any`, and `tags_all`, in [frontier order](#frontier). The first candidate whose ID has exactly one task file in the whole tree, not only in scope, and which has no [effective claim](design-spec.md#effective-claims), is claimed. A candidate with another copy anywhere is passed over, as every write refuses a duplicated ID, and reported. "Next" means only that: the first unclaimed task of that frontier. With no such candidate, `claim-next` succeeds with `task` `null` and writes nothing.
 
 **Needed files:** the claims file, as for [`claim`](#claim). Beyond that, as for [`frontier`](#frontier): the entries along `folder`'s path ([path walk](#path-walk)), and no task files. `claim-next` walks the whole tree, and a folder it can't list is an `unreadable-folder` warning: the tasks in it are not candidates. Relevant files: the task files in scope, and the blockers' task files of every open task in scope.
 
@@ -2973,7 +2973,7 @@ Never `conflict`: a candidate that is duplicated or already claimed is passed ov
 | Kind | When |
 |---|---|
 | `unusable-file` | A task file in scope is unusable, so the task is not a candidate; or a blocker's task file of an open task in scope is unusable, so that task counts as blocked. |
-| `duplicate-id` | An ID has more than one task file in scope, so it is passed over; or a blocker's ID of an open task in scope does, so that task counts as blocked. |
+| `duplicate-id` | A candidate's ID has more than one task file, in scope or anywhere else in the tree, so it is passed over (`paths`: every copy, in tree order); or a blocker's ID of an open task in scope does, so that task counts as blocked. |
 | `dangling-reference` | An open task in scope has a `blocked_by` ID with no task file, so it counts as blocked. |
 | `unreadable-folder` | A folder could not be listed; tasks in it are not candidates, and tasks blocked by tasks in it count as blocked. |
 
@@ -3061,7 +3061,7 @@ The task after the operation, per the [Task](#task) schema, plus `changed`. A Ta
 | `not-found` | No task file has ID `id` (`ids`: `[id]`). |
 | `corrupt`, `unsupported-format` | The claims file is unusable; or the task file is. |
 | `conflict` | (`rule`: `duplicate-id`) More than one task file has ID `id` (`ids`: `[id]`). [`doctor`](#doctor) reports the copies, for a person to resolve first. |
-| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: its claim, or `null`). See [Targeting writes](#targeting-writes). |
+| `conflict` | (`rule`: `token-mismatch`) The task's claim is locked and `token` is not its token, or `token` is given and the task has no locked claim (`ids`: `[id]`; `claims`: `[its claim]`, or `[null]` when it has none). See [Targeting writes](#targeting-writes). |
 
 The `conflict` rules are checked in the order listed; the first that applies is reported.
 
@@ -3098,9 +3098,14 @@ Clear a task's claim, locked or not, without its token: the one way past a lock 
 
 **Preconditions:** exactly one task file has ID `id`. The task may be open or done, and claimed, locked, or neither. No token is asked for, and none is taken.
 
-**Needed files:** as for [`release`](#release): the claims file, and every task file whose filename ID is `id`, found by walking the whole tree. No relevant files.
+**Needed files:** the claims file, and every task file whose filename ID is `id`. There is no index, so `force-release` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. No relevant files: `force-release` reads neither the task's blockers nor its dependents.
 
-**Effects:** as for [`release`](#release): the task's entry is removed from the claims file, whatever it holds; with no entry, nothing changes and no file is written.
+**Effects:**
+
+- The task's entry is removed from the claims file, whether or not it has a token, and whether its claim was effective or inert.
+- If the claims file holds no entry for the task: nothing changes, and no file is written.
+
+No task file is written, so the task's `updated_at` keeps its value.
 
 **Invariants at risk:** none. Whether it is safe to clear the claim — whether its holder is still working — is the caller's judgment (see [Left to the caller](design-spec.md#left-to-the-caller)).
 
@@ -3150,7 +3155,7 @@ Never `token-mismatch`: `force-release` checks no token.
 
 **Partial schema:** none. `force-release` replaces a single file, all-or-nothing.
 
-**Crash behavior:** as for [`release`](#release).
+**Crash behavior:** the claims file is either the old version or the new one. A temp file left beside it is removed by the next write of the claims file, so there is nothing for `doctor` to find.
 
 **Retry safety:** safe. Rerunning on a task that now has no claim changes nothing and returns `changed: false`.
 

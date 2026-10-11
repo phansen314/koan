@@ -301,7 +301,7 @@ Apply the repairs that are safe, then report what is left. Runs [`repair`](opera
 
 | Option | Field | Default |
 |---|---|---|
-| `--kinds <kinds>` | `/kinds` | None: every *auto* kind. Comma list of [finding kinds](operations.md#finding-kinds) to repair. Naming `metadata-missing` is the only way to rebuild `koan.json`, and `state-missing` the only way to rebuild the state file. |
+| `--kinds <kinds>` | `/kinds` | None: every *auto* kind. Comma list of [finding kinds](operations.md#finding-kinds) to repair. Naming `metadata-missing` is the only way to rebuild `koan.json`, `state-missing` the only way to rebuild the state file, and `claims-unusable` the only way to replace an unusable claims file. |
 
 **Input:** none beyond the Options mapping.
 
@@ -316,6 +316,7 @@ koan repair                                   # every auto repair
 koan repair --kinds temp-leftover             # only the leftover temp files
 koan repair --kinds metadata-missing          # rebuild a lost koan.json; never done by default
 koan repair --kinds state-missing             # rebuild this machine's ID counter from the highest ID in the tree; never done by default
+koan repair --kinds claims-unusable           # replace an unusable claims file with an empty one, forgetting every claim and lock; never done by default
 ```
 
 There is no `doctor --fix`. Repairing is its own command, so that agent permission rules, which match a command line by its start, can ask before `koan repair` whatever options follow.
@@ -610,7 +611,7 @@ koan done 42 --token 3f9c0a7e5b1d48c2a6e4f0b9d7c3a185   # a task locked with --u
 
 ### reopen
 
-Reopen a done task. Reopening an already open task changes nothing. The counterpart of [`done`](#done). Runs [`reopen`](operations.md#reopen).
+Reopen a done task, which starts unclaimed. Reopening an already open task changes nothing. The counterpart of [`done`](#done). Runs [`reopen`](operations.md#reopen).
 
 **Synopsis:** `koan reopen <id>`, or `koan reopen -i <file>`.
 

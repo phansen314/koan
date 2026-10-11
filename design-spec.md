@@ -36,7 +36,7 @@ Terms used with one meaning throughout this spec and [operations.md](operations.
 | **claims file** | This machine's claims for the root, kept beside the config and never in the tree (see [Claims file](#claims-file)). |
 | **effective claim** | A claim whose task is open and has exactly one usable task file; any other entry in the claims file is **inert** (see [Effective claims](#effective-claims)). |
 | **token**, **locked claim** | The value koan makes for a claim on request, and a claim that has one: writes that target its task must present it (see [Tokens](#tokens)). |
-| **targeting write** | A write that changes or removes a task named by ID, and so is checked against a locked claim (see [Targeting writes](#targeting-writes)). |
+| **targeting write** | A write that changes or removes a task named by ID, or releases its claim, and so is checked against a locked claim (see [Targeting writes](#targeting-writes)). |
 | **write lock** | The lock that serializes write operations on a root (see [Write lock](#write-lock)). |
 | **invariant** | A rule spanning several files (see [Invariants](#invariants)). |
 | **file-level rule** | A rule checkable on one file alone (see [File validity](#file-validity)). |
@@ -402,8 +402,8 @@ These rules apply to every operation that walks the tree — reads and writes al
 
 **Folders that can't be listed.** If the walk meets a folder it can't list (e.g. permission denied):
 
-- Operations that return a collection (`frontier`, `list`) report an [`unreadable-folder`](operations.md#warning-kinds) warning and carry on; the folder's tasks are missing from the result.
-- Operations that must find one ID, or prove it absent or unique, or find every reference to one (`show`, `why`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, `delete`, `delete-folder`, `create` with `blocked_by`), fail with `io`: they cannot answer correctly without the whole tree.
+- Operations that return a collection (`frontier`, `list`), and [`claim-next`](operations.md#claim-next), which takes its task from one, report an [`unreadable-folder`](operations.md#warning-kinds) warning and carry on; the folder's tasks are missing from the result.
+- Operations that must find one ID, or prove it absent or unique, or find every reference to one (`show`, `why`, `done`, `reopen`, `block`, `unblock`, `update`, `move`, `delete`, `delete-folder`, `claim`, `release`, `force-release`, `create` with `blocked_by`), fail with `io`: they cannot answer correctly without the whole tree.
 
 ### Reads
 
@@ -461,7 +461,7 @@ A tree where nobody has ever claimed has no claims file, and every operation beh
 
 ### Effective claims
 
-A claim is **effective** when its entry is in the claims file and its ID has exactly one task file, which is usable and open. Every other entry is **inert**: one whose task is done or missing, or whose ID has several task files or an unusable one.
+A claim is **effective** when its entry is in the claims file and its ID has exactly one task file, which is usable and open. Every other entry is **inert**: one whose task is done or missing, or whose ID has several task files, an unusable one, or an entry the walk skips in a task file's place (a symlink, or a directory with its name; see [Walking the tree](#walking-the-tree)).
 
 - **Reads** show an effective claim in the task's [`claim`](operations.md#task-view), and ignore an inert entry: the task reads as unclaimed.
 - **Writes** check only an effective claim's token.
@@ -469,7 +469,7 @@ A claim is **effective** when its entry is in the claims file and its ID has exa
 
 An inert entry reserves nothing, and stays in the file until an operation that ends a claim removes it, or [`repair`](operations.md#repair) drops it as [`claim-inert`](operations.md#finding-kinds). So the order in which [`done`](operations.md#done) and [`delete`](operations.md#delete) write is safe: each changes the task first, which makes the entry inert, and drops the entry after. An interruption between the two leaves nothing a caller can observe.
 
-Whether an entry is effective is judged from the tree as it is when the entry is read. An entry is never removed because its task could not be found: a folder that can't be listed, or a task file a restore brings back, must not cost a caller its claim. Only the operations below remove entries:
+Whether an entry is effective is judged from the tree as it is when the entry is read. No read or write removes an entry because its task could not be found: a folder that can't be listed must not cost a caller its claim. Only `repair` does that, at rest and with every folder listed, and only when nothing with the task file's name is left anywhere in the tree. Only the operations below remove entries:
 
 | Operation | Removes |
 |---|---|
@@ -488,7 +488,7 @@ Whether an entry is effective is judged from the tree as it is when the entry is
 
 ### Targeting writes
 
-A write **targets** a task when it changes that task, or removes it, by ID:
+A write **targets** a task when it changes that task, removes it, or releases its claim, by ID:
 
 - [`done`](operations.md#done), [`update`](operations.md#update), [`move`](operations.md#move), [`delete`](operations.md#delete), and [`release`](operations.md#release), for the task named;
 - [`block`](operations.md#block) and [`unblock`](operations.md#unblock), for the task whose `blocked_by` changes;
@@ -512,7 +512,7 @@ The check does not depend on what the write would change: one that would change 
 
 Not targeting, and so never checked:
 
-- **Incidental changes.** [`delete`](operations.md#delete) removing its task's ID from a locked task's `blocked_by`, and `block` naming a locked task as a blocker, which changes the blocked task and not the blocker. The first keeps an [invariant](#invariants), and the second changes another task; refusing either would let a lock on one task make writes to others fail.
+- **Incidental changes.** [`delete`](operations.md#delete) and [`delete-folder`](operations.md#delete-folder) removing the IDs of the tasks they remove from a locked task's `blocked_by`, and [`repair`](operations.md#repair) removing a dangling reference from one; and `block` naming a locked task as a blocker, which changes the blocked task and not the blocker. The first three keep an [invariant](#invariants), and the last changes another task; refusing any of them would let a lock on one task make writes to others fail.
 - **`create` and `create-batch`.** A new task has no claim.
 - **`move-folder`.** It reads only paths and destroys nothing (see [Walking the tree](#walking-the-tree)), so a locked task moves with the rest of its folder. The holder finds it again by ID, with [`show`](operations.md#show). `delete-folder` differs because it destroys the tasks, and already reads the folder's entries.
 - **`reopen`.** A done task's claim is always inert, so there is nothing to check, and `reopen` takes no `token`.
@@ -538,23 +538,27 @@ koan enforces no policy about claims. These cases are allowed, and are the calle
 
 ### Why claims hold
 
-**Exclusion.** If two claims of a task T both succeed, each by `claim` or `claim-next`, then between them a `release`, `force-release`, `done`, `reopen`, `delete`, or `delete-folder` of T took effect.
+**Exclusion.** If two claims of a task T both succeed, each by `claim` or `claim-next`, then between them a `release`, `force-release`, `done`, `reopen`, `delete`, or `delete-folder` of T took effect, or a `repair` replaced an unusable claims file.
 
 1. Every operation that writes the claims file holds the root's write lock (*Serialized writes* in [Guarantees](#guarantees)), so those operations are totally ordered.
 2. Each reads the claims file, and T's task file, after acquiring the lock (*Writes decide on current state*).
 3. Each replaces the claims file all-or-nothing, flushed before it is published (*Atomic files*).
-4. Let c1, then c2, be successful claims of T. By 1–3, the claims file c2 read holds c1's entry, unless an operation in between removed it. Only the operations listed above remove an entry, and `repair`, which removes only inert ones — and c1's entry is inert only once T is done or deleted, which takes a `done`, a `delete`, or a `delete-folder`. If the entry is there and T is open, T's claim is effective, and c2 is refused. ∎
+4. A claim succeeds only on a task that is open, with exactly one usable task file, and with no entry in the claims file. For such a task any entry would be effective, so a claim only ever adds an entry, and never replaces one.
+5. Take two successful claims of T, one after the other. By 1–3, the second read a claims file that still held the first one's entry, unless an operation in between removed it. Only the operations in [Effective claims](#effective-claims) remove an entry. `release`, `force-release`, `reopen`, `done`, `delete`, and `delete-folder` are the operations named above. `repair` removes an entry in two cases: on request, every entry of an unusable claims file, also named above; and an inert entry whose task is done or gone — and T is done or gone only after a `done`, a `delete`, or a `delete-folder` of T. So if none of those took effect, the entry is still there, and by 4 the second claim is refused.
 
 **Locks.** If a write that targets T succeeds while T's effective claim has token K, the write was given K.
 
-- The write holds the write lock, and reads the claims file after acquiring it. Every operation that adds or removes T's entry holds the same lock, so T's claim cannot change between the write's check and its effect: the check sees the claim as it is when the write takes effect, and lets the write through only when the tokens are equal. ∎
+- The write holds the write lock, and reads the claims file after acquiring it. Every operation that adds or removes T's entry holds the same lock, so T's claim cannot change between the write's check and its effect: the check sees the claim as it is when the write takes effect, and lets the write through only when the tokens are equal.
 - **Fencing** is the same argument from the holder's side. A write given K succeeds only if T's claim, at that moment, has token K. Every token is made fresh for one claim, so that claim is the one K was returned for: a late write from a holder whose claim was released and then taken by someone else is always refused.
 
 **The next task.** `claim-next` claims the first unclaimed task of the frontier. Under the write lock the tree changes only through outside changes, so the frontier computed there is the frontier at the moment the claim is recorded.
 
 Outside these arguments, as outside every guarantee koan makes:
 
-- an [outside change](#assumptions) to the claims file or to a task file;
+- an [outside change](#assumptions) to a task file, or a change to the claims file that koan did not make;
+- a task file that becomes a duplicate, unusable, or hidden behind a skipped entry, which makes its claim inert until the task is whole again, and can only come from an outside change or a system crash;
+- a system crash that undoes a `delete` or `delete-folder`, whose removals are not flushed (see [Crashes](#crashes)): the task comes back without its claim, since the claims file's write is flushed;
+- a change of root: [`init`](operations.md#init) with `replace_config` points the config at another tree, whose first claim replaces the claims file; and a different tree put at the same path inherits the entries the file holds for its IDs. `init` does not touch the claims file (see [A fixed root](#a-fixed-root));
 - notes, which any editor writes;
 - two config directories naming one root, which share its lock but not its claims file (see [Task IDs](#task-ids));
 - a system crash on a disk that ignores flushes.
@@ -700,7 +704,7 @@ An example, with one claim and one locked claim:
 ```
 
 - **`schema`** — Version of the claims file's format. It is checked as every versioned file is (see [File validity](#file-validity)); there is no older format of it.
-- **`root`** — The root these claims belong to, as in the [state file](#state-file). A claims file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never applies one tree's claims to another's tasks.
+- **`root`** — The root these claims belong to, as in the [state file](#state-file). A claims file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never applies one tree's claims to another's tasks. The first claim on this root then replaces that file, and the other root's claims are gone: koan keeps one claims file, for the root the config names.
 - **`claims`** — One entry per claimed task, keyed by its [task ID](#task-ids) written in decimal, in ascending numeric order.
   - **`claimed_at`** — [Timestamp](#timestamps) of when the claim was made. Information only.
   - **`extra`** — The claim's `extra`, as given to `claim`: any keys, any JSON values, never validated beyond being an object.
@@ -746,6 +750,10 @@ Check a candidate path before [`init`](operations.md#init), with no root configu
 ### Renumbering a duplicate ID
 
 Let [`repair`](operations.md#repair) give one copy of a [`duplicate-id`](operations.md#finding-kinds) a fresh ID, when the user names the copy to keep. Which copy keeps the ID is the user's decision; doing the renumbering is not.
+
+### A fixed root
+
+Keep the tree in one fixed place, beside nothing the user chooses, instead of at a path the config names. The root is configurable from when one machine might hold several trees; with one tree per user (see [Assumptions](#assumptions)) the choice buys little and costs a good deal: the config's only entry, [`init`](operations.md#init)'s path and `replace_config`, the *not initialized* states for a missing config and a missing root, the `root` field of the [state file](#state-file) and the [claims file](#claims-file), and every rule about a file that names another root. A user who wants the files elsewhere would link the fixed place to them. It needs a way to bring an existing tree to the fixed place.
 
 ### Caller-supplied tokens
 
