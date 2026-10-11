@@ -21,6 +21,8 @@ import (
 //   - KOAN_E2E_PANIC: panic, so e2e can check that a crash exits 134, not 2.
 //   - KOAN_E2E_CLOCK=<RFC 3339>: a fixed clock, so written files compare
 //     byte for byte.
+//   - KOAN_E2E_TOKEN=<32 hex digits>: the token every claim made with one
+//     gets, so the claims file compares byte for byte.
 //   - KOAN_E2E_CRASH_BEFORE=<k>: SIGKILL just before the k-th call that
 //     changes the disk.
 //   - KOAN_E2E_HOLD: once the write lock is taken, write "held\n" to stderr
@@ -53,6 +55,9 @@ func init() {
 				panic(fmt.Sprintf("KOAN_E2E_CLOCK: %v", err))
 			}
 			env.Ops.Clock = func() time.Time { return t }
+		}
+		if v := os.Getenv("KOAN_E2E_TOKEN"); v != "" {
+			env.Ops.Token = func() string { return v }
 		}
 		var hooks []fsys.Hook
 		if v := os.Getenv("KOAN_E2E_CRASH_BEFORE"); v != "" {

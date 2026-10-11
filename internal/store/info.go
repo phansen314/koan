@@ -29,12 +29,13 @@ const (
 // Info is info's output (operations.md, info), derived per
 // implementation-spec.md, info.
 type Info struct {
-	Config      ConfigInfo `json:"config"`
-	Tree        *TreeInfo  `json:"tree"`
-	State       *StateInfo `json:"state"`
-	Initialized bool       `json:"initialized"`
-	Usable      bool       `json:"usable"`
-	Compatible  *bool      `json:"compatible"`
+	Config      ConfigInfo  `json:"config"`
+	Tree        *TreeInfo   `json:"tree"`
+	State       *StateInfo  `json:"state"`
+	Claims      *ClaimsInfo `json:"claims"`
+	Initialized bool        `json:"initialized"`
+	Usable      bool        `json:"usable"`
+	Compatible  *bool       `json:"compatible"`
 	// MigrationPending is nil when Tree.Migration is.
 	MigrationPending *bool `json:"migration_pending"`
 }
@@ -57,6 +58,13 @@ type StateInfo struct {
 	Path   string     `json:"path"`
 	State  StateState `json:"state"`
 	LastID *int64     `json:"last_id"`
+}
+
+// ClaimsInfo is the claims file's state for the configured root. It enters
+// into neither Initialized nor Usable.
+type ClaimsInfo struct {
+	Path  string      `json:"path"`
+	State ClaimsState `json:"state"`
 }
 
 // Inspect reports the config and koan.json as state, never failing: every
@@ -88,6 +96,7 @@ func Inspect(env Env) Info {
 		last := sr.file.LastID
 		info.State.LastID = &last
 	}
+	info.Claims = &ClaimsInfo{Path: env.ClaimsPath(), State: readClaims(env, root).state}
 	if tree.Migration != nil {
 		info.MigrationPending = &pending
 	}

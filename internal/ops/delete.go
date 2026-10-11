@@ -10,7 +10,7 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-func decodeDelete(f *model.Fields, p *model.Problems) any { return decodeID(f, p) }
+func decodeDelete(f *model.Fields, p *model.Problems) any { return decodeTokenInput(f, p) }
 
 // DeleteOutput is delete's result (delete-output).
 type DeleteOutput struct {
@@ -29,21 +29,29 @@ type DependentsPartial struct {
 // runDelete removes the one task with id, under the write lock: first its ID
 // from every blocked_by that holds it, then its task file — the moment it is
 // gone — then its .md, whose removal is cleanup and cannot fail the
-// operation. The task file itself is never read, so an unusable task can be
-// deleted too.
-func runDelete(env Env, in IDInput, w *errs.Collector) (any, *errs.Error) {
+// operation — then its claim entry, last, a failure there being a warning.
+// The task file itself is read only to tell whether a claim on it is
+// effective (checkTokens), so an unusable task can be deleted too.
+func runDelete(env Env, in TokenInput, w *errs.Collector) (any, *errs.Error) {
 	var out DeleteOutput
 	e := store.Write(env.Env, w, func(tx *store.Tx) *errs.Error {
 		if e := tx.RequireWholeTree(tx.Index()); e != nil {
 			return e
 		}
 		locs := tx.Copies(in.ID)
-		switch {
-		case len(locs) == 0:
+		if len(locs) == 0 {
 			return errs.NotFound(nil, []int64{int64(in.ID)}, nil)
-		case len(locs) > 1:
+		}
+		if e := tx.Claims(); e != nil {
+			return e
+		}
+		if len(locs) > 1 {
 			return errs.Conflict(errs.RuleDuplicateID, []int64{int64(in.ID)})
-		case int64(in.ID) > tx.LastID():
+		}
+		if e := checkTokens(tx, []model.ID{in.ID}, in.Token); e != nil {
+			return e
+		}
+		if int64(in.ID) > tx.LastID() {
 			return errs.Conflict(errs.RuleIDAboveLastID, []int64{int64(in.ID)})
 		}
 		target := locs[0]
@@ -60,7 +68,7 @@ func runDelete(env Env, in IDInput, w *errs.Collector) (any, *errs.Error) {
 		}
 		tx.Remove(target.NotesRel())
 		out = DeleteOutput{ID: in.ID, Folder: target.Folder, Dependents: deps}
-		return nil
+		return dropClaims(tx, []model.ID{in.ID})
 	})
 	if e != nil {
 		return nil, e
@@ -145,8 +153,9 @@ type DeleteFolderOutput struct {
 // runDeleteFolder removes folder and everything under it, under the write
 // lock: first the IDs of the tasks under it from every blocked_by outside
 // it, then the folder, renamed aside in one step and then removed
-// (store.Tx.Discard). The task files under it are never read — only their
-// names — so unusable ones go with it. The rest of the tree is walked only
+// (store.Tx.Discard), then the removed tasks' claim entries, last. The task
+// files under it are never read — only their names, but for one whose claim
+// has a token (checkTokens) — so unusable ones go with it. The rest of the tree is walked only
 // when there are references to find.
 func runDeleteFolder(env Env, in DeleteFolderInput, w *errs.Collector) (any, *errs.Error) {
 	var out DeleteFolderOutput
@@ -166,6 +175,11 @@ func runDeleteFolder(env Env, in DeleteFolderInput, w *errs.Collector) (any, *er
 			if under(u.Folder) {
 				return tx.OSError(store.FolderRel(u.Folder), u.Err)
 			}
+		}
+		// Needed whatever the folder holds, so that every targeting write
+		// treats an unusable claims file alike.
+		if e := tx.Claims(); e != nil {
+			return e
 		}
 		folders, tasks := x.InScope(in.Folder, true)
 		ids := make([]model.ID, 0, len(tasks))
@@ -198,10 +212,15 @@ func runDeleteFolder(env Env, in DeleteFolderInput, w *errs.Collector) (any, *er
 					above = append(above, int64(id))
 				}
 			}
-			switch {
-			case dup != nil:
+			if dup != nil {
 				return errs.Conflict(errs.RuleDuplicateID, dup)
-			case above != nil:
+			}
+			// delete-folder takes no token, so a task with a locked
+			// effective claim refuses it.
+			if e := checkTokens(tx, ids, ""); e != nil {
+				return e
+			}
+			if above != nil {
 				return errs.Conflict(errs.RuleIDAboveLastID, above)
 			}
 			if deps, e = removeReferences(tx, ids, func(l store.Location) bool { return under(l.Folder) }, model.TimestampOf(env.Clock())); e != nil {
@@ -212,7 +231,7 @@ func runDeleteFolder(env Env, in DeleteFolderInput, w *errs.Collector) (any, *er
 			return partialDependents(e, deps)
 		}
 		out = DeleteFolderOutput{Folder: in.Folder, Folders: folders, IDs: ids, Dependents: deps}
-		return nil
+		return dropClaims(tx, ids)
 	})
 	if e != nil {
 		return nil, e

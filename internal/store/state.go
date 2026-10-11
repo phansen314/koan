@@ -114,16 +114,28 @@ func writeState(env Env, root string, lastID int64) *errs.Error {
 	if err != nil {
 		return errs.Internal("encode " + StateName + ": " + err.Error())
 	}
+	if p, err := publishBesideConfig(env, StateName, data); err != nil {
+		return errs.FromOS(p, err)
+	}
+	return nil
+}
+
+// publishBesideConfig publishes data as the file name in the config
+// directory, for the state file and the claims file: a temp file there,
+// flushed, then renamed over anything at its path, and the directory flushed.
+// Any temp file an interrupted write left there is removed first. On failure
+// it returns the OS error and the path it is about, with nothing published.
+func publishBesideConfig(env Env, name string, data []byte) (string, error) {
 	r, err := env.FS.OpenRoot(env.ConfigDir)
 	if err != nil {
-		return errs.FromOS(env.ConfigDir, err)
+		return env.ConfigDir, err
 	}
 	defer r.Close()
 	if err := removeTemps(r); err != nil {
-		return errs.FromOS(env.ConfigDir, err)
+		return env.ConfigDir, err
 	}
-	if _, err := Publish(r, StateName, data, true); err != nil {
-		return errs.FromOS(env.StatePath(), err)
+	if _, err := Publish(r, name, data, true); err != nil {
+		return path.Join(env.ConfigDir, name), err
 	}
-	return nil
+	return "", nil
 }

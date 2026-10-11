@@ -17,6 +17,7 @@ const (
 	WarnNotesMissing      WarningKind = "notes-missing"
 	WarnMigrated          WarningKind = "migrated"
 	WarnCycle             WarningKind = "cycle"
+	WarnClaimsNotUpdated  WarningKind = "claims-not-updated"
 )
 
 // UnusableReason says why an unusable-file warning's file is unusable.
@@ -194,4 +195,27 @@ func Cycle(cycle []int64) Warning {
 		Paths:   []string{},
 		IDs:     cycle,
 	}
+}
+
+// UnusableClaims: the claims file at path is unusable, so a read shows every
+// task as unclaimed. code is the symbolic OS error when reason is unreadable,
+// else "".
+func UnusableClaims(path string, reason UnusableReason, code string) Warning {
+	w := Warning{Kind: WarnUnusableFile, Message: fmt.Sprintf("%s: unusable (%s), so every task reads as unclaimed", path, reason), Paths: []string{path}, IDs: []int64{}, Reason: reason}
+	if reason == UnusableUnreadable {
+		w.Message += " (" + code + ")"
+		w.Code = code
+	}
+	return w
+}
+
+// ClaimsNotUpdated: the tasks ids were completed or removed, but their entries
+// could not then be removed from the claims file at path. code is "" for an
+// OS error with no symbolic name, and then left out.
+func ClaimsNotUpdated(path string, ids []int64, code string) Warning {
+	msg := fmt.Sprintf("%s: the claim entries of task %s could not be removed; they are inert", path, joinIDs(ids))
+	if code != "" {
+		msg += " (" + code + ")"
+	}
+	return Warning{Kind: WarnClaimsNotUpdated, Message: msg, Paths: []string{path}, IDs: nonNil(ids), Code: code}
 }

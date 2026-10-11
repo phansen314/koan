@@ -14,7 +14,7 @@ koan info
 koan version
 ```
 
-Ready when `.result.usable` is true; if not, the rest of `.result` says why. When `.result.migration_pending` is true, the tree needs `koan migrate` after a koan upgrade: see `migration-pending` below. If `version`'s `.result.version` is below `0.2.0` (`0.0.0-dev` is a build from source: treat it as current), the binary is older than this skill: tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error saying `unknown command` for a command this skill names means the same. When no root is set up, tell the user and suggest `koan init ~/tasks` (or a path they choose). **Never run `init` unasked** — it changes this machine's setup. If `init` fails with `conflict` and `rule: "config-exists"`, report it; never pass `--replace-config` unless the user asks for it.
+Ready when `.result.usable` is true; if not, the rest of `.result` says why. When `.result.migration_pending` is true, the tree needs `koan migrate` after a koan upgrade: see `migration-pending` below. If `version`'s `.result.version` is below `0.2.0` (`0.0.0-dev` is a build from source: treat it as current), the binary is older than this skill: tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error saying `unknown command`, or `unknown flag`, for a command or option this skill names means the same. When no root is set up, tell the user and suggest `koan init ~/tasks` (or a path they choose). **Never run `init` unasked** — it changes this machine's setup. If `init` fails with `conflict` and `rule: "config-exists"`, report it; never pass `--replace-config` unless the user asks for it.
 
 ## Reading output
 
@@ -30,7 +30,7 @@ Branch on `.error.kind`, not the exit code. **Always tell the user about any `wa
 | 0 | Success | — |
 | 1 | Operation error; see `.error.kind` | See below |
 | 2 | Usage error (bad command line) | Fix the command; check `koan <cmd> --help` |
-| 3 or other | Outcome unknown (killed, stdout lost) | Reads: rerun. `create` and `create-batch`: check with `list` before rerunning, or they may duplicate. Other writes are safe to rerun. |
+| 3 or other | Outcome unknown (killed, stdout lost) | Reads: rerun. `create` and `create-batch`: check with `list` before rerunning, or they may duplicate. `claim-next`: check with `koan list --claimed --limit 20 --fields id,title,claim` first, or it may claim a second task. `claim`: a rerun that fails with `claimed` may be your own claim from the first run; see Claims. Either with `--use-token`: if the first run succeeded, its token is lost; see Claims. Other writes are safe to rerun. |
 
 Error kinds worth handling:
 
@@ -42,6 +42,9 @@ Error kinds worth handling:
 - `conflict` with `rule: "destination-exists"` — `move-folder` would land on a folder that already exists (folders are never merged), or `move` would overwrite a `.md` with text in the target folder; show it to the user.
 - `conflict` with `rule: "case-clash"` — a folder path differs only in case from an existing folder (e.g. `/Work` where `/work` exists); `.error.message` names it. Use the existing folder's exact name.
 - `conflict` with `rule: "duplicate-id"` or `"id-above-last-id"` — the tree is damaged; check it (below), don't work around it.
+- `conflict` with `rule: "claimed"` — someone has claimed the task; `.error.details.claims[0]` is their claim (`claimed_at`, `extra`, `locked`). See Claims.
+- `conflict` with `rule: "token-mismatch"` — the task is locked and the write lacks its token, or you passed a token the task's claim doesn't have. See Claims.
+- `conflict` with `rule: "task-done"` — `claim` on a done task; `reopen` it first if the user wants it worked on again.
 - `not-initialized` — `.error.details.missing` says what is absent. `config` or `root`: nothing is set up here; see "Before the first command". `metadata`: the tree lost its `koan.json`. `state`: this machine has no ID counter for the tree. For the last two, `init` is not the fix: report it, offer `koan doctor`, and see the `repair --kinds` rule below.
 - `migration-pending` — koan was upgraded and the tree's files are in an older format; every command that reads or changes tasks refuses it. Stop and tell the user to run `koan migrate`, committing the tree first if it's a git repository. **Never run `migrate` unasked**: it rewrites every task file and holds the write lock while it runs.
 - `corrupt`, `unsupported-format`, `io`, `internal` — stop and report to the user, quoting `.error.message` (for `corrupt` it names what is wrong); don't try to fix files by hand. For `unsupported-format`, compare `.error.details.found` with `.error.details.supported`: above it (or with `.error.details.field == "migration"`), a newer koan wrote the file and the user needs to upgrade this machine's binary; below it, the file is in an older format, and `koan migrate` converts it.
@@ -52,6 +55,7 @@ After a `duplicate-id`, `id-above-last-id`, or `corrupt` error, or a `dangling-r
 
 - Findings with a non-null `action` are what `koan repair` would fix. **Never run `repair` unasked**: offer it, saying what it would change. It asks for permission anyway.
 - **Never run `repair --kinds state-missing` or `--kinds metadata-missing` unless the user explicitly agrees**: rebuilding this machine's ID counter can reissue the ID of a task that was deleted, and rebuilding `koan.json` declares the directory a koan tree.
+- **Never run `repair --kinds claims-unusable` unless the user explicitly agrees** either: it replaces an unusable claims file with an empty one, forgetting every claim and lock on this machine. Until the file is fixed, claims and every write to a task fail with `corrupt`, `unsupported-format` or `io` naming `claims.json`, and reads warn `unusable-file` for it and show every task as unclaimed: report it, and offer `koan doctor`.
 - Findings with `action: null` (duplicate IDs, cycles, unusable files, orphaned notes that may hold text) are the user's to resolve. Pass on `suggest`; don't edit files to fix them yourself.
 - `migration-pending` and `old-format` findings are fixed by `koan migrate`, never by `repair`: pass that on, as for the `migration-pending` error above.
 - Files koan ignores — the user's own, an editor's backups — are `stray-entry`, listed only by `koan doctor --kinds stray-entry`. They are not damage: ask for them only when the user wants to tidy up.
@@ -61,9 +65,9 @@ After a `duplicate-id`, `id-above-last-id`, or `corrupt` error, or a `dangling-r
 
 Everything koan prints lands in your context, and stays there for the rest of the session. A whole task is about 300 bytes, so a bare `koan list` of a few hundred tasks is tens of KB. **Always pass `--limit` and `--fields` to `frontier` and `list`**, as below, and widen only when the question needs it:
 
-- `--fields id,title,…` returns only those fields of each task (`id` always). Fields: `title`, `priority`, `folder`, `tags`, `readiness`, `blocking`, `blocked_by`, `extra`, `created_at`, `completed_at`, `updated_at`, `notes_path`, `schema`.
+- `--fields id,title,…` returns only those fields of each task (`id` always). Fields: `title`, `priority`, `folder`, `tags`, `readiness`, `blocking`, `blocked_by`, `claim`, `extra`, `created_at`, `completed_at`, `updated_at`, `notes_path`, `schema`.
 - `--limit N` returns the first N in the command's order. The result always says `total` and `truncated`: when `truncated` is true there are `total` tasks and you got N. Say so rather than presenting N as everything, and fetch more only if the user needs them.
-- `--tags-any a,b` / `--tags-all a,b` filter by tag, and `list --readiness …` by readiness. Anything else (`extra`, title words) is `jq`'s, still with `--fields` so less comes through.
+- `--tags-any a,b` / `--tags-all a,b` filter by tag, `--claimed` / `--claimed=false` by whether someone has claimed the task, and `list --readiness …` by readiness. Anything else (`extra`, title words) is `jq`'s, still with `--fields` so less comes through.
 - `--limit 0` gives just the count, in `total`.
 - For one task's full detail, `show` it.
 
@@ -78,12 +82,38 @@ With `jq`, a trimmed failure looks like success: the pipe's exit status is jq's,
 ```sh
 koan frontier --limit 10 --fields id,title,priority,folder,tags   # what's ready, in work order
 koan show 42                                                      # one task, whole
+koan claim 42                                                     # it's yours: no one else can claim it
 koan done 42                                                      # finished, or cancelled: see below
 ```
 
 `frontier` lists open, unblocked tasks in the order to work on them: highest priority first, unprioritized after, ties oldest (lowest ID) first. Scope it with `--folder /proj` and `--recursive=false`, or by tag with `--tags-any`.
 
-Other agents (another Claude Code or OpenCode session, say) may be working from the same tree, and nothing stops two of them picking the same task from `frontier`. So before starting a task you picked yourself, rather than one the user named, tell the user which one you're taking.
+### Claims
+
+Other agents (another Claude Code or OpenCode session, say) may be working from the same tree, and `frontier` tells every one of them the same tasks. A **claim** reserves a task: once you have claimed it, no one else can, until it is released or done.
+
+```sh
+koan claim 42                                          # this task
+koan claim-next --folder /proj                         # or the next ready task nobody has claimed; .result.task is null if there is none
+koan frontier --claimed=false --limit 10 --fields id,title   # what's free
+koan list --claimed --limit 20 --fields id,title,claim       # what's taken, and since when
+koan release 42                                        # you won't do it after all
+```
+
+- **Claim a task before starting it**, whether you picked it or the user named it. `koan claim-next` picks and claims in one step, so prefer it to `frontier` then `claim` when the choice is yours.
+- **On `conflict` with `rule: "claimed"`**, someone else has it: pick another if the choice was yours, and tell the user if they named the task. After `claim-next` returns `task: null`, nothing ready is free.
+- **The one time `claimed` may be your own claim** is a rerun of `koan claim` whose first run ended with its outcome unknown. koan can't tell you whose it is, so don't start the task on that alone: tell the user that the task is claimed, possibly by your earlier attempt, and let them say whether to go on.
+- **`done` ends the claim.** If you stop without finishing, `koan release` it, so the task isn't left reserved.
+- **Never release a claim you didn't make** unless the user says so, and **never run `koan force-release` unasked**: it clears any claim, locked or not, and its holder may still be working. It asks for permission anyway.
+- A claim never expires, and koan doesn't know who made one. `claim.extra` is whatever the claimer stored with it (`--extra '<json>'`); koan never reads it.
+
+**Tokens.** `--use-token` on `claim` or `claim-next` also locks the task: every write to it then needs `--token`. Use it only when the user or a coordinator asks for it.
+
+- Keep the token from `.result.token`: no other command ever shows it. Pass it as `--token` to every write on that task (`done`, `update`, `move`, `delete`, `release`, and `block` or `unblock` when it is the task being blocked, not a blocker) while you hold the claim. Never pass it to a write on another task.
+- `done` and `release` end the claim: after either succeeds, drop the token, and later writes on that task take none.
+- A `token-mismatch` on your own token means your claim is gone: stop and tell the user. The one exception is a rerun of `done` or `release` after an unknown outcome: check `koan show` first, since the first run may have succeeded.
+- A `token-mismatch` with no token of your own means someone else locked the task: leave it alone, and tell the user if they asked for it.
+- If a `claim` or `claim-next` with `--use-token` ended with its outcome unknown, check `koan show`: if the task's `claim.locked` is true, the first run may have succeeded, and then its token is lost and the task is locked against everyone, you included. Tell the user; only `force-release` clears it.
 
 `show` returns `result.tasks`, always an array: one task, or every copy if the ID is duplicated (with a `duplicate-id` warning — report it). Each has `readiness` (`ready`/`blocked`/`done`), `blocking` (the blocker IDs still holding it up), and `notes_path`. **Notes are a plain Markdown file:** read and edit it directly with your file tools — there is no koan command for notes after creation.
 
@@ -165,6 +195,7 @@ koan delete-folder -r /proj/old               # .result.ids: what went; .result.
   - **Always confirm with the user before `delete` or `delete-folder`**, naming what goes (for a folder, list its tasks first, done ones too: `koan list --folder /x --readiness ready,blocked,done --limit 50 --fields id,title,readiness`). Never delete to tidy up on your own initiative.
   - Prefer cancelling (below) when the user just means "won't do": it keeps the record.
   - A deleted task's ID is removed from its dependents' blockers, so they may become ready. Tell the user which (`dependents` in the output).
+  - `delete-folder` takes no `--token`: a folder holding a locked task is refused with `token-mismatch`, naming the tasks. Their claims have to be released first; that is the user's call.
 
 ## Hard rules
 

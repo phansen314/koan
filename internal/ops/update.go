@@ -13,6 +13,7 @@ import (
 // UpdateInput is update's input. A nil field is left unchanged.
 type UpdateInput struct {
 	ID    model.ID
+	Token string // of the caller's locked claim; "" for none
 	Title *model.Title
 	// Priority is set when the input names priority; Priority.Value nil
 	// clears it.
@@ -47,7 +48,7 @@ type ExtraChange struct {
 var updateFields = []string{"title", "priority", "tags", "extra"}
 
 func decodeUpdate(f *model.Fields, p *model.Problems) any {
-	in := UpdateInput{ID: requiredID(f, p, "id")}
+	in := UpdateInput{ID: requiredID(f, p, "id"), Token: optionalToken(f, p)}
 	named := false
 	for _, key := range updateFields {
 		named = named || f.Has(key)
@@ -217,8 +218,11 @@ type UpdateOutput struct {
 func runUpdate(env Env, in UpdateInput, w *errs.Collector) (any, *errs.Error) {
 	out := UpdateOutput{Changed: []string{}}
 	e := store.Write(env.Env, w, func(tx *store.Tx) *errs.Error {
-		ld, e := findOne(tx, in.ID)
+		ld, e := findOneClaimed(tx, in.ID)
 		if e != nil {
+			return e
+		}
+		if e := checkTokens(tx, []model.ID{in.ID}, in.Token); e != nil {
 			return e
 		}
 		t := &ld.Task

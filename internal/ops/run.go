@@ -54,6 +54,10 @@ var runners = map[string]runner{
 	"list":          typed(runList),
 	"frontier":      typed(runFrontier),
 	"why":           typed(runWhy),
+	"claim":         typed(runClaim),
+	"claim-next":    typed(runClaimNext),
+	"release":       typed(runRelease),
+	"force-release": typed(runForceRelease),
 }
 
 // typed adapts an operation's function over its own input type to a runner.

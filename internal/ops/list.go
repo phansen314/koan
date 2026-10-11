@@ -47,7 +47,7 @@ type ListOutput struct {
 func runList(env Env, in ScopeInput, w *errs.Collector) (any, *errs.Error) {
 	var out ListOutput
 	e := store.Read(env.Env, w, func(tx *store.Tx) *errs.Error {
-		folders, views, e := inScope(tx, in)
+		folders, views, e := readScope(in).run(tx)
 		if e != nil {
 			return e
 		}

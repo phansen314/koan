@@ -2,7 +2,6 @@ package ops
 
 import (
 	"cmp"
-	"slices"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/model"
@@ -42,17 +41,10 @@ type FrontierOutput struct {
 func runFrontier(env Env, in ScopeInput, w *errs.Collector) (any, *errs.Error) {
 	var out FrontierOutput
 	e := store.Read(env.Env, w, func(tx *store.Tx) *errs.Error {
-		_, views, e := inScope(tx, ScopeInput{Folder: in.Folder, Recursive: in.Recursive})
+		ready, e := readScope(ScopeInput{Folder: in.Folder, Recursive: in.Recursive}).frontier(tx)
 		if e != nil {
 			return e
 		}
-		ready := []model.TaskView{}
-		for _, v := range views {
-			if v.Readiness == model.Ready {
-				ready = append(ready, v)
-			}
-		}
-		slices.SortFunc(ready, frontierOrder)
 		out.Tasks, out.Total, out.Truncated = narrow(ready, in.Narrowing)
 		return nil
 	})

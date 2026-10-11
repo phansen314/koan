@@ -70,7 +70,7 @@ func TestList(t *testing.T) {
 	f := newFixture(t)
 	f.task("proj", 7, false)
 	got := f.rel(line(t, Run("list", parse(t, `{}`), nil, f.env)))
-	want := `{"ok":true,"result":{"tasks":[{"schema":1,"id":7,"title":"task 7","priority":null,"created_at":"2026-09-20T18:31:51Z","completed_at":null,"updated_at":"2026-09-20T18:31:51Z","blocked_by":[],"tags":[],"extra":{},"folder":"/proj","notes_path":"~/tasks/proj/7.md","readiness":"ready","blocking":[]}],"total":1,"truncated":false},"warnings":[]}` + "\n"
+	want := `{"ok":true,"result":{"tasks":[{"schema":1,"id":7,"title":"task 7","priority":null,"created_at":"2026-09-20T18:31:51Z","completed_at":null,"updated_at":"2026-09-20T18:31:51Z","blocked_by":[],"tags":[],"extra":{},"folder":"/proj","notes_path":"~/tasks/proj/7.md","readiness":"ready","blocking":[],"claim":null}],"total":1,"truncated":false},"warnings":[]}` + "\n"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
@@ -228,7 +228,7 @@ func TestListCases(t *testing.T) {
 			`invalid-input {"problems":[{"field":"/readiness/1","reason":"must be one of ready, blocked, done"},{"field":"/readiness/2","reason":"duplicate of item 0"}]}`},
 		{"empty readiness", `{"readiness": []}`, nil, `invalid-input {"problems":[{"field":"/readiness","reason":"must list at least one readiness value"}]}`},
 		{"bad narrowing", `{"limit": -1, "fields": ["title", "name"], "tags_any": [], "tags_all": ["A"]}`, nil,
-			`invalid-input {"problems":[{"field":"/fields/1","reason":"must be one of schema, id, title, priority, created_at, completed_at, updated_at, blocked_by, tags, extra, folder, notes_path, readiness, blocking"},{"field":"/limit","reason":"must be between 0 and 9007199254740991"},{"field":"/tags_all/0","reason":"must be 1-64 lowercase letters, digits, and hyphens, not starting or ending with a hyphen"},{"field":"/tags_any","reason":"must list at least one tag"}]}`},
+			`invalid-input {"problems":[{"field":"/fields/1","reason":"must be one of schema, id, title, priority, created_at, completed_at, updated_at, blocked_by, tags, extra, folder, notes_path, readiness, blocking, claim"},{"field":"/limit","reason":"must be between 0 and 9007199254740991"},{"field":"/tags_all/0","reason":"must be 1-64 lowercase letters, digits, and hyphens, not starting or ending with a hyphen"},{"field":"/tags_any","reason":"must list at least one tag"}]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)

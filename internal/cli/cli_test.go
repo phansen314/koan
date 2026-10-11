@@ -993,3 +993,58 @@ func TestPickInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+// The claims commands' input, --token on every write that takes one, and
+// --claimed on the reads that take it. A bare `koan claim` is a usage error,
+// never a claim on whatever comes next.
+func TestClaimsInput(t *testing.T) {
+	saved := runOp
+	t.Cleanup(func() { runOp = saved })
+	var got, op string
+	runOp = func(name string, in *jsonio.Object, _ []errs.Problem, _ ops.Env) ops.Envelope {
+		b, _ := json.Marshal(in)
+		got, op = string(b), name
+		return ops.Envelope{OK: true, Result: struct{}{}, Warnings: []errs.Warning{}}
+	}
+	const tok = "3f9c0a7e5b1d48c2a6e4f0b9d7c3a185"
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"claim", "42"}, `{"id":42}`},
+		{[]string{"claim", "42", "--extra", `{"agent":"a","n":1.50}`, "--use-token"}, `{"id":42,"extra":{"agent":"a","n":1.50},"use_token":true}`},
+		{[]string{"claim-next"}, `{}`},
+		{[]string{"claim-next", "--folder", "/proj", "--recursive=false", "--tags-any", "a,b", "--tags-all", "c", "--extra", `{"k":1}`, "--use-token"},
+			`{"folder":"/proj","recursive":false,"tags_any":["a","b"],"tags_all":["c"],"extra":{"k":1},"use_token":true}`},
+		{[]string{"release", "42"}, `{"id":42}`},
+		{[]string{"release", "42", "--token", tok}, `{"id":42,"token":"` + tok + `"}`},
+		{[]string{"force-release", "42"}, `{"id":42}`},
+		{[]string{"done", "42", "--token", tok}, `{"id":42,"token":"` + tok + `"}`},
+		{[]string{"delete", "42", "--token", tok}, `{"id":42,"token":"` + tok + `"}`},
+		{[]string{"update", "42", "--priority", "3", "--token", tok}, `{"id":42,"priority":3,"token":"` + tok + `"}`},
+		{[]string{"move", "42", "--to", "/proj", "--token", tok}, `{"id":42,"to":"/proj","token":"` + tok + `"}`},
+		{[]string{"block", "42", "--blockers", "41", "--token", tok}, `{"id":42,"blockers":[41],"token":"` + tok + `"}`},
+		{[]string{"unblock", "42", "--blockers", "41", "--token", tok}, `{"id":42,"blockers":[41],"token":"` + tok + `"}`},
+		{[]string{"done", "42", "--token", "nope"}, `{"id":42,"token":"nope"}`}, // the operation rejects it, not the CLI
+		{[]string{"frontier", "--claimed"}, `{"claimed":true}`},
+		{[]string{"frontier", "--claimed=false", "--limit", "5"}, `{"claimed":false,"limit":5}`},
+		{[]string{"list", "--claimed", "--fields", "id,claim"}, `{"claimed":true,"fields":["id","claim"]}`},
+		{[]string{"list", "--claimed=false"}, `{"claimed":false}`},
+	} {
+		got, op = "", ""
+		if r := run(t, commands, "", tc.args...); r.code != ExitOK || got != tc.want || op != tc.args[0] {
+			t.Errorf("%q: exit %d, op %s, input %s, want %s", tc.args, r.code, op, got, tc.want)
+		}
+	}
+	for _, args := range [][]string{
+		{"claim"}, {"claim", "1", "2"}, {"claim", "42", "--token", tok}, {"claim", "42", "--folder", "/proj"},
+		{"claim-next", "42"}, {"claim-next", "--limit", "1"}, {"claim-next", "--claimed"},
+		{"release"}, {"force-release"}, {"force-release", "42", "--token", tok},
+		{"reopen", "42", "--token", tok}, {"delete-folder", "/proj", "--token", tok}, {"move-folder", "/a", "--to", "/b", "--token", tok},
+		{"release", "42", "--force"},
+	} {
+		if r := run(t, commands, "", args...); r.code != ExitUsage {
+			t.Errorf("%q: exit %d, want a usage error: %s", args, r.code, r.raw)
+		}
+	}
+}

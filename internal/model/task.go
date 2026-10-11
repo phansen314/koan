@@ -66,13 +66,15 @@ const (
 	Done    Readiness = "done"
 )
 
-// TaskView is a task plus its derived readiness (the shared task-view
-// schema). Blocking lists, ascending, the blocked_by IDs that currently
-// block it; it is non-empty exactly when Readiness is Blocked.
+// TaskView is a task plus its derived readiness and its claim (the shared
+// task-view schema). Blocking lists, ascending, the blocked_by IDs that
+// currently block it; it is non-empty exactly when Readiness is Blocked.
+// Claim is the task's effective claim, nil when it has none.
 type TaskView struct {
 	Task
 	Readiness Readiness `json:"readiness"`
 	Blocking  []ID      `json:"blocking"`
+	Claim     *Claim    `json:"claim"`
 }
 
 // Normalize puts v in the form it is returned in: the task file's fields as
@@ -90,7 +92,7 @@ func (v *TaskView) Normalize() {
 // (the task-field schema).
 var ViewFields = []string{
 	"schema", "id", "title", "priority", "created_at", "completed_at", "updated_at",
-	"blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "blocking",
+	"blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "blocking", "claim",
 }
 
 // Project returns v with only the named fields, and id whether named or not,
@@ -137,6 +139,8 @@ func (v TaskView) field(name string) any {
 		return v.Readiness
 	case "blocking":
 		return v.Blocking
+	case "claim":
+		return v.Claim
 	}
 	return nil
 }

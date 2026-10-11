@@ -90,6 +90,28 @@ type crashCase struct {
 	// pending is the stages at which the root needs migration: repair
 	// refuses it there, so only doctor is checked.
 	pending map[int]bool
+	// env is added to the environment of setup and of the write.
+	env []string
+	// tempOK: the rerun may leave a temp file in the config directory. One
+	// beside the claims file stays until the next write of the claims file
+	// (design-spec.md, Claims file), and a rerun that fails, or finds
+	// nothing left to do, makes none.
+	tempOK bool
+}
+
+// crashToken is the token the crash matrix's locked claim gets.
+const crashToken = "3f9c0a7e5b1d48c2a6e4f0b9d7c3a185"
+
+// claimsPath is the claims file, relative to the home.
+var claimsPath = configDir + "/claims.json"
+
+// seedClaim writes a claims file holding one claim, on task 1, as no koan
+// command leaves it for a done task: the entry an interrupted done leaves.
+func seedClaim(t *testing.T, root string) {
+	data := "{\n  \"schema\": 1,\n  \"root\": \"" + root + "\",\n  \"claims\": {\n    \"1\": {\n      \"claimed_at\": \"2026-09-28T12:00:00Z\",\n      \"extra\": {}\n    }\n  }\n}\n"
+	if err := os.WriteFile(filepath.Join(filepath.Dir(root), claimsPath), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func safe(want string) func(int) (int, string, bool) {
@@ -279,6 +301,126 @@ var crashCases = []crashCase{
 		order: [][]string{{"tasks/x"}, {"tasks/a", "tasks/a/1.json", "tasks/a/1.md", "tasks/x/y", "tasks/x/y/1.json", "tasks/x/y/1.md"}},
 		rerun: safe(`"folder":"/x/y"`),
 	},
+	{
+		// The first claim on a root creates the claims file.
+		name:  "claim, first",
+		setup: [][]string{{"create", "a"}},
+		args:  []string{"claim", "1"},
+		order: [][]string{{claimsPath}},
+		rerun: func(stage int) (int, string, bool) {
+			if stage == 1 {
+				return 1, `"rule":"claimed"`, true
+			}
+			return 0, `"locked":false`, true
+		},
+	},
+	{
+		name:  "claim",
+		setup: [][]string{{"create", "a"}, {"create", "b"}, {"claim", "2"}},
+		args:  []string{"claim", "1", "--extra", `{"agent":"a"}`},
+		order: [][]string{{claimsPath}},
+		rerun: func(stage int) (int, string, bool) {
+			if stage == 1 {
+				return 1, `"rule":"claimed"`, true
+			}
+			return 0, `"extra":{"agent":"a"}`, true
+		},
+	},
+	{
+		// Not safe after a crash once the claim is made: a rerun claims the
+		// next task too.
+		name:  "claim-next",
+		setup: [][]string{{"create", "a"}, {"create", "b"}, {"create", "c"}, {"claim", "3"}},
+		args:  []string{"claim-next"},
+		order: [][]string{{claimsPath}},
+		rerun: func(stage int) (int, string, bool) {
+			if stage == 1 {
+				return 0, `"task":{"schema":1,"id":2,`, false
+			}
+			return 0, `"task":{"schema":1,"id":1,`, true
+		},
+	},
+	{
+		name:  "release",
+		setup: [][]string{{"create", "a"}, {"claim", "1"}},
+		args:  []string{"release", "1"},
+		order: [][]string{{claimsPath}},
+		rerun: safe(`"ok":true`),
+	},
+	{
+		name:  "force-release",
+		setup: [][]string{{"create", "a"}, {"claim", "1"}},
+		args:  []string{"force-release", "1"},
+		order: [][]string{{claimsPath}},
+		rerun: safe(`"ok":true`),
+	},
+	{
+		// The task file first, then its claim entry: between the two the
+		// task is done and the entry inert.
+		name:  "done, claimed",
+		setup: [][]string{{"create", "a"}, {"claim", "1"}},
+		args:  []string{"done", "1"},
+		order: [][]string{{"tasks/1.json"}, {claimsPath}},
+		found: map[int][]string{1: {"claim-inert"}},
+		rerun: safe(`"completed_at":"2026-09-28T12:00:00Z"`),
+	},
+	{
+		// A locked claim, ended by its holder: once the task is done the
+		// token's claim is gone, so a rerun with it is refused, and the task
+		// is done all the same.
+		name:  "done, locked",
+		env:   []string{"KOAN_E2E_TOKEN=" + crashToken},
+		setup: [][]string{{"create", "a"}, {"claim", "1", "--use-token"}},
+		args:  []string{"done", "1", "--token", crashToken},
+		order: [][]string{{"tasks/1.json"}, {claimsPath}},
+		found: map[int][]string{1: {"claim-inert"}},
+		rerun: func(stage int) (int, string, bool) {
+			if stage == 0 {
+				return 0, `"changed":true`, true
+			}
+			return 1, `"rule":"token-mismatch","ids":[1],"claims":[null]`, true
+		},
+	},
+	{
+		// The entry first, then the task file: between the two the task is
+		// done with no entry.
+		name:  "reopen, claimed",
+		setup: [][]string{{"create", "a"}, {"done", "1"}},
+		seed:  seedClaim,
+		args:  []string{"reopen", "1"},
+		order: [][]string{{claimsPath}, {"tasks/1.json"}},
+		found: map[int][]string{0: {"claim-inert"}},
+		rerun: safe(`"completed_at":null`),
+	},
+	{
+		name:  "delete, claimed",
+		setup: [][]string{{"create", "a", "--notes", "n"}, {"create", "b", "--blocked-by", "1"}, {"claim", "1"}},
+		args:  []string{"delete", "1"},
+		order: [][]string{{"tasks/2.json"}, {"tasks/1.json"}, {"tasks/1.md"}, {claimsPath}},
+		found: map[int][]string{2: {"claim-inert", "orphan-notes"}, 3: {"claim-inert"}},
+		kept:  map[int][]string{2: {"orphan-notes"}},
+		rerun: func(stage int) (int, string, bool) {
+			if stage >= 2 {
+				return 1, `"kind":"not-found"`, false
+			}
+			return 0, `"id":1,"folder":"/"`, true
+		},
+		tempOK: true,
+	},
+	{
+		name:  "delete-folder, claimed",
+		setup: [][]string{{"create-folder", "-p", "/p/a"}, {"create", "a", "--folder", "/p/a"}, {"create", "b", "--blocked-by", "1"}, {"claim", "1"}},
+		args:  []string{"delete-folder", "-r", "/p"},
+		order: [][]string{{"tasks/2.json"}, {"tasks/p", "tasks/p/a", "tasks/p/a/1.json", "tasks/p/a/1.md"}, {claimsPath}},
+		found: map[int][]string{2: {"claim-inert"}},
+		rerun: func(stage int) (int, string, bool) {
+			if stage >= 2 {
+				return 1, `"kind":"not-found"`, false
+			}
+			return 0, `"ids":[1]`, true
+		},
+		tempOK: true,
+	},
 }
 
 // diagnose checks doctor and repair on a tree a crash left at stage: doctor
@@ -352,7 +494,7 @@ func (c crashCase) fixture(t *testing.T) *tree {
 	} else {
 		tr = newTree(t)
 	}
-	tr.env = append(tr.env, clock)
+	tr.env = append(append(tr.env, clock), c.env...)
 	for _, args := range c.setup {
 		r := run(t, tr.cmd(args...))
 		if r.code != 0 {
@@ -452,7 +594,7 @@ func TestCrashInjection(t *testing.T) {
 				}
 				// doctor never sees the config directory: init clears it.
 				for _, tmp := range s.temps {
-					if strings.HasPrefix(tmp, configDirs[0]+"/") {
+					if strings.HasPrefix(tmp, configDirs[0]+"/") && !c.tempOK {
 						t.Errorf("k=%d: rerun left %s", k, tmp)
 					}
 				}

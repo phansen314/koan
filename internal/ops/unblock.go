@@ -9,7 +9,7 @@ import (
 )
 
 func decodeUnblock(f *model.Fields, p *model.Problems) any {
-	in := BlockersInput{ID: requiredID(f, p, "id")}
+	in := BlockersInput{ID: requiredID(f, p, "id"), Token: optionalToken(f, p)}
 	in.Blockers, _ = blockerList(f, p, "blockers")
 	return in
 }
@@ -29,8 +29,11 @@ type UnblockOutput struct {
 func runUnblock(env Env, in BlockersInput, w *errs.Collector) (any, *errs.Error) {
 	var out UnblockOutput
 	e := store.Write(env.Env, w, func(tx *store.Tx) *errs.Error {
-		ld, e := findOne(tx, in.ID)
+		ld, e := findOneClaimed(tx, in.ID)
 		if e != nil {
+			return e
+		}
+		if e := checkTokens(tx, []model.ID{in.ID}, in.Token); e != nil {
 			return e
 		}
 		removed, e := removeBlockers(tx, ld, in.Blockers, model.TimestampOf(env.Clock()))

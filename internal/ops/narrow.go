@@ -15,6 +15,7 @@ import (
 type Narrowing struct {
 	TagsAny []model.Tag // nil: no filter
 	TagsAll []model.Tag // nil: no filter
+	Claimed *bool       // nil: no filter
 	Limit   *int64      // nil: no limit
 	Fields  []string    // nil: whole views
 }
@@ -30,6 +31,11 @@ func decodeNarrowing(f *model.Fields, p *model.Problems) Narrowing {
 	var n Narrowing
 	n.TagsAny = optionalTagSet(f, p, "tags_any")
 	n.TagsAll = optionalTagSet(f, p, "tags_all")
+	if v, ok := f.Optional("claimed"); ok {
+		if c, ok := p.Bool(v, f.Ptr("claimed")); ok {
+			n.Claimed = &c
+		}
+	}
 	if v, ok := f.Optional("limit"); ok {
 		if l, ok := p.Int(v, f.Ptr("limit"), 0, limitMax); ok {
 			n.Limit = &l
@@ -100,16 +106,26 @@ func (t Tasks) MarshalJSON() ([]byte, error) {
 	return bytes.TrimSuffix(b, []byte("\n")), err
 }
 
+// keeps reports whether v passes n's filters: the tag filters, then claimed.
+func (n Narrowing) keeps(v model.TaskView) bool {
+	switch {
+	case n.TagsAny != nil && !slices.ContainsFunc(n.TagsAny, func(t model.Tag) bool { return slices.Contains(v.Tags, t) }):
+		return false
+	case n.TagsAll != nil && slices.ContainsFunc(n.TagsAll, func(t model.Tag) bool { return !slices.Contains(v.Tags, t) }):
+		return false
+	case n.Claimed != nil && *n.Claimed != (v.Claim != nil):
+		return false
+	}
+	return true
+}
+
 // narrow applies n to views, already in scope and in the operation's order
-// (operations.md, Narrowing tasks): the tag filters, then the count, the
-// limit, and the fields. It returns the tasks, how many passed the filters,
-// and whether the limit cut any. Warnings are the caller's, all recorded
-// before.
+// (operations.md, Narrowing tasks): the tag and claim filters, then the
+// count, the limit, and the fields. It returns the tasks, how many passed the
+// filters, and whether the limit cut any. Warnings are the caller's, all
+// recorded before.
 func narrow(views []model.TaskView, n Narrowing) (Tasks, int, bool) {
-	kept := slices.DeleteFunc(append([]model.TaskView{}, views...), func(v model.TaskView) bool {
-		return (n.TagsAny != nil && !slices.ContainsFunc(n.TagsAny, func(t model.Tag) bool { return slices.Contains(v.Tags, t) })) ||
-			(n.TagsAll != nil && slices.ContainsFunc(n.TagsAll, func(t model.Tag) bool { return !slices.Contains(v.Tags, t) }))
-	})
+	kept := slices.DeleteFunc(append([]model.TaskView{}, views...), func(v model.TaskView) bool { return !n.keeps(v) })
 	total := len(kept)
 	if n.Limit != nil && int64(total) > *n.Limit {
 		kept = kept[:*n.Limit]

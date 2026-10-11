@@ -62,7 +62,7 @@ func TestShow(t *testing.T) {
 	f := newFixture(t)
 	f.task("proj", 7, false)
 	got := f.rel(line(t, f.show(7)))
-	want := `{"ok":true,"result":{"tasks":[{"schema":1,"id":7,"title":"task 7","priority":null,"created_at":"2026-09-20T18:31:51Z","completed_at":null,"updated_at":"2026-09-20T18:31:51Z","blocked_by":[],"tags":[],"extra":{},"folder":"/proj","notes_path":"~/tasks/proj/7.md","readiness":"ready","blocking":[]}]},"warnings":[]}` + "\n"
+	want := `{"ok":true,"result":{"tasks":[{"schema":1,"id":7,"title":"task 7","priority":null,"created_at":"2026-09-20T18:31:51Z","completed_at":null,"updated_at":"2026-09-20T18:31:51Z","blocked_by":[],"tags":[],"extra":{},"folder":"/proj","notes_path":"~/tasks/proj/7.md","readiness":"ready","blocking":[],"claim":null}]},"warnings":[]}` + "\n"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}

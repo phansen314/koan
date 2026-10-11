@@ -15,6 +15,7 @@ type MoveInput struct {
 	ID      model.ID
 	To      model.FolderPath
 	Parents bool
+	Token   string // of the caller's locked claim; "" for none
 }
 
 func decodeMove(f *model.Fields, p *model.Problems) any {
@@ -23,6 +24,7 @@ func decodeMove(f *model.Fields, p *model.Problems) any {
 		in.To, _ = p.FolderPath(v, "/to")
 	}
 	in.Parents = optionalBool(f, p, "parents", false)
+	in.Token = optionalToken(f, p)
 	return in
 }
 
@@ -73,11 +75,21 @@ func runMove(env Env, in MoveInput, w *errs.Collector) (any, *errs.Error) {
 		if missingFolder != nil || missingIDs != nil {
 			return errs.NotFound(missingFolder, missingIDs, nil)
 		}
+		// The claims file comes after not-found, and before the task file's
+		// own error and every conflict.
+		if e := tx.Claims(); e != nil {
+			return e
+		}
 		if le != nil {
 			return le
 		}
 		if len(found) > 1 {
 			return errs.Conflict(errs.RuleDuplicateID, []int64{int64(in.ID)})
+		}
+		// move names the task by ID, so it is checked, also when it would
+		// change nothing.
+		if e := checkTokens(tx, []model.ID{in.ID}, in.Token); e != nil {
+			return e
 		}
 		ld := found[0]
 		out.From = ld.Loc.Folder

@@ -9,20 +9,21 @@ import (
 
 // Env is an invocation's environment, passed in, never global
 // (implementation-spec.md, Environment): the filesystem and the home and
-// config directories store needs, and the clock.
+// config directories store needs, the clock, and the source of claim tokens.
 type Env struct {
 	store.Env
 	Clock Clock
+	Token TokenSource
 }
 
 // NewEnv is the process's environment: the real filesystem, the home and
 // config directories located from getenv (design-spec.md, Config file), the
 // default lock wait, ftask's config directory to migrate from, and the real
-// clock. goos is runtime.GOOS.
+// clock and token source. goos is runtime.GOOS.
 func NewEnv(getenv func(string) string, goos string) Env {
 	home, configDir := store.Locate(getenv, goos)
 	legacy := store.LocateLegacy(getenv, goos)
-	return Env{Env: store.Env{FS: fsys.OS{}, Home: home, ConfigDir: configDir, LockWait: store.DefaultLockWait, LegacyConfigDir: legacy}, Clock: RealClock}
+	return Env{Env: store.Env{FS: fsys.OS{}, Home: home, ConfigDir: configDir, LockWait: store.DefaultLockWait, LegacyConfigDir: legacy}, Clock: RealClock, Token: RealToken}
 }
 
 // Clock returns the current time. Operations stamp files with it, so tests

@@ -59,7 +59,7 @@ It needs `jq`, backs a settings file up (to `.bak.<timestamp>`, a new one each t
 
 Then ask your agent things like "what should I work on next?" or "add a task to review the migration PR, blocked by 12".
 
-`migrate` asks too: it rewrites every task file in an older format, and holds the tree's lock while it runs.
+`migrate` asks too: it rewrites every task file in an older format, and holds the tree's lock while it runs. So does `force-release`, which clears a claim whose holder may still be working (see [Several agents, one tree](#several-agents-one-tree)).
 
 ### The rules, to add by hand
 
@@ -69,7 +69,7 @@ Claude Code, in `~/.claude/settings.json`:
 {
   "permissions": {
     "allow": ["Bash(koan:*)", "Bash(jq:*)"],
-    "ask": ["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]
+    "ask": ["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)", "Bash(koan force-release:*)"]
   }
 }
 ```
@@ -86,7 +86,8 @@ OpenCode, in `~/.config/opencode/opencode.json` (the script leaves an `opencode.
       "koan delete *": "ask",
       "koan delete-folder *": "ask",
       "koan repair*": "ask",
-      "koan migrate*": "ask"
+      "koan migrate*": "ask",
+      "koan force-release *": "ask"
     }
   }
 }
@@ -155,6 +156,34 @@ koan pick > picked.json; jq '.result | {actions, notes_edited}' picked.json   # 
 
 `FZF_DEFAULT_OPTS` applies as usual, and `KOAN_PICK_OPTS` is passed after `pick`'s own options, e.g. `KOAN_PICK_OPTS='--height 60% --layout reverse'`. See [pick-spec.md](pick-spec.md) for the whole keymap and every option.
 
+## Several agents, one tree
+
+`frontier` tells every caller the same ready tasks, so two agents asking a moment apart would start the same one. A **claim** reserves a task: once it is claimed, no one else can claim it, until it is released or done.
+
+```sh
+koan claim 42                                    # this task; a second claim is refused: conflict, rule claimed
+koan claim-next --folder /work                   # or the next ready task nobody has claimed; task is null when none is free
+koan frontier --claimed=false --limit 10 --fields id,title
+koan list --claimed --fields id,title,claim      # what's taken, since when, and whether it is locked
+koan done 42                                     # ends the claim
+koan release 42                                  # or give it back unfinished
+```
+
+A claim is a reservation and nothing more. It never expires, it outlasts the process that made it, and koan neither knows nor checks who made it: a dead worker's claim stays until someone releases it. What a caller wants to record about a claim goes in `--extra '{"agent":"a"}'`, which koan stores and returns and never reads.
+
+A claim made with `--use-token` also **locks** the task. koan prints a token, once, in that command's result, and every write to the task then needs it:
+
+```sh
+token=$(koan claim 42 --use-token | jq -r .result.token)
+koan update 42 --priority 3 --token "$token"
+koan done 42 --token "$token"
+koan force-release 42                            # past any claim or lock: the holder is gone, or the token is lost
+```
+
+A write given a token whose claim is gone is refused, so a worker that was released and replaced can't change the task under its successor. Tokens guard against mistakes, not against people: `force-release` clears any claim, which is why it asks first.
+
+Claims are kept per machine, in `claims.json` beside koan's config, not in the tree: they don't travel through git, and two people sharing a tree don't see each other's. See [Claims](design-spec.md#claims).
+
 ## Checking and repairing the tree
 
 A crash, a git merge, or a hand edit can leave the tree damaged: a leftover temp file, a blocker that no longer exists, two tasks with one ID. Other commands report damage as warnings, or refuse to act on it; `doctor` finds all of it, and `repair` fixes what is safe to fix:
@@ -164,6 +193,7 @@ koan doctor                         # .result.healthy, and .result.findings: wha
 koan repair                         # remove leftovers and dangling blockers, raise last_id; the rest is left to you
 koan repair --kinds metadata-missing   # rebuild a lost koan.json; never done by default
 koan repair --kinds state-missing      # rebuild this machine's ID counter; never done by default
+koan repair --kinds claims-unusable    # replace an unusable claims file, forgetting every claim; never done by default
 ```
 
 `repair` never decides between versions: duplicate IDs, dependency cycles, and corrupt files are reported, with a suggestion, for you to resolve. See [Diagnosis and repair](design-spec.md#diagnosis-and-repair).

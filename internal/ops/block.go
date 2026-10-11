@@ -16,10 +16,11 @@ import (
 type BlockersInput struct {
 	ID       model.ID
 	Blockers []model.ID
+	Token    string // of the caller's locked claim on ID; "" for none
 }
 
 func decodeBlock(f *model.Fields, p *model.Problems) any {
-	in := BlockersInput{ID: requiredID(f, p, "id")}
+	in := BlockersInput{ID: requiredID(f, p, "id"), Token: optionalToken(f, p)}
 	var ok bool
 	in.Blockers, ok = blockerList(f, p, "blockers")
 	if ok && !p.Failed("/id") { // Additional validation runs on valid fields only
@@ -43,10 +44,11 @@ type BlockOutput struct {
 // task's blocked_by, all or nothing, under the write lock, in block's
 // precedence order (implementation-spec.md, Error precedence): id's own
 // copies loaded first, since which blockers are new depends on them; then
-// one not-found for id and every missing new blocker; then the subgraph
-// reachable from the new blockers loaded, its first unusable file the error;
-// then the conflicts, duplicate-id before acyclic. Blockers already present
-// are not checked at all. If none is new, nothing is written.
+// one not-found for id and every missing new blocker; then the claims file;
+// then the subgraph reachable from the new blockers loaded, its first
+// unusable file the error; then the conflicts, duplicate-id, then
+// token-mismatch, then acyclic. Blockers already present are not checked at
+// all. If none is new, nothing is written.
 func runBlock(env Env, in BlockersInput, w *errs.Collector) (any, *errs.Error) {
 	var out BlockOutput
 	e := store.Write(env.Env, w, func(tx *store.Tx) *errs.Error {
@@ -84,6 +86,9 @@ func runBlock(env Env, in BlockersInput, w *errs.Collector) (any, *errs.Error) {
 			slices.Sort(missing)
 			return errs.NotFound(nil, missing, nil)
 		}
+		if e := tx.Claims(); e != nil {
+			return e
+		}
 		var edges map[model.ID][]model.ID
 		if len(added) > 0 {
 			if edges, e = reachable(tx, in.ID, added); e != nil {
@@ -93,6 +98,10 @@ func runBlock(env Env, in BlockersInput, w *errs.Collector) (any, *errs.Error) {
 		}
 		if len(copies) > 1 {
 			return errs.Conflict(errs.RuleDuplicateID, []int64{int64(in.ID)})
+		}
+		// Only id is targeted: a blocker's claim is never checked.
+		if e := checkTokens(tx, []model.ID{in.ID}, in.Token); e != nil {
+			return e
 		}
 		if ids, cycles := graph.Cycles(in.ID, added, edges); len(ids) > 0 {
 			return errs.Acyclic(int64s(ids), mapSlice(cycles, int64s))

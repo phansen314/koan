@@ -38,7 +38,7 @@ func TestInfo(t *testing.T) {
 		}
 	}
 
-	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"missing","root":null},"tree":null,"state":null,"initialized":false,"usable":false,"compatible":null,"migration_pending":null},"warnings":[]}` + "\n")
+	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"missing","root":null},"tree":null,"state":null,"claims":null,"initialized":false,"usable":false,"compatible":null,"migration_pending":null},"warnings":[]}` + "\n")
 
 	for _, err := range []error{
 		os.Mkdir(cfgDir, 0o755),
@@ -51,5 +51,5 @@ func TestInfo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"ok","root":` + q(root) + `},"tree":{"root_exists":true,"metadata":"ok","schema":2,"migration":1},"state":{"path":` + q(filepath.Join(cfgDir, store.StateName)) + `,"state":"ok","last_id":7},"initialized":true,"usable":true,"compatible":true,"migration_pending":false},"warnings":[]}` + "\n")
+	check(`{"ok":true,"result":{"config":{"path":` + cfgPath + `,"state":"ok","root":` + q(root) + `},"tree":{"root_exists":true,"metadata":"ok","schema":2,"migration":1},"state":{"path":` + q(filepath.Join(cfgDir, store.StateName)) + `,"state":"ok","last_id":7},"claims":{"path":` + q(filepath.Join(cfgDir, store.ClaimsName)) + `,"state":"missing"},"initialized":true,"usable":true,"compatible":true,"migration_pending":false},"warnings":[]}` + "\n")
 }

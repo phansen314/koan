@@ -180,6 +180,27 @@ func (r *repairer) run() *errs.Error {
 		}
 		r.done.add(kindOrphanNotes, it)
 	}
+
+	if items := r.items(kindClaimsUnusable); len(items) > 0 {
+		if e := tx.ResetClaims(); e != nil {
+			return e
+		}
+		r.done.add(kindClaimsUnusable, items[0])
+	}
+
+	// One write of the claims file for every inert entry.
+	if items := r.items(kindClaimInert); len(items) > 0 {
+		ids := make([]model.ID, len(items))
+		for i, it := range items {
+			ids[i] = it.IDs[0]
+		}
+		if _, e := tx.DropClaims(ids); e != nil {
+			return e
+		}
+		for _, it := range items {
+			r.done.add(kindClaimInert, it)
+		}
+	}
 	return nil
 }
 

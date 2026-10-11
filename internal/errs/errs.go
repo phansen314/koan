@@ -193,14 +193,38 @@ const (
 	RuleNotEmpty          Rule = "not-empty"
 	RuleDestinationExists Rule = "destination-exists"
 	RuleCaseClash         Rule = "case-clash"
+	RuleClaimed           Rule = "claimed"
+	RuleTaskDone          Rule = "task-done"
+	RuleTokenMismatch     Rule = "token-mismatch"
 )
 
 // ConflictDetails carries Cycles only for RuleAcyclic, where Cycles[i] is one
-// cycle through IDs[i].
+// cycle through IDs[i], and Claims only for RuleClaimed and
+// RuleTokenMismatch, where Claims[i] is the effective claim on IDs[i], or nil
+// when it has none. A claim is the caller's own type: errs imports none of
+// koan's packages.
 type ConflictDetails struct {
 	Rule   Rule      `json:"rule"`
 	IDs    []int64   `json:"ids"`
 	Cycles [][]int64 `json:"cycles,omitempty"`
+	Claims []any     `json:"claims,omitempty"`
+}
+
+// ClaimConflict reports a refusal over a claim: RuleClaimed, a claim of a
+// task that has an effective one, or RuleTokenMismatch, a write that lacks
+// the token of a task's locked claim or was given one the claim does not
+// have. claims[i] is the effective claim on ids[i], as a task view shows it,
+// or nil. Any other rule, or lists of different lengths, is a bug, reported as
+// internal.
+func ClaimConflict(rule Rule, ids []int64, claims []any) *Error {
+	if (rule != RuleClaimed && rule != RuleTokenMismatch) || len(ids) == 0 || len(claims) != len(ids) {
+		return Internal(fmt.Sprintf("claim conflict %s with %d ids and %d claims", rule, len(ids), len(claims)))
+	}
+	msg := fmt.Sprintf("task %s is already claimed", joinIDs(ids))
+	if rule == RuleTokenMismatch {
+		msg = fmt.Sprintf("task %s: the token given is not the token of its claim, or it has a locked claim and none was given", joinIDs(ids))
+	}
+	return &Error{Kind: KindConflict, Message: msg, Details: ConflictDetails{Rule: rule, IDs: ids, Claims: claims}}
 }
 
 // Conflict reports a refusal under any rule but RuleAcyclic, which has its
@@ -225,6 +249,8 @@ func Conflict(rule Rule, ids []int64) *Error {
 		msg = "the folder holds tasks, folders, or other files; delete it recursively to remove them too"
 	case RuleDestinationExists:
 		msg = "something already exists where the folder, or the task's notes, would move"
+	case RuleTaskDone:
+		msg = fmt.Sprintf("task %s is done, so it cannot be claimed; reopen it first", joinIDs(ids))
 	default:
 		msg = "conflict: " + string(rule)
 	}

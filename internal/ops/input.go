@@ -39,6 +39,10 @@ var decoders = map[string]decoder{
 	"frontier":      decodeFrontier,
 	"list":          decodeList,
 	"why":           decodeWhy,
+	"claim":         decodeClaim,
+	"claim-next":    decodeClaimNext,
+	"release":       decodeRelease,
+	"force-release": decodeForceRelease,
 	"pick":          decodePick,
 }
 
@@ -119,7 +123,7 @@ func nonEmptySet[T any](p *model.Problems, v any, ptr, noun string, check func(*
 	return check(p, v, ptr)
 }
 
-// IDInput is the input of show, done, and reopen: one task.
+// IDInput is the input of show, reopen, and force-release: one task.
 type IDInput struct {
 	ID model.ID
 }

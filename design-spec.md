@@ -660,8 +660,8 @@ Its normative JSON Schema:
     "root": { "type": "string", "minLength": 1 },
     "claims": {
       "type": "object",
-      "propertyNames": { "pattern": "^[1-9][0-9]{0,14}$" },
-      "additionalProperties": { "$ref": "#/$defs/entry" }
+      "patternProperties": { "^[1-9][0-9]{0,14}$": { "$ref": "#/$defs/entry" } },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

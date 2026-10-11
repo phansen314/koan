@@ -55,7 +55,8 @@ var commands = []Command{
 		},
 		Example: `  koan repair                                   # every auto repair
   koan repair --kinds temp-leftover             # only the leftover temp files
-  koan repair --kinds metadata-missing          # rebuild a lost koan.json; never done by default`,
+  koan repair --kinds metadata-missing          # rebuild a lost koan.json; never done by default
+  koan repair --kinds claims-unusable           # replace an unusable claims file, forgetting every claim and lock`,
 	},
 	{
 		Name:    "migrate",
@@ -145,15 +146,18 @@ var commands = []Command{
 	{
 		Name:    "done",
 		Op:      "done",
-		Summary: "Mark a task done; marking a done task changes nothing",
+		Summary: "Mark a task done, which ends its claim; marking a done task changes nothing",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
+		Options: []Option{
+			{Name: "token", Field: "/token", Type: String, Help: "the `token` of your locked claim on the task, from claim --use-token"},
+		},
 		Example: `  koan done 42                               # .result.changed is false if it was already done
   for id in 41 42; do koan done "$id"; done  # one envelope each`,
 	},
 	{
 		Name:    "reopen",
 		Op:      "reopen",
-		Summary: "Reopen a done task; reopening an open task changes nothing",
+		Summary: "Reopen a done task, which starts unclaimed; reopening an open task changes nothing",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
 		Example: "  koan reopen 42   # .result.completed_at is null again",
 	},
@@ -171,6 +175,7 @@ var commands = []Command{
 			{Name: "extra-merge", Field: "/extra/merge", Type: JSON, Help: "keys to set, a JSON `object`"},
 			{Name: "extra-remove", Field: "/extra/remove", Type: Repeated, Help: "a `key` to delete; repeatable"},
 			{Name: "extra-replace-all", Field: "/extra/replace_all", Type: JSON, Help: "the complete new extra, a JSON `object`; {} clears it"},
+			{Name: "token", Field: "/token", Type: String, Help: "the `token` of your locked claim on the task, from claim --use-token"},
 		},
 		Example: `  koan update 42 --priority 3 --tags-add urgent
   koan update 42 --extra-merge '{"status":"waiting"}'   # .result.changed names the fields that changed
@@ -182,6 +187,9 @@ var commands = []Command{
 		Op:      "delete",
 		Summary: "Permanently remove a task, and its ID from every blocked_by; undo is git's",
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
+		Options: []Option{
+			{Name: "token", Field: "/token", Type: String, Help: "the `token` of your locked claim on the task, from claim --use-token"},
+		},
 		Example: `  koan delete 42                                              # .result.dependents: the tasks it no longer blocks
   git log --diff-filter=D --oneline -- '*/42.json' '42.json'   # find it again later`,
 	},
@@ -193,6 +201,7 @@ var commands = []Command{
 		Options: []Option{
 			{Name: "to", Field: "/to", Type: String, Required: true, Help: "the folder to move it into, as an exact `path`"},
 			{Name: "parents", Short: "p", Field: "/parents", Type: Bool, Help: "create the folder, and any missing above it"},
+			{Name: "token", Field: "/token", Type: String, Help: "the `token` of your locked claim on the task, from claim --use-token"},
 		},
 		Example: `  koan move 42 --to /proj/travel
   koan move 42 --to /archive/2025 -p   # creates /archive/2025; the notes move too`,
@@ -204,6 +213,7 @@ var commands = []Command{
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
 		Options: []Option{
 			{Name: "blockers", Field: "/blockers", Type: IDList, Required: true, Help: "comma-separated `ids` of the tasks that block it"},
+			{Name: "token", Field: "/token", Type: String, Help: "the `token` of your locked claim on the task, from claim --use-token"},
 		},
 		Example: `  koan block 42 --blockers 41,43   # .result.added: the ones not already there
   koan block 42 --blockers 7       # a cycle is refused: .error.details.cycles shows it`,
@@ -215,9 +225,58 @@ var commands = []Command{
 		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
 		Options: []Option{
 			{Name: "blockers", Field: "/blockers", Type: IDList, Required: true, Help: "comma-separated `ids` to remove from its blockers"},
+			{Name: "token", Field: "/token", Type: String, Help: "the `token` of your locked claim on the task, from claim --use-token"},
 		},
 		Example: `  koan unblock 42 --blockers 41   # .result.removed: the ones that were there
   koan unblock 42 --blockers 99   # clears a dangling reference to a task that no longer exists`,
+	},
+	{
+		Name:    "claim",
+		Op:      "claim",
+		Summary: "Claim a task, so that no other caller can claim it until it is released or done",
+		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
+		Options: []Option{
+			{Name: "extra", Field: "/extra", Type: JSON, Help: "kept with the claim and never interpreted, a JSON `object`"},
+			{Name: "use-token", Field: "/use_token", Type: Bool, Help: "lock the task: .result.token is then needed by every write that targets it"},
+		},
+		Example: `  koan claim 42                                               # .result.task.claim: the claim just made
+  koan claim 42 --extra '{"agent":"shingi-3","worktree":"/w/42"}'     # kept with the claim, shown by show and list
+  koan claim 42 --use-token | jq -r '.result.token'           # lock it; pass the token to done, update, and the rest`,
+	},
+	{
+		Name:    "claim-next",
+		Op:      "claim-next",
+		Summary: "Claim the next task: the first task of the frontier that nobody has claimed",
+		Options: []Option{
+			{Name: "folder", Field: "/folder", Type: String, Help: "only tasks in this folder, an exact `path` (default /)"},
+			{Name: "recursive", Field: "/recursive", Type: Bool, Help: "also tasks in subfolders (default true; --recursive=false for none)"},
+			{Name: "tags-any", Field: "/tags_any", Type: StringList, Help: "only tasks with at least one of these comma-separated `tags`"},
+			{Name: "tags-all", Field: "/tags_all", Type: StringList, Help: "only tasks with every one of these comma-separated `tags`"},
+			{Name: "extra", Field: "/extra", Type: JSON, Help: "kept with the claim and never interpreted, a JSON `object`"},
+			{Name: "use-token", Field: "/use_token", Type: Bool, Help: "lock the task: .result.token is then needed by every write that targets it"},
+		},
+		Example: `  koan claim-next | jq '.result.task.id'                      # the next free task; null if there is none
+  koan claim-next --folder /proj --tags-any today
+  koan list --folder /proj --limit 0 | jq '.result.total'     # after a null: open tasks left there, so wait or stop`,
+	},
+	{
+		Name:    "release",
+		Op:      "release",
+		Summary: "Clear a task's claim, so that it can be claimed again",
+		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
+		Options: []Option{
+			{Name: "token", Field: "/token", Type: String, Help: "the `token` of the locked claim: needed to release one, refused for any other"},
+		},
+		Example: `  koan release 42                 # .result.changed is false if it wasn't claimed
+  koan release 42 --token 3f9c0a7e5b1d48c2a6e4f0b9d7c3a185`,
+	},
+	{
+		Name:    "force-release",
+		Op:      "force-release",
+		Summary: "Clear a task's claim, locked or not, without its token: the one way past a lock",
+		Args:    []Arg{{Name: "id", Field: "/id", Type: Int}},
+		Example: `  koan list --claimed --fields id,title,claim   # what is claimed, since when, and whether it is locked
+  koan force-release 42                         # its holder is gone, or the token is lost`,
 	},
 	{
 		Name:    "list",
@@ -230,6 +289,7 @@ var commands = []Command{
 			{Name: "include-folders", Field: "/include_folders", Type: Bool, Help: "also return the folders in scope"},
 			{Name: "tags-any", Field: "/tags_any", Type: StringList, Help: "only tasks with at least one of these comma-separated `tags`"},
 			{Name: "tags-all", Field: "/tags_all", Type: StringList, Help: "only tasks with every one of these comma-separated `tags`"},
+			{Name: "claimed", Field: "/claimed", Type: Bool, Help: "only claimed tasks; --claimed=false for only unclaimed ones"},
 			{Name: "limit", Field: "/limit", Type: Int, Help: "at most `n` tasks, the first in tree order; total and truncated say what was cut"},
 			{Name: "fields", Field: "/fields", Type: StringList, Help: "return only these comma-separated task `fields`, and id"},
 		},
@@ -262,6 +322,7 @@ var commands = []Command{
 			{Name: "recursive", Field: "/recursive", Type: Bool, Help: "also tasks in subfolders (default true; --recursive=false for none)"},
 			{Name: "tags-any", Field: "/tags_any", Type: StringList, Help: "only tasks with at least one of these comma-separated `tags`"},
 			{Name: "tags-all", Field: "/tags_all", Type: StringList, Help: "only tasks with every one of these comma-separated `tags`"},
+			{Name: "claimed", Field: "/claimed", Type: Bool, Help: "only claimed tasks; --claimed=false for only unclaimed ones"},
 			{Name: "limit", Field: "/limit", Type: Int, Help: "at most `n` tasks, the first in frontier order; total and truncated say what was cut"},
 			{Name: "fields", Field: "/fields", Type: StringList, Help: "return only these comma-separated task `fields`, and id"},
 		},
@@ -269,7 +330,8 @@ var commands = []Command{
   koan frontier --limit 1                                     # the next task, whole
   koan frontier --folder /proj --limit 20 --fields id,title   # ready under /proj
   koan frontier --tags-any urgent,today --fields id,title
-  koan frontier --limit 0                                     # how many are ready: .result.total`,
+  koan frontier --limit 0                                     # how many are ready: .result.total
+  koan frontier --claimed=false --limit 10 --fields id,title  # what's free to claim`,
 	},
 	{
 		Name:    "pick",

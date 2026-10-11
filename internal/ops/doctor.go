@@ -39,6 +39,8 @@ const (
 	kindStrayEntry        = "stray-entry"
 	kindUnreadableFolder  = "unreadable-folder"
 	kindCaseClash         = "case-clash"
+	kindClaimsUnusable    = "claims-unusable"
+	kindClaimInert        = "claim-inert"
 )
 
 // Repair classes (design-spec.md, Diagnosis and repair).
@@ -71,6 +73,8 @@ var findingClass = map[string]string{
 	kindStrayEntry:        classInformational,
 	kindUnreadableFolder:  classManual,
 	kindCaseClash:         classManual,
+	kindClaimsUnusable:    classOnRequest,
+	kindClaimInert:        classAuto,
 }
 
 // findingKinds is every finding kind, sorted.
@@ -83,6 +87,14 @@ const (
 	actionCreateState     = "create-state"
 	actionRaiseLastID     = "raise-last-id"
 	actionRemoveReference = "remove-reference"
+	actionResetClaims     = "reset-claims"
+	actionDropClaim       = "drop-claim"
+)
+
+// claim-inert reasons.
+const (
+	inertDone    = "done"
+	inertMissing = "missing"
 )
 
 // orphan-notes reasons.
@@ -441,7 +453,53 @@ func diagnose(tx *store.Tx) (findings, *errs.Error) {
 	if e := orphans(tx, x, fs); e != nil {
 		return nil, e
 	}
+	claimFindings(tx, x, fs)
 	return fs, nil
+}
+
+// claimFindings adds the claims file's findings (implementation-spec.md,
+// Claims findings): claims-unusable for a file no operation can read, which
+// repair resets on request, unless a directory is in its place; and, for a
+// usable one, claim-inert for each entry whose task is done or gone. An entry
+// whose ID has several task files, an unusable one, or a skipped entry in its
+// place is inert too, but kept: the task may come back.
+func claimFindings(tx *store.Tx, x *store.Index, fs findings) {
+	p := tx.ClaimsPath()
+	state, dir, claimsErr := tx.ClaimsState()
+	if claimsErr != nil {
+		it := Item{
+			Paths: []string{p}, Error: claimsErr, Action: ptr(actionResetClaims),
+			Suggest: ptr("fix the file's permissions, or restore it, if you can; else koan repair --kinds claims-unusable, which forgets every claim and lock on this machine"),
+		}
+		if dir {
+			it.Action, it.Suggest = nil, ptr("remove the directory in the claims file's place")
+		}
+		fs.add(kindClaimsUnusable, it)
+		return
+	}
+	if state != store.ClaimsOK {
+		return
+	}
+	skipped := map[string]bool{}
+	for _, s := range x.Survey.Strays {
+		if s.Reason == store.StraySymlink || s.Reason == store.StrayType {
+			skipped[s.Rel[strings.LastIndex(s.Rel, "/")+1:]] = true
+		}
+	}
+	for _, id := range tx.ClaimIDs() {
+		reason := ""
+		switch locs := tx.Copies(id); {
+		case len(locs) == 1:
+			if ld := tx.Load(locs[0]); ld.State == store.Usable && !ld.Task.Open() {
+				reason = inertDone
+			}
+		case len(locs) == 0 && x.Complete() && !skipped[fmt.Sprintf("%d.json", id)]:
+			reason = inertMissing
+		}
+		if reason != "" {
+			fs.add(kindClaimInert, Item{Paths: []string{p}, IDs: []model.ID{id}, Reason: reason, Action: ptr(actionDropClaim), Suggest: ptr("koan repair")})
+		}
+	}
 }
 
 // caseClashes adds a case-clash finding for each set of sibling folders

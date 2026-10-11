@@ -15,6 +15,11 @@ import (
 	"strings"
 	"testing"
 
+	// The binary under test is built by TestMain, in a child process, so go
+	// test's cache would not see its sources: importing its top package
+	// makes every package it is built from part of the cache key, and a
+	// change to any of them reruns these tests.
+	_ "github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/schematest"
 )
 

@@ -61,7 +61,8 @@ func duplicateID(tx *store.Tx, id model.ID, locs []store.Location) {
 // view is ld's task, usable, with its readiness derived from its own
 // blocked_by (implementation-spec.md, Queries: derive readiness). For an
 // open task every blocker is looked up, each problem with one a warning; a
-// done task's blockers are not read.
+// done task's blockers are not read. Its claim is its effective one, from the
+// claims file the caller has loaded.
 func view(tx *store.Tx, ld *store.Loaded) (model.TaskView, *errs.Error) {
 	v, _, e := viewStates(tx, ld)
 	return v, e
@@ -82,6 +83,7 @@ func viewStates(tx *store.Tx, ld *store.Loaded) (model.TaskView, map[model.ID]gr
 		}
 	}
 	v.Readiness, v.Blocking = graph.Readiness(&v.TaskFile, func(id model.ID) graph.BlockerState { return states[id] })
+	v.Claim = claimOf(tx, v.ID)
 	v.Normalize()
 	return v, states, nil
 }
@@ -223,16 +225,50 @@ func replaceTask(tx *store.Tx, rel string, t *model.TaskFile, now model.Timestam
 	return tx.Replace(rel, data)
 }
 
-// inScope is the query behind list and frontier (implementation-spec.md,
-// Queries: filter by scope): the path walk of in.Folder, then every folder
-// that could not be listed as a warning, then the folders in scope and the
-// usable tasks in scope as views, both in tree order — done tasks only
-// if in.Readiness has done. Every open task in scope is a view whatever
+// scopeQuery is the query behind list, frontier, and claim-next
+// (implementation-spec.md, Queries: filter by scope). claims loads the claims
+// file, after the path walk and before any view is built: a read's
+// ClaimsForRead, which never fails on it, or claim-next's Claims, whose error
+// then comes before any warning about it. wholeTree makes a duplicate-id
+// warning list every copy in the tree, not only those in scope.
+type scopeQuery struct {
+	in        ScopeInput
+	claims    func(*store.Tx) *errs.Error
+	wholeTree bool
+}
+
+// readScope is the scope query of a read.
+func readScope(in ScopeInput) scopeQuery {
+	return scopeQuery{in: in, claims: (*store.Tx).ClaimsForRead}
+}
+
+// frontier is the ready tasks in scope, in frontier order: what frontier
+// narrows, and claim-next takes its candidates from.
+func (q scopeQuery) frontier(tx *store.Tx) ([]model.TaskView, *errs.Error) {
+	_, views, e := q.run(tx)
+	if e != nil {
+		return nil, e
+	}
+	ready := []model.TaskView{}
+	for _, v := range views {
+		if v.Readiness == model.Ready {
+			ready = append(ready, v)
+		}
+	}
+	slices.SortFunc(ready, frontierOrder)
+	return ready, nil
+}
+
+// run is the path walk of in.Folder, then every folder that could not be
+// listed as a warning, then the claims file, then the folders in scope and
+// the usable tasks in scope as views, both in tree order — done tasks only if
+// in.Readiness has done. Every open task in scope is a view whatever
 // in.Readiness, so the warnings its blockers call for are recorded whatever
-// the caller keeps. An unusable task file in scope is a warning and is
-// left out; an ID with several copies in scope is a duplicate-id warning,
-// whether or not every copy is returned.
-func inScope(tx *store.Tx, in ScopeInput) ([]model.FolderPath, []model.TaskView, *errs.Error) {
+// the caller keeps. An unusable task file in scope is a warning and is left
+// out; an ID with several copies in scope is a duplicate-id warning, whether
+// or not every copy is returned.
+func (q scopeQuery) run(tx *store.Tx) ([]model.FolderPath, []model.TaskView, *errs.Error) {
+	in := q.in
 	n, e := tx.WalkFolder(in.Folder)
 	if e != nil {
 		return nil, nil, e
@@ -242,6 +278,9 @@ func inScope(tx *store.Tx, in ScopeInput) ([]model.FolderPath, []model.TaskView,
 	}
 	x := tx.Index()
 	if e := tx.WarnUnreadable(x); e != nil {
+		return nil, nil, e
+	}
+	if e := q.claims(tx); e != nil {
 		return nil, nil, e
 	}
 	folders, locs := x.InScope(in.Folder, in.Recursive)
@@ -258,8 +297,12 @@ func inScope(tx *store.Tx, in ScopeInput) ([]model.FolderPath, []model.TaskView,
 			continue
 		}
 		checked[l.ID] = true
-		copies := slices.DeleteFunc(tx.Copies(l.ID), func(m store.Location) bool { return !inScope[m] })
+		all := tx.Copies(l.ID)
+		copies := slices.DeleteFunc(slices.Clone(all), func(m store.Location) bool { return !inScope[m] })
 		if len(copies) > 1 {
+			if q.wholeTree {
+				copies = all
+			}
 			duplicateID(tx, l.ID, copies)
 		}
 	}

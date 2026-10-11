@@ -36,6 +36,8 @@ const (
 	RootSchema = 2
 	// StateSchema is the state file's.
 	StateSchema = 1
+	// ClaimsSchema is the claims file's.
+	ClaimsSchema = 1
 )
 
 // ID checks v, at ptr, as a task ID.

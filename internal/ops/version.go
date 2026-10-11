@@ -24,12 +24,13 @@ type VersionOutput struct {
 	Migration          int64           `json:"migration"`
 }
 
-// VersionSchemas are the one task file and koan.json format versions this
-// binary reads and writes.
+// VersionSchemas are the one format version of each file this binary reads
+// and writes: task files, koan.json, the state file, and the claims file.
 type VersionSchemas struct {
-	Task  int64 `json:"task"`
-	Root  int64 `json:"root"`
-	State int64 `json:"state"`
+	Task   int64 `json:"task"`
+	Root   int64 `json:"root"`
+	State  int64 `json:"state"`
+	Claims int64 `json:"claims"`
 }
 
 // buildInfo is the binary's build information; tests replace it.
@@ -45,7 +46,7 @@ func runVersion(Env, VersionInput, *errs.Collector) (any, *errs.Error) {
 		UncommittedChanges: b.UncommittedChanges,
 		Go:                 b.Go,
 		Platform:           b.Platform,
-		Schemas:            VersionSchemas{Task: model.TaskSchema, Root: model.RootSchema, State: model.StateSchema},
+		Schemas:            VersionSchemas{Task: model.TaskSchema, Root: model.RootSchema, State: model.StateSchema, Claims: model.ClaimsSchema},
 		Migration:          migrations.Latest(),
 	}, nil
 }

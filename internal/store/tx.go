@@ -33,6 +33,10 @@ type Tx struct {
 	cache    map[Location]*Loaded
 	lock     fsys.Lock
 	keepOld  bool // a migration transaction: the cache keeps the trees of older files
+	// claims is the claims file as last read or written in this step, once
+	// claimsRead: it is loaded on first use, not when the root is opened.
+	claims     claimsResult
+	claimsRead bool
 }
 
 // Read runs fn over the root without the lock, after the Root states checks
@@ -249,11 +253,13 @@ func begin(env Env, w *errs.Collector) (*Tx, *errs.Error) {
 }
 
 // NextStep starts the next operation of a composed command: it drops the
-// index and the task-file cache, which the previous operation's writes have
-// made stale. The lock and the root stay as they are, and Meta stays current.
+// index, the task-file cache, and the claims file as read, which the previous
+// operation's writes have made stale. The lock and the root stay as they are,
+// and Meta stays current.
 func (tx *Tx) NextStep() {
 	tx.index = nil
 	tx.cache = map[Location]*Loaded{}
+	tx.claims, tx.claimsRead = claimsResult{}, false
 }
 
 // Meta is koan.json's content as last read or written.

@@ -134,7 +134,7 @@ Within step 6, when several `conflict` rules apply, an operation reports the fir
 
 The claims file is not part of a [root state](#root-states): a missing one is never `not-initialized`, and an unusable one is reported at step 5, under the write lock, by the operations that need it, and as a warning by reads. Those operations read it only after steps 1–4, so an `io` on it, too, comes after `not-found`.
 
-[`block`](#block) reads its own task file(s) before looking up its blockers, since which blockers are new depends on the task's `blocked_by`: an unusable copy of `id` is therefore reported before a missing blocker. When `id` is duplicated, a new blocker is one that is in no copy's `blocked_by`.
+[`block`](#block) reads its own task file(s) before looking up its blockers, since which blockers are new depends on the task's `blocked_by`: an unusable copy of `id` is therefore reported before a missing blocker, and so before an unusable claims file, which comes after the blockers are looked up. When `id` is duplicated, a new blocker is one that is in no copy's `blocked_by`.
 
 ### Error schema
 

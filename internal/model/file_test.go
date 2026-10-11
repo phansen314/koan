@@ -296,7 +296,7 @@ func TestTaskViewKeyOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"schema":1,"id":42,"title":"Book flights","priority":2,"created_at":"2026-09-20T18:31:51Z","completed_at":null,"updated_at":"2026-09-20T18:31:51Z","blocked_by":[],"tags":["travel"],"extra":{"status":"waiting on quote"},"folder":"/proj","notes_path":"/r/proj/42.md","readiness":"ready","blocking":[]}` + "\n"
+	want := `{"schema":1,"id":42,"title":"Book flights","priority":2,"created_at":"2026-09-20T18:31:51Z","completed_at":null,"updated_at":"2026-09-20T18:31:51Z","blocked_by":[],"tags":["travel"],"extra":{"status":"waiting on quote"},"folder":"/proj","notes_path":"/r/proj/42.md","readiness":"ready","blocking":[],"claim":null}` + "\n"
 	if string(got) != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}

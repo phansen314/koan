@@ -421,8 +421,10 @@ How the [claims file](design-spec.md#claims-file), `claims.json` beside the conf
 
 - **By path.** It is read like the [state file](#state-file), not through the root's `os.Root`: it is outside the tree. It is checked with `Lstat` first, and anything but a regular file is `corrupt` (`unexpected-file`) and is never read. It then goes through the same [JSON reading](#json-reading) and [Validation](#validation) as the state file, in `model.DecodeClaimsFile`, giving one of: `missing`, `unreadable`, `corrupt`, `unsupported-format`, `other-root`, or `ok` with its entries. `other-root` is judged as for the state file. `missing` and `other-root` both mean a root with no claims.
 - **Not part of opening a root.** `store.Read` and `store.Write` do not read it, since no [root state](operations.md#root-states) depends on it. The transaction loads it on the first call that asks, and caches the outcome for the transaction step; `NextStep` drops it with the index and the task-file cache.
-- **`Tx.Claims()`** returns the entries, or the error the file's state raises (`corrupt`, `unsupported-format`, or `io`). It is for the operations that need the file.
-- **`Tx.ClaimsForRead()`** never fails. For an unusable file it returns no entries and records one `unusable-file` warning, with the file's path and no IDs, in the [warning collector](#warnings). It is for reads.
+- **`Tx.Claims()`** loads the file and returns the error its state raises (`corrupt`, `unsupported-format`, or `io`), or none. It is for the operations that need the file.
+- **`Tx.ClaimsForRead()`** loads the file and never fails on its state. An unusable file holds no entries for the transaction, and is recorded as one `unusable-file` warning, with the file's path and no IDs, in the [warning collector](#warnings). It is for reads. Its one error is `internal`, for an OS error with no symbolic name, as for a task file ([OS errors](#os-errors)).
+- **`Tx.Claim(id)`** is one ID's entry, from what either call loaded. An operation makes one of those two calls first, so that an unusable file is its error or its warning.
+- **Writes need the file loaded.** `Tx.PutClaim` and `Tx.DropClaims` are `internal` when the file was never loaded, or is unusable: either would overwrite claims no one has read. `Tx.ResetClaims`, which is for exactly that, is not.
 - **Writes update the cache.** `Tx.PutClaim`, `Tx.DropClaims`, and `Tx.ResetClaims` leave the transaction holding the file they wrote, as writing the state file leaves it holding the new `last_id`. So a view built after `PutClaim` shows the claim just made, with no `NextStep`.
 
 ### In a read
@@ -433,9 +435,9 @@ Every read that returns Task views — `show`, `frontier`, `list`, and `why` —
 
 [Precedence](operations.md#precedence) puts the claims file's errors after `not-found` and before those of needed task files and every `conflict`. So an operation that needs it calls `Tx.Claims()` at one point: after its ID lookups and any path walk, and before it loads a needed task file.
 
-- **The lookup is split for this.** `findOne` walks, reports `not-found`, loads the copies, and reports `duplicate-id`, in one call. It becomes two: one that walks and reports `not-found`, and one that loads the copies and reports their errors and `duplicate-id`. `done`, `reopen`, `update`, `unblock`, `move`, `claim`, `release`, and `force-release` call `Tx.Claims()` between the two. Operations that need no claims file keep calling `findOne`.
+- **The lookup comes in two steps for this.** `findOne` walks, reports `not-found`, loads the copies, and reports `duplicate-id`, in one call, which leaves no place for the claims file. `findOneClaimed` makes the lookup itself first, from the index alone, and reports `not-found`; then calls `Tx.Claims()`; then calls `findOne` for the load, the copies' errors, and `duplicate-id`. `done`, `reopen`, `update`, `unblock`, `claim`, `release`, and `force-release` use it. `move`, which reports a missing folder and a missing task together, calls `Tx.Claims()` itself at the same point. Operations that need no claims file keep calling `findOne`.
 - **`block`** loads `id`'s own copies first, as it always has, then looks up its blockers (`not-found`), then calls `Tx.Claims()`, then loads what the cycle check reaches.
-- **`delete` and `delete-folder`** call it once they know the IDs they remove, and before they load any other task file.
+- **`delete`** calls it once it has found the task, and **`delete-folder`** once its folder is found and listed, whatever the folder holds; both before they load any task file.
 - **`claim-next`** calls it after its path walk and before it builds a view (see [`claim-next`](#claim-next)).
 
 With the file read, the `conflict` rules run in the order [Precedence](operations.md#precedence) gives: `duplicate-id`; for `claim`, `task-done` then `claimed`; for a targeting write, the token check; then the operation's own rules.
@@ -452,7 +454,7 @@ With the file read, the `conflict` rules run in the order [Precedence](operation
 
 One function, `ops.effectiveClaim(tx, id)`, decides whether an ID's entry is [effective](design-spec.md#effective-claims): `Tx.Copies(id)`, which checks a duplicate's locations again with `Lstat`, returns exactly one; that file loads as usable through the [task-file cache](#loading-task-files); and it is open. Task views, `claim`, `claim-next`, and the token check all go through it, so they cannot disagree.
 
-It reads the entries from the transaction's cache and never loads the claims file itself: its caller has already called `Tx.Claims()` or `Tx.ClaimsForRead()`. It loads a task file only when the claims file holds an entry for the ID.
+It reads the entry through `Tx.Claim`, after its caller has called `Tx.Claims()` or `Tx.ClaimsForRead()`. It loads a task file only when the claims file holds an entry for the ID.
 
 ### The token check
 
@@ -462,12 +464,12 @@ One function, `ops.checkTokens(tx, ids, token)`, is the [targeting rule](operati
 
 ### Tokens
 
-`ops.Env` carries a token source beside its clock ([Environment](#environment)). The real one reads 16 bytes from `crypto/rand` and writes them as 32 lowercase hexadecimal digits. Tests use a fixed sequence, so written files and results can be compared byte for byte; in `e2e/` it is set by a [test hook](#test-hooks). Tokens are compared with `==`: they are not secrets (see [Tokens](design-spec.md#tokens)), so a constant-time comparison would claim a property koan does not offer.
+`ops.Env` carries a token source beside its clock ([Environment](#environment)). The real one reads 16 bytes from `crypto/rand` and writes them as 32 lowercase hexadecimal digits. Tests use a fixed sequence, so written files and results can be compared byte for byte; in `e2e/` a [test hook](#test-hooks), `KOAN_E2E_TOKEN`, fixes the token. Tokens are compared with `==`: they are not secrets (see [Tokens](design-spec.md#tokens)), so a constant-time comparison would claim a property koan does not offer.
 
 ### Writing
 
 - **Each write is the whole file.** `Tx.PutClaim(id, entry)`, `Tx.DropClaims(ids)`, and `Tx.ResetClaims()` write a temp file in the config directory, flushed, then published, then a flush of the directory, while the root's lock is held.
-- **Published with `rename`** when anything is at the path — this root's file, another root's, which is thereby replaced, or an unusable one `repair` resets — and with `link` when nothing is. Before writing, each removes any `.koan-tmp-*` an interrupted earlier write left in the config directory, as `Tx.SetLastID` does.
+- **Published with `rename`**, as the state file is, by the one function both use: over this root's file, over another root's, which is thereby replaced, over an unusable one `repair` resets, or into an empty place. Before writing, it removes any `.koan-tmp-*` an interrupted earlier write left in the config directory.
 - **`DropClaims` returns the IDs whose entries it removed.** With none to remove it writes nothing. On a failed write it returns the error and those same IDs, whose entries remain.
 - **Where each operation drops:**
 
@@ -479,12 +481,12 @@ One function, `ops.checkTokens(tx, ids, token)`, is the [targeting rule](operati
   | [`reopen`](operations.md#reopen) | first, before the task file is written, and only when the task is done | the operation's error |
   | [`release`](operations.md#release), [`force-release`](operations.md#force-release) | as their only write | the operation's error |
 
-  The warning carries the IDs `DropClaims` returned and the failed write's `code`, when the OS error has a symbolic name.
+  The warning carries the IDs `DropClaims` returned and the failed write's `code`, when the OS error has a symbolic name. Only an OS error becomes the warning: any other failure of the drop is a bug, and fails the operation.
 
 ### Narrowing and the command tables
 
-- **`claimed`.** `Narrowing` gains `Claimed *bool`, read by `decodeNarrowing` and applied by `narrow` after the tag filters and before the count, to the views' `Claim`.
-- **`claim-next`'s scope.** Its adapter takes `folder`, `recursive`, and the two tag sets, through the same field decoders `frontier`'s uses, but neither `limit`, `fields`, nor `claimed`: the tag-set part of `decodeNarrowing` is split out for it.
+- **`claimed`.** `Narrowing` gains `Claimed *bool`, read by `decodeNarrowing` and applied with the tag filters, after them and before the count, to the views' `Claim`.
+- **`claim-next`'s scope.** Its adapter takes `folder`, `recursive`, and the two tag sets, through the same field decoders `frontier`'s uses, but neither `limit`, `fields`, nor `claimed`.
 - **`token`.** One decoder checks its form; the adapters of the six targeting writes that take it, and `release`'s, call it.
 - **The CLI.** The four new commands, `--token`, `--claimed`, `--use-token`, and `--extra` are rows in the [command tables](#command-tables); the existing value types cover them.
 - **`pick`** needs no change: it runs `list` and the write operations through `ops.Run` and passes no `token`, so its loads carry each task's `claim` and its actions on a locked task fail like any other.
@@ -493,13 +495,13 @@ One function, `ops.checkTokens(tx, ids, token)`, is the [targeting rule](operati
 
 The query `frontier` runs — scope, readiness, tag filters, and [frontier order](operations.md#frontier) — is written inline in `frontier` today. It is extracted into one function that `frontier` runs inside `store.Read` and `claim-next` inside `store.Write`, with no limit.
 
-- **The claims file comes between the path walk and the views.** `inScope` does both in one call, so it is split: `frontier` calls `Tx.ClaimsForRead()` between the two, and `claim-next` calls `Tx.Claims()`. An unusable file is then `claim-next`'s error before any view is built, and never a warning beside it.
+- **The claims file comes between the path walk and the views.** The scope query did both in one call, so it takes the call to make between the two: a read passes `Tx.ClaimsForRead`, and `claim-next` passes `Tx.Claims`. An unusable file is then `claim-next`'s error before any view is built, and never a warning beside it.
 - **Choosing.** `claim-next` walks the result in order and takes the first task that `effectiveClaim` says is free and for which `Tx.Copies` returns one location.
 - **Duplicates.** The extracted query takes a switch that makes its `duplicate-id` warnings list every copy in the tree, not only those in scope. `claim-next` sets it, so a candidate passed over for a copy outside the scope is still reported, and the [collector](#warnings), which keeps the first warning per ID, keeps the full one. `frontier` leaves it off.
 
 ### Claims findings
 
-- **`ClaimsState()`.** `store.Diagnose` carries the file's outcome as `StateState()` carries the state file's: the state, the entries when it is `ok`, and otherwise the error an operation that needs the file would raise. It is read whatever `koan.json`'s and the state file's states are, and comes from the transaction's cache, so after `NextStep` it shows what a repair wrote.
+- **`ClaimsState()`.** `store.Diagnose` carries the file's outcome as `StateState()` carries the state file's: the state, whether a directory is in the file's place, and the error an operation that needs the file would raise; `Tx.ClaimIDs()` lists the entries when it is `ok`. It is read whatever `koan.json`'s and the state file's states are, on first use, and again after `NextStep`, so the second run of the checks sees what a repair wrote.
 - **`claims-unusable`** is one item when the state is `unreadable`, `corrupt`, or `unsupported-format`. Its `action` is `null` when `Lstat` shows a directory at the path: `rename` cannot replace one, so a person removes it.
 - **`claim-inert`** is computed only when the state is `ok`. An entry is `done` when `Tx.Copies` returns one location for its ID and that file loads as usable and done. It is `missing` when the index holds no task file for the ID, the [survey](#the-survey) holds no skipped entry with the task file's name, and every folder was listed.
 - **Repairs.** `reset-claims` is `Tx.ResetClaims()`; every `drop-claim` goes into one `Tx.DropClaims`. Both come after the tree's repairs, in [`repair`](operations.md#repair)'s order.
@@ -508,13 +510,15 @@ The query `frontier` runs — scope, readiness, tag filters, and [frontier order
 
 - **The targeting table**, in-process: each of its six cells, for each targeting write, with the fixed token source — and, for each, a write that would change nothing.
 - **No token in any output.** A dedicated test runs every operation — reads, writes, and each one's errors — over a tree that holds locked claims, and searches each envelope for every token the fixed source issued. A token may appear only in the `result.token` of the `claim` or `claim-next` that made it.
-- **No entry but the named task's is removed.** A table test runs each write but `repair` on a tree with claims on several tasks, one of them in a folder that can't be listed, and compares the claims file before and after: only the entries of the tasks the write named or removed are gone. `claim-next` under the unlistable folder is one row. The first claim over another root's file, which replaces it, is tested apart.
+- **No entry but the named task's is removed.** A table test runs each write but `repair` on a tree with claims on several tasks, and compares the claims file before and after: only the entries of the tasks the write named or removed are gone, and every other entry is as it was, byte for byte. `claim-next` runs with one of the claimed tasks in a folder that can't be listed; the other writes need the whole tree, so they don't. The first claim over another root's file, which replaces it, is tested apart.
 - **An unusable claims file**, in each of its three states: every targeting write, `claim`, `claim-next`, `release`, `force-release`, and `reopen` fails, with and without a `token`, and changes nothing; every read succeeds with one `unusable-file` warning and every `claim` `null`, also over an empty scope; `delete-folder` of a folder with no tasks fails too.
 - **Precedence.** The claims file joins the [precedence tests](#precedence-tests) as a fault: unusable, it loses to a missing task or folder, and wins over a corrupt task file and over every `conflict`.
 - **`reopen` fails closed.** A fault hook that matches the claims file as the target of the publishing `rename` — the temp file's own name is random — fails `reopen`'s drop: the task is still done and its entry still there.
 - **Crash injection.** `done`, `reopen`, `delete`, `delete-folder`, `claim`, `claim-next`, `release`, and `force-release` join the [crash matrix](#crash-injection), with the claims file among the files compared. Between the two writes of `done`, `delete`, and `delete-folder`, the task is done or gone and its entry is inert, which `doctor` reports as `claim-inert` beside whatever that point already predicts; between `reopen`'s two, the task is done with no entry. A rerun completes each.
 - **Agreement.** `model.DecodeClaimsFile` against the `claims-file` schema, as for every file schema ([Schemas in tests](#schemas-in-tests)), and the adapters of `claim`, `claim-next`, `release`, and `force-release`, and of every input that gained `token` or `claimed`, against theirs.
-- **`e2e/`, between processes.** N processes run `claim-next` at once on a tree of M ready tasks, each retrying on `busy`: every task is claimed at most once, and exactly min(N, M) in all, on every run. And a holder's `done` with its token races a `force-release` followed by a `claim` with `use_token`: the `done` and the new `claim` never both succeed, and when the `claim` succeeds the task is open and claimed with the new token.
+- **`e2e/`, between processes.** N processes run `claim-next` at once on a tree of M ready tasks, each retrying on `busy`: every task is claimed at most once, and exactly min(N, M) in all, on every run. And a holder's `done` with its token meets a `force-release` followed by a `claim` with `use_token`: exactly one of the `done` and the new `claim` succeeds, and when the `claim` does the task is open and claimed with the new token. Each order is forced in turn, by holding one write at the lock (a [test hook](#test-hooks)) until the other has been turned away as `busy`, and then the two race.
+- **A claim is all or nothing:** with an error injected where the claimed task's view is built, nothing is recorded and no token issued.
+- **A claims file that can't be written:** `claim`, `claim-next`, `release`, `force-release`, and `reopen` fail with nothing changed; `done`, `delete`, and `delete-folder` succeed with the `claims-not-updated` warning and its `code`.
 
 ## `info`
 

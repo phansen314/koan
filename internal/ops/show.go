@@ -22,6 +22,9 @@ func runShow(env Env, in IDInput, w *errs.Collector) (any, *errs.Error) {
 		if e != nil {
 			return e
 		}
+		if e := tx.ClaimsForRead(); e != nil {
+			return e
+		}
 		if len(copies) > 1 {
 			locs := make([]store.Location, len(copies))
 			for i, ld := range copies {

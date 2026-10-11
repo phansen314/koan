@@ -134,3 +134,69 @@ func TestStateFileAgreesWithSchema(t *testing.T) {
 	}
 	t.Logf("%d documents", len(docs))
 }
+
+func TestClaimsFileAgreesWithSchema(t *testing.T) {
+	adapter := func(doc string) verdict {
+		obj, repeated, err := jsonio.ParseObject([]byte(doc))
+		if err != nil {
+			t.Fatalf("parse %s: %v", doc, err)
+		}
+		_, r := DecodeClaimsFile(obj, repeated)
+		return fileVerdict(r)
+	}
+	base := `{"schema": 1, "root": "/home/u/tasks", "claims": {"42": {"claimed_at": "2026-10-10T14:02:11Z", "extra": {"agent": "a", "n": 1}}, "57": {"claimed_at": "2026-10-10T14:05:40Z", "extra": {}, "token": "3f9c0a7e5b1d48c2a6e4f0b9d7c3a185"}}}`
+	docs := append(schematest.Mutations(t, base),
+		`{}`,
+		`{"schema": 1, "root": "/r", "claims": {}}`,
+		`{"schema": 1, "root": "", "claims": {}}`,
+		`{"schema": 1, "root": "/r", "claims": []}`,
+		`{"schema": 1, "root": "/r", "claims": {"042": {"claimed_at": "2026-10-10T14:02:11Z", "extra": {}}}}`,
+		`{"schema": 1, "root": "/r", "claims": {"0": {"claimed_at": "2026-10-10T14:02:11Z", "extra": {}}}}`,
+		`{"schema": 1, "root": "/r", "claims": {"x": 1}}`,
+		`{"schema": 1, "root": "/r", "claims": {"1": {"claimed_at": "2026-10-10T14:02:11Z", "extra": {}, "token": "XYZ"}}}`,
+		`{"schema": 1, "root": "/r", "claims": {"1": {"claimed_at": "2026-10-10T14:02:11Z", "extra": {}, "token": ""}}}`,
+		`{"schema": 1, "root": "/r", "claims": {"1": {"claimed_at": "2026-10-10T14:02:11Z"}}}`,
+		`{"schema": 1, "root": "/r", "claims": {"1": {"claimed_at": "2026-10-10T14:02:11Z", "extra": {}, "holder": "a"}}}`,
+		`{"schema": 2, "root": "/r", "claims": {}}`,
+	)
+	for _, doc := range docs {
+		agree(t, "claims-file", doc, adapter)
+	}
+	t.Logf("%d documents", len(docs))
+}
+
+// The claims file is written in koan's file format: entries in ascending
+// order of ID, each extra's keys and numbers as given, a token only when the
+// claim has one.
+func TestClaimsFileEncode(t *testing.T) {
+	extra, _, err := jsonio.ParseObject([]byte(`{"z": 1.50, "a": {"k": [true]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := ClaimsFile{Schema: ClaimsSchema, Root: "/home/u/tasks", Claims: map[ID]ClaimEntry{
+		100: {ClaimedAt: "2026-10-10T14:05:40Z", Token: "3f9c0a7e5b1d48c2a6e4f0b9d7c3a185"},
+		9:   {ClaimedAt: "2026-10-10T14:02:11Z", Extra: extra},
+	}}
+	got, err := c.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n  \"schema\": 1,\n  \"root\": \"/home/u/tasks\",\n  \"claims\": {\n    \"9\": {\n      \"claimed_at\": \"2026-10-10T14:02:11Z\",\n      \"extra\": {\n        \"z\": 1.50,\n        \"a\": {\n          \"k\": [\n            true\n          ]\n        }\n      }\n    },\n    \"100\": {\n      \"claimed_at\": \"2026-10-10T14:05:40Z\",\n      \"extra\": {},\n      \"token\": \"3f9c0a7e5b1d48c2a6e4f0b9d7c3a185\"\n    }\n  }\n}\n"
+	if string(got) != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+	obj, repeated, err := jsonio.ParseObject(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, r := DecodeClaimsFile(obj, repeated)
+	if r.Status != FileOK || len(back.Claims) != 2 || back.Claims[100].Token != c.Claims[100].Token {
+		t.Errorf("read back: %+v %+v", back, r)
+	}
+	if again, _ := back.Encode(); string(again) != want {
+		t.Errorf("a rewrite changed the file:\n%s", again)
+	}
+	if c, _ := (ClaimsFile{Schema: ClaimsSchema, Root: "/r"}).Encode(); string(c) != "{\n  \"schema\": 1,\n  \"root\": \"/r\",\n  \"claims\": {}\n}\n" {
+		t.Errorf("empty: %q", c)
+	}
+}

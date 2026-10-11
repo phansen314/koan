@@ -53,6 +53,11 @@ func runWhy(env Env, in WhyInput, w *errs.Collector) (any, *errs.Error) {
 		if len(copies) > 1 {
 			return errs.Conflict(errs.RuleDuplicateID, []int64{int64(in.ID)})
 		}
+		// Read whether or not include_tasks asks for views, so every call
+		// reports the same warnings.
+		if e := tx.ClaimsForRead(); e != nil {
+			return e
+		}
 		seen := map[model.ID]bool{in.ID: true}
 		edges := map[model.ID][]model.ID{}
 		var views, ready []model.TaskView
