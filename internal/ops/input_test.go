@@ -18,7 +18,7 @@ var bases = map[string][]string{
 	"doctor":        {`{"kinds": ["cycle", "temp-leftover"]}`, `{}`},
 	"repair":        {`{"kinds": ["temp-leftover", "metadata-missing"]}`, `{}`},
 	"migrate":       {`{"dry_run": true}`, `{}`},
-	"init":          {`{"root": "/home/u/tasks", "replace_config": true}`},
+	"init":          {`{"root": "/home/u/tasks"}`},
 	"create-folder": {`{"folder": "/proj/travel", "parents": true}`},
 	"create": {
 		`{"title": "Book flights", "folder": "/proj", "priority": 2, "tags": ["travel", "urgent"], "blocked_by": [41, 43], "extra": {"status": "x"}, "notes": "n"}`,
@@ -243,7 +243,7 @@ func TestDecodedInputs(t *testing.T) {
 	if got := decodeOK("init", `{"root": "/a//b/./c/"}`).(InitInput); got != (InitInput{Root: "/a/b/c"}) {
 		t.Errorf("init: %+v", got)
 	}
-	if got := decodeOK("init", `{"root": "/", "replace_config": true}`).(InitInput); got != (InitInput{Root: "/", ReplaceConfig: true}) {
+	if got := decodeOK("init", `{"root": "/"}`).(InitInput); got != (InitInput{Root: "/"}) {
 		t.Errorf("init /: %+v", got)
 	}
 	c := decodeOK("create", `{"title": "  Book  flights　"}`).(CreateInput)

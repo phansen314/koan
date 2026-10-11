@@ -555,8 +555,7 @@ func TestInitInput(t *testing.T) {
 		stdin, want string
 	}{
 		{[]string{"init", "t"}, "", `{"root":"/work/t"}`},
-		{[]string{"init", "t", "--replace-config"}, "", `{"root":"/work/t","replace_config":true}`},
-		{[]string{"init", "-i", "-"}, `{"root": "t", "replace_config": false}`, `{"root":"/work/t","replace_config":false}`},
+		{[]string{"init", "-i", "-"}, `{"root": "t"}`, `{"root":"/work/t"}`},
 	} {
 		if r := run(t, commands, tc.stdin, tc.args...); r.code != ExitOK || got != tc.want {
 			t.Errorf("%q: exit %d, input %s, want %s", tc.args, r.code, got, tc.want)

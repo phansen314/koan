@@ -88,7 +88,7 @@ func runMigrate(env Env, in MigrateInput, w *errs.Collector) (any, *errs.Error) 
 		var carry int64
 		if old, holds := tx.OldLastID(); holds {
 			st, stateErr := tx.StateState()
-			if st != store.StateOK && st != store.StateMissing && st != store.StateOtherRoot {
+			if st != store.StateOK && st != store.StateMissing {
 				return stateErr
 			}
 			carry = old

@@ -96,7 +96,7 @@ An error means the operation failed. `kind` and `details` are the contract; `mes
 | Kind | Meaning | `details` |
 |---|---|---|
 | `invalid-input` | Input failed validation. Always raised before the write lock is sought, and before any needed file is read (a check on an input path itself, like `init`'s, may inspect that path). Reports **every** invalid input, not just the first. | `problems`: list of `{field, reason}`; `field` is a JSON Pointer into the input (e.g. `/tags/2`), `reason` a human-readable string. Sorted by `field`, then by `reason` (both compared as strings, byte by byte), so the same input always yields the same list; at most the first 20 are listed, with `problems_truncated: true` when more were found. |
-| `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, `metadata` (meaning `koan.json`), or `state` (the [state file](design-spec.md#state-file): absent, or naming another root) — the first absent piece. |
+| `not-initialized` | The root is *not initialized* (see [Root states](#root-states)). A file that exists but is unusable is never `not-initialized`. | `missing`: `config`, `root`, `metadata` (meaning `koan.json`), or `state` (the [state file](design-spec.md#state-file)) — the first absent piece. |
 | `migration-pending` | The root *needs migration* (see [Root states](#root-states)): `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest. Nothing was done; [`migrate`](#migrate) brings the tree forward. | `recorded`: the step `koan.json` records (`0` at schema 1); `latest`: this binary's latest step. |
 | `environment` | The process's environment lacks what koan needs to locate its files: the home directory, from which the config location is derived (see [Config file](design-spec.md#config-file)). Not a root state — no config was looked for. | `variable`: the environment variable that is unset or unusable; currently always `HOME`. |
 | `not-found` | A task or folder named by the input, or a filesystem directory it requires, does not exist. | `folders`: tree folder paths; `ids`: task IDs; `paths`: filesystem paths (e.g. `init`'s missing parent directory). All three always present, empty when not applicable. |
@@ -301,7 +301,7 @@ The claims file is not part of a [root state](#root-states): a missing one is ne
 
 A warning reports a problem, relevant to the operation's result, that did not stop the operation. Operations never fail because of a warning, and never warn about files unrelated to their result (see [Precedence](#precedence)). Which entries produce no warning at all — non-matching entries, hidden entries — is set out in the design spec's [Walking the tree](design-spec.md#walking-the-tree).
 
-- **One warning per distinct problem:** per file for `unusable-file`, per folder for `unreadable-folder`, per ID for `duplicate-id`, per (referring, missing) pair for `dangling-reference`, per `.md` for `notes-missing`, per operation for `claims-not-updated` and `claims-replaced` — however many tasks the problem affects.
+- **One warning per distinct problem:** per file for `unusable-file`, per folder for `unreadable-folder`, per ID for `duplicate-id`, per (referring, missing) pair for `dangling-reference`, per `.md` for `notes-missing`, per operation for `claims-not-updated` — however many tasks the problem affects.
 - **Deterministic order:** `warnings` is sorted by `kind`, then by the first entry of `paths`, then by `ids` (compared element by element, as numbers). The same tree always yields the same warnings in the same order.
 
 ### Warning kinds
@@ -315,7 +315,6 @@ A warning reports a problem, relevant to the operation's result, that did not st
 | `unreadable-folder` | A folder the walk had to list could not be listed; its tasks are missing from the result (see [Walking the tree](design-spec.md#walking-the-tree)). | the folder's filesystem path | none | `code` |
 | `notes-missing` | A task was written but its `.md` could not be. The task is valid; its notes are empty, or stale if a stray `.md` could not be replaced. | the `.md` | the task | `code`, unless the OS error has no symbolic name |
 | `claims-not-updated` | A task was completed or removed, but its entry could not then be removed from the [claims file](design-spec.md#claims-file) (see [Targeting writes](#targeting-writes)). The entries left are [inert](design-spec.md#effective-claims): they reserve nothing, and [`repair`](#repair) drops them. | the claims file | the tasks whose entries remain, ascending | `code`, unless the OS error has no symbolic name |
-| `claims-replaced` | A [`claim`](#claim) or [`claim-next`](#claim-next) replaced a [claims file](design-spec.md#claims-file) that named another root and held claims. Those claims, and their locks, are gone: a holder's `token` is now refused, and its task can be claimed again. Only changing the root leaves such a file (see [Why claims hold](design-spec.md#why-claims-hold)). | the claims file | the IDs the replaced file held entries for, ascending: tasks of the root it named | — |
 | `migrated` | A file ftask, koan's former name, left was moved to koan's name for it (see [Migrating from ftask](design-spec.md#migrating-from-ftask)): its config, or the root's `ftask.json`. | the old path, then the new | none | — |
 
 An `unusable-file` warning says which file and, in `reason`, one word for why — never what is wrong inside it: no `problems` or `detail` as a [`corrupt`](#error-kinds) error has. The file was one the operation did not need, a damaged tree can produce dozens, and they recur on every call that walks past them. For the diagnosis, [`show`](#show) the task: its file is needed there, so it fails with the full `corrupt` error. For the claims file's, run [`doctor`](#doctor), whose `claims-unusable` finding carries it.
@@ -362,11 +361,11 @@ A finding is a problem with the tree that [`doctor`](#doctor) reports and [`repa
 | `temp-leftover` | auto | koan temp file or folder (its name starts with `.koan-tmp-`, or ftask's `.ftask-tmp-`) anywhere under the root: a write's leftover file, or the folder an interrupted [`delete-folder`](#delete-folder) renamed aside. Its contents are not looked at. | the entry | none | — | `remove` |
 | `metadata-missing` | on-request | root with no `koan.json`: one item. | where `koan.json` belongs | none | `migration`: the step `repair` would record — this binary's latest when no task file is in an older format, else `0` | `create-metadata` |
 | `metadata-unusable` | manual | root whose `koan.json` is unusable, other than in an older format: one item. | `koan.json` | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format` (a format this binary doesn't know, or a step past its latest), or `io` | `null` |
-| `state-missing` | on-request | root with no [state file](design-spec.md#state-file), or with one that names another root: one item. Not reported while `koan.json` is in an older format that holds `last_id` itself: [`migrate`](#migrate) writes the state file then. | where the state file belongs | none | `last_id`: the highest ID in any task filename, or `0` | `create-state`; `null` while any folder can't be listed, since a task in it may have a higher ID |
-| `state-unusable` | manual | root whose state file is unusable: one item. | the state file | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
+| `state-missing` | on-request | root with no [state file](design-spec.md#state-file): one item. Not reported while `koan.json` is in an older format that holds `last_id` itself: [`migrate`](#migrate) writes the state file then. | where the state file belongs | none | `last_id`: the highest ID in any task filename, or `0` | `create-state`; `null` while any folder can't be listed, since a task in it may have a higher ID |
+| `state-unusable` | manual | root whose state file is unusable, which one naming another root is (see the design spec's [One root](design-spec.md#one-root)): one item. | the state file | none | `error`: the error every operation that requires a usable root fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `null` |
 | `migration-pending` | manual | root whose `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest: one item. | `koan.json` | none | `error`: the [`migration-pending`](#error-kinds) error every operation that requires a usable root fails with | `null` |
 | `old-format` | manual | task file in an [older format](design-spec.md#format-versions) than this binary's, which [`migrate`](#migrate) converts. | the task file | its ID, from the filename | — | `null` |
-| `claims-unusable` | on-request | root whose [claims file](design-spec.md#claims-file) is unusable: one item. | the claims file | none | `error`: the error every operation that needs the claims file fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `reset-claims`; `null` when a directory is in the file's place, which a person removes |
+| `claims-unusable` | on-request | root whose [claims file](design-spec.md#claims-file) is unusable, which one naming another root is: one item. | the claims file | none | `error`: the error every operation that needs the claims file fails with — `corrupt` (with its full `problems` or `detail`), `unsupported-format`, or `io` | `reset-claims`; `null` when a directory is in the file's place, which a person removes |
 | `claim-inert` | auto | entry in the claims file whose task is done, or is gone: no entry of any type has its task file's name, anywhere in the tree. Not reported for an ID with several task files or an unusable one, or with a symlink or a directory in its task file's place (a `skipped-entry`), nor, for a task that is gone, while any folder can't be listed, since the task may be in it. | the claims file | the entry's ID | `reason`: `done` or `missing` | `drop-claim` |
 | `id-above-last-id` | auto | task file whose filename ID is above `last_id`. Only when the state file is usable. | the task file | its ID | `last_id`: the highest ID in any task filename | `raise-last-id` |
 | `dangling-reference` | auto | pair of a task file and an ID in its `blocked_by` that names no task, as the [warning](#warning-kinds) of that name. Not reported while any folder can't be listed, since the task may be in it. | the referring task file | `[referring, missing]`, in that order | — | `remove-reference` |
@@ -396,7 +395,7 @@ Kind by kind:
 - **`migration-pending`** and **`old-format`** — not damage `repair` can fix: converting formats is [`migrate`](#migrate)'s job alone (see the design spec's [Migrations](design-spec.md#migrations)), so `suggest` says to run `koan migrate`, after committing the tree when it is a git repository. While a step is pending, the task files it covers are `old-format`, and `count` says how many `migrate` has to convert. With no step pending, an `old-format` file came from a merge, from a copy made by a binary that hadn't migrated yet, or from a place an earlier `migrate` couldn't read. `doctor` reads an `old-format` file's `schema` only, never checking it against its own format's rules: that check is `migrate`'s. So `suggest` also says that a file `migrate` lists under `unconverted` breaks those rules, and no step can read it: a person fixes or removes it.
 - **`claims-unusable`** — until it is fixed, [`claim`](#claim), [`claim-next`](#claim-next), [`release`](#release), [`force-release`](#force-release), [`reopen`](#reopen), and every [targeting write](#targeting-writes) fail, and reads show every task as unclaimed. `reset-claims` replaces the file with an empty one, which forgets every claim and every lock on this machine: that is why it is on-request (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)). `suggest` says to fix the file's permissions, or restore it, first, when that is possible. A missing claims file is no finding: it holds no claims.
 - **`claim-inert`** — an [inert](design-spec.md#effective-claims) entry reserves nothing, and reads never show it, so dropping it changes nothing a caller can observe. One is left when a [`done`](#done), [`delete`](#delete), or [`delete-folder`](#delete-folder) could not write the claims file after its task was done or gone (the `claims-not-updated` warning), when it was interrupted there, or by an outside change. An entry whose ID has several task files, an unusable one, or a skipped entry in its place, is inert too, but is kept: the task may come back, and its claim with it.
-- **`state-missing`** — the tree is there, but this machine has no ID counter for it: the state file was lost, the tree was copied here without [`init`](#init), or the config was pointed at it by hand. Rebuilding it is on-request because of what the rebuilt `last_id` can't know (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)).
+- **`state-missing`** — the tree is there, but this machine has no ID counter for it: the state file was lost, or the tree was copied here without [`init`](#init). Rebuilding it is on-request because of what the rebuilt `last_id` can't know (see the design spec's [Diagnosis and repair](design-spec.md#diagnosis-and-repair)).
 - **`id-above-last-id`** and **`state-missing`** — every task file counts, usable or not, by the ID in its filename: that is the ID it occupies (see [Tasks](design-spec.md#tasks)).
 
 ### Finding schema
@@ -464,11 +463,11 @@ Whether read and write operations can run against this machine's root is one of 
 Remedies for *not initialized*, by `missing`:
 
 - **`config`** — nothing is set up on this machine. Run [`init`](#init).
-- **`root`** — the config names a root that isn't there. Check the path first (an unmounted drive, a moved folder). Run `init` with `replace_config` only if a new or different tree is really intended: on an unmounted drive's mount point it would create a fresh empty tree.
+- **`root`** — the config names a root that isn't there. Check the path first (an unmounted drive, a moved folder). `init` refuses, since the config exists: naming a new or different tree is done by hand (see the design spec's [One root](design-spec.md#one-root)).
 - **`metadata`** — the root exists but has lost its `koan.json`. Run [`doctor`](#doctor) to see the tree's state, then [`repair`](#repair) naming `metadata-missing`, which rebuilds it. `init` refuses (the config exists, and the root isn't empty).
-- **`state`** — the tree is there, but this machine has no ID counter for it: no state file, or one that names another root. Run [`doctor`](#doctor), then [`repair`](#repair) naming `state-missing`, which rebuilds it from the highest ID in the tree (see [Finding kinds](#finding-kinds) for the risk). On a machine the tree was just copied to, [`init`](#init) writes it.
+- **`state`** — the tree is there, but this machine has no ID counter for it: no state file. Run [`doctor`](#doctor), then [`repair`](#repair) naming `state-missing`, which rebuilds it from the highest ID in the tree (see [Finding kinds](#finding-kinds) for the risk). On a machine the tree was just copied to, [`init`](#init) writes it.
 
-*Initialized* is about presence; *usable* additionally about content. A file that exists but is unusable never makes a root *not initialized*. (A state file that is valid but names another root is not this root's file at all: for this root it is absent.) In particular, a config that exists but is unusable — it doesn't parse, or names a root in an illegal [form](design-spec.md#root-path) — leaves the root *initialized, not usable*, even though no root can be read from it; operations fail with `corrupt`.
+*Initialized* is about presence; *usable* additionally about content. A file that exists but is unusable never makes a root *not initialized*. (A state file that names another root is there, and `corrupt`: see the design spec's [One root](design-spec.md#one-root).) In particular, a config that exists but is unusable — it doesn't parse, or names a root in an illegal [form](design-spec.md#root-path) — leaves the root *initialized, not usable*, even though no root can be read from it; operations fail with `corrupt`.
 
 A root that *needs migration* is fully there: only its formats are behind. It is not *usable*, so that no operation reads a tree whose task files it would skip as `unsupported-format`: a `frontier` that left out every task in the older format, with only warnings to say so, would be worse than an error. [`version`](#version), [`info`](#info), [`doctor`](#doctor), and [`migrate`](#migrate) don't require a usable root, and run.
 
@@ -526,7 +525,7 @@ Every result of `frontier` and `list` carries `total` and `truncated`, whether o
 [`done`](#done), [`update`](#update), [`move`](#move), [`delete`](#delete), [`block`](#block), and [`unblock`](#unblock) each change or remove the one task their `id` names, [`release`](#release) clears that task's claim, and [`delete-folder`](#delete-folder) removes every task under its folder. These are the [targeting writes](design-spec.md#targeting-writes), and each checks the claims on the tasks it targets in the same way:
 
 - **`token`.** Each but `delete-folder` takes an optional `token`: the one [`claim`](#claim) or [`claim-next`](#claim-next) returned for the caller's locked claim. Its form is checked with the rest of the input (`invalid-input`); whether it is the right one, under the write lock.
-- **The claims file is a needed file.** It is read under the write lock, before anything is written, and after the operation has found the tasks it targets: so a task that doesn't exist is `not-found` even when the claims file can't be read (`io`). Missing, or naming another root, it holds no claims. Unusable, it fails the write, with or without a `token`: `corrupt`, `unsupported-format`, or `io` (see [Claims file](design-spec.md#claims-file)).
+- **The claims file is a needed file.** It is read under the write lock, before anything is written, and after the operation has found the tasks it targets: so a task that doesn't exist is `not-found` even when the claims file can't be read (`io`). Missing, it holds no claims. Unusable, which one naming another root is, it fails the write, with or without a `token`: `corrupt`, `unsupported-format`, or `io` (see [Claims file](design-spec.md#claims-file)).
 - **The check.** For each task targeted, by the table in the design spec's [Targeting writes](design-spec.md#targeting-writes): a task with a locked [effective claim](design-spec.md#effective-claims) needs that claim's token, and any other task needs no token and refuses one. A write that fails the check is refused with `conflict` (`rule`: `token-mismatch`): `ids` are the tasks refused, in ascending order, and `claims[i]` is the effective claim on `ids[i]`, as its [Task view](#task-view) shows it, or `null` when it has none. Nothing is written.
 - **Checked whatever the write would do.** A write that would change nothing — [`done`](#done) on a done task, [`move`](#move) to the folder the task is in — is checked like any other.
 - **A rerun of `done` is the one exception.** [`done`](#done) on a done task whose entry in the claims file holds exactly the `token` given proceeds, though that claim is inert: it is the holder finishing a `done` that marked the task done and could not then remove the entry. With any other token, or once the entry is gone, it is refused as the table says.
@@ -701,9 +700,9 @@ Data formats are versioned separately; see the design spec's [Format versions](d
 
 ### init
 
-Create a new tree, or attach an existing one, and make it this machine's configured root. A new tree gets a fresh `koan.json`; an existing tree — one that already contains `koan.json`, e.g. cloned or moved from another machine — is left untouched: `init` writes only this machine's files for it, the [state file](design-spec.md#state-file) and the config naming it. Afterwards the root is at least *initialized* (see [Root states](#root-states)).
+Create a new tree, or attach an existing one, and make it this machine's configured root. A new tree gets a fresh `koan.json`; an existing tree — one that already contains `koan.json`, e.g. cloned or moved from another machine — is left untouched: `init` writes only this machine's files for it, the [state file](design-spec.md#state-file) and the config naming it. A config directory gets its root this way once: `init` never changes the root a config names (see the design spec's [One root](design-spec.md#one-root)). Afterwards the root is at least *initialized* (see [Root states](#root-states)).
 
-**Kind:** setup. Takes no lock to create a new tree — its root may not exist until `init` creates it — and never changes an existing tree's content. When the root already exists, it takes the write lock while it walks the tree and reads and writes the state file, so that a write still running under an earlier config can't have its `last_id` overwritten. Does not require a usable root. Concurrent `init` runs are not supported.
+**Kind:** setup. Takes no lock to create a new tree — its root may not exist until `init` creates it — and never changes an existing tree's content. When the root already exists, it takes the write lock while it walks the tree and reads and writes the state file, so that a write still running against that root, under a config since removed, can't have its `last_id` overwritten. Does not require a usable root. Concurrent `init` runs are not supported.
 
 **Input schema:**
 
@@ -714,8 +713,7 @@ Create a new tree, or attach an existing one, and make it this machine's configu
   "type": "object",
   "required": ["root"],
   "properties": {
-    "root": { "type": "string", "description": "Absolute root path, with no .. segments. Resolving relative paths or ~ is the caller's job." },
-    "replace_config": { "type": "boolean", "default": false, "description": "Allow replacing an existing config." }
+    "root": { "type": "string", "description": "Absolute root path, with no .. segments. Resolving relative paths or ~ is the caller's job." }
   },
   "additionalProperties": false
 }
@@ -733,16 +731,17 @@ Create a new tree, or attach an existing one, and make it this machine's configu
 | Non-empty directory without `koan.json` | `conflict` (`rule`: `root-not-empty`) — koan never adopts a directory with other contents. |
 | Directory containing `koan.json` | Attached as-is — also when `koan.json` is in an older format, or records a [migration step](design-spec.md#migrations) behind this binary's latest. The root then *needs migration* (see [Root states](#root-states)), and [`migrate`](#migrate), which needs the config `init` writes, is the next step. |
 
-If a config already exists — whatever it names, and whether or not it parses — and `replace_config` is false: `conflict` (`rule`: `config-exists`). `init` never compares roots and never overwrites a config unless told to.
+If a config already exists — whatever it names, and whether or not it parses: `conflict` (`rule`: `config-exists`). `init` never compares roots and never overwrites a config.
 
-**Needed files:** `koan.json` in `root`, when present, checked as [File validity](design-spec.md#file-validity) describes — one in an older format against that format's own rules. `init` never reads the config; it only checks whether one exists. When attaching, it also lists every folder of the tree, for the highest ID in any task filename (a folder it can't list fails with `io`); it reads no task file. A state file already there is read, for a new tree as for an attached one: one that is usable and names `root` gives its `last_id` as a floor, and any other is replaced.
+If the state file, or the claims file, is already in the config directory and names a root other than `root`: `corrupt`, on that file, the state file's first. Such a file is what a config since removed left behind, and `init` neither adopts it nor replaces it: changing the root means removing all three files (see the design spec's [One root](design-spec.md#one-root)). Both are checked before `init` creates anything.
+
+**Needed files:** `koan.json` in `root`, when present, checked as [File validity](design-spec.md#file-validity) describes — one in an older format against that format's own rules. `init` never reads the config; it only checks whether one exists. When attaching, it also lists every folder of the tree, for the highest ID in any task filename (a folder it can't list fails with `io`); it reads no task file. A state file already there is read, for a new tree as for an attached one: one that is usable and names `root` gives its `last_id` as a floor; one that names another root is the error above; and one unusable in any other way is replaced. The claims file is read only for the root it names: missing, or unusable in any other way, it is left as it is, for the operations that need it to report.
 
 **Effects:**
 
 - `root` is a directory containing `koan.json`. A new tree has `{"schema": 2, "migration": <latest>}`, with this binary's latest [migration step](design-spec.md#migrations), since it has nothing to convert; an existing tree's `koan.json` is unchanged, whatever its format.
 - The state file names `root`. Its `last_id` is the highest of: `0`; for an attached tree, the highest ID in any task filename, and the `last_id` of a `koan.json` in an older format that holds one; and, for a new tree too, the `last_id` of a usable state file that already names `root`, so that the counter for a root never goes down. So a tree attached on this machine never has an ID issued that one of its tasks holds. (An ID whose task was deleted before the copy was made can be issued again: see [Task IDs](design-spec.md#task-ids).)
 - The config names `root`. `init` creates the config directory, and any missing ancestors of it, as needed.
-- With `replace_config`, the config file itself is replaced: a config that is a symlink (into a dotfiles checkout, say) becomes a regular file, and the file it pointed to is left as it was.
 
 **Invariants at risk:** none. `init` never modifies an existing tree's content; creating a new tree produces an empty tree, which satisfies every invariant.
 
@@ -769,7 +768,8 @@ If a config already exists — whatever it names, and whether or not it parses �
 |---|---|
 | `invalid-input` | `root` is not absolute, contains `..` or a NUL character, or something exists there that doesn't lead to a directory. |
 | `environment` | The config can't be located (see [Config file](design-spec.md#config-file)). |
-| `conflict` | (`rule`: `config-exists`) A config already exists and `replace_config` is false. |
+| `conflict` | (`rule`: `config-exists`) A config already exists. |
+| `corrupt` | The state file, or the claims file, names a root other than `root` (`path`: that file, the state file first; the problem is at `/root`). |
 | `not-found` | `root` does not exist and neither does its parent directory (the parent in `paths`). |
 | `conflict` | (`rule`: `root-not-empty`) `root` is a non-empty directory without `koan.json`. |
 | `corrupt` | `koan.json` exists but is corrupt, including not being a regular file, and breaking its own format's rules when it is in an older one. |
@@ -797,9 +797,9 @@ If a config already exists — whatever it names, and whether or not it parses �
 
 Present when `init` fails after creating the root directory, `koan.json`, or the state file — e.g. the config cannot be written. What it created stays; rerunning `init` with the same input completes it.
 
-**Crash behavior:** a crash may leave some of the pieces in place and not others — e.g. a new root directory without `koan.json`, or a tree with `koan.json` and a state file but no config. `koan.json` is written first, then the state file, and the config last, so until it exists nothing else uses the root, and a partial `init` is never mistaken for a usable one. With `replace_config` naming a different root there is one window: once the state file is written and before the config is, the old config still names the old root while the state file names the new one, so the old root is *not initialized* (`missing`: `state`). Rerunning `init` finishes the switch; to stay with the old root instead, [`repair`](#repair) naming `state-missing` rebuilds its counter. Apart from possible leftover temp files — in the root, which [`doctor`](#doctor) finds as `temp-leftover`, or in the config directory, which the next `init` removes — there is nothing for `doctor` to find.
+**Crash behavior:** a crash may leave some of the pieces in place and not others — e.g. a new root directory without `koan.json`, or a tree with `koan.json` and a state file but no config. `koan.json` is written first, then the state file, and the config last, so until it exists nothing else uses the root, and a partial `init` is never mistaken for a usable one. Apart from possible leftover temp files — in the root, which [`doctor`](#doctor) finds as `temp-leftover`, or in the config directory, which the next `init` removes — there is nothing for `doctor` to find.
 
-**Retry safety:** after a crash or an error with `partial`, safe: the config is written last, so an interrupted `init` did not change the config, and rerunning it with the same input finishes the job (reporting `attached` if it had already written `koan.json` — an empty tree it created itself). After a success, rerunning fails with `conflict` (`rule`: `config-exists`). A crash after the config is written — while only its temp file remains to remove — is a success, and a rerun fails the same way.
+**Retry safety:** after a crash or an error with `partial`, safe: the config is written last, so an interrupted `init` did not change the config, and rerunning it with the same input finishes the job (reporting `attached` if it had already written `koan.json` — an empty tree it created itself). Rerunning it with another `root` once the state file is written fails with `corrupt`, since that file names the first: remove it to start over elsewhere. After a success, rerunning fails with `conflict` (`rule`: `config-exists`). A crash after the config is written — while only its temp file remains to remove — is a success, and a rerun fails the same way.
 
 ### version
 
@@ -939,7 +939,7 @@ Report the state of this machine's configured root: what is configured, what exi
       "required": ["path", "state", "last_id"],
       "properties": {
         "path": { "type": "string", "description": "Path of the state file, beside the config." },
-        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the state file, per the three-step check (see File validity). other-root: it is valid but names a root other than config.root, so this root has none. missing and other-root both make the root not initialized." },
+        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the state file, per the three-step check (see File validity). other-root: it passes every other check but names a root other than config.root, which makes it corrupt (see One root). Only missing makes the root not initialized." },
         "last_id": { "anyOf": [{ "$ref": "state-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless state is ok." }
       },
       "additionalProperties": false,
@@ -950,7 +950,7 @@ Report the state of this machine's configured root: what is configured, what exi
       "required": ["path", "state"],
       "properties": {
         "path": { "type": "string", "description": "Path of the claims file, beside the config." },
-        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the claims file, per the three-step check (see File validity). missing and other-root both mean the root has no claims, which is normal. Any state but those two and ok fails every operation that needs the claims file (see Claims file)." }
+        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the claims file, per the three-step check (see File validity). missing means the root has no claims, which is normal. other-root: it passes every other check but names a root other than config.root, which makes it corrupt (see One root). Any state but missing and ok fails every operation that needs the claims file (see Claims file)." }
       },
       "additionalProperties": false,
       "description": "State of this machine's claims file for the configured root; null when config.root is null. It never affects initialized or usable."
@@ -1086,10 +1086,10 @@ And, for a `koan.json` that is usable or is about to be created:
 
 | State file | Outcome |
 |---|---|
-| usable, and naming this root | `repair` runs. |
-| missing or naming another root, and `kinds` names `state-missing` | `repair` runs, and creates it. |
-| missing or naming another root, otherwise | `not-initialized` (`missing`: `state`). Raising `last_id` needs it, and rebuilding it is the user's decision. |
-| unusable | `corrupt`, `unsupported-format`, or `io`. `doctor` reports the problem in full, for a person to fix. |
+| usable | `repair` runs. |
+| missing, and `kinds` names `state-missing` | `repair` runs, and creates it. |
+| missing, otherwise | `not-initialized` (`missing`: `state`). Raising `last_id` needs it, and rebuilding it is the user's decision. |
+| unusable, which one naming another root is | `corrupt`, `unsupported-format`, or `io`. `doctor` reports the problem in full, for a person to fix. |
 
 Naming `metadata-missing` when `koan.json` is present, `state-missing` when the state file is, or `claims-unusable` when the claims file is usable or missing, is not an error: there is nothing to repair for it.
 
@@ -1136,7 +1136,7 @@ Afterwards, the findings that remain are reported, for every kind, as `doctor` w
 |---|---|
 | `invalid-input` | `kinds` is empty, repeats a kind, or names a kind that is not a finding kind, or a *manual* or *informational* one. |
 | `environment` | The config can't be located. |
-| `not-initialized` | `missing`: `config` or `root`; or `metadata`, when `koan.json` is missing and `kinds` doesn't name `metadata-missing`; or `state`, when the state file is missing, or names another root, and `kinds` doesn't name `state-missing`. |
+| `not-initialized` | `missing`: `config` or `root`; or `metadata`, when `koan.json` is missing and `kinds` doesn't name `metadata-missing`; or `state`, when the state file is missing and `kinds` doesn't name `state-missing`. |
 | `corrupt` | The config, `koan.json`, or the state file is corrupt. |
 | `busy` | Another write holds the write lock. |
 | `unsupported-format` | `koan.json` is in a format this binary doesn't know, or records a migration step past this binary's latest (`field`: `migration`); or the state file is in a format this binary doesn't know. |
@@ -1211,7 +1211,7 @@ Bring the tree to this binary's formats: convert every file in an [older format]
 | In a format this binary doesn't know, or recording a step past this binary's latest | `unsupported-format`: a newer binary wrote the tree. Nothing is converted down. |
 | Corrupt, or unreadable | `corrupt` or `io`. For one in an older format, `corrupt` means it breaks that format's own rules, so no step can read it. [`doctor`](#doctor) reports the problem in full, for a person to fix. |
 
-`migrate` issues no ID, so it doesn't need the [state file](design-spec.md#state-file) — except to write it. A `koan.json` at schema 1 holds `last_id`, which the state file holds now, and `migrate` moves it there. A state file that is missing, or names another root, is written. One that is unusable stops the run before anything is written, with its `corrupt`, `unsupported-format`, or `io`: `migrate` never overwrites a counter it can't read.
+`migrate` issues no ID, so it doesn't need the [state file](design-spec.md#state-file) — except to write it. A `koan.json` at schema 1 holds `last_id`, which the state file holds now, and `migrate` moves it there. A state file that is missing is written. One that is unusable, which one naming another root is, stops the run before anything is written, with its `corrupt`, `unsupported-format`, or `io`: `migrate` never overwrites a counter it can't read.
 
 **Needed files:** the config, and `koan.json`. Relevant files, whose problems are warnings: every folder, and every task file. `migrate` converts what it can reach, and leaves the rest as it is:
 
@@ -2837,7 +2837,7 @@ There is no `token` input: koan makes the token (see [Tokens](design-spec.md#tok
 | Open, with an [effective claim](design-spec.md#effective-claims) | `conflict` (`rule`: `claimed`), whoever made that claim. |
 | Open, with no effective claim | Claimed. The task may be ready or blocked: claiming a blocked task reserves work that cannot start yet. |
 
-**Needed files:** the claims file: missing, or naming another root, it holds no claims, and an unusable one is an error (see [Claims file](design-spec.md#claims-file)). And every task file whose filename ID is `id`. There is no index, so `claim` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. Relevant files, whose problems are warnings: the task files of every ID in the task's `blocked_by`, for the readiness of the task returned.
+**Needed files:** the claims file: missing, it holds no claims, and an unusable one is an error (see [Claims file](design-spec.md#claims-file)). And every task file whose filename ID is `id`. There is no index, so `claim` walks the whole tree to find it — which also finds duplicates — and fails with `io` if it meets a folder it can't list. Relevant files, whose problems are warnings: the task files of every ID in the task's `blocked_by`, for the readiness of the task returned.
 
 **Effects:**
 
@@ -2886,7 +2886,6 @@ The `conflict` rules are checked in the order listed; the first that applies is 
 | `duplicate-id` | An ID in the task's `blocked_by` has more than one task file. |
 | `dangling-reference` | An ID in the task's `blocked_by` has no task file. |
 | `unusable-file` | A blocker's task file is unusable; the blocker counts as blocking. |
-| `claims-replaced` | The claims file named another root and held claims; this claim replaced it. |
 
 Never about an unusable claims file: it is a needed file here, so its problems are errors.
 
@@ -2979,7 +2978,6 @@ Never `conflict`: a candidate that is duplicated or already claimed is passed ov
 | `duplicate-id` | A candidate's ID has more than one task file, in scope or anywhere else in the tree, so it is passed over (`paths`: every copy, in tree order); or a blocker's ID of an open task in scope does, so that task counts as blocked. |
 | `dangling-reference` | An open task in scope has a `blocked_by` ID with no task file, so it counts as blocked. |
 | `unreadable-folder` | A folder could not be listed; tasks in it are not candidates, and tasks blocked by tasks in it count as blocked. |
-| `claims-replaced` | The claims file named another root and held claims; this claim replaced it. Not when there was nothing to claim: nothing is written then. |
 
 Never about an unusable claims file: it is a needed file here, so its problems are errors.
 

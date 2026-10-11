@@ -101,8 +101,7 @@ func Inspect(env Env) Info {
 		info.MigrationPending = &pending
 	}
 	// The state file counts only once koan.json is ok and current.
-	noCounter := sr.state == StateMissing || sr.state == StateOtherRoot
-	info.Initialized = tree.Metadata != MetaMissing && !(tree.Metadata == MetaOK && !pending && noCounter)
+	info.Initialized = tree.Metadata != MetaMissing && !(tree.Metadata == MetaOK && !pending && sr.state == StateMissing)
 	info.Usable = tree.Metadata == MetaOK && sr.state == StateOK && tree.RootExists && info.MigrationPending != nil && !*info.MigrationPending
 	if tree.Schema != nil {
 		c := *tree.Schema == model.RootSchema

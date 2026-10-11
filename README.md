@@ -217,6 +217,8 @@ Restore only the removed paths: restoring the whole tree would undo every other 
 
 A tree is written from one machine. The last issued ID is that machine's, kept in `state.json` beside its config and never in the tree, so that nothing git does to the tree can set it back. To use a tree on another machine, clone or copy it there and run `koan init <path>`: it attaches the tree and starts that machine's counter at the highest ID it finds. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve. See [Task IDs](design-spec.md#task-ids).
 
+A machine has one root, and no command changes it: `koan init` refuses once a config exists. Keep separate bodies of work as top-level folders (`/work`, `/home`). To move to another root, remove `config.toml`, `state.json`, and `claims.json` from koan's config directory and run `koan init` again; the claims go with them. See [One root](design-spec.md#one-root).
+
 ## Specs
 
 - [design-spec.md](design-spec.md): the data model, invariants, concurrency, and crashes.

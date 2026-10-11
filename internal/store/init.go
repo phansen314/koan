@@ -32,8 +32,10 @@ type InitResult struct {
 // Init creates a new tree at root, or attaches the one there, and writes the
 // config naming it (implementation-spec.md, init), in init's own precedence
 // order. root is absolute and cleaned, with no ".." segment. The config is
-// written last, so until it exists nothing else uses the root.
-func Init(env Env, root string, replace bool) (InitResult, *errs.Error) {
+// written last, so until it exists nothing else uses the root. It is never
+// replaced, and neither is a state file or claims file that names another
+// root (design-spec.md, One root).
+func Init(env Env, root string) (InitResult, *errs.Error) {
 	var res InitResult
 	exists, e := rootExists(env, root)
 	if e != nil {
@@ -46,7 +48,7 @@ func Init(env Env, root string, replace bool) (InitResult, *errs.Error) {
 	if e != nil {
 		return res, e
 	}
-	if cfgExists && !replace {
+	if cfgExists {
 		// A crash after the config was published can leave its temp file:
 		// remove it here too, or nothing ever would.
 		if r, err := env.FS.OpenRoot(env.ConfigDir); err == nil {
@@ -54,6 +56,9 @@ func Init(env Env, root string, replace bool) (InitResult, *errs.Error) {
 			r.Close()
 		}
 		return res, errs.Conflict(errs.RuleConfigExists, nil)
+	}
+	if e := otherRootError(env, root); e != nil {
+		return res, e
 	}
 	if !exists {
 		if err := env.FS.Mkdir(root, FolderMode); err != nil {
@@ -64,7 +69,7 @@ func Init(env Env, root string, replace bool) (InitResult, *errs.Error) {
 		}
 		res.RootCreated = true
 	}
-	if e := initTree(env, root, exists, cfgExists, &res); e != nil {
+	if e := initTree(env, root, exists, &res); e != nil {
 		return res, e
 	}
 	return res, nil
@@ -94,6 +99,20 @@ func rootExists(env Env, root string) (bool, *errs.Error) {
 	return false, errs.InvalidInput([]errs.Problem{{Field: "/root", Reason: "must lead to a directory: something else is there"}})
 }
 
+// otherRootError is the corrupt error of a state file, or else a claims
+// file, that names a root other than root: what a config since removed left
+// behind, which init neither adopts nor replaces. Any other state of either
+// file is nil here.
+func otherRootError(env Env, root string) *errs.Error {
+	if sr := readState(env, root); sr.state == StateOtherRoot {
+		return stateError(env, sr)
+	}
+	if cr := readClaims(env, root); cr.state == ClaimsOtherRoot {
+		return claimsError(env, cr)
+	}
+	return nil
+}
+
 // configExists reports whether anything is at the config's path; init never
 // reads it. Only ENOENT means no config, as for every other reader of it: a
 // file where the config directory should be (ENOTDIR) is io, before init
@@ -116,7 +135,7 @@ func configExists(env Env) (bool, *errs.Error) {
 // the config (implementation-spec.md, init). existed: the root was there
 // before this init, so the tree is walked and the state file read and
 // written under its lock.
-func initTree(env Env, root string, existed, cfgExists bool, res *InitResult) *errs.Error {
+func initTree(env Env, root string, existed bool, res *InitResult) *errs.Error {
 	r, err := env.FS.OpenRoot(root)
 	if err != nil {
 		return errs.FromOS(root, err)
@@ -161,15 +180,19 @@ func initTree(env Env, root string, existed, cfgExists bool, res *InitResult) *e
 		return errs.FromOS(env.ConfigDir, err)
 	}
 	// The counter for a root never goes down: a usable state file already
-	// naming it is a floor; any other is replaced.
-	if sr := readState(env, root); sr.state == StateOK {
+	// naming it is a floor; one naming another root, written since Init
+	// checked, is never replaced; any other is.
+	switch sr := readState(env, root); sr.state {
+	case StateOK:
 		last = max(last, sr.file.LastID)
+	case StateOtherRoot:
+		return stateError(env, sr)
 	}
 	if e := writeState(env, root, last); e != nil {
 		return e
 	}
 	res.StateCreated, res.LastID = true, last
-	return writeConfig(env, root, cfgExists)
+	return writeConfig(env, root)
 }
 
 // createMeta creates koan.json for a new tree: root is empty but for hidden
@@ -203,8 +226,8 @@ func createMeta(r fsys.Root, root string, res *InitResult) *errs.Error {
 
 // writeConfig writes the config naming root: the config directory created
 // as needed, temp files an interrupted init left there removed, then the
-// config published by link, or by rename over the existing one.
-func writeConfig(env Env, root string, replace bool) *errs.Error {
+// config published by link, which never replaces one.
+func writeConfig(env Env, root string) *errs.Error {
 	if err := env.FS.MkdirAll(env.ConfigDir, FolderMode); err != nil {
 		return errs.FromOS(env.ConfigDir, err)
 	}
@@ -216,7 +239,7 @@ func writeConfig(env Env, root string, replace bool) *errs.Error {
 	if err := removeTemps(r); err != nil {
 		return errs.FromOS(env.ConfigDir, err)
 	}
-	if atLink, err := Publish(r, ConfigName, EncodeConfig(root), FileMode, replace); err != nil {
+	if atLink, err := Publish(r, ConfigName, EncodeConfig(root), FileMode, false); err != nil {
 		if atLink && isErrno(err, syscall.EEXIST) {
 			return errs.Conflict(errs.RuleConfigExists, nil) // written since the check
 		}

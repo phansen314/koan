@@ -100,7 +100,7 @@ func TestInspect(t *testing.T) {
 		{"state file missing", func(f *fixture) Env { must(t, os.Remove(f.path("cfg/"+StateName))); return f.env },
 			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"ok","schema":2,"migration":1},"state":{"path":"STATE","state":"missing","last_id":null},"claims":{"path":"CLAIMS","state":"missing"},"initialized":false,"usable":false,"compatible":true,"migration_pending":false}`},
 		{"state file for another root", func(f *fixture) Env { f.write("cfg/"+StateName, stateJSON("/elsewhere", 9)); return f.env },
-			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"ok","schema":2,"migration":1},"state":{"path":"STATE","state":"other-root","last_id":null},"claims":{"path":"CLAIMS","state":"missing"},"initialized":false,"usable":false,"compatible":true,"migration_pending":false}`},
+			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"ok","schema":2,"migration":1},"state":{"path":"STATE","state":"other-root","last_id":null},"claims":{"path":"CLAIMS","state":"missing"},"initialized":true,"usable":false,"compatible":true,"migration_pending":false}`},
 		{"state file corrupt", func(f *fixture) Env { f.write("cfg/"+StateName, `{"schema": 1, "root": "x"}`); return f.env },
 			`{"config":{"path":"CFG","state":"ok","root":"ROOT"},"tree":{"root_exists":true,"metadata":"ok","schema":2,"migration":1},"state":{"path":"STATE","state":"corrupt","last_id":null},"claims":{"path":"CLAIMS","state":"missing"},"initialized":true,"usable":false,"compatible":true,"migration_pending":false}`},
 		{"state file unsupported", func(f *fixture) Env { f.write("cfg/"+StateName, `{"schema": 2}`); return f.env },

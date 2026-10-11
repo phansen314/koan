@@ -40,7 +40,7 @@ func TestRootStatesMatrix(t *testing.T) {
 	states := []struct{ name, content, want string }{
 		{"ok", "", ""},
 		{"missing", "<none>", `not-initialized {"missing":"state"}`},
-		{"other root", "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"last_id\": 100\n}\n", `not-initialized {"missing":"state"}`},
+		{"other root", "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"last_id\": 100\n}\n", `corrupt {"path":"~/cfg/state.json","reason":"invalid","problems":[{"field":"/root","reason":"names /elsewhere, but the config names ~/tasks"}]}`},
 		{"corrupt", `{"schema": 1, "root": "~/tasks"}`, `corrupt {"path":"~/cfg/state.json","reason":"invalid","problems":[{"field":"/last_id","reason":"required"}]}`},
 		{"not JSON", `[`, `corrupt {"path":"~/cfg/state.json","reason":"not-json","detail":"not valid JSON: unexpected end of input"}`},
 		{"unsupported", `{"schema": 2}`, `unsupported-format {"path":"~/cfg/state.json","found":2,"supported":[1]}`},
@@ -89,7 +89,7 @@ func TestRootStatesMatrix(t *testing.T) {
 }
 
 // The state file is checked once koan.json is fine, before the lock: a write
-// under another root's state file fails before busy.
+// with no state file fails before busy.
 func TestStateErrorBeforeBusy(t *testing.T) {
 	f := newFixture(t)
 	f.remove(stateRel)
@@ -168,27 +168,33 @@ func TestCloneAttach(t *testing.T) {
 	}
 }
 
-// init on a new tree, and with replace_config: the counter for a root never
-// goes down.
-func TestInitStateFloor(t *testing.T) {
+// init never changes the root a config directory serves: it refuses while a
+// config exists, and, once that is removed, while the state file names
+// another root. Attaching the root the state file names keeps its counter.
+func TestInitOneRoot(t *testing.T) {
 	f := newFixture(t) // a usable root at tasks/, counter 100
-	e := Run("init", parse(t, `{"root": "`+f.root+`", "replace_config": true}`), nil, f.env)
+	other := filepath.Join(f.home, "other")
+	if got := opError(t, f, "init", `{"root": "`+other+`"}`); got != `conflict {"rule":"config-exists","ids":[]}` {
+		t.Errorf("config exists: %s", got)
+	}
+	f.remove("cfg/config.toml")
+	want := `corrupt {"path":"~/cfg/state.json","reason":"invalid","problems":[{"field":"/root","reason":"names ~/tasks, but the config names ~/other"}]}`
+	if got := f.rel(opError(t, f, "init", `{"root": "`+other+`"}`)); got != want {
+		t.Errorf("state file for another root:\ngot  %s\nwant %s", got, want)
+	}
+	if _, err := os.Lstat(other); err == nil || f.lastID() != 100 {
+		t.Errorf("a refused init created %s, or changed the counter (%d)", other, f.lastID())
+	}
+	e := Run("init", parse(t, `{"root": "`+f.root+`"}`), nil, f.env)
 	if !e.OK || e.Result.(InitOutput).LastID != 100 || e.Result.(InitOutput).Action != "attached" {
 		t.Fatalf("%+v %+v", e.Result, e.Error)
 	}
-	if f.lastID() != 100 {
-		t.Errorf("counter %d", f.lastID())
-	}
-	// Another root: the counter for the old one is replaced, and comes back
-	// when the config goes back.
-	other := filepath.Join(f.home, "other")
-	e = Run("init", parse(t, `{"root": "`+other+`", "replace_config": true}`), nil, f.env)
+	// By hand: with the state file and the claims file gone too, init
+	// takes the new root.
+	f.remove("cfg/config.toml")
+	f.remove(stateRel)
+	e = Run("init", parse(t, `{"root": "`+other+`"}`), nil, f.env)
 	if !e.OK || e.Result.(InitOutput).LastID != 0 || e.Result.(InitOutput).Action != "created" {
-		t.Fatalf("%+v %+v", e.Result, e.Error)
-	}
-	// The state file now names other; tasks/ is not initialized for it.
-	e = Run("init", parse(t, `{"root": "`+f.root+`", "replace_config": true}`), nil, f.env)
-	if !e.OK || e.Result.(InitOutput).LastID != 0 {
 		t.Fatalf("%+v %+v", e.Result, e.Error)
 	}
 }
@@ -272,20 +278,13 @@ func TestMigrateMovesLastID(t *testing.T) {
 		t.Errorf("%+v", out)
 	}
 
-	// A state file for another root: replaced.
-	f = setup()
-	f.write(stateRel, "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"last_id\": 90\n}\n")
-	_, out = f.migrate(`{}`)
-	if !out.StateWritten || f.read(stateRel) != st(42) {
-		t.Errorf("%+v state file %q", out, f.read(stateRel))
-	}
-
-	// A corrupt, unsupported, or unreadable one: its error, nothing written,
-	// dry_run or not.
+	// A corrupt or unsupported one, or one for another root: its error,
+	// nothing written, dry_run or not.
 	for name, content := range map[string]string{
 		"corrupt":     `{"schema": 1}`,
 		"unsupported": `{"schema": 2}`,
 		"not JSON":    `[`,
+		"other root":  "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"last_id\": 90\n}\n",
 	} {
 		for _, input := range []string{`{}`, `{"dry_run": true}`} {
 			f = setup()
@@ -375,11 +374,6 @@ func TestDoctorStateFindings(t *testing.T) {
 	if got := f.rel(f.op("doctor", `{}`)); got != want {
 		t.Errorf("missing:\ngot  %s\nwant %s", got, want)
 	}
-	// Another root's state file is a missing one.
-	f.write(stateRel, "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"last_id\": 500\n}\n")
-	if got := f.rel(f.op("doctor", `{}`)); got != want {
-		t.Errorf("other root:\ngot  %s\nwant %s", got, want)
-	}
 
 	// repair: not-initialized (state) unless it names state-missing.
 	if got := opError(t, f, "repair", `{}`); got != `not-initialized {"missing":"state"}` {
@@ -418,6 +412,23 @@ func TestDoctorStateFindings(t *testing.T) {
 	}
 	if got := opError(t, f, "repair", `{"kinds": ["state-unusable"]}`); !strings.HasPrefix(got, "invalid-input") {
 		t.Errorf("naming a manual kind: %s", got)
+	}
+
+	// Another root's state file is unusable too, and never rebuilt over.
+	other := "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"last_id\": 500\n}\n"
+	f.write(stateRel, other)
+	got = f.rel(f.op("doctor", `{}`))
+	if !strings.Contains(got, `"kind":"state-unusable","class":"manual"`) || !strings.Contains(got, `"field":"/root"`) ||
+		!strings.Contains(got, "koan init") || strings.Contains(got, `"kind":"state-missing"`) {
+		t.Errorf("other root:\n%s", got)
+	}
+	for _, input := range []string{`{}`, `{"kinds": ["state-missing"]}`} {
+		if got := f.rel(opError(t, f, "repair", input)); !strings.HasPrefix(got, `corrupt {"path":"~/cfg/state.json"`) {
+			t.Errorf("other root: repair %s: %s", input, got)
+		}
+	}
+	if f.read(stateRel) != other {
+		t.Error("repair changed another root's state file")
 	}
 }
 

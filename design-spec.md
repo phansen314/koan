@@ -10,7 +10,7 @@ Operations on this data model are specified in [operations.md](operations.md).
 
 - **koan is the only writer under the root.** Every file and folder under the root is created, changed, and removed by koan. The [invariants](#invariants) in this spec are guaranteed only for trees koan alone has written. Any change made another way is an **outside change**, and is outside the contract.
 - **Notes are the exception.** A task's `.md` may be edited directly with any editor. Notes carry no invariants, so an outside change to them cannot violate any. It can leave stray entries, though: editor side files (e.g. `42.md~`), which koan ignores, and an orphaned `.md` if a task is moved or removed while its notes are open in an editor. Both are handled as [Walking the tree](#walking-the-tree) describes. If an editor save and a koan write to the same `.md` overlap, one of them may be lost.
-- **One user.** koan serves a single OS user. That user's config names exactly one root. Every process running as the user and reaching the root — shells, agents, editors — shares one [write lock](#write-lock). A process whose environment points to a different config location (`HOME`, `XDG_CONFIG_HOME`) sees that config, or none, and gets [`not-initialized`](operations.md#error-kinds); one that gives no config location at all gets [`environment`](operations.md#error-kinds) (see [Config file](#config-file)). Sharing one root between OS users is not supported.
+- **One user.** koan serves a single OS user. That user's config names exactly one root, for good: koan never points it at another (see [One root](#one-root)). Every process running as the user and reaching the root — shells, agents, editors — shares one [write lock](#write-lock). A process whose environment points to a different config location (`HOME`, `XDG_CONFIG_HOME`) sees that config, or none, and gets [`not-initialized`](operations.md#error-kinds); one that gives no config location at all gets [`environment`](operations.md#error-kinds) (see [Config file](#config-file)). Sharing one root between OS users is not supported.
 - **The root is on a local filesystem.** Network mounts (SMB, NFS, and the like) are not supported: their locking cannot be relied on, so the [write lock](#write-lock) may not exclude other writers. A synced folder is fine — its files are local, and a separate process syncs them.
 - **Syncing and committing are allowed.** The root may be a git repository or a synced folder, since those tools carry files koan wrote. Every file koan keeps in the root is content, safe to commit, sync, and restore: the one piece of state that must never go backwards, the ID counter, is kept outside the tree (see [State file](#state-file)). Git is also the only undo for a delete (see [Undo](operations.md#undo)). Anything they leave inconsistent — a merge that introduces a cycle, a missing blocker, a conflicting file — is an outside change; finding it is the job of [`doctor`](operations.md#doctor), and repairing it, where that is safe, of [`repair`](operations.md#repair) — not of normal operation (see [Diagnosis and repair](#diagnosis-and-repair)).
 - **Hidden entries are ignored.** Any entry under the root whose name starts with `.` (e.g. `.git`, `.DS_Store`) is ignored by read and write operations. Only `doctor` and `repair` look at them, to find koan's own leftover temp files; they too ignore every other hidden entry.
@@ -316,7 +316,7 @@ Rules are checked at two levels, and they fail differently:
 
 | Level | Checked against | Rules | When broken |
 |---|---|---|---|
-| **File** | The one file alone | Valid JSON (per step 1 below) with no duplicate keys; integer fields written as integer literals (`42`, never `42.0` or `4.2e1`); the file's JSON Schema; the [naming and validation](#naming-and-validation) rules the schema can't express (e.g. timestamps are real calendar date-times); the task's own ID not in its `blocked_by`; the filename ID equals the `id` field | The file is **`corrupt`**. Reads skip it with an [`unusable-file`](operations.md#warning-kinds) warning; a write that needs it fails with `corrupt`. |
+| **File** | The one file alone | Valid JSON (per step 1 below) with no duplicate keys; integer fields written as integer literals (`42`, never `42.0` or `4.2e1`); the file's JSON Schema; the [naming and validation](#naming-and-validation) rules the schema can't express (e.g. timestamps are real calendar date-times); the task's own ID not in its `blocked_by`; the filename ID equals the `id` field; in the [state file](#state-file) and the [claims file](#claims-file), `root` is the root the config names | The file is **`corrupt`**. Reads skip it with an [`unusable-file`](operations.md#warning-kinds) warning; a write that needs it fails with `corrupt`. |
 | **Tree** | Several files together | The [invariants](#invariants) | The files stay usable. Reads report or absorb the violation (e.g. a dangling blocker counts as blocking); [`doctor`](operations.md#doctor) finds it (see [Diagnosis and repair](#diagnosis-and-repair)). |
 
 Every versioned file (`koan.json`, the [state file](#state-file), the [claims file](#claims-file), a task file) is checked in three steps, stopping at the first failure:
@@ -560,7 +560,7 @@ Outside these arguments, as outside every guarantee koan makes:
 - an [outside change](#assumptions) to a task file, or a change to the claims file that koan did not make;
 - a task file that becomes a duplicate, unusable, or hidden behind a skipped entry, which makes its claim inert until the task is whole again, and can only come from an outside change or a system crash;
 - a system crash that undoes a `delete` or `delete-folder`, whose removals are not flushed (see [Crashes](#crashes)): the task comes back without its claim, since the claims file's write is flushed;
-- a change of root: [`init`](operations.md#init) with `replace_config` points the config at another tree, whose first claim replaces the claims file; and a different tree put at the same path inherits the entries the file holds for its IDs. `init` does not touch the claims file (see [A fixed root](#a-fixed-root));
+- a different tree put at the root's path, which inherits the entries the claims file holds for its IDs. koan itself never changes the root (see [One root](#one-root));
 - notes, which any editor writes;
 - two config directories naming one root, which share its lock but not its claims file (see [Task IDs](#task-ids));
 - a system crash on a disk that ignores flushes.
@@ -612,6 +612,14 @@ root = "~/tasks"
 
 The config must be a regular file, or a symlink to one (into a dotfiles checkout, say); anything else in its place makes it `corrupt`.
 
+### One root
+
+A config directory serves one root, for good. No operation changes the root a config names: [`init`](operations.md#init) refuses when a config exists, and refuses when the [state file](#state-file) or the [claims file](#claims-file) beside where it would write the config names a root other than the one it is given. Separate bodies of work are folders of the one tree (`/work`, `/home`), not separate roots.
+
+The state file and the claims file each record the root they belong to, and one that names another root is `corrupt`: koan neither reads it as this root's nor overwrites it. Only two things leave such a file: a config edited by hand to name another root, and removing some of the three files but not all.
+
+**Changing the root is done by hand.** Remove `config.toml`, `state.json`, and `claims.json` from the config directory, then run `init` with the new path. The claims made under the old root go with the claims file, locks included, and the counter starts again from the highest ID in the tree `init` attaches, so an ID whose task was deleted can be issued again (see [Task IDs](#task-ids)). A tree that has only moved needs none of that when its old path is made a symlink to the new one.
+
 ### State file
 
 Beside the config, in the same directory, koan keeps `state.json`: this machine's ID counter for the root. It is there, not in the tree, so that nothing done to the tree's files — a `git restore`, a revert, a merge, a sync — can move the counter backwards (see [Task IDs](#task-ids)). Its normative JSON Schema:
@@ -632,12 +640,12 @@ Beside the config, in the same directory, koan keeps `state.json`: this machine'
 ```
 
 - **`schema`** — Version of the state file's format. It is checked as every versioned file is (see [File validity](#file-validity)); there is no older format of it.
-- **`root`** — The root this counter belongs to: the absolute path the config's `root` stands for, cleaned and with `~/` expanded. A state file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never issues IDs from another tree's counter.
+- **`root`** — The root this counter belongs to: the absolute path the config's `root` stands for, cleaned and with `~/` expanded. A state file that names any other root breaks a file-level rule, and is `corrupt`, with the problem at `/root` naming both roots: koan never issues IDs from another tree's counter, and never overwrites it (see [One root](#one-root)).
 - **`last_id`** — The highest task ID ever issued in this tree by this machine; `0` before the first task. Never decreases (see [Task IDs](#task-ids)).
 
 The state file is written by [`init`](operations.md#init), by every write that issues an ID, by [`repair`](operations.md#repair) (raising `last_id`, or rebuilding a lost file), and by [`migrate`](operations.md#migrate) when it moves `last_id` out of an older `koan.json`. It is written as every file koan writes is, atomically and flushed, and only while the root's [write lock](#write-lock) is held (`init` creating a new tree apart: nothing else uses that root yet). A temp file that an interrupted write leaves beside it is removed by the next write of the state file. It must be a regular file; anything else in its place makes it `corrupt`.
 
-A root with no state file, or one for another root, is *not initialized* (see [Root states](operations.md#root-states)): the tree is all there, but this machine has no counter for it. [`init`](operations.md#init) writes one when it attaches a tree, and `repair` rebuilds a lost one on request.
+A root with no state file is *not initialized* (see [Root states](operations.md#root-states)): the tree is all there, but this machine has no counter for it. [`init`](operations.md#init) writes one when it attaches a tree, and `repair` rebuilds a lost one on request.
 
 Besides the state file and the [claims file](#claims-file), koan keeps no per-machine state.
 
@@ -706,13 +714,13 @@ An example, with one claim and one locked claim:
 ```
 
 - **`schema`** — Version of the claims file's format. It is checked as every versioned file is (see [File validity](#file-validity)); there is no older format of it. When there is one, koan will read it: a later format's reader accepts every earlier `schema`, and the next write of the file, which is always the whole file, puts it in the current one. So a change of this format needs no [`migrate`](operations.md#migrate) step, which is for files in the tree, and never stops a write. A file in a newer format than the binary knows — after going back to an older koan — is `unsupported-format`, and unusable as below.
-- **`root`** — The root these claims belong to, as in the [state file](#state-file). A claims file that names any other root is not this root's: it counts as missing, so pointing the config at a different tree never applies one tree's claims to another's tasks. The first claim on this root then replaces that file, and the other root's claims are gone: koan keeps one claims file, for the root the config names. When the file held claims, that claim says so, with a [`claims-replaced`](operations.md#warning-kinds) warning.
+- **`root`** — The root these claims belong to, as in the [state file](#state-file). A claims file that names any other root breaks a file-level rule, and is `corrupt`, as such a state file is: koan never applies one tree's claims to another's tasks, and never replaces them unasked (see [One root](#one-root)). It is then unusable, as below.
 - **`claims`** — One entry per claimed task, keyed by its [task ID](#task-ids) written in decimal, in ascending numeric order.
   - **`claimed_at`** — [Timestamp](#timestamps) of when the claim was made. Information only.
   - **`extra`** — The claim's `extra`, as given to `claim`: any keys, any JSON values, never validated beyond being an object.
   - **`token`** — Present only for a claim made with a [token](#tokens).
 
-**Missing means no claims.** A root with no claims file, or with one for another root, has no claims. That is not a [root state](operations.md#root-states) and never an error: [`init`](operations.md#init) writes no claims file, and the first claim creates it.
+**Missing means no claims.** A root with no claims file has no claims. That is not a [root state](operations.md#root-states) and never an error: [`init`](operations.md#init) writes no claims file, and the first claim creates it.
 
 **Unusable stops targeting writes.** A claims file that is unusable — unreadable, `corrupt`, or `unsupported-format` — could hold a lock koan cannot read, so koan does not guess:
 
@@ -755,7 +763,7 @@ Let [`repair`](operations.md#repair) give one copy of a [`duplicate-id`](operati
 
 ### A fixed root
 
-Keep the tree in one fixed place, beside nothing the user chooses, instead of at a path the config names. The root is configurable from when one machine might hold several trees; with one tree per user (see [Assumptions](#assumptions)) the choice buys little and costs a good deal: the config's only entry, [`init`](operations.md#init)'s path and `replace_config`, the *not initialized* states for a missing config and a missing root, the `root` field of the [state file](#state-file) and the [claims file](#claims-file), and every rule about a file that names another root. A user who wants the files elsewhere would link the fixed place to them. It needs a way to bring an existing tree to the fixed place.
+Keep the tree in one fixed place, beside nothing the user chooses, instead of at a path the config names. The root is configurable from when one machine might hold several trees; with one root per config, for good (see [One root](#one-root)), the choice buys little and still costs something: the config's only entry, [`init`](operations.md#init)'s path, the *not initialized* states for a missing config and a missing root, the `root` field of the [state file](#state-file) and the [claims file](#claims-file), and the rule that one naming another root is `corrupt`. A user who wants the files elsewhere would link the fixed place to them. It needs a way to bring an existing tree to the fixed place.
 
 ### Caller-supplied tokens
 

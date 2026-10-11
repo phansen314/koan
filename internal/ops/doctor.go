@@ -198,7 +198,7 @@ func stateFindings(tx *store.Tx, x *store.Index, fs findings, maxID int64) {
 				})
 			}
 		}
-	case store.StateMissing, store.StateOtherRoot:
+	case store.StateMissing:
 		if _, holds := tx.OldLastID(); holds {
 			return
 		}
@@ -213,12 +213,20 @@ func stateFindings(tx *store.Tx, x *store.Index, fs findings, maxID int64) {
 		}
 		fs.add(kindStateMissing, it)
 	default:
-		fs.add(kindStateUnusable, Item{
+		it := Item{
 			Paths: []string{statePath}, Error: stateErr,
 			Suggest: ptr("fix the state file by hand, or remove it and run koan repair --kinds state-missing"),
-		})
+		}
+		if st == store.StateOtherRoot {
+			it.Suggest = ptr(suggestOtherRoot)
+		}
+		fs.add(kindStateUnusable, it)
 	}
 }
+
+// suggestOtherRoot is what a person does about a state file or claims file
+// that names another root than the config does (design-spec.md, One root).
+const suggestOtherRoot = "put the config's root back if it was edited by hand; to change the root, remove the config, the state file, and the claims file, then run koan init"
 
 // suggestMigrate is what a person does about a pending migration.
 const suggestMigrate = "run koan migrate, after committing the tree when it is a git repository"
@@ -471,8 +479,11 @@ func claimFindings(tx *store.Tx, x *store.Index, fs findings) {
 			Paths: []string{p}, Error: claimsErr, Action: ptr(actionResetClaims),
 			Suggest: ptr("fix the file's permissions, or restore it, if you can; else koan repair --kinds claims-unusable, which forgets every claim and lock on this machine"),
 		}
-		if dir {
+		switch {
+		case dir:
 			it.Action, it.Suggest = nil, ptr("remove the directory in the claims file's place")
+		case state == store.ClaimsOtherRoot:
+			it.Suggest = ptr(suggestOtherRoot + "; or koan repair --kinds claims-unusable, which forgets every claim and lock on this machine")
 		}
 		fs.add(kindClaimsUnusable, it)
 		return

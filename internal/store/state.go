@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"io/fs"
 	"path"
 	"syscall"
@@ -39,15 +40,16 @@ const (
 type stateResult struct {
 	state StateState
 	err   error             // StateUnreadable: the OS error
-	cause errs.CorruptCause // StateCorrupt
+	cause errs.CorruptCause // StateCorrupt, StateOtherRoot
 	found int64             // StateUnsupported: its schema
 	file  model.StateFile   // StateOK, StateOtherRoot
 }
 
 // readState reads the state file by path, outside the root, as a regular
 // file: anything else in its place is corrupt (unexpected-file). root is the
-// config's root, cleaned and with ~/ expanded: a valid file naming any other
-// is other-root, which for this root is as good as missing.
+// config's root, cleaned and with ~/ expanded: a file naming any other is
+// other-root, which is corrupt, and info alone tells the two apart
+// (design-spec.md, One root).
 func readState(env Env, root string) stateResult {
 	p := env.StatePath()
 	if p == "" {
@@ -76,9 +78,19 @@ func readState(env Env, root string) stateResult {
 		return stateResult{state: StateCorrupt, cause: invalid(res)}
 	}
 	if file.Root != root {
-		return stateResult{state: StateOtherRoot, file: file}
+		return stateResult{state: StateOtherRoot, cause: otherRoot(file.Root, root), file: file}
 	}
 	return stateResult{state: StateOK, file: file}
+}
+
+// otherRoot is the cause of a state file or claims file that names the root
+// found where the config names root: the one file-level rule that is about
+// the config too.
+func otherRoot(found, root string) errs.CorruptCause {
+	return errs.CorruptCause{Reason: errs.CorruptInvalid, Problems: []errs.Problem{{
+		Field:  "/root",
+		Reason: fmt.Sprintf("names %s, but the config names %s", found, root),
+	}}}
 }
 
 func stateReadError(err error) stateResult {
@@ -89,14 +101,15 @@ func stateReadError(err error) stateResult {
 }
 
 // stateError is the Root states error of a state file that is not usable for
-// this root, nil for one that is: not-initialized (state) when it is missing
-// or names another root, else io, corrupt, or unsupported-format.
+// this root, nil for one that is: not-initialized (state) when it is
+// missing, else io, corrupt (as one naming another root is), or
+// unsupported-format.
 func stateError(env Env, sr stateResult) *errs.Error {
 	p := env.StatePath()
 	switch sr.state {
 	case StateOK:
 		return nil
-	case StateMissing, StateOtherRoot:
+	case StateMissing:
 		return errs.NotInitialized(errs.MissingState)
 	case StateUnreadable:
 		return errs.FromOS(p, sr.err)

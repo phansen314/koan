@@ -99,7 +99,8 @@ func TestMigrationPendingAllowsVersionInfoInit(t *testing.T) {
 			t.Errorf("%s: %+v", name, e.Error)
 		}
 	}
-	e := Run("init", parse(t, `{"root": "`+f.root+`", "replace_config": true}`), nil, f.env)
+	f.remove("cfg/config.toml")
+	e := Run("init", parse(t, `{"root": "`+f.root+`"}`), nil, f.env)
 	if !e.OK {
 		t.Fatalf("init: %+v", e.Error)
 	}

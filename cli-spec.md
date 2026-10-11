@@ -50,7 +50,7 @@ koan create -i <(jq -n '{title: "x"}')
 The command line is parsed in the conventional GNU style of Go's [cobra](https://github.com/spf13/cobra) and [pflag](https://github.com/spf13/pflag) libraries. The rules below are what koan relies on; anything they leave open is the libraries' behavior.
 
 - **Command names are operation names.** A command that runs one operation has that operation's name (`create-folder`, `show`, `done`). A command that composes several operations gets a name of its own.
-- **Option names are field names.** An option that sets an input field is named after that field, in kebab-case: `blocked_by` is `--blocked-by`, `replace_config` is `--replace-config`. A nested field is named by its path: `/tags/add` is `--tags-add`, `/extra/replace_all` is `--extra-replace-all`. Options that set no field under their own name (e.g. `--notes-file`) are the exceptions, and each command lists them.
+- **Option names are field names.** An option that sets an input field is named after that field, in kebab-case: `blocked_by` is `--blocked-by`, `include_folders` is `--include-folders`. A nested field is named by its path: `/tags/add` is `--tags-add`, `/extra/replace_all` is `--extra-replace-all`. Options that set no field under their own name (e.g. `--notes-file`) are the exceptions, and each command lists them.
 - **Arguments are for the one required subject.** A command's single required subject — the task it acts on, the folder it creates, the title it needs — is a positional argument. Everything optional is an option. There are no optional arguments, so a bare token always has one meaning, and a field keeps one spelling across commands (e.g. `folder` is `--folder` everywhere except [`create-folder`](#create-folder), where it is the subject).
 - **Booleans.** `--<field>` sets `true`; `--<field>=false` sets `false` (e.g. `--recursive=false`). A boolean never takes the next token as its value: in `--recursive false`, `false` is an argument.
 - **Required options.** An option a command marks as required — typically one whose position alone would not make its meaning clear — is a usage error when missing, unless `--input` is given.
@@ -213,7 +213,7 @@ koan info | jq -e '.result.migration_pending'   # true: run koan migrate (see mi
 
 Create a new tree, or attach an existing one, and make it this machine's configured root. Runs [`init`](operations.md#init).
 
-**Synopsis:** `koan init <root> [--replace-config]`, or `koan init -i <file>`.
+**Synopsis:** `koan init <root>`, or `koan init -i <file>`.
 
 **Operation:** [`init`](operations.md#init).
 
@@ -223,11 +223,7 @@ Create a new tree, or attach an existing one, and make it this machine's configu
 |---|---|---|
 | `<root>` | `/root` | Required unless `--input` is given. Resolved to an absolute path first; see Input. |
 
-**Options:**
-
-| Option | Field | Default |
-|---|---|---|
-| `--replace-config` | `/replace_config` | `false`. |
+**Options:** none. There is no way to point an existing config at another root (see the design spec's [One root](design-spec.md#one-root)).
 
 **Input:** `root` — from `<root>` or from `--input` — is resolved to an absolute path before the operation runs, since the operation leaves that to its caller:
 
@@ -252,7 +248,6 @@ A relative `root` is resolved against the working directory even when it comes f
 ```sh
 koan init ~/tasks
 koan init tasks                    # relative to the working directory
-koan init /mnt/usb/tasks --replace-config
 jq -n '{root: "~/tasks"}' | koan init -i -
 ```
 

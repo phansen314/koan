@@ -31,7 +31,7 @@
       "required": ["path", "state", "last_id"],
       "properties": {
         "path": { "type": "string", "description": "Path of the state file, beside the config." },
-        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the state file, per the three-step check (see File validity). other-root: it is valid but names a root other than config.root, so this root has none. missing and other-root both make the root not initialized." },
+        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the state file, per the three-step check (see File validity). other-root: it passes every other check but names a root other than config.root, which makes it corrupt (see One root). Only missing makes the root not initialized." },
         "last_id": { "anyOf": [{ "$ref": "state-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless state is ok." }
       },
       "additionalProperties": false,
@@ -42,7 +42,7 @@
       "required": ["path", "state"],
       "properties": {
         "path": { "type": "string", "description": "Path of the claims file, beside the config." },
-        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the claims file, per the three-step check (see File validity). missing and other-root both mean the root has no claims, which is normal. Any state but those two and ok fails every operation that needs the claims file (see Claims file)." }
+        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the claims file, per the three-step check (see File validity). missing means the root has no claims, which is normal. other-root: it passes every other check but names a root other than config.root, which makes it corrupt (see One root). Any state but missing and ok fails every operation that needs the claims file (see Claims file)." }
       },
       "additionalProperties": false,
       "description": "State of this machine's claims file for the configured root; null when config.root is null. It never affects initialized or usable."

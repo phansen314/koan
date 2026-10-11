@@ -199,7 +199,7 @@ func TestCreateState(t *testing.T) {
 	f := newFixture(t)
 	f.write("cfg/"+StateName, stateJSON("/elsewhere", 9))
 	diagnoseTx(t, f.env, func(tx *Tx) {
-		if st, e := tx.StateState(); st != StateOtherRoot || e == nil || e.Kind != errs.KindNotInitialized {
+		if st, e := tx.StateState(); st != StateOtherRoot || e == nil || e.Kind != errs.KindCorrupt {
 			t.Errorf("StateState = %v %v", st, e)
 		}
 		wantNoErr(t, tx.CreateState(42))

@@ -310,7 +310,7 @@ func TestWriteRereadsMeta(t *testing.T) {
 	f.write("tasks/"+MetaName, "{\"schema\": 2, \"migration\": 1}\n")
 	for content, want := range map[string]*errs.Error{
 		"{":                        errs.CorruptBy(f.path("cfg/"+StateName), errs.CorruptCause{Reason: errs.CorruptNotJSON, Detail: "not valid JSON: unexpected end of input"}),
-		stateJSON("/elsewhere", 1): errs.NotInitialized(errs.MissingState),
+		stateJSON("/elsewhere", 1): errs.CorruptBy(f.path("cfg/"+StateName), otherRoot("/elsewhere", f.root)),
 		`{"schema": 2}`:            errs.UnsupportedFormat(f.path("cfg/"+StateName), 2, []int64{1}),
 	} {
 		f.write("cfg/"+StateName, stateJSON(f.root, 100))

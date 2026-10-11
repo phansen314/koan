@@ -26,12 +26,8 @@ var commands = []Command{
 		Op:      "init",
 		Summary: "Create a new tree, or attach an existing one, as this machine's root",
 		Args:    []Arg{{Name: "root", Field: "/root", Type: String}},
-		Options: []Option{
-			{Name: "replace-config", Field: "/replace_config", Type: Bool, Help: "replace an existing config"},
-		},
 		Example: `  koan init ~/tasks
   koan init tasks                    # relative to the working directory
-  koan init /mnt/usb/tasks --replace-config
   jq -n '{root: "~/tasks"}' | koan init -i -`,
 		Resolve: resolveRoot,
 	},

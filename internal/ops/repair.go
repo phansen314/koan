@@ -58,7 +58,7 @@ func runRepair(env Env, in KindsInput, w *errs.Collector) (any, *errs.Error) {
 			return metaErr
 		}
 		switch state, stateErr := tx.StateState(); {
-		case (state == store.StateMissing || state == store.StateOtherRoot) && slices.Contains(kinds, kindStateMissing):
+		case state == store.StateMissing && slices.Contains(kinds, kindStateMissing):
 		case stateErr != nil:
 			return stateErr
 		}

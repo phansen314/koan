@@ -12,8 +12,7 @@ import (
 // segment. Whether anything at Root leads to a directory is checked by the
 // operation, which must look at the filesystem.
 type InitInput struct {
-	Root          string
-	ReplaceConfig bool
+	Root string
 }
 
 func decodeInit(f *model.Fields, p *model.Problems) any {
@@ -23,7 +22,6 @@ func decodeInit(f *model.Fields, p *model.Problems) any {
 			in.Root, _ = cleanRoot(s, p)
 		}
 	}
-	in.ReplaceConfig = optionalBool(f, p, "replace_config", false)
 	return in
 }
 
@@ -47,7 +45,7 @@ type InitPartial struct {
 // error after the root directory or koan.json was created carries the
 // partial result.
 func runInit(env Env, in InitInput, _ *errs.Collector) (any, *errs.Error) {
-	res, e := store.Init(env.Env, in.Root, in.ReplaceConfig)
+	res, e := store.Init(env.Env, in.Root)
 	if e != nil {
 		if res.RootCreated || res.MetaCreated || res.StateCreated {
 			e = e.WithPartial(InitPartial{RootCreated: res.RootCreated, MetadataCreated: res.MetaCreated, StateCreated: res.StateCreated})

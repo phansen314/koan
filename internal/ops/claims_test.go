@@ -594,46 +594,37 @@ func TestWritesKeepOtherEntries(t *testing.T) {
 	}
 }
 
-// The first claim on a root replaces a claims file that names another root,
-// and warns of the claims that went with it. Nothing else does either: a
-// read, and a write that puts no claim, leave the file as it is.
-func TestClaimReplacesOtherRoot(t *testing.T) {
+// A claims file that names another root is corrupt, at /root, and is never
+// replaced by a claim: only repair, asked to, resets it (design-spec.md, One
+// root). What each operation does with it is TestUnusableClaimsFile's.
+func TestOtherRootClaimsFile(t *testing.T) {
 	f := newFixture(t)
 	f.task("", 1, false)
-	f.task("", 2, false)
 	other := "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"claims\": {\n    \"1\": {\n      \"claimed_at\": \"2026-09-25T09:00:00Z\",\n      \"extra\": {}\n    },\n    \"5\": {\n      \"claimed_at\": \"2026-09-25T09:00:00Z\",\n      \"extra\": {},\n      \"token\": \"" + tok(9) + "\"\n    }\n  }\n}\n"
 	f.write(claimsRel, other)
-	if _, l := f.do("show", `{"id": 1}`); !strings.Contains(l, `"claim":null`) || warningKinds(t, l) != "" {
-		t.Errorf("show: %s", l)
-	}
-	for _, op := range []string{"release", "done"} {
-		if _, l := f.do(op, `{"id": 2}`); outcome(t, l) != "ok" || warningKinds(t, l) != "" {
-			t.Errorf("%s: %s", op, l)
+	want := `corrupt {"path":"~/` + claimsRel + `","reason":"invalid","problems":[{"field":"/root","reason":"names /elsewhere, but the config names ~/tasks"}]}`
+	for _, op := range []string{"claim", "claim-next"} {
+		doc := `{}`
+		if op == "claim" {
+			doc = `{"id": 1}`
+		}
+		if got := f.rel(opError(t, f, op, doc)); got != want {
+			t.Errorf("%s:\ngot  %s\nwant %s", op, got, want)
 		}
 	}
+	if _, l := f.do("show", `{"id": 1}`); !strings.Contains(l, `"claim":null`) || warningKinds(t, l) != "unusable-file [~/"+claimsRel+"] []" {
+		t.Errorf("show: %s", l)
+	}
 	if got := f.read(claimsRel); got != other {
-		t.Fatalf("claims file changed before any claim:\n%s", got)
+		t.Fatalf("claims file changed:\n%s", got)
 	}
-	_, l := f.do("claim", `{"id": 1}`)
-	if outcome(t, l) != "ok" {
-		t.Fatalf("claim: %s", l)
-	}
-	if got, want := warningKinds(t, l), "claims-replaced [~/"+claimsRel+"] [1 5]"; got != want || !strings.Contains(l, "/elsewhere") || strings.Contains(l, tok(9)) {
-		t.Errorf("warnings %s, want %s: %s", got, want, l)
-	}
-	if got := f.read(claimsRel); !strings.Contains(got, f.root) || strings.Contains(got, "/elsewhere") || f.claimed() != "1" {
-		t.Errorf("claims file:\n%s", got)
-	}
-
-	// Another root's file that holds no claim is replaced with no warning,
-	// by claim-next as by claim.
-	f.write(claimsRel, "{\n  \"schema\": 1,\n  \"root\": \"/elsewhere\",\n  \"claims\": {}\n}\n")
-	if _, l := f.do("claim-next", `{}`); outcome(t, l) != "ok" || warningKinds(t, l) != "" || f.claimed() != "1" {
-		t.Errorf("claim-next: %s, claimed %q", l, f.claimed())
+	_, l := f.do("doctor", `{}`)
+	if !strings.Contains(l, `"kind":"claims-unusable"`) || !strings.Contains(l, `"action":"reset-claims"`) || !strings.Contains(l, "koan init") {
+		t.Errorf("doctor: %s", l)
 	}
 }
 
-// unusableClaims are the three ways a claims file is unusable, each set up
+// unusableClaims are the four ways a claims file is unusable, each set up
 // on f, with the error an operation that needs it fails with.
 var unusableClaims = []struct {
 	name, kind, reason string
@@ -641,6 +632,9 @@ var unusableClaims = []struct {
 }{
 	{"corrupt", "corrupt", "corrupt", func(f *fixture) { f.write(claimsRel, "{") }},
 	{"unsupported", "unsupported-format", "unsupported-format", func(f *fixture) { f.write(claimsRel, `{"schema": 2}`) }},
+	{"another root", "corrupt", "corrupt", func(f *fixture) {
+		f.write(claimsRel, `{"schema": 1, "root": "/elsewhere", "claims": {"7": {"claimed_at": "2026-09-25T09:00:00Z", "extra": {}}}}`)
+	}},
 	{"unreadable", "io", "unreadable", func(f *fixture) {
 		f.claimsFile()
 		p := filepath.Join(f.home, claimsRel)
@@ -1038,7 +1032,7 @@ func TestClaimFindings(t *testing.T) {
 		t.Errorf("repair: %s, claimed %q", l, f.claimed())
 	}
 
-	for _, u := range unusableClaims[:2] {
+	for _, u := range unusableClaims[:3] {
 		g := newFixture(t)
 		g.task("", 1, false)
 		u.setup(g)

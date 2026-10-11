@@ -23,8 +23,8 @@ func (e Env) ClaimsPath() string {
 }
 
 // ClaimsState is the claims file's outcome, as info reports it
-// (implementation-spec.md, Claims file). Missing and other-root both mean a
-// root with no claims.
+// (implementation-spec.md, Claims file). Only missing means a root with no
+// claims: other-root is corrupt, and info alone tells the two apart.
 type ClaimsState string
 
 const (
@@ -40,7 +40,7 @@ const (
 type claimsResult struct {
 	state ClaimsState
 	err   error             // ClaimsUnreadable: the OS error
-	cause errs.CorruptCause // ClaimsCorrupt
+	cause errs.CorruptCause // ClaimsCorrupt, ClaimsOtherRoot
 	found int64             // ClaimsUnsupported: its schema
 	dir   bool              // ClaimsCorrupt: a directory is in its place
 	file  model.ClaimsFile  // ClaimsOK, ClaimsOtherRoot
@@ -48,8 +48,8 @@ type claimsResult struct {
 
 // readClaims reads the claims file by path, outside the root, as a regular
 // file: anything else in its place is corrupt (unexpected-file). root is the
-// config's root, cleaned and with ~/ expanded: a valid file naming any other
-// is other-root, which for this root holds no claims.
+// config's root, cleaned and with ~/ expanded: a file naming any other is
+// other-root, which is corrupt (design-spec.md, One root).
 func readClaims(env Env, root string) claimsResult {
 	p := env.ClaimsPath()
 	if p == "" {
@@ -78,7 +78,7 @@ func readClaims(env Env, root string) claimsResult {
 		return claimsResult{state: ClaimsCorrupt, cause: invalid(res)}
 	}
 	if file.Root != root {
-		return claimsResult{state: ClaimsOtherRoot, file: file}
+		return claimsResult{state: ClaimsOtherRoot, cause: otherRoot(file.Root, root), file: file}
 	}
 	return claimsResult{state: ClaimsOK, file: file}
 }
@@ -91,8 +91,8 @@ func claimsReadError(err error) claimsResult {
 }
 
 // claimsError is the error of a claims file that is unusable, for an
-// operation that needs it: io, corrupt, or unsupported-format. It is nil for
-// one that is ok, missing, or another root's.
+// operation that needs it: io, corrupt (as one naming another root is), or
+// unsupported-format. It is nil for one that is ok or missing.
 func claimsError(env Env, cr claimsResult) *errs.Error {
 	p := env.ClaimsPath()
 	switch cr.state {
@@ -100,7 +100,7 @@ func claimsError(env Env, cr claimsResult) *errs.Error {
 		return errs.FromOS(p, cr.err)
 	case ClaimsUnsupported:
 		return errs.UnsupportedFormat(p, cr.found, []int64{model.ClaimsSchema})
-	case ClaimsCorrupt:
+	case ClaimsCorrupt, ClaimsOtherRoot:
 		return errs.CorruptBy(p, cr.cause)
 	}
 	return nil
@@ -117,7 +117,7 @@ func (tx *Tx) loadClaims() claimsResult {
 
 // Claims loads the claims file for an operation that needs it, and returns
 // the error an unusable one is: io, corrupt, or unsupported-format. A missing
-// file, or another root's, holds no claims. In a write the first call is
+// file holds no claims. In a write the first call is
 // under the lock, so the file is current. Claim then reads the entries.
 func (tx *Tx) Claims() *errs.Error {
 	return claimsError(tx.env, tx.loadClaims())
@@ -137,7 +137,7 @@ func (tx *Tx) ClaimsForRead() *errs.Error {
 			return e
 		}
 		tx.Warn(errs.UnusableClaims(p, errs.UnusableUnreadable, d.Code))
-	case ClaimsCorrupt:
+	case ClaimsCorrupt, ClaimsOtherRoot:
 		tx.Warn(errs.UnusableClaims(p, errs.UnusableCorrupt, ""))
 	case ClaimsUnsupported:
 		tx.Warn(errs.UnusableClaims(p, errs.UnusableUnsupportedFormat, ""))
@@ -160,7 +160,7 @@ func (tx *Tx) Claim(id model.ID) (model.ClaimEntry, bool) {
 }
 
 // ClaimIDs is the IDs the claims file holds an entry for, ascending: none
-// when it is not usable, or another root's.
+// when it is not usable.
 func (tx *Tx) ClaimIDs() []model.ID {
 	cr := tx.loadClaims()
 	if cr.state != ClaimsOK {
@@ -179,8 +179,7 @@ func claimIDs(file model.ClaimsFile) []model.ID {
 }
 
 // ClaimsState is the claims file's outcome, and the error an operation that
-// needs the file would fail with, nil when it is ok, missing, or another
-// root's. dir reports a directory in the file's place, which no write can
+// needs the file would fail with, nil when it is ok or missing. dir reports a directory in the file's place, which no write can
 // replace.
 func (tx *Tx) ClaimsState() (state ClaimsState, dir bool, e *errs.Error) {
 	cr := tx.loadClaims()
@@ -191,28 +190,14 @@ func (tx *Tx) ClaimsState() (state ClaimsState, dir bool, e *errs.Error) {
 func (tx *Tx) ClaimsPath() string { return tx.env.ClaimsPath() }
 
 // PutClaim records entry as id's claim, replacing the claims file whole. The
-// caller has loaded the file with Claims, and it is usable. Over a file that
-// names another root, the claims it held are gone with it: when it held any,
-// that is the claims-replaced warning.
+// caller has loaded the file with Claims, and it is usable.
 func (tx *Tx) PutClaim(id model.ID, entry model.ClaimEntry) *errs.Error {
 	claims, e := tx.currentClaims("put a claim")
 	if e != nil {
 		return e
 	}
-	replaced := tx.claims
 	claims[id] = entry
-	if e := tx.claimsWriteError(tx.writeClaims(claims)); e != nil {
-		return e
-	}
-	if replaced.state == ClaimsOtherRoot && len(replaced.file.Claims) > 0 {
-		ids := claimIDs(replaced.file)
-		lost := make([]int64, len(ids))
-		for i, id := range ids {
-			lost[i] = int64(id)
-		}
-		tx.Warn(errs.ClaimsReplaced(tx.env.ClaimsPath(), replaced.file.Root, lost))
-	}
-	return nil
+	return tx.claimsWriteError(tx.writeClaims(claims))
 }
 
 // DropClaims removes the entries of ids from the claims file, in one write,
@@ -262,13 +247,14 @@ func (tx *Tx) ClaimsCode(err error) (string, *errs.Error) {
 }
 
 // ResetClaims replaces the claims file with one naming this root with no
-// claims, whatever is in its place: repair's fix for an unusable one.
+// claims, whatever is in its place: repair's fix for an unusable one, another
+// root's among them.
 func (tx *Tx) ResetClaims() *errs.Error {
 	return tx.claimsWriteError(tx.writeClaims(map[model.ID]model.ClaimEntry{}))
 }
 
 // currentClaims is a copy of this root's entries, to change and write back:
-// none when the file is missing or another root's. Changing a file that was
+// none when the file is missing. Changing a file that was
 // never loaded, or that is unusable, would overwrite claims no one has read,
 // so either is a bug, reported as internal.
 func (tx *Tx) currentClaims(what string) (map[model.ID]model.ClaimEntry, *errs.Error) {

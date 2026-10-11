@@ -4,8 +4,7 @@
   "type": "object",
   "required": ["root"],
   "properties": {
-    "root": { "type": "string", "description": "Absolute root path, with no .. segments. Resolving relative paths or ~ is the caller's job." },
-    "replace_config": { "type": "boolean", "default": false, "description": "Allow replacing an existing config." }
+    "root": { "type": "string", "description": "Absolute root path, with no .. segments. Resolving relative paths or ~ is the caller's job." }
   },
   "additionalProperties": false
 }
