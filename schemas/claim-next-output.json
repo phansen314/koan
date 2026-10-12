@@ -4,10 +4,9 @@
   "type": "object",
   "required": ["task"],
   "properties": {
-    "task": { "anyOf": [{ "$ref": "task-view" }, { "type": "null" }], "description": "The task claimed, with its new claim; null when the frontier holds no unclaimed task." },
-    "token": { "$ref": "claims-file#/$defs/token", "description": "Present only with use_token and a task claimed: the claim's token. It is returned here and nowhere else." }
+    "task": {
+      "anyOf": [{ "$ref": "task" }, { "type": "null" }]
+    }
   },
-  "additionalProperties": false,
-  "if": { "properties": { "task": { "type": "null" } } },
-  "then": { "not": { "required": ["token"] } }
+  "additionalProperties": false
 }

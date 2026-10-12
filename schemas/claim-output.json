@@ -4,8 +4,7 @@
   "type": "object",
   "required": ["task"],
   "properties": {
-    "task": { "$ref": "task-view", "description": "The task claimed, with its new claim." },
-    "token": { "$ref": "claims-file#/$defs/token", "description": "Present only with use_token: the claim's token. It is returned here and nowhere else." }
+    "task": { "$ref": "task" }
   },
   "additionalProperties": false
 }

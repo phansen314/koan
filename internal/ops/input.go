@@ -1,133 +1,231 @@
 package ops
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
-	"github.com/phansen314/koan/internal/jsonio"
 	"github.com/phansen314/koan/internal/model"
 )
 
-// decoder is an operation's input adapter: it turns the input object into the
-// operation's input type, recording every problem in p. The input type is
-// meaningful only when p ends up OK.
-type decoder func(f *model.Fields, p *model.Problems) any
-
-// decoders holds each operation's input adapter, by operation name, and
-// pick's, which is a command's: it runs no operation of its own.
-var decoders = map[string]decoder{
-	"version":       decodeVersion,
-	"info":          decodeInfo,
-	"doctor":        decodeDoctor,
-	"repair":        decodeRepair,
-	"migrate":       decodeMigrate,
-	"init":          decodeInit,
-	"create-folder": decodeCreateFolder,
-	"create":        decodeCreate,
-	"create-batch":  decodeCreateBatch,
-	"show":          decodeShow,
-	"done":          decodeDone,
-	"reopen":        decodeReopen,
-	"block":         decodeBlock,
-	"unblock":       decodeUnblock,
-	"update":        decodeUpdate,
-	"delete":        decodeDelete,
-	"move":          decodeMove,
-	"delete-folder": decodeDeleteFolder,
-	"move-folder":   decodeMoveFolder,
-	"frontier":      decodeFrontier,
-	"list":          decodeList,
-	"why":           decodeWhy,
-	"claim":         decodeClaim,
-	"claim-next":    decodeClaimNext,
-	"release":       decodeRelease,
-	"force-release": decodeForceRelease,
-	"pick":          decodePick,
+// input is a command's input object, read one field at a time so that every
+// problem in it is found, not just the first.
+type input struct {
+	m        map[string]json.RawMessage
+	used     map[string]bool
+	problems []errs.Problem
 }
 
-// Operations returns the name of every operation, sorted.
-func Operations() []string {
-	return slices.Sorted(maps.Keys(runners))
+func parseInput(raw []byte) (*input, *errs.Error) {
+	in := &input{m: map[string]json.RawMessage{}, used: map[string]bool{}}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return in, nil
+	}
+	m, err := model.Keys(raw)
+	if err != nil {
+		return nil, errs.Invalid([]errs.Problem{{Field: "", Reason: "is not one JSON object: " + err.Error()}})
+	}
+	in.m = m
+	return in, nil
 }
 
-// Decode checks the input of operation op, already read by jsonio, and returns
-// its typed form and every problem found. The input is meaningful only when
-// there are none. The caller reports problems as one invalid-input error,
-// after adding any from checks that need the filesystem (init's; see
-// implementation-spec.md, Where it happens). Repeated keys are not checked
-// here: jsonio returns them beside the tree, and the caller must reject the
-// input (invalid-input, field the repeated key's pointer) before calling Decode.
-func Decode(op string, input *jsonio.Object) (any, *model.Problems, *errs.Error) {
-	d, ok := decoders[op]
+func (in *input) bad(field, format string, args ...any) {
+	in.problems = append(in.problems, errs.Problem{Field: field, Reason: fmt.Sprintf(format, args...)})
+}
+
+// done reports every problem found, and every field no one asked for.
+func (in *input) done() *errs.Error {
+	for _, k := range slices.Sorted(maps.Keys(in.m)) {
+		if !in.used[k] {
+			in.bad("/"+k, "is not a field of this command")
+		}
+	}
+	if len(in.problems) == 0 {
+		return nil
+	}
+	return errs.Invalid(in.problems)
+}
+
+// getAt decodes field k of the object m, which is at the JSON pointer `at`,
+// into v. It returns false when the field is absent, or is wrong, which it
+// records.
+func (in *input) getAt(m map[string]json.RawMessage, at, k string, required bool, v any, what string) bool {
+	if at == "" {
+		in.used[k] = true
+	}
+	raw, ok := m[k]
 	if !ok {
-		return nil, nil, errs.Internal("no operation " + op)
+		if required {
+			in.bad(at+"/"+k, "is required")
+		}
+		return false
 	}
-	var p model.Problems
-	in := decode(d, input, &p)
-	return in, &p, nil
-}
-
-func decode(d decoder, input *jsonio.Object, p *model.Problems) any {
-	f, _ := p.Object(input, "")
-	in := d(f, p)
-	f.Done()
-	return in
-}
-
-// optionalBool returns the boolean field key, or def when it is absent.
-func optionalBool(f *model.Fields, p *model.Problems, key string, def bool) bool {
-	if v, ok := f.Optional(key); ok {
-		b, _ := p.Bool(v, f.Ptr(key))
-		return b
+	if err := model.Decode(raw, v); err != nil || string(raw) == "null" {
+		in.bad(at+"/"+k, "must be %s", what)
+		return false
 	}
-	return def
+	return true
 }
 
-// optionalFolder returns the folder path field key, or the root when absent.
-func optionalFolder(f *model.Fields, p *model.Problems, key string) model.FolderPath {
-	if v, ok := f.Optional(key); ok {
-		fp, _ := p.FolderPath(v, f.Ptr(key))
-		return fp
+func (in *input) has(k string) bool { _, ok := in.m[k]; return ok }
+
+// fields reads one object's fields: the input itself (at == ""), or one
+// task of a batch.
+type fields struct {
+	in *input
+	m  map[string]json.RawMessage
+	at string
+}
+
+func (in *input) top() fields { return fields{in: in, m: in.m} }
+
+func (f fields) get(k string, required bool, v any, what string) bool {
+	return f.in.getAt(f.m, f.at, k, required, v, what)
+}
+
+func (f fields) has(k string) bool { _, ok := f.m[k]; return ok }
+
+func (f fields) id(k string, required bool) model.ID {
+	var n model.ID
+	if f.get(k, required, &n, "a task ID") && !model.ValidID(n) {
+		f.in.bad(f.at+"/"+k, "must be a task ID")
 	}
-	return model.RootFolder
+	return n
 }
 
-// requiredID returns the task ID field key.
-func requiredID(f *model.Fields, p *model.Problems, key string) model.ID {
-	if v, ok := f.Required(key); ok {
-		id, _ := p.ID(v, f.Ptr(key))
-		return id
+// ids reads a list of distinct task IDs.
+func (f fields) ids(k string, required bool) []model.ID {
+	var ns []model.ID
+	if !f.get(k, required, &ns, "a list of task IDs") {
+		return nil
 	}
-	return 0
+	seen := map[model.ID]bool{}
+	for i, n := range ns {
+		switch {
+		case !model.ValidID(n):
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be a task ID")
+		case seen[n]:
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "is repeated")
+		}
+		seen[n] = true
+	}
+	return ns
 }
 
-// blockerList returns the field key as a non-empty set of task IDs — block's
-// and unblock's blockers — and whether it is valid.
-func blockerList(f *model.Fields, p *model.Problems, key string) ([]model.ID, bool) {
-	v, ok := f.Required(key)
+func (f fields) folder(k string, required bool, def model.Folder) model.Folder {
+	var s string
+	if !f.get(k, required, &s, "a folder path") {
+		return def
+	}
+	folder, ok := model.ParseFolder(s)
+	if !ok {
+		f.in.bad(f.at+"/"+k, "must be a folder path like /proj/travel")
+		return def
+	}
+	return folder
+}
+
+func (f fields) boolean(k string, def bool) bool {
+	v := def
+	f.get(k, false, &v, "true or false")
+	return v
+}
+
+func (f fields) text(k string) (string, bool) {
+	var s string
+	ok := f.get(k, false, &s, "a string")
+	return s, ok
+}
+
+// title reads and trims a title.
+func (f fields) title(k string, required bool) (string, bool) {
+	var s string
+	if !f.get(k, required, &s, "a string") {
+		return "", false
+	}
+	title, reason := model.CleanTitle(s)
+	if reason != "" {
+		f.in.bad(f.at+"/"+k, "%s", reason)
+		return "", false
+	}
+	return title, true
+}
+
+// priority reads an integer or null. set is false when the field is absent.
+func (f fields) priority(k string) (p *int64, set bool) {
+	raw, ok := f.m[k]
+	if f.at == "" {
+		f.in.used[k] = true
+	}
 	if !ok {
 		return nil, false
 	}
-	return nonEmptySet(p, v, f.Ptr(key), "ID", (*model.Problems).IDs)
-}
-
-// nonEmptySet checks v, at ptr, as a set by check, which reports a non-array
-// and bad or repeated items; an empty array is refused first, its reason
-// naming an item as noun. It is the schemas' minItems: 1 on a set.
-func nonEmptySet[T any](p *model.Problems, v any, ptr, noun string, check func(*model.Problems, any, string) ([]T, bool)) ([]T, bool) {
-	if a, isArr := v.([]any); isArr && len(a) == 0 {
-		p.Add(ptr, "must list at least one "+noun)
+	if string(bytes.TrimSpace(raw)) == "null" {
+		return nil, true
+	}
+	var n int64
+	if err := model.Decode(raw, &n); err != nil || n > model.MaxInt || n < -model.MaxInt {
+		f.in.bad(f.at+"/"+k, "must be an integer or null")
 		return nil, false
 	}
-	return check(p, v, ptr)
+	return &n, true
 }
 
-// IDInput is the input of show, reopen, and force-release: one task.
-type IDInput struct {
-	ID model.ID
+// tags reads a list of distinct tags.
+func (f fields) tags(k string) ([]string, bool) {
+	var ts []string
+	if !f.get(k, false, &ts, "a list of tags") {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	for i, t := range ts {
+		switch {
+		case !model.ValidTag(t):
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be a tag: lowercase letters, digits, and hyphens")
+		case seen[t]:
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "is repeated")
+		}
+		seen[t] = true
+	}
+	return ts, true
 }
 
-func decodeID(f *model.Fields, p *model.Problems) any {
-	return IDInput{ID: requiredID(f, p, "id")}
+// object reads a JSON object.
+func (f fields) object(k string) (map[string]any, bool) {
+	var o map[string]any
+	if !f.get(k, false, &o, "a JSON object") {
+		return nil, false
+	}
+	return o, true
+}
+
+// strs reads a list of distinct strings.
+func (f fields) strs(k string) ([]string, bool) {
+	var ss []string
+	if !f.get(k, false, &ss, "a list of strings") {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	for i, s := range ss {
+		if seen[s] {
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "is repeated")
+		}
+		seen[s] = true
+	}
+	return ss, true
+}
+
+// oneOf reads a list of distinct values, each one of allowed.
+func (f fields) oneOf(k string, allowed []string) ([]string, bool) {
+	ss, ok := f.strs(k)
+	for i, s := range ss {
+		if !slices.Contains(allowed, s) {
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be one of %s", strings.Join(allowed, ", "))
+		}
+	}
+	return ss, ok
 }

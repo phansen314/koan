@@ -1,450 +1,148 @@
-// Package errs defines koan's error and warning kinds, the warning collector,
-// and the table of symbolic OS error names.
-//
-// The kinds, their details, and their JSON shapes are specified in
-// operations.md (Error kinds, Warning kinds) and, for usage, cli-spec.md
-// (Usage errors). errs imports none of koan's own packages.
+// Package errs holds the three things a command reports besides its result:
+// the error it failed with, warnings, and doctor's findings
+// (spec/operations.md, Conventions).
 package errs
 
 import (
-	"cmp"
+	"errors"
 	"fmt"
-	"slices"
-	"strings"
+	"syscall"
 )
 
-// Kind is an error kind. Callers treat an unknown kind as a generic failure.
+// Kind is an error's kind.
 type Kind string
 
 const (
-	KindInvalidInput      Kind = "invalid-input"
-	KindEnvironment       Kind = "environment"
-	KindNotInitialized    Kind = "not-initialized"
-	KindMigrationPending  Kind = "migration-pending"
-	KindNotFound          Kind = "not-found"
-	KindConflict          Kind = "conflict"
-	KindBusy              Kind = "busy"
-	KindCorrupt           Kind = "corrupt"
-	KindIO                Kind = "io"
-	KindUnsupportedFormat Kind = "unsupported-format"
-	KindInternal          Kind = "internal"
-
-	// KindUsage is raised by the CLI only; no operation raises it.
-	KindUsage Kind = "usage"
-
-	// pick's own kinds (pick-spec.md, Errors), raised by no operation. Their
-	// details are pick's.
-	KindUnavailable Kind = "unavailable"
-	KindCancelled   Kind = "cancelled"
-	KindIncomplete  Kind = "incomplete"
+	Usage             Kind = "usage"
+	InvalidInput      Kind = "invalid-input"
+	NotInitialized    Kind = "not-initialized"
+	Corrupt           Kind = "corrupt"
+	UnsupportedFormat Kind = "unsupported-format"
+	MigrationPending  Kind = "migration-pending"
+	Busy              Kind = "busy"
+	NotFound          Kind = "not-found"
+	Conflict          Kind = "conflict"
+	IO                Kind = "io"
+	Internal          Kind = "internal"
 )
 
-// Error is the error object of the output envelope. Kind and Details are the
-// contract; Message is for humans. Details is always a JSON object; its Go type
-// depends on Kind. Partial is set only when a multi-file write or setup failed
-// after some of its effects took place.
-type Error struct {
-	Kind    Kind   `json:"kind"`
-	Message string `json:"message"`
-	Details any    `json:"details"`
-	Partial any    `json:"partial,omitempty"`
-}
+// Conflict rules.
+const (
+	RuleDuplicateID       = "duplicate-id"
+	RuleNotAFolder        = "not-a-folder"
+	RuleDestinationExists = "destination-exists"
+	RuleNotEmpty          = "not-empty"
+	RuleCycle             = "cycle"
+	RuleTaskDone          = "task-done"
+	RuleClaimed           = "claimed"
+)
 
-func (e *Error) Error() string { return string(e.Kind) + ": " + e.Message }
-
-// WithPartial returns e with Partial set to p, the operation's partial result.
-func (e *Error) WithPartial(p any) *Error {
-	e.Partial = p
-	return e
-}
-
-// empty is the details of kinds that carry none ({}).
-type empty struct{}
-
-// Problem is one invalid input: Field is a JSON Pointer into the input.
+// Problem is one thing wrong with an input or a file.
 type Problem struct {
 	Field  string `json:"field"`
 	Reason string `json:"reason"`
 }
 
-type InvalidInputDetails struct {
-	Problems          []Problem `json:"problems"`
-	ProblemsTruncated bool      `json:"problems_truncated,omitempty"`
+// Error is the one error a failed command reports. Every list is present,
+// empty when it has nothing to say.
+type Error struct {
+	Kind         Kind      `json:"kind"`
+	Rule         *string   `json:"rule"`
+	Message      string    `json:"message"`
+	IDs          []int64   `json:"ids"`
+	Folders      []string  `json:"folders"`
+	Paths        []string  `json:"paths"`
+	Problems     []Problem `json:"problems"`
+	ChangedPaths []string  `json:"changed_paths"`
 }
 
-// MaxProblems is how many problems an error lists at most, so that bad input
-// or a garbage file cannot produce a huge error.
-const MaxProblems = 20
+func (e *Error) Error() string { return string(e.Kind) + ": " + e.Message }
 
-// InvalidInput reports every problem found, sorted by field, then by reason,
-// both compared byte by byte, so the same input always yields the same list;
-// then cut to the first MaxProblems, though the message counts them all.
-// An empty problems is a bug, reported as internal.
-func InvalidInput(problems []Problem) *Error {
-	if len(problems) == 0 {
-		return Internal("invalid-input with no problems")
-	}
-	ps := sortProblems(problems)
-	msg := fmt.Sprintf("%d invalid inputs", len(ps))
-	if len(ps) == 1 {
-		msg = fmt.Sprintf("invalid input at %q: %s", ps[0].Field, ps[0].Reason)
-	}
-	d := InvalidInputDetails{}
-	d.Problems, d.ProblemsTruncated = capProblems(ps)
-	return &Error{Kind: KindInvalidInput, Message: msg, Details: d}
-}
-
-// sortProblems returns a sorted copy of problems: by field, then by reason,
-// both compared byte by byte.
-func sortProblems(problems []Problem) []Problem {
-	ps := slices.Clone(problems)
-	slices.SortFunc(ps, func(a, b Problem) int {
-		return cmp.Or(strings.Compare(a.Field, b.Field), strings.Compare(a.Reason, b.Reason))
-	})
-	return ps
-}
-
-// capProblems returns the first MaxProblems of ps, and whether any were cut.
-func capProblems(ps []Problem) ([]Problem, bool) {
-	if len(ps) > MaxProblems {
-		return ps[:MaxProblems], true
-	}
-	return ps, false
-}
-
-type EnvironmentDetails struct {
-	Variable string `json:"variable"`
-}
-
-// Environment reports that the environment lacks what koan needs to locate
-// its files; variable names the environment variable, e.g. HOME.
-func Environment(variable string) *Error {
+// New makes an error of the given kind.
+func New(kind Kind, format string, args ...any) *Error {
 	return &Error{
-		Kind:    KindEnvironment,
-		Message: fmt.Sprintf("cannot locate koan's files: $%s is unset or not an absolute path", variable),
-		Details: EnvironmentDetails{Variable: variable},
+		Kind: kind, Message: fmt.Sprintf(format, args...),
+		IDs: []int64{}, Folders: []string{}, Paths: []string{}, Problems: []Problem{}, ChangedPaths: []string{},
 	}
 }
 
-// Missing names the first absent piece of a root that is not initialized.
-type Missing string
+// NewConflict makes a conflict error refused by rule.
+func NewConflict(rule, format string, args ...any) *Error {
+	e := New(Conflict, format, args...)
+	e.Rule = &rule
+	return e
+}
 
+// HasRule reports whether e is a conflict refused by rule.
+func (e *Error) HasRule(rule string) bool { return e != nil && e.Rule != nil && *e.Rule == rule }
+
+func (e *Error) WithIDs(ids ...int64) *Error       { e.IDs = append(e.IDs, ids...); return e }
+func (e *Error) WithFolders(fs ...string) *Error   { e.Folders = append(e.Folders, fs...); return e }
+func (e *Error) WithPaths(ps ...string) *Error     { e.Paths = append(e.Paths, ps...); return e }
+func (e *Error) WithProblems(ps ...Problem) *Error { e.Problems = append(e.Problems, ps...); return e }
+func (e *Error) WithChanged(paths ...string) *Error {
+	e.ChangedPaths = append(e.ChangedPaths, paths...)
+	return e
+}
+
+// Invalid is an invalid-input error listing every problem found.
+func Invalid(ps []Problem) *Error {
+	msg := fmt.Sprintf("the input has %d problems", len(ps))
+	if len(ps) == 1 {
+		msg = "the input is invalid: " + ps[0].Field + " " + ps[0].Reason
+	}
+	return New(InvalidInput, "%s", msg).WithProblems(ps...)
+}
+
+// FromOS is the io error for an OS error on path that no caller gave a
+// meaning to.
+func FromOS(path string, err error) *Error {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return New(IO, "%s: %s", path, errno.Error()).WithPaths(path)
+	}
+	return New(IO, "%s: %s", path, err.Error()).WithPaths(path)
+}
+
+// IsErrno reports whether err is, or wraps, one of the given errnos.
+func IsErrno(err error, errnos ...syscall.Errno) bool {
+	var errno syscall.Errno
+	if !errors.As(err, &errno) {
+		return false
+	}
+	for _, e := range errnos {
+		if errno == e {
+			return true
+		}
+	}
+	return false
+}
+
+// Warning kinds.
 const (
-	MissingConfig   Missing = "config"
-	MissingRoot     Missing = "root"
-	MissingMetadata Missing = "metadata"
-	MissingState    Missing = "state"
+	WarnUnusableFile      = "unusable-file"
+	WarnDanglingReference = "dangling-reference"
 )
 
-type NotInitializedDetails struct {
-	Missing Missing `json:"missing"`
-}
-
-func NotInitialized(missing Missing) *Error {
-	var msg string
-	switch missing {
-	case MissingConfig:
-		msg = "no config: run init"
-	case MissingRoot:
-		msg = "the configured root does not exist"
-	case MissingMetadata:
-		msg = "the root has no koan.json"
-	case MissingState:
-		msg = "this machine has no state file for the root: run koan doctor, then koan repair --kinds state-missing"
-	default:
-		msg = "not initialized"
-	}
-	return &Error{Kind: KindNotInitialized, Message: msg, Details: NotInitializedDetails{Missing: missing}}
-}
-
-// NotFoundDetails lists every missing thing. All three lists are always
-// present, empty when not applicable.
-type NotFoundDetails struct {
-	Folders []string `json:"folders"`
+// Warning is a problem that did not stop the command.
+type Warning struct {
+	Kind    string   `json:"kind"`
+	Message string   `json:"message"`
 	IDs     []int64  `json:"ids"`
 	Paths   []string `json:"paths"`
 }
 
-// NotFound reports missing tree folder paths, task IDs, and filesystem paths.
-func NotFound(folders []string, ids []int64, paths []string) *Error {
-	d := NotFoundDetails{Folders: nonNil(folders), IDs: nonNil(ids), Paths: nonNil(paths)}
-	var parts []string
-	for _, f := range d.Folders {
-		parts = append(parts, "folder "+f)
-	}
-	for _, id := range d.IDs {
-		parts = append(parts, fmt.Sprintf("task %d", id))
-	}
-	parts = append(parts, d.Paths...)
-	return &Error{Kind: KindNotFound, Message: "not found: " + strings.Join(parts, ", "), Details: d}
+// Finding kinds, in the order doctor reports them.
+var FindingKinds = []string{
+	"temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes",
+	"duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry",
 }
 
-// Rule is the rule that refused a conflicting operation. Callers treat an
-// unknown rule as a generic conflict.
-type Rule string
-
-const (
-	RuleAcyclic           Rule = "acyclic"
-	RuleIDExhausted       Rule = "id-exhausted"
-	RuleConfigExists      Rule = "config-exists"
-	RuleRootNotEmpty      Rule = "root-not-empty"
-	RuleDuplicateID       Rule = "duplicate-id"
-	RuleIDAboveLastID     Rule = "id-above-last-id"
-	RuleNotEmpty          Rule = "not-empty"
-	RuleDestinationExists Rule = "destination-exists"
-	RuleCaseClash         Rule = "case-clash"
-	RuleClaimed           Rule = "claimed"
-	RuleTaskDone          Rule = "task-done"
-	RuleTokenMismatch     Rule = "token-mismatch"
-)
-
-// ConflictDetails carries Cycles only for RuleAcyclic, where Cycles[i] is one
-// cycle through IDs[i], and Claims only for RuleClaimed and
-// RuleTokenMismatch, where Claims[i] is the effective claim on IDs[i], or nil
-// when it has none. A claim is the caller's own type: errs imports none of
-// koan's packages.
-type ConflictDetails struct {
-	Rule   Rule      `json:"rule"`
-	IDs    []int64   `json:"ids"`
-	Cycles [][]int64 `json:"cycles,omitempty"`
-	Claims []any     `json:"claims,omitempty"`
-}
-
-// ClaimConflict reports a refusal over a claim: RuleClaimed, a claim of a
-// task that has an effective one, or RuleTokenMismatch, a write that lacks
-// the token of a task's locked claim or was given one the claim does not
-// have. claims[i] is the effective claim on ids[i], as a task view shows it,
-// or nil. Any other rule, or lists of different lengths, is a bug, reported as
-// internal.
-func ClaimConflict(rule Rule, ids []int64, claims []any) *Error {
-	if (rule != RuleClaimed && rule != RuleTokenMismatch) || len(ids) == 0 || len(claims) != len(ids) {
-		return Internal(fmt.Sprintf("claim conflict %s with %d ids and %d claims", rule, len(ids), len(claims)))
-	}
-	msg := fmt.Sprintf("task %s is already claimed", joinIDs(ids))
-	if rule == RuleTokenMismatch {
-		msg = fmt.Sprintf("task %s: the token given is not the token of its claim, or it has a locked claim and none was given", joinIDs(ids))
-	}
-	return &Error{Kind: KindConflict, Message: msg, Details: ConflictDetails{Rule: rule, IDs: ids, Claims: claims}}
-}
-
-// Conflict reports a refusal under any rule but RuleAcyclic, which has its
-// own constructor; RuleAcyclic here is a bug, reported as internal.
-func Conflict(rule Rule, ids []int64) *Error {
-	if rule == RuleAcyclic {
-		return Internal("acyclic conflict without cycles")
-	}
-	var msg string
-	switch rule {
-	case RuleIDExhausted:
-		msg = "no task ID left under the ID ceiling"
-	case RuleConfigExists:
-		msg = "a config already exists"
-	case RuleRootNotEmpty:
-		msg = "the root is a non-empty directory without koan.json"
-	case RuleDuplicateID:
-		msg = fmt.Sprintf("more than one task file has ID %s", joinIDs(ids))
-	case RuleIDAboveLastID:
-		msg = fmt.Sprintf("task ID %s is above last_id; repair the tree with doctor first", joinIDs(ids))
-	case RuleNotEmpty:
-		msg = "the folder holds tasks, folders, or other files; delete it recursively to remove them too"
-	case RuleDestinationExists:
-		msg = "something already exists where the folder, or the task's notes, would move"
-	case RuleTaskDone:
-		msg = fmt.Sprintf("task %s is done, so it cannot be claimed; reopen it first", joinIDs(ids))
-	default:
-		msg = "conflict: " + string(rule)
-	}
-	return &Error{Kind: KindConflict, Message: msg, Details: ConflictDetails{Rule: rule, IDs: nonNil(ids)}}
-}
-
-// CaseClash reports a folder, at path, whose name differs only in case from
-// another's, at other: one already there, or another the operation would
-// create.
-func CaseClash(path, other string) *Error {
-	return &Error{
-		Kind:    KindConflict,
-		Message: path + " and " + other + " differ only in case; folder names must differ by more than case",
-		Details: ConflictDetails{Rule: RuleCaseClash, IDs: []int64{}},
-	}
-}
-
-// Acyclic reports blockers that would create a cycle: cycles[i] is the cycle
-// through ids[i], at least two distinct IDs, ids[i] among them. Anything else
-// is a bug, reported as internal.
-func Acyclic(ids []int64, cycles [][]int64) *Error {
-	if len(ids) == 0 || len(cycles) != len(ids) {
-		return Internal(fmt.Sprintf("acyclic conflict with %d ids and %d cycles", len(ids), len(cycles)))
-	}
-	for i, c := range cycles {
-		if len(c) < 2 {
-			return Internal(fmt.Sprintf("acyclic conflict: cycle through %d has %d IDs", ids[i], len(c)))
-		}
-		if !slices.Contains(c, ids[i]) {
-			return Internal(fmt.Sprintf("acyclic conflict: cycle %v does not pass through %d", c, ids[i]))
-		}
-		if sorted := slices.Sorted(slices.Values(c)); len(slices.Compact(sorted)) != len(c) {
-			return Internal(fmt.Sprintf("acyclic conflict: cycle %v repeats an ID", c))
-		}
-	}
-	return &Error{
-		Kind:    KindConflict,
-		Message: fmt.Sprintf("blocker(s) %s would create a cycle", joinIDs(ids)),
-		Details: ConflictDetails{Rule: RuleAcyclic, IDs: nonNil(ids), Cycles: cycles},
-	}
-}
-
-func Busy() *Error {
-	return &Error{Kind: KindBusy, Message: "another write held the write lock throughout the wait", Details: empty{}}
-}
-
-// CorruptReason says why a file is corrupt.
-type CorruptReason string
-
-const (
-	CorruptNotJSON        CorruptReason = "not-json"
-	CorruptInvalid        CorruptReason = "invalid"
-	CorruptUnexpectedFile CorruptReason = "unexpected-file"
-)
-
-// CorruptCause is why a file is corrupt, with what is wrong: Problems for an
-// invalid JSON file, each at a JSON Pointer into the file; Detail for a file
-// that is not-json, or for an invalid config, which is not JSON.
-type CorruptCause struct {
-	Reason   CorruptReason
-	Problems []Problem
-	Detail   string
-}
-
-type CorruptDetails struct {
-	Path              string        `json:"path"`
-	Reason            CorruptReason `json:"reason"`
-	Problems          []Problem     `json:"problems,omitempty"`
-	ProblemsTruncated bool          `json:"problems_truncated,omitempty"`
-	Detail            string        `json:"detail,omitempty"`
-}
-
-// Corrupt reports a file corrupt for a reason that carries nothing more:
-// unexpected-file.
-func Corrupt(path string, reason CorruptReason) *Error {
-	return CorruptBy(path, CorruptCause{Reason: reason})
-}
-
-// CorruptBy reports a file corrupt for cause c. Problems are sorted as
-// InvalidInput sorts them, then cut to the first MaxProblems; the
-// message names the first, or the detail. A not-json or invalid cause with
-// nothing to say what is wrong is a bug, reported as internal.
-func CorruptBy(path string, c CorruptCause) *Error {
-	d := CorruptDetails{Path: path, Reason: c.Reason, Detail: c.Detail}
-	var msg string
-	switch {
-	case len(c.Problems) > 0:
-		ps := sortProblems(c.Problems)
-		msg = fmt.Sprintf("%s: corrupt: at %q: %s", path, ps[0].Field, ps[0].Reason)
-		if len(ps) > 1 {
-			msg += fmt.Sprintf(" (and %d more)", len(ps)-1)
-		}
-		d.Problems, d.ProblemsTruncated = capProblems(ps)
-	case c.Detail != "":
-		msg = fmt.Sprintf("%s: corrupt: %s", path, c.Detail)
-	case c.Reason == CorruptUnexpectedFile:
-		msg = fmt.Sprintf("%s: corrupt (%s)", path, c.Reason)
-	default:
-		return Internal(fmt.Sprintf("%s: corrupt (%s) with nothing to say why", path, c.Reason))
-	}
-	return &Error{Kind: KindCorrupt, Message: msg, Details: d}
-}
-
-type IODetails struct {
-	Path string `json:"path"`
-	Code string `json:"code"`
-}
-
-// IO reports an OS error by its symbolic name. Use FromOS to build one from a
-// Go error, which falls back to internal when no name applies.
-func IO(path, code string) *Error {
-	return &Error{Kind: KindIO, Message: fmt.Sprintf("%s: %s", path, code), Details: IODetails{Path: path, Code: code}}
-}
-
-type UnsupportedFormatDetails struct {
-	Path      string  `json:"path"`
-	Found     int64   `json:"found"`
-	Supported []int64 `json:"supported"`
-	// Field is "migration" when what is unsupported is the migration step
-	// koan.json records, not its schema; absent otherwise.
-	Field string `json:"field,omitempty"`
-}
-
-func UnsupportedFormat(path string, found int64, supported []int64) *Error {
-	return &Error{
-		Kind:    KindUnsupportedFormat,
-		Message: fmt.Sprintf("%s: format version %d is not supported", path, found),
-		Details: UnsupportedFormatDetails{Path: path, Found: found, Supported: nonNil(supported)},
-	}
-}
-
-// UnsupportedMigration is unsupported-format for a koan.json that records
-// found, a migration step past this binary's latest.
-func UnsupportedMigration(path string, found, latest int64) *Error {
-	return &Error{
-		Kind:    KindUnsupportedFormat,
-		Message: fmt.Sprintf("%s: migration step %d is past this binary's latest, %d", path, found, latest),
-		Details: UnsupportedFormatDetails{Path: path, Found: found, Supported: []int64{latest}, Field: "migration"},
-	}
-}
-
-// MigrationPendingDetails are the step koan.json records and this binary's
-// latest.
-type MigrationPendingDetails struct {
-	Recorded int64 `json:"recorded"`
-	Latest   int64 `json:"latest"`
-}
-
-// MigrationPending reports a root that needs migration (operations.md, Root
-// states).
-func MigrationPending(recorded, latest int64) *Error {
-	return &Error{
-		Kind:    KindMigrationPending,
-		Message: fmt.Sprintf("the tree needs migration: it records step %d, this binary's latest is %d; run koan migrate", recorded, latest),
-		Details: MigrationPendingDetails{Recorded: recorded, Latest: latest},
-	}
-}
-
-// Internal reports a bug koan detects. Panics are never turned into one.
-func Internal(message string) *Error {
-	return &Error{Kind: KindInternal, Message: message, Details: empty{}}
-}
-
-// UsageProblem is one command-line problem. Argument is the offending token,
-// nil when the problem is something missing. A pointer, since "" is a token.
-type UsageProblem struct {
-	Argument *string `json:"argument,omitempty"`
-	Reason   string  `json:"reason"`
-}
-
-type UsageDetails struct {
-	Problems []UsageProblem `json:"problems"`
-}
-
-// Usage reports every command-line problem, in the order the parser found
-// them. An empty problems is a bug, reported as internal.
-func Usage(problems []UsageProblem) *Error {
-	if len(problems) == 0 {
-		return Internal("usage error with no problems")
-	}
-	return &Error{Kind: KindUsage, Message: "usage: " + problems[0].Reason, Details: UsageDetails{Problems: problems}}
-}
-
-func nonNil[T any](s []T) []T {
-	if s == nil {
-		return []T{}
-	}
-	return s
-}
-
-func joinIDs(ids []int64) string {
-	parts := make([]string, len(ids))
-	for i, id := range ids {
-		parts[i] = fmt.Sprint(id)
-	}
-	return strings.Join(parts, ", ")
+// Finding is one thing doctor found wrong.
+type Finding struct {
+	Kind       string   `json:"kind"`
+	Message    string   `json:"message"`
+	Paths      []string `json:"paths"`
+	IDs        []int64  `json:"ids"`
+	Repairable bool     `json:"repairable"`
 }

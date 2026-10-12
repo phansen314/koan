@@ -1,7 +1,1 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "folder-path",
-  "type": "string",
-  "pattern": "^/$|^(/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+$",
-  "description": "Folder path from the root, e.g. /proj/travel."
-}
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "folder-path", "type": "string", "pattern": "^/$|^(/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+$", "description": "A folder path from the root, e.g. /proj/travel. Case-sensitive." }

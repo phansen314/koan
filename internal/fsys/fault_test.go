@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
-
-	"github.com/phansen314/koan/internal/errs"
 )
 
 func TestFaultPassesThrough(t *testing.T) {
@@ -75,9 +73,6 @@ func TestErrnoAt(t *testing.T) {
 	must(t, err)
 	_, err = f.Write([]byte("b"))
 	wantErrno(t, err, syscall.ENOSPC)
-	if e := errs.FromOS(name, err); e.Kind != errs.KindIO {
-		t.Errorf("FromOS gave %v", e)
-	}
 	_, err = f.Write([]byte("c"))
 	must(t, err)
 	must(t, f.Close())
@@ -148,10 +143,10 @@ func TestFaultUnlockReleases(t *testing.T) {
 	must(t, err)
 	defer r.Close()
 
-	l, err := r.Lock()
+	l, err := r.Lock(false)
 	must(t, err)
 	wantErrno(t, l.Unlock(), syscall.EIO)
-	l, err = r.Lock()
+	l, err = r.Lock(false)
 	must(t, err)
 	must(t, l.Unlock())
 }

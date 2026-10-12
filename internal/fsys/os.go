@@ -44,11 +44,6 @@ func (OS) OpenRoot(p string) (Root, error) {
 
 func (OS) Mkdir(p string, perm fs.FileMode) error    { return os.Mkdir(p, perm) }
 func (OS) MkdirAll(p string, perm fs.FileMode) error { return os.MkdirAll(p, perm) }
-func (OS) ReadFile(p string) ([]byte, error)         { return os.ReadFile(p) }
-func (OS) Stat(p string) (fs.FileInfo, error)        { return os.Stat(p) }
-func (OS) Lstat(p string) (fs.FileInfo, error)       { return os.Lstat(p) }
-func (OS) Rename(oldpath, newpath string) error      { return os.Rename(oldpath, newpath) }
-func (OS) Remove(p string) error                     { return os.Remove(p) }
 
 type osRoot struct {
 	r    *os.Root
@@ -209,15 +204,8 @@ func (r *osRoot) openNoFollow(name string) (*os.File, fs.FileInfo, error) {
 // TempPrefix begins the name of every temp file koan creates.
 const TempPrefix = ".koan-tmp-"
 
-// LegacyTempPrefix begins the temp files ftask, koan's former name, created.
-// One left by an interrupted ftask write counts as koan's own.
-const LegacyTempPrefix = ".ftask-tmp-"
-
-// IsTemp reports whether name is a temp file's or folder's, koan's or
-// ftask's.
-func IsTemp(name string) bool {
-	return strings.HasPrefix(name, TempPrefix) || strings.HasPrefix(name, LegacyTempPrefix)
-}
+// IsTemp reports whether name is a temp file's or folder's.
+func IsTemp(name string) bool { return strings.HasPrefix(name, TempPrefix) }
 
 // TempName is a fresh temp name in dir: hidden, recognizably koan's, and
 // random, so two writes never collide. For a temp that is not created by

@@ -2,12 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "delete-folder-output",
   "type": "object",
-  "required": ["folder", "folders", "ids", "dependents"],
+  "required": ["folder", "deleted", "dependents"],
   "properties": {
-    "folder": { "$ref": "folder-path", "description": "The folder deleted." },
-    "folders": { "type": "array", "minItems": 1, "items": { "$ref": "folder-path" }, "description": "Every folder removed — folder itself and each folder under it — in tree order." },
-    "ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" }, "description": "The IDs of the tasks removed, in ascending order; empty if the folder held none." },
-    "dependents": { "type": "array", "uniqueItems": true, "items": { "$ref": "task-file#/properties/id" }, "description": "Tasks outside folder whose blocked_by lost at least one of ids, in ascending order." }
+    "folder": { "$ref": "folder-path" },
+    "deleted": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true
+    },
+    "dependents": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true
+    }
   },
   "additionalProperties": false
 }

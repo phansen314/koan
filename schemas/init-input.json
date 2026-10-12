@@ -2,9 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "init-input",
   "type": "object",
-  "required": ["root"],
-  "properties": {
-    "root": { "type": "string", "description": "Absolute root path, with no .. segments. Resolving relative paths or ~ is the caller's job." }
-  },
+  "required": [],
+  "properties": {},
   "additionalProperties": false
 }

@@ -2,23 +2,35 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "list-input",
   "type": "object",
+  "required": [],
   "properties": {
-    "folder": { "$ref": "folder-path", "default": "/", "description": "Only tasks (and folders) in this folder are returned." },
-    "recursive": { "type": "boolean", "default": true, "description": "Also return tasks (and folders) in the folder's subfolders." },
+    "folder": { "$ref": "folder-path", "default": "/" },
+    "recursive": { "type": "boolean", "default": true },
+    "tags_any": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "tags_all": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "limit": { "type": "integer", "minimum": 1 },
+    "fields": {
+      "type": "array",
+      "items": { "$ref": "task#/$defs/field" },
+      "uniqueItems": true
+    },
+    "claimed": { "type": "boolean" },
     "readiness": {
       "type": "array",
-      "minItems": 1,
+      "items": { "enum": ["ready", "blocked", "done"] },
       "uniqueItems": true,
-      "items": { "$ref": "task-view#/properties/readiness" },
-      "default": ["ready", "blocked"],
-      "description": "Only tasks with one of these readiness values. The default leaves out done tasks."
+      "minItems": 1,
+      "default": ["ready", "blocked"]
     },
-    "include_folders": { "type": "boolean", "default": false, "description": "Also return the folders in scope: with recursive, every folder under folder; without, folder and its immediate subfolders." },
-    "tags_any": { "$ref": "frontier-input#/properties/tags_any" },
-    "tags_all": { "$ref": "frontier-input#/properties/tags_all" },
-    "claimed": { "$ref": "frontier-input#/properties/claimed" },
-    "limit": { "$ref": "frontier-input#/properties/limit" },
-    "fields": { "$ref": "frontier-input#/properties/fields" }
+    "include_folders": { "type": "boolean", "default": false }
   },
   "additionalProperties": false
 }

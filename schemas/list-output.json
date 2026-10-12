@@ -4,18 +4,16 @@
   "type": "object",
   "required": ["tasks", "total", "truncated"],
   "properties": {
-    "folders": {
-      "type": "array",
-      "items": { "$ref": "folder-path" },
-      "description": "Present only when include_folders is true: folder itself, then — with recursive — every folder under it, or — without — its immediate subfolders; empty folders included; in tree order. Never narrowed."
-    },
     "tasks": {
       "type": "array",
-      "items": { "anyOf": [{ "$ref": "task-view" }, { "$ref": "task-projection" }] },
-      "description": "Every task in scope with one of the readiness values asked for that passes the filters, in tree order — the first limit of them, with a limit. Task views, or Task projections with fields. May be empty."
+      "items": { "$ref": "task#/$defs/partial" }
     },
-    "total": { "type": "integer", "minimum": 0, "description": "How many tasks in scope, of the readiness asked for, pass the filters, before the limit." },
-    "truncated": { "type": "boolean", "description": "Whether the limit left some out: total is more than the number of tasks returned." }
+    "total": { "type": "integer", "minimum": 0 },
+    "truncated": { "type": "boolean" },
+    "folders": {
+      "type": "array",
+      "items": { "$ref": "folder-path" }
+    }
   },
   "additionalProperties": false
 }

@@ -1,516 +1,384 @@
-// Package e2e tests the built binary: what only a real process shows — exit
-// codes, delivery to stdout, signals, and crashes (implementation-spec.md,
-// Where each kind of test runs).
+// Package e2e tests the built koan binary: the command line, the write lock
+// between processes, and what a crash leaves behind.
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/phansen314/koan/internal/schematest"
 )
 
-func TestExitCodes(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		args  []string
-		stdin string
-		code  int
-		kind  string
-	}{
-		{"success", []string{"version"}, "", 0, ""},
-		{"stdin input", []string{"version", "-i", "-"}, "{}", 0, ""},
-		{"invalid input", []string{"version", "-i", "-"}, `{"x": 1}`, 1, `"kind":"invalid-input"`},
-		{"unreadable input", []string{"version", "-i", "/nonexistent/in.json"}, "", 1, `"kind":"io"`},
-		{"usage", []string{"nosuch"}, "", 2, `"kind":"usage"`},
-		{"bare", nil, "", 2, `"kind":"usage"`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := koan(t, tc.args...)
-			cmd.Stdin = strings.NewReader(tc.stdin)
-			r := run(t, cmd)
-			if r.code != tc.code {
-				t.Fatalf("exit %d, want %d: %s%s", r.code, tc.code, r.stdout, r.stderr)
-			}
-			envelope(t, r)
-			if !strings.Contains(r.stdout, tc.kind) {
-				t.Errorf("want %s: %s", tc.kind, r.stdout)
-			}
-		})
-	}
-}
+var koanBin string
 
-// stdin is never read unless named: a terminal-less, never-closed stdin
-// must not block a command that does not ask for it.
-func TestStdinNotRead(t *testing.T) {
-	cmd := koan(t, "version")
-	pr, pw, err := os.Pipe()
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "koan-e2e-")
 	if err != nil {
-		t.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-	defer pw.Close()
-	cmd.Stdin = pr
-	if r := run(t, cmd); r.code != 0 {
-		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	koanBin = filepath.Join(dir, "koan")
+	build := exec.Command("go", "build", "-tags", "e2e_hooks", "-o", koanBin, "../cmd/koan")
+	if out, err := build.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "build koan: %v\n%s", err, out)
+		os.Exit(1)
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// run is one koan process.
+type run struct {
+	exit   int
+	killed bool
+	stdout string
+	stderr string
+	env    map[string]any // the envelope, nil when stdout is not one
+}
+
+func (r run) result() map[string]any { m, _ := r.env["result"].(map[string]any); return m }
+func (r run) err() map[string]any    { m, _ := r.env["error"].(map[string]any); return m }
+
+// koan runs the binary with HOME set to home. extra are NAME=value pairs
+// added to its environment; stdin is what it reads.
+func koan(t testing.TB, home, stdin string, extra []string, args ...string) run {
+	t.Helper()
+	cmd := exec.Command(koanBin, args...)
+	cmd.Env = append([]string{"HOME=" + home}, extra...)
+	cmd.Stdin = strings.NewReader(stdin)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	r := run{stdout: out.String(), stderr: errb.String()}
+	if ee, ok := err.(*exec.ExitError); ok {
+		r.exit = ee.ExitCode()
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			r.killed = true
+		}
+	} else if err != nil {
+		t.Fatalf("run koan %v: %v", args, err)
+	}
+	if json.Unmarshal(out.Bytes(), &r.env) == nil && r.env != nil {
+		if strings.Count(r.stdout, "\n") != 1 {
+			t.Errorf("koan %v: stdout is not one line: %q", args, r.stdout)
+		}
+		if err := schematest.Check(t, "envelope", out.Bytes()); err != nil {
+			t.Errorf("koan %v: envelope: %v\n%s", args, err, r.stdout)
+		}
+		if res, isOK := r.env["result"]; isOK && len(args) > 0 {
+			schematest.Must(t, args[0]+"-output", res)
+		}
+	}
+	return r
+}
+
+// ok runs koan and requires success.
+func ok(t testing.TB, home string, args ...string) map[string]any {
+	t.Helper()
+	r := koan(t, home, "", nil, args...)
+	if r.exit != 0 || r.env["ok"] != true {
+		t.Fatalf("koan %v: exit %d: %s%s", args, r.exit, r.stdout, r.stderr)
+	}
+	return r.result()
+}
+
+func newHome(t testing.TB) string {
+	t.Helper()
+	home := t.TempDir()
+	ok(t, home, "init")
+	return home
+}
+
+func TestCommandLine(t *testing.T) {
+	home := newHome(t)
+	res := ok(t, home, "create", "Book flights", "--folder", "/proj/travel", "--priority", "2",
+		"--tags", "travel,urgent", "--extra", `{"status":"waiting"}`, "--notes", "hi")
+	task := res["task"].(map[string]any)
+	if task["id"] != float64(1) || task["folder"] != "/proj/travel" || task["priority"] != float64(2) {
+		t.Errorf("create: %v", task)
+	}
+	ok(t, home, "create", "--blocked-by", "1", "--", "-starts with a dash")
+	ok(t, home, "update", "2", "--priority", "null", "--tags-add", "a", "--tags-add", "b,c", "--extra-merge", `{"k":"v"}`, "--extra-remove", "x,y")
+	ok(t, home, "block", "2", "--blockers", "1")
+	ok(t, home, "move", "2", "--to", "/archive")
+	if got := ok(t, home, "list", "--fields", "id,title", "--readiness", "ready,blocked,done"); got["total"] != float64(2) {
+		t.Errorf("list: %v", got)
+	}
+	if got := ok(t, home, "frontier", "--recursive=false"); got["total"] != float64(0) {
+		t.Errorf("frontier of / alone: %v", got)
+	}
+	ok(t, home, "claim-next", "--extra", `{"worker":"w1"}`)
+	if got := ok(t, home, "list", "--claimed"); got["total"] != float64(1) {
+		t.Errorf("list --claimed: %v", got)
+	}
+	ok(t, home, "release", "1")
+	ok(t, home, "done", "1")
+	ok(t, home, "delete-folder", "/proj", "--recursive")
+	if got := ok(t, home, "doctor"); got["healthy"] != true {
+		t.Errorf("doctor after a run of ordinary commands: %v", got)
+	}
+
+	// --input and --notes-file read stdin only when - names it.
+	r := koan(t, home, `{"tasks":[{"ref":"a","title":"First"},{"title":"Second","blocked_by":["a"]}]}`, nil, "create-batch", "-i", "-")
+	if r.exit != 0 {
+		t.Fatalf("create-batch: %s", r.stdout)
+	}
+	r = koan(t, home, "from stdin\n", nil, "create", "With notes", "--notes-file", "-")
+	notes, _ := os.ReadFile(r.result()["task"].(map[string]any)["notes_path"].(string))
+	if string(notes) != "from stdin\n" {
+		t.Errorf("notes %q", notes)
 	}
 }
 
-func TestHelp(t *testing.T) {
-	r := run(t, koan(t, "version", "--help"))
-	if r.code != 0 || !strings.Contains(r.stdout, "Usage:") || r.stderr != "" {
-		t.Errorf("exit %d: %q %q", r.code, r.stdout, r.stderr)
+func TestExitCodesAndStderr(t *testing.T) {
+	home := newHome(t)
+	cases := []struct {
+		args   []string
+		exit   int
+		kind   string
+		stderr string
+	}{
+		{[]string{"show", "99"}, 1, "not-found", "koan: not-found: task 99 does not exist\n"},
+		{[]string{"show", "abc"}, 1, "invalid-input", ""},
+		{[]string{"show"}, 2, "usage", ""},
+		{[]string{"show", "1", "2"}, 2, "usage", ""},
+		{[]string{"show", "1", "--nope"}, 2, "usage", ""},
+		{[]string{"sho", "1"}, 2, "usage", ""},
+		{[]string{}, 2, "usage", ""},
+		{[]string{"help"}, 2, "usage", ""},
+		{[]string{"create", "x", "--notes", "a", "--notes-file", "b"}, 2, "usage", ""},
+		{[]string{"create", "x", "-i", "f"}, 2, "usage", ""},
+		{[]string{"create", "x", "--extra", "{"}, 2, "usage", ""},
+		{[]string{"create", "x", "--priority", "high"}, 1, "invalid-input", ""},
+		{[]string{"list", "--recursive=maybe"}, 1, "invalid-input", ""},
+		{[]string{"create", "x", "--tags", `a"b`}, 1, "invalid-input", ""},
+		{[]string{"__complete", "cre"}, 2, "usage", ""},
+		{[]string{"__completeNoDesc", "cre"}, 2, "usage", ""},
+	}
+	for _, c := range cases {
+		r := koan(t, home, "", nil, c.args...)
+		if r.exit != c.exit || r.err()["kind"] != c.kind {
+			t.Errorf("koan %v: exit %d, %s; want %d, %s", c.args, r.exit, r.stdout, c.exit, c.kind)
+		}
+		if c.stderr != "" && r.stderr != c.stderr {
+			t.Errorf("koan %v: stderr %q, want %q", c.args, r.stderr, c.stderr)
+		}
+		if strings.Count(r.stderr, "\n") > 1 {
+			t.Errorf("koan %v: more than one line on stderr: %q", c.args, r.stderr)
+		}
+	}
+	for _, args := range [][]string{{"--help"}, {"create", "-h"}} {
+		r := koan(t, home, "", nil, args...)
+		if r.exit != 0 || r.env != nil || !strings.Contains(r.stdout, "koan") || r.stderr != "" {
+			t.Errorf("koan %v: exit %d, stdout %q", args, r.exit, r.stdout)
+		}
+	}
+	// A success with warnings says so on stderr.
+	ok(t, home, "create", "a")
+	os.WriteFile(filepath.Join(home, "koan-root", "7.json"), []byte("x"), 0o644)
+	if r := koan(t, home, "", nil, "list"); r.exit != 0 || r.stderr != "koan: 1 warning\n" {
+		t.Errorf("warnings: exit %d, stderr %q", r.exit, r.stderr)
 	}
 }
 
-// A closed pipe: EPIPE, not death by SIGPIPE, so exit 3 with the notice.
-func TestClosedPipe(t *testing.T) {
+// A result that can't be written is neither success nor an ordinary failure.
+func TestStdoutClosed(t *testing.T) {
+	home := newHome(t)
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	pr.Close()
-	defer pw.Close()
-	cmd := koan(t, "version")
+	cmd := exec.Command(koanBin, "info")
+	cmd.Env = []string{"HOME=" + home}
 	cmd.Stdout = pw
-	r := run(t, cmd)
-	if r.code != 3 || !strings.HasPrefix(r.stderr, "koan: result not delivered: ") {
-		t.Errorf("exit %d, stderr %q; want 3 and the notice", r.code, r.stderr)
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	err = cmd.Run()
+	pw.Close()
+	ee, isExit := err.(*exec.ExitError)
+	if !isExit || ee.ExitCode() <= 2 {
+		t.Errorf("exit %v, want above 2; stderr %q", err, errb.String())
 	}
 }
 
-// info locates the config from the real environment, and reports a machine
-// with nothing set up, or no usable HOME, as state: exit 0.
-func TestInfo(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		unset bool // no HOME and no XDG_CONFIG_HOME
-	}{
-		{"fresh home", false},
-		{"no home", true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := koan(t, "info")
-			var want any // config.path: null when it can't be located
-			if tc.unset {
-				cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+// holder starts a write that stops for good just before its first change to
+// the disk, holding the lock, and returns once the lock is seen to be held.
+func holder(t *testing.T, home string) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command(koanBin, "create", "held")
+	cmd.Env = []string{"HOME=" + home, "KOAN_E2E_PAUSE_BEFORE=1"}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=20"}, "create-folder", "/probe"); r.err()["kind"] == "busy" {
+			return cmd
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the holder never took the lock")
+	return nil
+}
+
+func TestLockBusyAndKilledHolder(t *testing.T) {
+	home := newHome(t)
+	h := holder(t, home)
+	r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=100"}, "create", "second")
+	if r.exit != 1 || r.err()["kind"] != "busy" {
+		t.Fatalf("a write under a held lock: exit %d, %s", r.exit, r.stdout)
+	}
+	if r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=100"}, "list"); r.err()["kind"] != "busy" {
+		t.Errorf("a read under a held write lock: %s", r.stdout)
+	}
+	if r := koan(t, home, "", nil, "info"); r.exit != 0 {
+		t.Errorf("info under a held lock: %s", r.stdout)
+	}
+	h.Process.Signal(syscall.SIGKILL)
+	h.Wait()
+	ok(t, home, "create", "after the holder died")
+	if got := ok(t, home, "doctor"); got["healthy"] != true {
+		t.Errorf("doctor after a killed holder: %v", got)
+	}
+}
+
+func TestConcurrentCreates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns 800 processes")
+	}
+	home := newHome(t)
+	const procs, each = 16, 50
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	seen := map[float64]bool{}
+	for p := 0; p < procs; p++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < each; i++ {
+				r := koan(t, home, "", nil, "create", fmt.Sprintf("task %d-%d", p, i), "--folder", fmt.Sprintf("/p%d", p%4))
+				if r.exit != 0 {
+					t.Errorf("create: %s", r.stdout)
+					return
+				}
+				id := r.result()["task"].(map[string]any)["id"].(float64)
+				mu.Lock()
+				if seen[id] {
+					t.Errorf("ID %v issued twice", id)
+				}
+				seen[id] = true
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if len(seen) != procs*each {
+		t.Errorf("%d distinct IDs, want %d", len(seen), procs*each)
+	}
+	if got := ok(t, home, "doctor"); got["healthy"] != true {
+		t.Errorf("doctor: %v", got)
+	}
+}
+
+// Two blocks that would close a cycle between them never both succeed.
+func TestRacingBlocks(t *testing.T) {
+	home := newHome(t)
+	ok(t, home, "create", "a")
+	ok(t, home, "create", "b")
+	for i := 0; i < 20; i++ {
+		var wg sync.WaitGroup
+		exits := make([]int, 2)
+		for j, args := range [][]string{{"block", "1", "--blockers", "2"}, {"block", "2", "--blockers", "1"}} {
+			wg.Add(1)
+			go func() { defer wg.Done(); exits[j] = koan(t, home, "", nil, args...).exit }()
+		}
+		wg.Wait()
+		if exits[0] == 0 && exits[1] == 0 {
+			t.Fatalf("round %d: both blocks succeeded", i)
+		}
+		ok(t, home, "unblock", "1", "--blockers", "2")
+		ok(t, home, "unblock", "2", "--blockers", "1")
+	}
+}
+
+// Two claim-nexts asking at once never get the same task.
+func TestRacingClaims(t *testing.T) {
+	home := newHome(t)
+	for i := 0; i < 8; i++ {
+		ok(t, home, "create", fmt.Sprintf("t%d", i))
+	}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	got := []float64{}
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r := koan(t, home, "", nil, "claim-next")
+			if task, _ := r.result()["task"].(map[string]any); task != nil {
+				mu.Lock()
+				got = append(got, task["id"].(float64))
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	slices.Sort(got)
+	if len(slices.Compact(slices.Clone(got))) != 8 || len(got) != 8 {
+		t.Errorf("claimed %v, want eight distinct tasks", got)
+	}
+}
+
+// A read sees the tree between writes, never part of one: while tasks and a
+// folder are moved back and forth, every list returns every task.
+func TestReadsSeeWholeWrites(t *testing.T) {
+	home := newHome(t)
+	const n = 20
+	for i := 0; i < n; i++ {
+		ok(t, home, "create", fmt.Sprintf("t%d", i), "--folder", "/a/m")
+	}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			from, to := "/a/m", "/z/m"
+			if i%2 == 1 {
+				from, to = to, from
+			}
+			if i%4 < 2 {
+				koan(t, home, "", nil, "move-folder", from, "--to", to)
 			} else {
-				want = filepath.Join(envHome(cmd), configDir, "config.toml")
+				koan(t, home, "", nil, "move", "5", "--to", "/elsewhere"+fmt.Sprint(i%3))
 			}
-			r := run(t, cmd)
-			if r.code != 0 {
-				t.Fatalf("exit %d: %s%s", r.code, r.stdout, r.stderr)
-			}
-			envelope(t, r)
-			var env struct {
-				Result struct {
-					Config      map[string]any `json:"config"`
-					Initialized bool           `json:"initialized"`
-				} `json:"result"`
-			}
-			if err := json.Unmarshal([]byte(r.stdout), &env); err != nil {
-				t.Fatal(err)
-			}
-			if c := env.Result.Config; c["path"] != want || c["state"] != "missing" || env.Result.Initialized {
-				t.Errorf("got %s; want config.path %v, state missing, not initialized", r.stdout, want)
-			}
-		})
-	}
-}
-
-// show against the real filesystem: not-initialized in a fresh home (exit
-// 1), and a task found in a tree written by hand (init comes later).
-func TestShow(t *testing.T) {
-	cmd := koan(t, "show", "1")
-	r := run(t, cmd)
-	envelope(t, r)
-	if r.code != 1 || !strings.Contains(r.stdout, `"missing":"config"`) {
-		t.Fatalf("fresh home: exit %d: %s", r.code, r.stdout)
-	}
-
-	cmd = koan(t, "show", "1")
-	home := envHome(cmd)
-	root := filepath.Join(home, "tasks")
-	for p, content := range map[string]string{
-		filepath.Join(home, configDir, "config.toml"): `root = "` + root + "\"\n",
-		filepath.Join(root, "koan.json"):              `{"schema": 2, "migration": 1}`,
-		filepath.Join(home, configDir, "state.json"):  `{"schema": 1, "root": "` + root + `", "last_id": 1}`,
-		filepath.Join(root, "proj", "1.json"):         `{"schema": 1, "id": 1, "title": "t", "priority": null, "created_at": "2026-09-27T00:00:00Z", "completed_at": null,"updated_at": "2026-09-27T00:00:00Z", "blocked_by": [2], "tags": [], "extra": {}}`,
-	} {
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
+	}()
+	for i := 0; i < 150; i++ {
+		r := koan(t, home, "", nil, "list", "--fields", "id")
+		if r.exit != 0 || r.result()["total"] != float64(n) || len(r.env["warnings"].([]any)) != 0 {
+			t.Errorf("list during moves: %s", r.stdout)
+			break
 		}
 	}
-	r = run(t, cmd)
-	envelope(t, r)
-	for _, want := range []string{`"folder":"/proj"`, `"readiness":"blocked"`, `"kind":"dangling-reference"`} {
-		if r.code != 0 || !strings.Contains(r.stdout, want) {
-			t.Errorf("exit %d, want %s: %s", r.code, want, r.stdout)
-		}
-	}
-}
-
-// init creates a tree the other commands then use; a second init refuses.
-// ~/ is expanded by koan itself, as with no shell in between.
-func TestInit(t *testing.T) {
-	first := koan(t, "init", "~/tasks")
-	home := envHome(first)
-	same := func(args ...string) *exec.Cmd {
-		cmd := exec.Command(binary, args...)
-		cmd.Env = first.Env
-		return cmd
-	}
-	steps(t, []step{
-		{first, 0, `"result":{"root":"` + home + `/tasks","action":"created","last_id":0}`},
-		{same("info"), 0, `"usable":true`},
-		{same("show", "1"), 1, `"kind":"not-found"`},
-		{same("init", home+"/other"), 1, `"rule":"config-exists"`},
-	})
-}
-
-// create writes tasks that show then reads, with notes piped in on stdin.
-func TestCreate(t *testing.T) {
-	tr := newTree(t)
-	home, same := tr.home, tr.cmd
-	steps(t, []step{
-		{same("create", "Deploy"), 0, `"id":1,"title":"Deploy"`},
-		{stdin(same("create", "Fix login bug", "--blocked-by", "1", "--notes-file", "-"), "call first\n"), 0, `"id":2,`},
-		{same("show", "2"), 0, `"blocked_by":[1],"tags":[],"extra":{},"folder":"/","notes_path":"` + home + `/tasks/2.md","readiness":"blocked","blocking":[1]`},
-		{same("create", "x", "--folder", "/nope", "--blocked-by", "9"), 1, `"details":{"folders":["/nope"],"ids":[9],"paths":[]}`},
-		{same("create", "x", "--notes", "a", "--notes-file", "-"), 2, `"kind":"usage"`},
-		{same("info"), 0, `"last_id":2`},
-	})
-	if b, err := os.ReadFile(filepath.Join(home, "tasks", "2.md")); err != nil || string(b) != "call first\n" {
-		t.Errorf("2.md: %q %v", b, err)
-	}
-}
-
-// create-batch writes a plan: refs become IDs, folders are made, and the
-// tasks read back like any others.
-func TestCreateBatch(t *testing.T) {
-	tr := newTree(t)
-	same := tr.cmd
-	steps(t, []step{
-		{same("create", "Existing"), 0, `"id":1,`},
-		{stdin(same("create-batch", "-i", "-"), `{"folder": "/work/api", "tasks": [
-			{"ref": "schema", "title": "Design schema", "notes": "draft"},
-			{"ref": "migrate", "title": "Write migrations", "blocked_by": ["schema"]},
-			{"title": "Deploy", "folder": "/ops", "blocked_by": ["migrate", 1]}]}`),
-			0, `"result":{"ids":[2,3,4],"refs":{"schema":2,"migrate":3},"folders_created":["/ops","/work","/work/api"]}`},
-		{same("show", "4"), 0, `"blocked_by":[1,3],"tags":[],"extra":{},"folder":"/ops"`},
-		{same("frontier", "--fields", "id"), 0, `"tasks":[{"id":1},{"id":2}]`},
-		{stdin(same("create-batch", "-i", "-"), `{"tasks": [{"title": "x", "blocked_by": ["later"]}, {"ref": "later", "title": "y"}]}`),
-			1, `"field":"/tasks/0/blocked_by/0"`},
-		{same("create-batch"), 2, `"reason":"missing required option --input"`},
-		{same("info"), 0, `"last_id":4`},
-	})
-	if b, err := os.ReadFile(filepath.Join(tr.root(), "work", "api", "2.md")); err != nil || string(b) != "draft" {
-		t.Errorf("2.md: %q %v", b, err)
-	}
-}
-
-// create-folder makes the folders create then files tasks in.
-func TestCreateFolder(t *testing.T) {
-	same := newTree(t).cmd
-	steps(t, []step{
-		{same("create-folder", "/proj/travel"), 1, `"folders":["/proj"]`},
-		{same("create-folder", "-p", "/proj/travel"), 0, `"result":{"folder":"/proj/travel","created":["/proj","/proj/travel"]}`},
-		{same("create-folder", "-p", "/proj/travel"), 0, `"created":[]`},
-		{same("create", "Book flights", "--folder", "/proj/travel"), 0, `"id":1,`},
-		{same("show", "1"), 0, `"folder":"/proj/travel"`},
-	})
-}
-
-// done makes a dependent ready, and reopen blocks it again; doing
-// either twice changes nothing.
-func TestDoneReopen(t *testing.T) {
-	same := newTree(t).cmd
-	steps(t, []step{
-		{same("create", "Book flights"), 0, `"id":1,`},
-		{same("create", "Pack bags", "--blocked-by", "1"), 0, `"id":2,`},
-		{same("show", "2"), 0, `"readiness":"blocked","blocking":[1]`},
-		{same("done", "1"), 0, `"changed":true`},
-		{same("show", "2"), 0, `"readiness":"ready","blocking":[]`},
-		{same("done", "1"), 0, `"changed":false`},
-		{same("done", "9"), 1, `"ids":[9]`},
-		{same("reopen", "1"), 0, `"completed_at":null,`},
-		{same("show", "2"), 0, `"readiness":"blocked","blocking":[1]`},
-		{same("reopen", "1"), 0, `"changed":false`},
-	})
-}
-
-// update changes only what it names; the same update again changes nothing.
-func TestUpdate(t *testing.T) {
-	same := newTree(t).cmd
-	steps(t, []step{
-		{same("create", "Book flights", "--tags", "travel", "--extra", `{"status":"new"}`), 0, `"id":1,`},
-		{same("update", "1", "--priority", "2", "--tags-add", "urgent", "--extra-merge", `{"status":"waiting"}`), 0,
-			`"priority":2,"created_at":`},
-		{same("show", "1"), 0, `"tags":["travel","urgent"],"extra":{"status":"waiting"}`},
-		{same("update", "1", "--priority", "2", "--tags-add", "urgent", "--extra-merge", `{"status":"waiting"}`), 0, `"changed":[]`},
-		{same("update", "1"), 1, `"kind":"invalid-input"`},
-		{same("update", "1", "--tags-add", "x", "--tags-replace-all", "y"), 1, `"field":"/tags/add"`},
-		{same("update", "9", "--title", "x"), 1, `"ids":[9]`},
-	})
-}
-
-// block adds blockers that show then sees, and refuses a cycle; unblock
-// removes them again.
-func TestBlockUnblock(t *testing.T) {
-	same := newTree(t).cmd
-	steps(t, []step{
-		{same("create", "a"), 0, `"id":1,`},
-		{same("create", "b"), 0, `"id":2,`},
-		{same("create", "c"), 0, `"id":3,`},
-		{same("block", "1", "--blockers", "2"), 0, `"blocked_by":[2],`},
-		{same("block", "2", "--blockers", "3"), 0, `"added":[3]`},
-		{same("show", "1"), 0, `"readiness":"blocked","blocking":[2]`},
-		{same("block", "3", "--blockers", "1,2"), 1, `"details":{"rule":"acyclic","ids":[1,2],"cycles":[[3,1,2],[3,2]]}`},
-		{same("block", "1", "--blockers", "2"), 0, `"added":[]`},
-		{same("block", "1", "--blockers", "1"), 1, `"kind":"invalid-input"`},
-		{same("block", "1"), 2, `"kind":"usage"`},
-		{same("unblock", "1", "--blockers", "2,9"), 0, `"blocked_by":[],`},
-		{same("show", "1"), 0, `"readiness":"ready","blocking":[]`},
-		{same("unblock", "1", "--blockers", "2"), 0, `"removed":[]`},
-	})
-}
-
-// list returns tasks across folders in tree order, with their readiness;
-// frontier returns only the ready ones, in the order to work on them.
-func TestListFrontier(t *testing.T) {
-	same := newTree(t).cmd
-	steps(t, []step{
-		{same("list"), 0, `"result":{"tasks":[],"total":0,"truncated":false}`},
-		{same("create-folder", "-p", "/proj/travel"), 0, `"created"`},
-		{same("create", "b", "--folder", "/proj/travel"), 0, `"id":1,`},
-		{same("create", "a", "--blocked-by", "1"), 0, `"id":2,`},
-		{same("done", "1"), 0, `"changed":true`},
-		{same("list"), 0, `"tasks":[{"schema":1,"id":2,`},
-		{same("list", "--readiness", "ready,blocked,done", "--include-folders"), 0, `"folders":["/","/proj","/proj/travel"],"tasks":[{"schema":1,"id":2,`},
-		{same("list", "--folder", "/nope"), 1, `"folders":["/nope"]`},
-		{same("create", "c", "--priority", "5", "--folder", "/proj"), 0, `"id":3,`},
-		{same("create", "d", "--blocked-by", "3"), 0, `"id":4,`},
-		{same("frontier"), 0, `"tasks":[{"schema":1,"id":3,`},
-		{same("frontier", "--folder", "/proj", "--recursive=false"), 0, `"tasks":[{"schema":1,"id":3,`},
-		{same("done", "3"), 0, `"changed":true`},
-		{same("frontier", "--folder", "/proj"), 0, `"result":{"tasks":[],"total":0,"truncated":false}`},
-	})
-}
-
-// why explains a blocked task from the command line, and narrows its tasks.
-func TestWhy(t *testing.T) {
-	same := newTree(t).cmd
-	steps(t, []step{
-		{same("create", "a"), 0, `"id":1,`},
-		{same("create", "b", "--blocked-by", "1"), 0, `"id":2,`},
-		{same("create", "c", "--blocked-by", "2"), 0, `"id":3,`},
-		{same("why", "3"), 0, `"result":{"readiness":"blocked","ready":[1],"stuck":[]},"warnings":[]`},
-		{same("why", "3", "--include-tasks", "--fields", "blocking"), 0, `"tasks":[{"id":3,"blocking":[2]},{"id":2,"blocking":[1]},{"id":1,"blocking":[]}]`},
-		{same("why", "3", "--fields", "blocking"), 1, `"field":"/fields"`},
-		{same("done", "1"), 0, `"changed":true`},
-		{same("why", "3"), 0, `"ready":[2]`},
-		{same("why", "9"), 1, `"kind":"not-found"`},
-	})
-}
-
-// frontier and list narrowed from the command line: each output shape —
-// projected, cut by a limit, the count alone, filtered — is exactly as
-// expected and passes its output schema, and a warning survives narrowing.
-func TestNarrowing(t *testing.T) {
-	tr := newTree(t)
-	same := tr.cmd
-	steps(t, []step{
-		{same("create", "a", "--priority", "1", "--tags", "db"), 0, `"id":1,`},
-		{same("create", "b", "--priority", "3", "--tags", "db,backend"), 0, `"id":2,`},
-		{same("create", "c", "--blocked-by", "1"), 0, `"id":3,`},
-		{same("create", "d"), 0, `"id":4,`},
-		{same("done", "4"), 0, `"changed":true`},
-	})
-	for _, tc := range []struct {
-		args []string
-		want string
-	}{
-		{[]string{"frontier", "--limit", "1", "--fields", "title,priority"},
-			`{"tasks":[{"id":2,"title":"b","priority":3}],"total":2,"truncated":true}`},
-		{[]string{"frontier", "--limit", "0"}, `{"tasks":[],"total":2,"truncated":true}`},
-		{[]string{"frontier", "--tags-all", "db,backend", "--fields", "id"}, `{"tasks":[{"id":2}],"total":1,"truncated":false}`},
-		{[]string{"list", "--readiness", "blocked", "--fields", "readiness,blocking"},
-			`{"tasks":[{"id":3,"readiness":"blocked","blocking":[1]}],"total":1,"truncated":false}`},
-		{[]string{"list", "--readiness", "done", "--fields", "readiness"},
-			`{"tasks":[{"id":4,"readiness":"done"}],"total":1,"truncated":false}`},
-		{[]string{"list", "--tags-any", "backend,nope", "--limit", "5", "--fields", "tags", "--include-folders"},
-			`{"folders":["/"],"tasks":[{"id":2,"tags":["backend","db"]}],"total":1,"truncated":false}`},
-	} {
-		r := run(t, same(tc.args...))
-		envelope(t, r)
-		var env struct{ Result json.RawMessage }
-		if err := json.Unmarshal([]byte(r.stdout), &env); err != nil {
-			t.Fatal(err)
-		}
-		if r.code != 0 || string(env.Result) != tc.want {
-			t.Errorf("%q: exit %d, result\n  %s\nwant\n  %s", tc.args, r.code, env.Result, tc.want)
-		}
-		if ok, f := schematest.Check(t, tc.args[0]+"-output", env.Result); !ok {
-			t.Errorf("%q: %s-output rejects at %s", tc.args, tc.args[0], f)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(tr.home, "tasks", "9.json"), []byte("{"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	steps(t, []step{
-		{same("frontier", "--limit", "0"), 0, `"warnings":[{"kind":"unusable-file"`},
-		{same("list", "--readiness", "nope"), 1, `"field":"/readiness/0"`},
-		{same("frontier", "--fields", "id,nope"), 1, `"field":"/fields/1"`},
-		{same("list", "--include-complete"), 2, `"kind":"usage"`},
-	})
-}
-
-// A relative root is resolved against the working directory as the shell
-// reports it: through a symlink, not with it resolved.
-func TestInitRelative(t *testing.T) {
-	cmd := koan(t, "init", "tasks")
-	home := envHome(cmd)
-	if err := os.Mkdir(filepath.Join(home, "real"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(home, "link")
-	if err := os.Symlink(filepath.Join(home, "real"), link); err != nil {
-		t.Fatal(err)
-	}
-	cmd.Dir = link
-	cmd.Env = append(cmd.Env, "PWD="+link)
-	r := run(t, cmd)
-	envelope(t, r)
-	if r.code != 0 || !strings.Contains(r.stdout, `"root":"`+link+`/tasks"`) {
-		t.Fatalf("exit %d: %s", r.code, r.stdout)
-	}
-	if _, err := os.Stat(filepath.Join(home, "real", "tasks", "koan.json")); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestFullDisk(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("/dev/full is Linux-only")
-	}
-	full, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
-	if err != nil {
-		t.Skip(err)
-	}
-	defer full.Close()
-	cmd := koan(t, "version")
-	cmd.Stdout = full
-	r := run(t, cmd)
-	if r.code != 3 || !strings.HasPrefix(r.stderr, "koan: result not delivered: ") {
-		t.Errorf("exit %d, stderr %q; want 3 and the notice", r.code, r.stderr)
-	}
-}
-
-// A panic is a crash: SIGABRT, exit 134, never 2 (a usage error).
-func TestCrash(t *testing.T) {
-	cmd := koan(t, "version")
-	cmd.Env = append(cmd.Env, "KOAN_E2E_PANIC=1")
-	r := run(t, cmd)
-	ws, _ := cmd.ProcessState.Sys().(syscall.WaitStatus)
-	if !ws.Signaled() || ws.Signal() != syscall.SIGABRT {
-		t.Errorf("exit %d (%v), want death by SIGABRT", r.code, cmd.ProcessState)
-	}
-	if r.stdout != "" {
-		t.Errorf("stdout %q, want nothing", r.stdout)
-	}
-}
-
-// The release build has no test hooks: their variables change nothing
-// (implementation-spec.md, Test hooks).
-func TestReleaseIgnoresHooks(t *testing.T) {
-	cmd := koan(t, "version")
-	cmd.Path, cmd.Args[0] = release, release
-	cmd.Env = append(cmd.Env, "KOAN_E2E_PANIC=1", "KOAN_E2E_HOLD=1", "KOAN_E2E_CRASH_BEFORE=1", "KOAN_E2E_CLOCK=x")
-	r := run(t, cmd)
-	envelope(t, r)
-	if r.code != 0 {
-		t.Errorf("exit %d: %s", r.code, r.stdout)
-	}
-}
-
-// stderr gets one line after the envelope: a failure's kind and message, a
-// count of warnings, or nothing (cli-spec.md, Output).
-func TestStderr(t *testing.T) {
-	tr := newTree(t)
-	for _, title := range []string{"a", "b", "c", "d"} {
-		steps(t, []step{{tr.cmd("create", title), 0, `"ok":true`}})
-	}
-	for _, id := range []string{"2", "3", "4"} {
-		if err := os.WriteFile(filepath.Join(tr.root(), id+".json"), nil, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, tc := range []struct {
-		name   string
-		cmd    *exec.Cmd
-		code   int
-		stderr string
-	}{
-		{"failure", tr.cmd("done", "999"), 1, "koan: not-found: not found: task 999\n"},
-		{"usage", tr.cmd("nosuch"), 2, "koan: usage: unknown command\n"},
-		{"warnings", tr.cmd("list"), 0, "koan: 3 warnings (see .warnings in the output)\n"},
-		{"clean", tr.cmd("version"), 0, ""},
-		{"corrupt", tr.cmd("show", "2"), 1, "koan: corrupt: " + filepath.Join(tr.root(), "2.json") + ": corrupt: empty\n"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := run(t, tc.cmd)
-			envelope(t, r)
-			if r.code != tc.code || r.stderr != tc.stderr {
-				t.Errorf("exit %d, stderr %q; want %d, %q", r.code, r.stderr, tc.code, tc.stderr)
-			}
-		})
-	}
-
-	t.Run("not delivered", func(t *testing.T) {
-		if runtime.GOOS != "linux" {
-			t.Skip("/dev/full is Linux-only")
-		}
-		full, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
-		if err != nil {
-			t.Skip(err)
-		}
-		defer full.Close()
-		cmd := tr.cmd("show", "999") // a failure, so it would have a line
-		cmd.Stdout = full
-		r := run(t, cmd)
-		if r.code != 3 || !strings.HasPrefix(r.stderr, "koan: result not delivered: ") || strings.Count(r.stderr, "\n") != 1 {
-			t.Errorf("exit %d, stderr %q; want 3 and only the notice", r.code, r.stderr)
-		}
-	})
-
-	t.Run("help", func(t *testing.T) {
-		if r := run(t, tr.cmd("--help")); r.code != 0 || r.stderr != "" {
-			t.Errorf("exit %d, stderr %q", r.code, r.stderr)
-		}
-	})
-
-	// A newline in the root's path is escaped, so the line stays one line.
-	t.Run("newline in path", func(t *testing.T) {
-		cmd := koan(t, "init", "~/a\nb")
-		r := run(t, cmd)
-		envelope(t, r)
-		home := envHome(cmd)
-		if err := os.WriteFile(filepath.Join(home, "a\nb", "1.json"), nil, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		show := exec.Command(binary, "show", "1")
-		show.Env = cmd.Env
-		r = run(t, show)
-		if want := "koan: corrupt: " + home + `/a\nb/1.json: corrupt: empty` + "\n"; r.code != 1 || r.stderr != want {
-			t.Errorf("exit %d, stderr %q; want 1, %q", r.code, r.stderr, want)
-		}
-	})
+	close(stop)
+	wg.Wait()
 }

@@ -4,57 +4,32 @@
   "type": "object",
   "required": ["id"],
   "properties": {
-    "id": { "$ref": "task-file#/properties/id", "description": "The task to update." },
-    "token": { "$ref": "claims-file#/$defs/token", "description": "The token of the caller's locked claim on the task (see Targeting writes). Absent: the caller holds no lock." },
-    "title": { "type": "string", "description": "Replace the title. Untrimmed; trimmed and validated per Titles (see Additional validation)." },
-    "priority": { "$ref": "task-file#/properties/priority", "description": "Set the priority; null clears it." },
-    "tags": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": ["replace_all"],
-          "properties": { "replace_all": { "$ref": "task-file#/properties/tags", "description": "The complete new tag set; [] clears it." } },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "minProperties": 1,
-          "properties": {
-            "add": { "$ref": "#/$defs/tag-list", "description": "Tags to add." },
-            "remove": { "$ref": "#/$defs/tag-list", "description": "Tags to remove." }
-          },
-          "additionalProperties": false
-        }
-      ]
+    "id": { "$ref": "task-file#/properties/id" },
+    "title": { "type": "string" },
+    "priority": { "$ref": "task-file#/properties/priority" },
+    "tags_add": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
     },
-    "extra": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": ["replace_all"],
-          "properties": { "replace_all": { "$ref": "task-file#/properties/extra", "description": "The complete new extra map; {} clears it." } },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "minProperties": 1,
-          "properties": {
-            "merge": { "type": "object", "minProperties": 1, "description": "Keys to set; each replaces that key's whole value (shallow merge)." },
-            "remove": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" }, "description": "Keys to delete." }
-          },
-          "additionalProperties": false
-        }
-      ]
-    }
+    "tags_remove": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "tags_replace_all": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "extra_merge": { "type": "object" },
+    "extra_remove": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "extra_replace_all": { "type": "object" }
   },
   "additionalProperties": false,
-  "anyOf": [
-    { "required": ["title"] },
-    { "required": ["priority"] },
-    { "required": ["tags"] },
-    { "required": ["extra"] }
-  ],
-  "$defs": {
-    "tag-list": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "task-file#/$defs/name" } }
-  }
+  "minProperties": 2
 }

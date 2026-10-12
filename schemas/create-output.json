@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "create-output",
+  "type": "object",
+  "required": ["task", "folders_created"],
+  "properties": {
+    "task": { "$ref": "task" },
+    "folders_created": {
+      "type": "array",
+      "items": { "$ref": "folder-path" }
+    }
+  },
+  "additionalProperties": false
+}

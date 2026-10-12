@@ -4,8 +4,7 @@
   "type": "object",
   "required": ["folder"],
   "properties": {
-    "folder": { "$ref": "folder-path" },
-    "parents": { "type": "boolean", "default": false, "description": "Create missing parent folders instead of failing." }
+    "folder": { "$ref": "folder-path" }
   },
   "additionalProperties": false
 }

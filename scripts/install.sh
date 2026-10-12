@@ -2,9 +2,8 @@
 # Sets koan up for Claude Code, OpenCode, or both: the permission rules that
 # let the agent run koan and jq without prompting (except `koan init`, which
 # changes this machine's setup, the deletes, which have no undo but git, and
-# `koan repair`, which changes files to repair the tree, `koan migrate`,
-# which rewrites them to a new format, and `koan force-release`, which clears
-# a claim whose holder may still be working),
+# `koan repair`, which changes files to repair the tree, and `koan migrate`,
+# which rewrites them to a new format),
 # and, for OpenCode, the skill. Claude Code gets the skill from the koan
 # plugin; see the README.
 #
@@ -28,7 +27,7 @@ skill_src=$repo/claude/skills/koan
 claude_dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 claude_settings=$claude_dir/settings.json
 claude_allow='["Bash(koan:*)", "Bash(jq:*)"]'
-claude_ask='["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)", "Bash(koan force-release:*)"]'
+claude_ask='["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]'
 
 oc_dir=${XDG_CONFIG_HOME:-$HOME/.config}/opencode
 oc_json=$oc_dir/opencode.json
@@ -42,8 +41,7 @@ oc_rules='{
   "koan delete *": "ask",
   "koan delete-folder *": "ask",
   "koan repair*": "ask",
-  "koan migrate*": "ask",
-  "koan force-release *": "ask"
+  "koan migrate*": "ask"
 }'
 
 usage() {
@@ -302,10 +300,10 @@ if [[ -n $want_oc ]]; then
 fi
 
 if [[ $mode == install ]]; then
-	if ! koan info | jq -e .result.usable >/dev/null; then
+	if ! koan info | jq -e '.result.state == "usable"' >/dev/null; then
 		echo
-		echo "koan has no usable root yet. Set one up with, e.g.:"
-		echo "  koan init ~/koans"
+		echo "koan has no usable root yet. Set one up with:"
+		echo "  koan init"
 	fi
 	if [[ -n $want_claude ]] && command -v claude >/dev/null &&
 		! claude plugin list --json 2>/dev/null | jq -e 'any(.[]; .id == "koan@koan" and .enabled)' >/dev/null; then

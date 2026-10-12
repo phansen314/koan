@@ -1,36 +1,37 @@
+// Package cli maps the koan command line onto the commands in ops: it
+// builds one command's input from the arguments, runs it, and prints its
+// envelope (spec/cli.md). It adds no behavior of its own.
 package cli
 
 import (
 	"bytes"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"runtime"
-	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	"github.com/phansen314/koan/internal/errs"
-	"github.com/phansen314/koan/internal/jsonio"
+	"github.com/phansen314/koan/internal/fsys"
 	"github.com/phansen314/koan/internal/ops"
-	"github.com/phansen314/koan/internal/pick"
+	"github.com/phansen314/koan/internal/store"
 )
 
-// Env is what one invocation reads and writes besides the operation's own
+// Env is what one invocation reads and writes besides the command's own
 // environment.
 type Env struct {
-	Ops    ops.Env
-	Stdin  io.Reader              // read only when a value names it (--input -)
-	Stdout io.Writer              // closed after the one write, if it is an io.Closer
-	Stderr io.Writer              // only for one line after the result, or the notice when it is not delivered
-	Getwd  func() (string, error) // the working directory, for a relative path
-	Pick   pick.System            // finding and running fzf, for pick only
+	Ops    store.Env
+	Stdin  io.Reader // read only when an option names it with -
+	Stdout io.Writer // closed after the one write, if it is an io.Closer
+	Stderr io.Writer // at most one line
 }
 
-// Exit codes (cli-spec.md, Exit codes).
+// Exit codes.
 const (
 	ExitOK           = 0
 	ExitError        = 1
@@ -38,350 +39,378 @@ const (
 	ExitNotDelivered = 3
 )
 
-// Main runs koan as this process: the real environment and the standard
-// streams. args exclude the program name.
-func Main(args []string) int {
-	return Run(args, ProcessEnv())
-}
-
 // ProcessEnv is this process's environment: the real filesystem, clock, and
 // standard streams.
 func ProcessEnv() Env {
 	return Env{
-		Ops:    ops.NewEnv(os.Getenv, runtime.GOOS),
+		Ops:    store.Env{Home: os.Getenv("HOME"), Now: time.Now, FS: fsys.OS{}, LockWait: store.DefaultLockWait},
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
-		Getwd:  os.Getwd, // $PWD when it names the working directory: as the shell reports it
-		Pick:   pick.OSSystem(),
 	}
 }
+
+// kind is how an option's value becomes a JSON value.
+type kind int
+
+const (
+	text     kind = iota // a string
+	integer              // an integer
+	boolean              // true, or =false
+	ids                  // comma-separated task IDs, repeatable
+	names                // comma-separated strings, repeatable
+	keys                 // one string per occurrence
+	object               // one JSON value
+	priority             // an integer, or null
+)
+
+type option struct {
+	name  string // the option, and in snake_case the input field
+	kind  kind
+	usage string
+	short string // a one-letter form, for the few options that have one
+}
+
+type command struct {
+	name    string
+	short   string
+	subject string // the input field the one positional argument sets; "" for none
+	subjKin kind
+	options []option
+}
+
+var scopeOptions = []option{
+	{"folder", text, "look only in this folder (default /)", ""},
+	{"recursive", boolean, "include the folders under it (default true)", ""},
+	{"tags-any", names, "only tasks with at least one of these tags", ""},
+	{"tags-all", names, "only tasks with all of these tags", ""},
+}
+
+var narrowOptions = append(append([]option{}, scopeOptions...),
+	option{"limit", integer, "return at most this many", ""},
+	option{"fields", names, "return only these fields of each task", ""},
+)
+
+var commands = []command{
+	{name: "init", short: "Create the tree and the state file, or whichever is missing"},
+	{name: "version", short: "Report the binary's version and format"},
+	{name: "info", short: "Report the root's state"},
+	{name: "doctor", short: "Report everything wrong with the tree"},
+	{name: "repair", short: "Fix what can be fixed safely"},
+	{name: "migrate", short: "Convert the tree to this binary's format", options: []option{
+		{"dry-run", boolean, "report what would change and write nothing", ""}}},
+	{name: "create-folder", short: "Create a folder", subject: "folder"},
+	{name: "move-folder", short: "Move or rename a folder", subject: "folder", options: []option{
+		{"to", text, "the folder's new path (required)", ""}}},
+	{name: "delete-folder", short: "Remove a folder and everything in it", subject: "folder", options: []option{
+		{name: "recursive", short: "r", kind: boolean, usage: "remove a folder that is not empty"}}},
+	{name: "create", short: "Create a task", subject: "title", options: []option{
+		{"folder", text, "where the task goes (default /)", ""},
+		{"priority", priority, "an integer; higher is more important", ""},
+		{"tags", names, "tags", ""},
+		{"blocked-by", ids, "IDs of the tasks it waits on", ""},
+		{"extra", object, "a JSON object stored with the task", ""},
+		{"notes", text, "the initial notes", ""},
+		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
+	{name: "create-batch", short: "Create several tasks that may wait on each other (input only)"},
+	{name: "show", short: "Return one task", subject: "id", subjKin: integer},
+	{name: "update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
+		{"title", text, "the new title", ""},
+		{"priority", priority, "an integer, or null to clear it", ""},
+		{"tags-add", names, "tags to add", ""},
+		{"tags-remove", names, "tags to remove", ""},
+		{"tags-replace-all", names, "the whole new set of tags", ""},
+		{"extra-merge", object, "a JSON object of keys to set", ""},
+		{"extra-remove", keys, "a key to delete (repeatable)", ""},
+		{"extra-replace-all", object, "the whole new extra object", ""}}},
+	{name: "done", short: "Mark a task done", subject: "id", subjKin: integer},
+	{name: "reopen", short: "Make a done task open again", subject: "id", subjKin: integer},
+	{name: "block", short: "Add blockers to a task", subject: "id", subjKin: integer, options: []option{
+		{"blockers", ids, "IDs of the tasks to wait on (required)", ""}}},
+	{name: "unblock", short: "Remove blockers from a task", subject: "id", subjKin: integer, options: []option{
+		{"blockers", ids, "IDs to stop waiting on (required)", ""}}},
+	{name: "move", short: "Move a task to another folder", subject: "id", subjKin: integer, options: []option{
+		{"to", text, "the folder to move it into (required)", ""}}},
+	{name: "delete", short: "Remove a task", subject: "id", subjKin: integer},
+	{name: "frontier", short: "Return the ready, unclaimed tasks, in work order", options: narrowOptions},
+	{name: "list", short: "Return the tasks, and optionally folders, in scope", options: append(append([]option{}, narrowOptions...),
+		option{"claimed", boolean, "only claimed tasks, or with =false only unclaimed ones", ""},
+		option{"readiness", names, "which of ready, blocked, done to return (default ready,blocked)", ""},
+		option{"include-folders", boolean, "also return the folders in scope", ""})},
+	{name: "why", short: "Say what a task is waiting on", subject: "id", subjKin: integer},
+	{name: "claim", short: "Claim a task", subject: "id", subjKin: integer, options: []option{
+		{"extra", object, "a JSON object stored with the claim", ""}}},
+	{name: "claim-next", short: "Claim the first ready, unclaimed task", options: append(append([]option{}, scopeOptions...),
+		option{"extra", object, "a JSON object stored with the claim", ""})},
+	{name: "release", short: "End a claim", subject: "id", subjKin: integer},
+}
+
+// usageError is a command line koan can't turn into an input.
+type usageError string
+
+func (u usageError) Error() string { return string(u) }
+
+func usagef(format string, args ...any) error { return usageError(fmt.Sprintf(format, args...)) }
 
 // Run runs the command line args, without the program name, and returns the
 // exit code. It writes exactly one envelope line, or help text, to stdout,
 // and at most one line to stderr.
 func Run(args []string, env Env) int {
-	if len(args) > 0 && args[0] == pick.HelperCommand {
-		out, code, note := helper(args[1:], env)
-		return deliver(env, out, code, note)
+	// cobra answers these hidden commands itself, with shell-completion
+	// text: koan has no completion, and prints nothing but envelopes.
+	if len(args) > 0 && strings.HasPrefix(args[0], "__complete") {
+		return deliver(env, ops.Failure(errs.New(errs.Usage, "unknown command %q: see koan --help", args[0])))
 	}
-	out, code, note := execute(commands, args, env)
-	return deliver(env, out, code, note)
-}
-
-// helper runs pick's hidden helper, which fzf's callbacks run. It is no
-// command of the table, so that help, completion and suggestions never show
-// it. It prints what fzf reads, not an envelope, unless it fails without
-// a session or a verb; a verb's failure it reports in what fzf reads, and
-// exits as the envelope would, with no stderr line.
-func helper(args []string, env Env) ([]byte, int, string) {
-	out, reported, e := pick.Helper(args, pick.Env{Ops: env.Ops, Sys: env.Pick})
-	switch {
-	case e == nil:
-		return out, ExitOK, ""
-	case reported:
-		_, code, _ := envelopeLine(ops.Failed(e))
-		return out, code, ""
-	}
-	return envelopeLine(ops.Failed(e))
-}
-
-// execute runs args against cmds and returns what to write, the exit code,
-// and the note for stderr ("" for none).
-func execute(cmds []Command, args []string, env Env) ([]byte, int, string) {
 	var help bytes.Buffer
 	var result *ops.Envelope
-	root := newRoot(cmds, env, &result)
+	root := newRoot(env, &result)
 	root.SetArgs(args)
-	root.SetIn(env.Stdin)
 	root.SetOut(&help)
 	root.SetErr(io.Discard)
 	err := root.Execute()
 	switch {
 	case result != nil:
-		return envelopeLine(*result)
+		return deliver(env, *result)
 	case err != nil:
-		return envelopeLine(ops.Failed(usage(err)))
+		return deliver(env, ops.Failure(errs.New(errs.Usage, "%s", err.Error())))
 	}
-	return help.Bytes(), ExitOK, "" // --help
+	return write(env, help.Bytes(), ExitOK, "") // --help
 }
 
-func newRoot(cmds []Command, env Env, result **ops.Envelope) *cobra.Command {
+// deliver prints an envelope and picks the exit code and the stderr line.
+func deliver(env Env, e ops.Envelope) int {
+	line, err := oneLine(e)
+	if err != nil {
+		e = ops.Failure(errs.New(errs.Internal, "encode the result: %v", err))
+		line, _ = oneLine(e)
+	}
+	code, note := ExitOK, ""
+	switch {
+	case !e.OK && e.Error.Kind == errs.Usage:
+		code, note = ExitUsage, fmt.Sprintf("koan: %s: %s", e.Error.Kind, e.Error.Message)
+	case !e.OK:
+		code, note = ExitError, fmt.Sprintf("koan: %s: %s", e.Error.Kind, e.Error.Message)
+	case len(e.Warnings) == 1:
+		note = "koan: 1 warning"
+	case len(e.Warnings) > 1:
+		note = fmt.Sprintf("koan: %d warnings", len(e.Warnings))
+	}
+	return write(env, line, code, note)
+}
+
+// oneLine encodes an envelope as one line, newline included, with <, >, and
+// & left as they are.
+func oneLine(e ops.Envelope) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(e); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+// write makes the one write to stdout and checks that it landed. Only then
+// is the exit code the command's, and only then is the stderr line written.
+func write(env Env, out []byte, code int, note string) int {
+	_, err := env.Stdout.Write(out)
+	if c, ok := env.Stdout.(io.Closer); ok {
+		if cerr := c.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(env.Stderr, "koan: could not write the result: %v\n", err)
+		return ExitNotDelivered
+	}
+	if note != "" {
+		fmt.Fprintln(env.Stderr, note)
+	}
+	return code
+}
+
+func newRoot(env Env, result **ops.Envelope) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "koan",
+		Use:           "koan <command>",
 		Short:         "Local, file-based task management with JSON output",
+		Long:          "Local, file-based task management. Every command prints one JSON envelope on stdout.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		// Bare koan is a usage error, and an unknown command is reported
-		// here rather than by cobra so its problem names the token.
-		Args: func(cmd *cobra.Command, args []string) error {
+		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return usageErr(nil, "missing command")
+				return usagef("missing command: see koan --help")
 			}
-			if cmd.ArgsLenAtDash() == 0 && isCommand(cmd, args[0]) {
-				return usageErr(&args[0], "the command must come before --")
-			}
-			reason := "unknown command"
-			if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
-				reason += "; did you mean " + strings.Join(s, " or ") + "?"
-			}
-			return usageErr(&args[0], reason)
+			return usagef("unknown command %q: see koan --help", args[0])
 		},
-		RunE:                       func(*cobra.Command, []string) error { return nil },
-		SuggestionsMinimumDistance: 2,
-		// No completion command: it is not in cli-spec.md, and prints no
-		// envelope.
+		RunE:              func(*cobra.Command, []string) error { return nil },
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
-	// Help is --help only. cobra always adds a help command, so this one
+	// Help is --help only: cobra always adds a help command, so this one
 	// stands in for it, hidden and failing as an unknown command would.
-	root.SetHelpCommand(&cobra.Command{
-		Use:                "help",
-		Hidden:             true,
-		DisableFlagParsing: true,
-		Args: func(cmd *cobra.Command, _ []string) error {
-			name := cmd.Name()
-			return usageErr(&name, "unknown command; for help, use --help")
-		},
-		RunE: func(*cobra.Command, []string) error { return nil },
-	})
-	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return err })
-	for i := range cmds {
-		root.AddCommand(newCommand(&cmds[i], env, result))
+	root.SetHelpCommand(&cobra.Command{Use: "help", Hidden: true, Args: cobra.ArbitraryArgs,
+		RunE: func(*cobra.Command, []string) error { return usagef(`unknown command "help": use --help`) }})
+	root.Flags().SortFlags = false
+	for _, c := range commands {
+		root.AddCommand(newCommand(c, env, result))
 	}
 	return root
 }
 
-func newCommand(c *Command, env Env, result **ops.Envelope) *cobra.Command {
-	use := c.Name
-	for _, a := range c.Args {
-		use += " <" + a.Name + ">"
+func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
+	use := c.name
+	if c.subject != "" {
+		use += " <" + c.subject + ">"
 	}
 	cmd := &cobra.Command{
-		Use:     use,
-		Short:   c.Summary,
-		Example: c.Example,
-		Args: func(cmd *cobra.Command, args []string) error {
-			want := len(c.Args)
-			if cmd.Flags().Changed("input") {
-				want = 0
-			}
-			switch {
-			case len(args) > want && cmd.Flags().Changed("input"):
-				return usageErr(&args[0], "--input cannot be combined with arguments")
-			case len(args) > want:
-				return usageErr(&args[want], "unexpected argument")
-			case len(args) < want:
-				return usageErr(nil, "missing argument <"+c.Args[len(args)].Name+">")
-			}
-			return nil
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if e := checkShape(c, cmd); e != nil {
-				return e
-			}
-			env := runCommand(c, cmd, args, env)
-			*result = &env
-			return nil
-		},
+		Use:                   use + " [options]",
+		Short:                 c.short,
+		Args:                  cobra.ArbitraryArgs,
+		DisableFlagsInUseLine: true,
 	}
 	fs := cmd.Flags()
 	fs.SortFlags = false
-	for _, o := range c.Options {
-		switch o.Type {
-		case Bool:
-			fs.BoolP(o.Name, o.Short, false, o.Help)
-		case IDList, StringList, Repeated:
-			fs.StringArrayP(o.Name, o.Short, nil, o.Help)
+	for _, o := range c.options {
+		switch o.kind {
+		case boolean:
+			// A string underneath, so that a value that is not true or
+			// false reaches the command, as it would through --input.
+			fs.StringP(o.name, o.short, "", o.usage)
+			fs.Lookup(o.name).NoOptDefVal = "true"
+		case ids, names, keys:
+			fs.StringArray(o.name, nil, o.usage)
 		default:
-			fs.StringP(o.Name, o.Short, "", o.Help)
+			fs.String(o.name, "", o.usage)
 		}
 	}
-	fs.StringP("input", "i", "", "read the whole operation input from `file` (- for stdin)")
+	fs.StringP("input", "i", "", "read the whole input as one JSON object from a file, or - for stdin")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		raw, err := buildInput(c, cmd, args, env)
+		if err != nil {
+			return err
+		}
+		e := ops.Run(env.Ops, c.name, raw)
+		*result = &e
+		return nil
+	}
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError(err.Error()) })
 	return cmd
 }
 
-// isCommand reports whether name is one of root's commands, as typed.
-func isCommand(root *cobra.Command, name string) bool {
-	for _, c := range root.Commands() {
-		if !c.Hidden && c.Name() == name {
-			return true
+// buildInput turns a command line into the command's input object.
+func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, error) {
+	fs := cmd.Flags()
+	if fs.Changed("input") {
+		if len(args) > 0 || fs.NFlag() > 1 {
+			return nil, usagef("--input takes the whole input: give no other argument or option with it")
 		}
+		name, _ := fs.GetString("input")
+		return readFile(name, env)
 	}
-	return false
-}
-
-// checkShape reports what cobra cannot: mutually exclusive options given
-// together, naming the one given later; --input together with a field
-// option; and a missing required option, --input included.
-func checkShape(c *Command, cmd *cobra.Command) error {
-	for _, g := range c.Exclusive {
-		// Visit goes in the order options were first given, since
-		// SortFlags is off.
-		var given []string
-		cmd.Flags().Visit(func(f *pflag.Flag) {
-			if slices.Contains(g, f.Name) {
-				given = append(given, f.Name)
+	in := map[string]any{}
+	switch {
+	case c.subject == "" && len(args) > 0:
+		return nil, usagef("%s takes no argument, got %q", c.name, args[0])
+	case c.subject != "" && len(args) == 0:
+		return nil, usagef("%s needs a <%s>", c.name, c.subject)
+	case len(args) > 1:
+		return nil, usagef("%s takes one <%s>, got %d arguments: quote a value with spaces", c.name, c.subject, len(args))
+	case c.subject != "":
+		in[c.subject] = scalar(c.subjKin, args[0])
+	}
+	if fs.Changed("notes") && fs.Changed("notes-file") {
+		return nil, usagef("give --notes or --notes-file, not both")
+	}
+	for _, o := range c.options {
+		if !fs.Changed(o.name) {
+			continue
+		}
+		field := strings.ReplaceAll(o.name, "-", "_")
+		switch o.kind {
+		case boolean:
+			s, _ := fs.GetString(o.name)
+			in[field] = scalar(boolean, s)
+		case ids:
+			list := []any{}
+			for _, v := range split(fs, o.name) {
+				list = append(list, scalar(integer, v))
 			}
-		})
-		if len(given) > 1 {
-			arg := "--" + given[1]
-			return usageErr(&arg, arg+" cannot be combined with --"+given[0])
+			in[field] = list
+		case names:
+			in[field] = split(fs, o.name)
+		case keys:
+			in[field], _ = fs.GetStringArray(o.name)
+		case object:
+			s, _ := fs.GetString(o.name)
+			dec := json.NewDecoder(strings.NewReader(s))
+			dec.UseNumber()
+			var v any
+			if err := dec.Decode(&v); err != nil || dec.More() {
+				return nil, usagef("--%s is not one JSON value", o.name)
+			}
+			in[field] = v
+		default:
+			s, _ := fs.GetString(o.name)
+			if o.name == "notes-file" {
+				data, err := readFile(s, env)
+				if err != nil {
+					return nil, err
+				}
+				in["notes"] = string(data)
+				continue
+			}
+			in[field] = scalar(o.kind, s)
 		}
 	}
-	input := cmd.Flags().Changed("input")
-	if c.InputRequired && !input {
-		return usageErr(nil, "missing required option --input")
-	}
-	for _, o := range c.Options {
-		given := cmd.Flags().Changed(o.Name)
-		switch {
-		case input && given && o.Field != "":
-			arg := "--" + o.Name
-			return usageErr(&arg, "--input cannot be combined with options that set input fields")
-		case !input && !given && o.Required:
-			return usageErr(nil, "missing required option --"+o.Name)
+	return json.Marshal(in)
+}
+
+// scalar turns one argument into a JSON value. A value that is not what the
+// kind asks for is passed on as a string, for the command to refuse as
+// invalid-input, exactly as it would through --input.
+func scalar(k kind, s string) any {
+	switch k {
+	case boolean:
+		if b, err := strconv.ParseBool(s); err == nil && (s == "true" || s == "false") {
+			return b
+		}
+	case priority:
+		if s == "null" {
+			return nil
+		}
+		fallthrough
+	case integer:
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
 		}
 	}
-	return nil
+	return s
 }
 
-// runCommand builds the operation's input and runs it.
-func runCommand(c *Command, cmd *cobra.Command, args []string, env Env) ops.Envelope {
-	var in *jsonio.Object
-	var problems []errs.Problem
-	if cmd.Flags().Changed("input") {
-		path, _ := cmd.Flags().GetString("input")
-		var e *errs.Error
-		if in, e = readInput(path, env); e != nil {
-			return ops.Failed(e)
-		}
-	} else {
-		var e *errs.Error
-		if in, problems, e = buildInput(c, cmd, args, env); e != nil {
-			return ops.Failed(e)
+// split is a list option's values: every occurrence, each split at commas.
+// An empty value gives an empty list.
+func split(fs *pflag.FlagSet, name string) []string {
+	vals, _ := fs.GetStringArray(name)
+	out := []string{}
+	for _, v := range vals {
+		if v != "" {
+			out = append(out, strings.Split(v, ",")...)
 		}
 	}
-	if c.Resolve != nil {
-		ps, e := c.Resolve(in, env)
-		if e != nil {
-			return ops.Failed(e)
+	return out
+}
+
+// readFile reads a file an option names, or stdin for -.
+func readFile(name string, env Env) ([]byte, error) {
+	if name == "-" {
+		data, err := io.ReadAll(env.Stdin)
+		if err != nil {
+			return nil, usagef("read stdin: %v", err)
 		}
-		problems = append(problems, ps...)
+		return data, nil
 	}
-	if c.Run != nil {
-		return c.Run(in, problems, env)
-	}
-	return runOp(c.Op, in, problems, env.Ops)
-}
-
-// runOp runs an operation; tests replace it to see the input built.
-var runOp = ops.Run
-
-// usageError is a usage problem found by koan rather than cobra.
-type usageError struct{ problem errs.UsageProblem }
-
-func (e *usageError) Error() string { return e.problem.Reason }
-
-func usageErr(arg *string, reason string) error {
-	return &usageError{errs.UsageProblem{Argument: arg, Reason: reason}}
-}
-
-// usage turns an error from cobra's Execute into a usage error, naming the
-// offending token where the error says which it was.
-func usage(err error) *errs.Error {
-	var ue *usageError
-	if errors.As(err, &ue) {
-		return errs.Usage([]errs.UsageProblem{ue.problem})
-	}
-	p := errs.UsageProblem{Reason: err.Error()}
-	var notExist *pflag.NotExistError
-	var noValue *pflag.ValueRequiredError
-	var badValue *pflag.InvalidValueError
-	switch {
-	case errors.As(err, &notExist):
-		p.Argument = flagToken(notExist.GetSpecifiedName(), notExist.GetSpecifiedShortnames())
-	case errors.As(err, &noValue):
-		p.Argument = flagToken(noValue.GetSpecifiedName(), noValue.GetSpecifiedShortnames())
-	case errors.As(err, &badValue):
-		arg := "--" + badValue.GetFlag().Name
-		p.Argument = &arg
-	}
-	return errs.Usage([]errs.UsageProblem{p})
-}
-
-// flagToken is the token pflag faults: a group of short options (without
-// its "-"), else a long option's name.
-func flagToken(name, shorts string) *string {
-	t := "--" + name
-	if shorts != "" {
-		t = "-" + shorts
-	}
-	return &t
-}
-
-// envelopeLine encodes env as the one output line, with its exit code and
-// its note for stderr.
-func envelopeLine(env ops.Envelope) ([]byte, int, string) {
-	b, err := jsonio.MarshalLine(env)
+	data, err := os.ReadFile(name)
 	if err != nil {
-		env = ops.Failed(errs.Internal("encoding the envelope: " + err.Error()))
-		if b, err = jsonio.MarshalLine(env); err != nil {
-			panic(err) // a crash: outcome unknown
-		}
+		return nil, usagef("read %s: %v", name, err)
 	}
-	switch {
-	case env.OK:
-		return b, ExitOK, warningsNote(len(env.Warnings))
-	case env.Error.Kind == errs.KindUsage:
-		return b, ExitUsage, errorNote(env.Error)
-	}
-	return b, ExitError, errorNote(env.Error)
-}
-
-// errorNote is the stderr line for a failure (cli-spec.md, Output), so it
-// stays visible when stdout goes into a pipeline. A usage message's own
-// "usage: " is dropped, since the kind already says it.
-func errorNote(e *errs.Error) string {
-	msg := e.Message
-	if e.Kind == errs.KindUsage {
-		msg = strings.TrimPrefix(msg, "usage: ")
-	}
-	return oneLine("koan: " + string(e.Kind) + ": " + msg)
-}
-
-// warningsNote is the stderr line for a success with n warnings; they are
-// counted, never listed.
-func warningsNote(n int) string {
-	switch n {
-	case 0:
-		return ""
-	case 1:
-		return "koan: 1 warning (see .warnings in the output)"
-	}
-	return fmt.Sprintf("koan: %d warnings (see .warnings in the output)", n)
-}
-
-// oneLine is the one-line form of the stderr line (errs.OneLine).
-func oneLine(s string) string { return errs.OneLine(s) }
-
-func isLineControl(r rune) bool { return errs.IsLineControl(r) }
-
-// deliver writes out in one write and closes stdout; exit codes 0-2 are
-// reported only once both succeed (implementation-spec.md, Writing the
-// envelope). Only then is note, if any, written to stderr, as one line whose
-// own failure is ignored: the result was delivered.
-func deliver(env Env, out []byte, code int, note string) int {
-	_, err := env.Stdout.Write(out)
-	if c, ok := env.Stdout.(io.Closer); ok && err == nil {
-		err = c.Close()
-	}
-	if err != nil {
-		fmt.Fprintf(env.Stderr, "koan: result not delivered: %v\n", err)
-		return ExitNotDelivered
-	}
-	if note != "" {
-		_, _ = io.WriteString(env.Stderr, note+"\n")
-	}
-	return code
+	return data, nil
 }

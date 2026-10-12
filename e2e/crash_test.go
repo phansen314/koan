@@ -1,609 +1,212 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
-	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
-
-	"github.com/phansen314/koan/internal/fsys"
 )
 
-// clock fixes the time every crash-test command sees, so the files of two
-// runs compare byte for byte.
-const clock = "KOAN_E2E_CLOCK=2026-09-28T12:00:00Z"
-
-// snapshot is a home directory's contents: each path relative to the home
-// maps to the file's bytes, with the home itself written "~", or to "/" for
-// a directory. Temp files are left out and listed in temps.
-type snapshot struct {
-	files map[string]string
-	temps []string
+// crashCases are the write commands, each run on the tree that setup makes.
+// For every one, and every change it makes to the disk, the process is
+// killed just before that change, or the change is failed with an errno
+// (spec/implementation.md, Testing).
+var crashCases = []struct {
+	name string
+	args []string
+}{
+	{freshInit, []string{"init"}},
+	{"create", []string{"create", "new", "--folder", "/fresh/deep", "--blocked-by", "1", "--notes", "n"}},
+	{"create-batch", []string{"create-batch", "-i", "-"}},
+	{"create-folder", []string{"create-folder", "/x/y/z"}},
+	{"move-folder", []string{"move-folder", "/proj", "--to", "/moved/proj"}},
+	{"delete-folder", []string{"delete-folder", "/proj", "--recursive"}},
+	{"update", []string{"update", "2", "--title", "renamed", "--tags-add", "t"}},
+	{"done", []string{"done", "3"}},
+	{"reopen", []string{"reopen", "4"}},
+	{"block", []string{"block", "1", "--blockers", "4"}},
+	{"unblock", []string{"unblock", "2", "--blockers", "1"}},
+	{"move", []string{"move", "3", "--to", "/elsewhere"}},
+	{"delete", []string{"delete", "1"}},
+	{"claim", []string{"claim", "1"}},
+	{"claim-next", []string{"claim-next"}},
+	{"release", []string{"release", "3"}},
+	{"repair", []string{"repair"}},
 }
 
-func snap(t *testing.T, home string) snapshot {
+const batchInput = `{"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
+
+// freshInit marks the case that runs on a HOME where nothing exists yet.
+const freshInit = "init on a new home"
+
+// setup makes a tree with something for every command to act on: task 1 in
+// the root; 2 and 3 in /proj, 2 waiting on 1 and 3 claimed with notes; and
+// 4, done, in /proj/sub.
+func setup(t *testing.T, name string) string {
 	t.Helper()
-	s := snapshot{files: map[string]string{}}
-	err := filepath.WalkDir(home, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || p == home {
-			return err
+	if name == freshInit {
+		home := t.TempDir()
+		os.Mkdir(filepath.Join(home, ".config"), 0o755) // as every real home has
+		return home
+	}
+	home := newHome(t)
+	ok(t, home, "create", "one")
+	ok(t, home, "create", "two", "--folder", "/proj", "--blocked-by", "1")
+	ok(t, home, "create", "three", "--folder", "/proj", "--notes", "notes")
+	ok(t, home, "create", "four", "--folder", "/proj/sub")
+	ok(t, home, "done", "4")
+	ok(t, home, "claim", "3")
+	return home
+}
+
+// leftovers are the findings a killed or failed command may leave, as
+// spec/design.md lists them: a temp file, a reference to a deleted task, a
+// claim on a task that is done or gone, and notes without their task. Every
+// one is something repair fixes. An ID used with no task is not a finding.
+var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
+
+// checkAfter requires what the design promises after a crash or a failure:
+// the next write succeeds, doctor reports nothing but the expected kinds,
+// and repair leaves nothing it could have fixed.
+func checkAfter(t *testing.T, home, what string) {
+	t.Helper()
+	// Only init itself can leave the root half made, and init finishes it.
+	if what0 := koan(t, home, "", nil, "info").result()["state"]; what0 != "usable" {
+		if r := koan(t, home, "", nil, "init"); r.exit != 0 {
+			t.Fatalf("%s: left the root %v, and init afterwards failed: %s", what, what0, r.stdout)
 		}
-		rel, _ := filepath.Rel(home, p)
+	}
+	if r := koan(t, home, "", nil, "create", "after"); r.exit != 0 {
+		t.Fatalf("%s: the next write failed: %s", what, r.stdout)
+	}
+	for _, f := range ok(t, home, "doctor")["findings"].([]any) {
+		f := f.(map[string]any)
+		if !slices.Contains(leftovers, f["kind"].(string)) {
+			t.Errorf("%s: doctor found %v", what, f)
+		}
+	}
+	if left := ok(t, home, "repair")["findings"].([]any); len(left) != 0 {
+		t.Errorf("%s: repair left %v", what, left)
+	}
+	if got := ok(t, home, "doctor"); got["healthy"] != true {
+		t.Errorf("%s: not healthy after repair: %v", what, got)
+	}
+}
+
+func stdinFor(args []string) string {
+	if args[0] == "create-batch" {
+		return batchInput
+	}
+	return ""
+}
+
+// changes counts the changes a command makes to the disk on the setup tree.
+func changes(t *testing.T, name string, args []string) int {
+	t.Helper()
+	home := setup(t, name)
+	count := filepath.Join(t.TempDir(), "count")
+	if r := koan(t, home, stdinFor(args), []string{"KOAN_E2E_COUNT_FILE=" + count}, args...); r.exit != 0 {
+		t.Fatalf("koan %v on the setup tree: %s", args, r.stdout)
+	}
+	fi, err := os.Stat(count)
+	if err != nil {
+		return 0
+	}
+	return int(fi.Size())
+}
+
+// snapshot maps every path under home to its content; a directory to "dir".
+func snapshot(t *testing.T, home string) map[string]string {
+	t.Helper()
+	snap := map[string]string{}
+	filepath.WalkDir(home, func(p string, d fs.DirEntry, err error) error {
 		switch {
-		case strings.HasPrefix(d.Name(), fsys.TempPrefix):
-			s.temps = append(s.temps, rel)
-			if d.IsDir() {
-				return filepath.SkipDir // delete-folder's folder, renamed aside
-			}
+		case err != nil || p == home || strings.Contains(p, ".koan-tmp-"):
 		case d.IsDir():
-			s.files[rel] = "/"
+			snap[p] = "dir"
 		default:
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			s.files[rel] = strings.ReplaceAll(string(b), home, "~")
+			data, _ := os.ReadFile(p)
+			snap[p] = "file:" + string(data)
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
+	return snap
 }
 
-// crashCase is one write, and what its Crash behavior and Retry safety
-// promise (operations.md).
-type crashCase struct {
-	name string
-	// init: run from a fresh home with no tree; else from a new tree after
-	// setup.
-	init  bool
-	setup [][]string
-	// seed, if set, then changes the tree as no koan command would: the
-	// outside change repair repairs.
-	seed func(t *testing.T, root string)
-	args []string
-	// stdin, if set, is the write's standard input, for -i -.
-	stdin string
-	// order is what the write changes, relative to the home, in the order
-	// its Crash behavior says the changes land. Paths in one group land in
-	// one call.
-	order [][]string
-	// rerun is what running the write again gives after a crash that left
-	// the tree at stage (0: nothing changed; len(order): everything): the
-	// exit code, a fragment of the envelope, and whether the tree must then
-	// be as after an uninterrupted run.
-	rerun func(stage int) (code int, want string, same bool)
-	// found is the finding kinds besides temp-leftover that doctor reports
-	// for a crash leaving the tree at a stage, and kept those repair leaves
-	// to a person; nil for none.
-	found, kept map[int][]string
-	// pending is the stages at which the root needs migration: repair
-	// refuses it there, so only doctor is checked.
-	pending map[int]bool
-	// env is added to the environment of setup and of the write.
-	env []string
-	// tempOK: the rerun may leave a temp file in the config directory. One
-	// beside the claims file stays until the next write of the claims file
-	// (design-spec.md, Claims file), and a rerun that fails, or finds
-	// nothing left to do, makes none.
-	tempOK bool
-}
-
-// crashToken is the token the crash matrix's locked claim gets.
-const crashToken = "3f9c0a7e5b1d48c2a6e4f0b9d7c3a185"
-
-// claimsPath is the claims file, relative to the home.
-var claimsPath = configDir + "/claims.json"
-
-// seedClaim writes a claims file holding one claim, on task 1, as no koan
-// command leaves it for a done task: the entry an interrupted done leaves.
-func seedClaim(t *testing.T, root string) {
-	data := "{\n  \"schema\": 1,\n  \"root\": \"" + root + "\",\n  \"claims\": {\n    \"1\": {\n      \"claimed_at\": \"2026-09-28T12:00:00Z\",\n      \"extra\": {}\n    }\n  }\n}\n"
-	if err := os.WriteFile(filepath.Join(filepath.Dir(root), claimsPath), []byte(data), 0o644); err != nil {
-		t.Fatal(err)
+func TestCrashes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs every write command once per disk change")
 	}
-}
-
-func safe(want string) func(int) (int, string, bool) {
-	return func(int) (int, string, bool) { return 0, want, true }
-}
-
-var crashCases = []crashCase{
-	{
-		name: "init", init: true,
-		args:  []string{"init", "~/tasks"},
-		order: [][]string{{"tasks"}, {"tasks/koan.json"}, configDirs, {configDir + "/state.json"}, {configDir + "/config.toml"}},
-		// Once the config is written, init has succeeded, and a rerun is a
-		// rerun after success.
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 5 {
-				return 1, `"rule":"config-exists"`, true
-			}
-			return 0, `"ok":true`, true
-		},
-	},
-	{
-		name:  "create",
-		args:  []string{"create", "Fix", "--notes", "call first"},
-		order: [][]string{{configDir + "/state.json"}, {"tasks/1.json"}, {"tasks/1.md"}},
-		// Not safe after a crash: once the ID is consumed, a rerun creates
-		// a second task.
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 0 {
-				return 0, `"id":1,`, true
-			}
-			return 0, `"id":2,`, false
-		},
-	},
-	{
-		name:  "create-batch",
-		args:  []string{"create-batch", "-i", "-"},
-		stdin: `{"tasks": [{"ref": "a", "title": "x", "folder": "/p", "notes": "n"}, {"title": "y", "blocked_by": ["a"], "notes": "m"}]}`,
-		order: [][]string{{"tasks/p"}, {configDir + "/state.json"}, {"tasks/p/1.json"}, {"tasks/p/1.md"}, {"tasks/2.json"}, {"tasks/2.md"}},
-		// Not safe after a crash once IDs are consumed: a rerun creates the
-		// batch again, with new IDs.
-		rerun: func(stage int) (int, string, bool) {
-			if stage <= 1 {
-				return 0, `"ids":[1,2]`, true
-			}
-			return 0, `"ids":[3,4]`, false
-		},
-	},
-	{
-		name:  "create-folder",
-		args:  []string{"create-folder", "-p", "/proj/travel"},
-		order: [][]string{{"tasks/proj"}, {"tasks/proj/travel"}},
-		rerun: safe(`"folder":"/proj/travel"`),
-	},
-	{
-		name:  "done",
-		setup: [][]string{{"create", "a"}},
-		args:  []string{"done", "1"},
-		order: [][]string{{"tasks/1.json"}},
-		rerun: safe(`"completed_at":"2026-09-28T12:00:00Z"`),
-	},
-	{
-		name:  "reopen",
-		setup: [][]string{{"create", "a"}, {"done", "1"}},
-		args:  []string{"reopen", "1"},
-		order: [][]string{{"tasks/1.json"}},
-		rerun: safe(`"completed_at":null`),
-	},
-	{
-		name:  "update",
-		setup: [][]string{{"create", "a"}},
-		args:  []string{"update", "1", "--title", "b", "--tags-add", "x"},
-		order: [][]string{{"tasks/1.json"}},
-		rerun: safe(`"title":"b"`),
-	},
-	{
-		name:  "block",
-		setup: [][]string{{"create", "a"}, {"create", "b"}},
-		args:  []string{"block", "1", "--blockers", "2"},
-		order: [][]string{{"tasks/1.json"}},
-		rerun: safe(`"blocked_by":[2]`),
-	},
-	{
-		name:  "unblock",
-		setup: [][]string{{"create", "a"}, {"create", "b"}, {"block", "1", "--blockers", "2"}},
-		args:  []string{"unblock", "1", "--blockers", "2"},
-		order: [][]string{{"tasks/1.json"}},
-		rerun: safe(`"blocked_by":[]`),
-	},
-	{
-		name:  "delete",
-		setup: [][]string{{"create", "a", "--notes", "n"}, {"create", "b", "--blocked-by", "1"}},
-		args:  []string{"delete", "1"},
-		order: [][]string{{"tasks/2.json"}, {"tasks/1.json"}, {"tasks/1.md"}},
-		// The task is gone, its notes left: no-task, which only a person
-		// may remove.
-		found: map[int][]string{2: {"orphan-notes"}},
-		kept:  map[int][]string{2: {"orphan-notes"}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage >= 2 {
-				// The task is gone; an orphaned .md may be left for doctor.
-				return 1, `"kind":"not-found"`, false
-			}
-			return 0, `"id":1,"folder":"/"`, true
-		},
-	},
-	{
-		name:  "delete-folder",
-		setup: [][]string{{"create-folder", "-p", "/p/a"}, {"create", "a", "--folder", "/p/a"}, {"create", "b", "--blocked-by", "1"}},
-		args:  []string{"delete-folder", "-r", "/p"},
-		order: [][]string{{"tasks/2.json"}, {"tasks/p", "tasks/p/a", "tasks/p/a/1.json", "tasks/p/a/1.md"}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 2 {
-				// Renamed aside: gone from the tree, a hidden leftover for doctor.
-				return 1, `"kind":"not-found"`, true
-			}
-			return 0, `"ids":[1]`, true
-		},
-	},
-	{
-		name:  "move",
-		setup: [][]string{{"create", "a", "--notes", "n"}},
-		args:  []string{"move", "1", "--to", "/p", "-p"},
-		order: [][]string{{"tasks/p"}, {"tasks/p/1.md"}, {"tasks/1.json", "tasks/p/1.json"}, {"tasks/1.md"}},
-		// The notes have two names, one beside no task file: linked, which
-		// repair removes.
-		found: map[int][]string{2: {"orphan-notes"}, 3: {"orphan-notes"}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 3 {
-				// Moved; the old .md is left for doctor.
-				return 0, `"changed":false`, false
-			}
-			return 0, `"changed":true`, true
-		},
-	},
-	{
-		// One item of each auto kind: a temp file; tasks 1 and 2 above
-		// last_id; 1 blocked by 2, whose task file is gone, leaving its
-		// empty notes.
-		name:  "repair",
-		setup: [][]string{{"create", "a"}, {"create", "b"}, {"block", "1", "--blockers", "2"}},
-		seed: func(t *testing.T, root string) {
-			for name, data := range map[string]string{
-				".koan-tmp-seed": "x",
-			} {
-				if err := os.WriteFile(filepath.Join(root, name), []byte(data), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			// The counter set back, as a restored state file would be.
-			state := "{\n  \"schema\": 1,\n  \"root\": \"" + root + "\",\n  \"last_id\": 0\n}\n"
-			if err := os.WriteFile(filepath.Join(filepath.Dir(root), configDir, "state.json"), []byte(state), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Remove(filepath.Join(root, "2.json")); err != nil {
-				t.Fatal(err)
-			}
-		},
-		args:  []string{"repair"},
-		order: [][]string{{configDir + "/state.json"}, {"tasks/1.json"}, {"tasks/2.md"}},
-		found: map[int][]string{
-			0: {"dangling-reference", "id-above-last-id", "orphan-notes"},
-			1: {"dangling-reference", "orphan-notes"},
-			2: {"orphan-notes"},
-		},
-		rerun: safe(`"ok":true`),
-	},
-	{
-		// A schema 1 koan.json: nothing but the counter to convert here, so
-		// one change. Until it lands the root needs migration.
-		name:  "migrate",
-		setup: [][]string{{"create", "a"}},
-		seed: func(t *testing.T, root string) {
-			if err := os.WriteFile(filepath.Join(root, "koan.json"), []byte("{\n  \"schema\": 1,\n  \"last_id\": 1\n}\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		},
-		args:    []string{"migrate"},
-		order:   [][]string{{"tasks/koan.json"}},
-		found:   map[int][]string{0: {"migration-pending"}},
-		pending: map[int]bool{0: true},
-		rerun:   safe(`"ok":true`),
-	},
-	{
-		name:  "move-folder",
-		setup: [][]string{{"create-folder", "/a"}, {"create", "a", "--folder", "/a"}},
-		args:  []string{"move-folder", "/a", "--to", "/x/y", "-p"},
-		order: [][]string{{"tasks/x"}, {"tasks/a", "tasks/a/1.json", "tasks/a/1.md", "tasks/x/y", "tasks/x/y/1.json", "tasks/x/y/1.md"}},
-		rerun: safe(`"folder":"/x/y"`),
-	},
-	{
-		// The first claim on a root creates the claims file.
-		name:  "claim, first",
-		setup: [][]string{{"create", "a"}},
-		args:  []string{"claim", "1"},
-		order: [][]string{{claimsPath}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 1 {
-				return 1, `"rule":"claimed"`, true
-			}
-			return 0, `"locked":false`, true
-		},
-	},
-	{
-		name:  "claim",
-		setup: [][]string{{"create", "a"}, {"create", "b"}, {"claim", "2"}},
-		args:  []string{"claim", "1", "--extra", `{"agent":"a"}`},
-		order: [][]string{{claimsPath}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 1 {
-				return 1, `"rule":"claimed"`, true
-			}
-			return 0, `"extra":{"agent":"a"}`, true
-		},
-	},
-	{
-		// Not safe after a crash once the claim is made: a rerun claims the
-		// next task too.
-		name:  "claim-next",
-		setup: [][]string{{"create", "a"}, {"create", "b"}, {"create", "c"}, {"claim", "3"}},
-		args:  []string{"claim-next"},
-		order: [][]string{{claimsPath}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 1 {
-				return 0, `"task":{"schema":1,"id":2,`, false
-			}
-			return 0, `"task":{"schema":1,"id":1,`, true
-		},
-	},
-	{
-		name:  "release",
-		setup: [][]string{{"create", "a"}, {"claim", "1"}},
-		args:  []string{"release", "1"},
-		order: [][]string{{claimsPath}},
-		rerun: safe(`"ok":true`),
-	},
-	{
-		name:  "force-release",
-		setup: [][]string{{"create", "a"}, {"claim", "1"}},
-		args:  []string{"force-release", "1"},
-		order: [][]string{{claimsPath}},
-		rerun: safe(`"ok":true`),
-	},
-	{
-		// The task file first, then its claim entry: between the two the
-		// task is done and the entry inert.
-		name:  "done, claimed",
-		setup: [][]string{{"create", "a"}, {"claim", "1"}},
-		args:  []string{"done", "1"},
-		order: [][]string{{"tasks/1.json"}, {claimsPath}},
-		found: map[int][]string{1: {"claim-inert"}},
-		rerun: safe(`"completed_at":"2026-09-28T12:00:00Z"`),
-	},
-	{
-		// A locked claim, ended by its holder: once the task is done the
-		// token's claim is gone, so a rerun with it is refused, and the task
-		// is done all the same.
-		name:  "done, locked",
-		env:   []string{"KOAN_E2E_TOKEN=" + crashToken},
-		setup: [][]string{{"create", "a"}, {"claim", "1", "--use-token"}},
-		args:  []string{"done", "1", "--token", crashToken},
-		order: [][]string{{"tasks/1.json"}, {claimsPath}},
-		found: map[int][]string{1: {"claim-inert"}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage == 0 {
-				return 0, `"changed":true`, true
-			}
-			return 1, `"rule":"token-mismatch","ids":[1],"claims":[null]`, true
-		},
-	},
-	{
-		// The entry first, then the task file: between the two the task is
-		// done with no entry.
-		name:  "reopen, claimed",
-		setup: [][]string{{"create", "a"}, {"done", "1"}},
-		seed:  seedClaim,
-		args:  []string{"reopen", "1"},
-		order: [][]string{{claimsPath}, {"tasks/1.json"}},
-		found: map[int][]string{0: {"claim-inert"}},
-		rerun: safe(`"completed_at":null`),
-	},
-	{
-		name:  "delete, claimed",
-		setup: [][]string{{"create", "a", "--notes", "n"}, {"create", "b", "--blocked-by", "1"}, {"claim", "1"}},
-		args:  []string{"delete", "1"},
-		order: [][]string{{"tasks/2.json"}, {"tasks/1.json"}, {"tasks/1.md"}, {claimsPath}},
-		found: map[int][]string{2: {"claim-inert", "orphan-notes"}, 3: {"claim-inert"}},
-		kept:  map[int][]string{2: {"orphan-notes"}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage >= 2 {
-				return 1, `"kind":"not-found"`, false
-			}
-			return 0, `"id":1,"folder":"/"`, true
-		},
-		tempOK: true,
-	},
-	{
-		name:  "delete-folder, claimed",
-		setup: [][]string{{"create-folder", "-p", "/p/a"}, {"create", "a", "--folder", "/p/a"}, {"create", "b", "--blocked-by", "1"}, {"claim", "1"}},
-		args:  []string{"delete-folder", "-r", "/p"},
-		order: [][]string{{"tasks/2.json"}, {"tasks/p", "tasks/p/a", "tasks/p/a/1.json", "tasks/p/a/1.md"}, {claimsPath}},
-		found: map[int][]string{2: {"claim-inert"}},
-		rerun: func(stage int) (int, string, bool) {
-			if stage >= 2 {
-				return 1, `"kind":"not-found"`, false
-			}
-			return 0, `"ids":[1]`, true
-		},
-		tempOK: true,
-	},
-}
-
-// diagnose checks doctor and repair on a tree a crash left at stage: doctor
-// reports exactly the findings Crash behavior predicts, and after repair only
-// those it leaves to a person (implementation-spec.md, Crash injection).
-func (c crashCase) diagnose(t *testing.T, tr *tree, stage int, crashed snapshot) {
-	t.Helper()
-	want := slices.Clone(c.found[stage])
-	if slices.ContainsFunc(crashed.temps, func(p string) bool { return strings.HasPrefix(p, "tasks/") }) {
-		want = append(want, "temp-leftover")
-	}
-	slices.Sort(want)
-	if got := findingKinds(t, tr.cmd("doctor")); !slices.Equal(got, want) {
-		t.Errorf("stage %d: doctor found %v, want %v", stage, got, want)
-	}
-	if c.pending[stage] {
-		steps(t, []step{{tr.cmd("repair"), 1, `"kind":"migration-pending"`}})
-		return
-	}
-	if got := findingKinds(t, tr.cmd("repair")); !slices.Equal(got, c.kept[stage]) {
-		t.Errorf("stage %d: repair left %v, want %v", stage, got, c.kept[stage])
-	}
-	if got := findingKinds(t, tr.cmd("doctor")); !slices.Equal(got, c.kept[stage]) {
-		t.Errorf("stage %d: doctor after repair found %v, want %v", stage, got, c.kept[stage])
-	}
-}
-
-// findingKinds runs doctor or repair, and returns the kinds of the findings
-// it reports, in order; nil for none.
-func findingKinds(t *testing.T, cmd *exec.Cmd) []string {
-	t.Helper()
-	r := run(t, cmd)
-	envelope(t, r)
-	var out struct {
-		Result struct {
-			Healthy  bool `json:"healthy"`
-			Findings []struct {
-				Kind string `json:"kind"`
-			} `json:"findings"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal([]byte(r.stdout), &out); err != nil || r.code != 0 {
-		t.Fatalf("%q: exit %d: %s", cmd.Args[1:], r.code, r.stdout)
-	}
-	var kinds []string
-	for _, f := range out.Result.Findings {
-		kinds = append(kinds, f.Kind)
-	}
-	if out.Result.Healthy != (kinds == nil) {
-		t.Errorf("%q: healthy %v with findings %v", cmd.Args[1:], out.Result.Healthy, kinds)
-	}
-	return kinds
-}
-
-// cmd prepares c's write in tr, with its stdin.
-func (c crashCase) cmd(tr *tree) *exec.Cmd {
-	cmd := tr.cmd(c.args...)
-	if c.stdin != "" {
-		stdin(cmd, c.stdin)
-	}
-	return cmd
-}
-
-// fixture is the tree c runs against, in a home of its own.
-func (c crashCase) fixture(t *testing.T) *tree {
-	t.Helper()
-	var tr *tree
-	if c.init {
-		cmd := koan(t)
-		tr = &tree{t: t, env: cmd.Env, home: envHome(cmd)}
-	} else {
-		tr = newTree(t)
-	}
-	tr.env = append(append(tr.env, clock), c.env...)
-	for _, args := range c.setup {
-		r := run(t, tr.cmd(args...))
-		if r.code != 0 {
-			t.Fatalf("setup %q: exit %d: %s", args, r.code, r.stdout)
-		}
-	}
-	if c.seed != nil {
-		c.seed(t, tr.root())
-	}
-	return tr
-}
-
-// stages are the trees a crash may leave: before, then each group of order
-// in turn changed as in after.
-func (c crashCase) stages(before, after snapshot) []map[string]string {
-	cur := maps.Clone(before.files)
-	out := []map[string]string{maps.Clone(cur)}
-	for _, group := range c.order {
-		for _, p := range group {
-			if v, ok := after.files[p]; ok {
-				cur[p] = v
-			} else {
-				delete(cur, p)
-			}
-		}
-		out = append(out, maps.Clone(cur))
-	}
-	return out
-}
-
-// Every write, killed with SIGKILL before each call that changes the disk in
-// turn, leaves what its Crash behavior says: a tree at one of its stages,
-// never going backwards, with only temp files besides; the tree still reads
-// cleanly, nothing is wedged, and a rerun gives what its Retry safety
-// promises (implementation-spec.md, Crash injection).
-func TestCrashInjection(t *testing.T) {
 	for _, c := range crashCases {
 		t.Run(c.name, func(t *testing.T) {
-			ref := c.fixture(t)
-			before := snap(t, ref.home)
-			steps(t, []step{{c.cmd(ref), 0, `"ok":true`}})
-			after := snap(t, ref.home)
-			stages := c.stages(before, after)
-			if !maps.Equal(stages[len(stages)-1], after.files) {
-				t.Fatalf("order does not cover every change:\nbefore %v\nafter  %v", before.files, after.files)
+			t.Parallel()
+			n := changes(t, c.name, c.args)
+			if n == 0 && c.name != "repair" {
+				t.Fatal("the command changed nothing on disk")
 			}
-
-			seen := make([]bool, len(stages))
-			last := 0
-			for k := 1; ; k++ {
-				if k > 50 {
-					t.Fatal("still crashing at k=50")
+			for k := 1; k <= n; k++ {
+				home := setup(t, c.name)
+				r := koan(t, home, stdinFor(c.args), []string{fmt.Sprintf("KOAN_E2E_CRASH_BEFORE=%d", k)}, c.args...)
+				if !r.killed {
+					t.Fatalf("not killed before change %d of %d: %s", k, n, r.stdout)
 				}
-				tr := c.fixture(t)
-				cmd := c.cmd(tr)
-				cmd.Env = append(cmd.Env, "KOAN_E2E_CRASH_BEFORE="+strconv.Itoa(k))
-				r := run(t, cmd)
-				ws, _ := cmd.ProcessState.Sys().(syscall.WaitStatus)
-				if !ws.Signaled() {
-					// Fewer than k calls change the disk: the uninterrupted run.
-					envelope(t, r)
-					if s := snap(t, tr.home); r.code != 0 || !maps.Equal(s.files, after.files) || len(s.temps) != 0 {
-						t.Fatalf("k=%d, no crash: exit %d, tree %v temps %v: %s", k, r.code, s.files, s.temps, r.stdout)
-					}
-					// A write whose last call publishes by rename reaches its
-					// last stage only here: no call follows to crash before.
-					seen[len(stages)-1] = true
-					break
-				}
-				if ws.Signal() != syscall.SIGKILL || r.stdout != "" {
-					t.Fatalf("k=%d: %v, stdout %q; want SIGKILL and nothing", k, cmd.ProcessState, r.stdout)
-				}
-				crashed := snap(t, tr.home)
-				stage := slices.IndexFunc(stages, func(m map[string]string) bool { return maps.Equal(m, crashed.files) })
-				if stage < 0 {
-					t.Fatalf("k=%d: tree at no stage of %q: %v", k, c.order, crashed.files)
-				}
-				if stage < last {
-					t.Fatalf("k=%d: stage %d after stage %d", k, stage, last)
-				}
-				last, seen[stage] = stage, true
-				t.Logf("k=%d: stage %d, temps %v", k, stage, crashed.temps)
-
-				// A seeded tree starts out breaking invariants; repair's
-				// promise is checked by diagnose instead.
-				if _, err := os.Stat(filepath.Join(tr.home, configDir, "config.toml")); err == nil && c.seed == nil {
-					steps(t, []step{{tr.cmd("list", "--readiness", "ready,blocked,done", "--include-folders"), 0, `"warnings":[]`}})
-				}
-				if _, err := os.Stat(filepath.Join(tr.home, configDir, "config.toml")); err == nil {
-					c.diagnose(t, tr, stage, crashed)
-				}
-				code, want, same := c.rerun(stage)
-				steps(t, []step{{c.cmd(tr), code, want}})
-				s := snap(t, tr.home)
-				if same && !maps.Equal(s.files, after.files) {
-					t.Errorf("k=%d: rerun left %v, want %v", k, s.files, after.files)
-				}
-				// doctor never sees the config directory: init clears it.
-				for _, tmp := range s.temps {
-					if strings.HasPrefix(tmp, configDirs[0]+"/") && !c.tempOK {
-						t.Errorf("k=%d: rerun left %s", k, tmp)
-					}
-				}
-			}
-			for i, ok := range seen {
-				if !ok {
-					t.Errorf("no crash left stage %d (%s)", i, fmt.Sprint(stages[i]))
-				}
+				checkAfter(t, home, fmt.Sprintf("killed before change %d of %d", k, n))
 			}
 		})
 	}
+}
+
+// A change that fails must fail the command with io, unless it is one koan
+// may ignore, and the error must name everything that did take effect.
+func TestFailures(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs every write command once per disk change")
+	}
+	for _, c := range crashCases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			n := changes(t, c.name, c.args)
+			for k := 1; k <= n; k++ {
+				home := setup(t, c.name)
+				before := snapshot(t, home)
+				r := koan(t, home, stdinFor(c.args), []string{fmt.Sprintf("KOAN_E2E_ERRNO_BEFORE=%d", k)}, c.args...)
+				what := fmt.Sprintf("change %d of %d failed", k, n)
+				switch {
+				case r.exit == 0:
+					// A failure koan may ignore: a directory flush, or the
+					// removal of a temp file or a folder renamed aside.
+				case r.exit == 1 && r.err()["kind"] == "io":
+					after := snapshot(t, home)
+					var reported []string
+					for _, p := range r.err()["changed_paths"].([]any) {
+						reported = append(reported, p.(string))
+					}
+					for p := range allKeys(before, after) {
+						if before[p] != after[p] && !slices.ContainsFunc(reported, func(c string) bool {
+							return p == c || strings.HasPrefix(p, c+"/")
+						}) {
+							t.Errorf("%s: %s changed, but changed_paths is %v", what, p, reported)
+						}
+					}
+				default:
+					t.Fatalf("%s: exit %d: %s%s", what, r.exit, r.stdout, r.stderr)
+				}
+				checkAfter(t, home, what)
+			}
+		})
+	}
+}
+
+func allKeys(a, b map[string]string) map[string]bool {
+	keys := map[string]bool{}
+	for k := range a {
+		keys[k] = true
+	}
+	for k := range b {
+		keys[k] = true
+	}
+	return keys
 }

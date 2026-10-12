@@ -5,9 +5,7 @@
   "required": ["id", "to"],
   "properties": {
     "id": { "$ref": "task-file#/properties/id" },
-    "to": { "$ref": "folder-path", "description": "The folder to move the task into." },
-    "parents": { "type": "boolean", "default": false, "description": "Create to, and any missing folders above it, instead of failing." },
-    "token": { "$ref": "claims-file#/$defs/token", "description": "The token of the caller's locked claim on the task (see Targeting writes). Absent: the caller holds no lock." }
+    "to": { "$ref": "folder-path" }
   },
   "additionalProperties": false
 }
