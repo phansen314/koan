@@ -32,9 +32,6 @@ func (x *Index) IDs() []model.ID {
 	return ids
 }
 
-// HasFolder reports whether the walk found folder f.
-func (x *Index) HasFolder(f model.Folder) bool { return slices.Contains(x.Folders, f) }
-
 // Walk lists the tree. A strict walk fails on a folder that can't be listed
 // and on a duplicated ID; doctor's tolerant one records both and carries on.
 func (t *Tree) Walk(tolerant bool) (*Index, *errs.Error) {

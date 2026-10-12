@@ -1,5 +1,5 @@
 // Command koan is the koan CLI. main sets up the process and exits; all
-// behavior is in internal/cli (implementation-spec.md, Exit and signals).
+// behavior is in internal/cli (spec/implementation.md, Exit).
 package main
 
 import (
@@ -24,8 +24,8 @@ func run() int {
 	// A panic or fatal error ends by SIGABRT (exit 134, outcome unknown),
 	// not Go's default exit 2, which would read as a usage error.
 	debug.SetTraceback("crash")
-	// Writing to a closed pipe then returns EPIPE, reported as exit 3,
-	// instead of killing the process.
+	// Writing to a closed pipe then returns EPIPE, reported as an exit above
+	// 2, instead of killing the process.
 	signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE)
 	env := cli.ProcessEnv()
 	envHook(&env)

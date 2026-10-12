@@ -3,6 +3,7 @@
 package ops
 
 import (
+	"bytes"
 	"encoding/json"
 	"path"
 	"slices"
@@ -21,24 +22,32 @@ type Envelope struct {
 	Warnings []errs.Warning
 }
 
-// MarshalJSON writes the envelope in its success or failure shape.
+// MarshalJSON writes the envelope in its success or failure shape, leaving
+// <, >, and & as they are.
 func (e Envelope) MarshalJSON() ([]byte, error) {
 	w := e.Warnings
 	if w == nil {
 		w = []errs.Warning{}
 	}
-	if e.OK {
-		return json.Marshal(struct {
-			OK       bool           `json:"ok"`
-			Result   any            `json:"result"`
-			Warnings []errs.Warning `json:"warnings"`
-		}{true, e.Result, w})
-	}
-	return json.Marshal(struct {
+	var shape any = struct {
 		OK       bool           `json:"ok"`
 		Error    *errs.Error    `json:"error"`
 		Warnings []errs.Warning `json:"warnings"`
-	}{false, e.Error, w})
+	}{false, e.Error, w}
+	if e.OK {
+		shape = struct {
+			OK       bool           `json:"ok"`
+			Result   any            `json:"result"`
+			Warnings []errs.Warning `json:"warnings"`
+		}{true, e.Result, w}
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(shape); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
 
 // Failure is the envelope of a command that failed before it ran.
@@ -250,12 +259,4 @@ func (c *call) dropClaims(ids ...model.ID) *errs.Error {
 		return nil
 	}
 	return c.t.SaveState()
-}
-
-func folderStrings(fs []model.Folder) []string {
-	out := make([]string, len(fs))
-	for i, f := range fs {
-		out[i] = string(f)
-	}
-	return out
 }

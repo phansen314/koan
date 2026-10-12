@@ -50,12 +50,9 @@ func (in *input) done() *errs.Error {
 	return errs.Invalid(in.problems)
 }
 
-// get decodes field k into v. It returns false when the field is absent, or
-// is wrong, which it records.
-func (in *input) get(k string, required bool, v any, what string) bool {
-	return in.getAt(in.m, "", k, required, v, what)
-}
-
+// getAt decodes field k of the object m, which is at the JSON pointer `at`,
+// into v. It returns false when the field is absent, or is wrong, which it
+// records.
 func (in *input) getAt(m map[string]json.RawMessage, at, k string, required bool, v any, what string) bool {
 	if at == "" {
 		in.used[k] = true

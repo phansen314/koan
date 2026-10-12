@@ -106,18 +106,6 @@ func (f Folder) Segments() []string {
 	return strings.Split(string(f[1:]), "/")
 }
 
-// CompareFolders is tree order: a parent before its children, siblings by
-// name, byte for byte.
-func CompareFolders(a, b Folder) int {
-	as, bs := a.Segments(), b.Segments()
-	for i := 0; i < len(as) && i < len(bs); i++ {
-		if c := strings.Compare(as[i], bs[i]); c != 0 {
-			return c
-		}
-	}
-	return len(as) - len(bs)
-}
-
 // MaxTitle is the longest title, in characters.
 const MaxTitle = 200
 

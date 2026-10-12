@@ -248,12 +248,3 @@ func (t *Tree) RemoveAll(rel string) *errs.Error {
 	t.note(rel)
 	return nil
 }
-
-// ReadNotes reads a notes file; missing reads as empty.
-func (t *Tree) ReadNotes(rel string) ([]byte, *errs.Error) {
-	data, err := t.root.ReadFile(rel)
-	if err != nil && !errs.IsErrno(err, syscall.ENOENT) {
-		return nil, errs.FromOS(t.Abs(rel), err)
-	}
-	return data, nil
-}
