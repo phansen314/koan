@@ -7,34 +7,22 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/fsys"
-	"github.com/phansen314/koan/internal/jsonio"
 	"github.com/phansen314/koan/internal/model"
 )
 
-// FolderMode is the mode of every folder koan creates, before the umask.
-const FolderMode = 0o755
-
-// FileMode is the mode of every file koan creates, before the umask, but the
-// claims file's: PrivateMode, since that one holds tokens.
-const (
-	FileMode    = 0o644
-	PrivateMode = 0o600
-)
-
 // Publish writes data to rel, a path within r, through a temp file in rel's
-// directory (implementation-spec.md, Writing files): created exclusively
-// with mode perm,
-// written in full and flushed to disk, then published — by rename when
-// replace is set, else by link, which never clobbers an existing file — and
-// the directory flushed, so the file survives a system crash whole and before
-// any later step. The temp file is then removed. Failing to flush the
-// directory or to remove the temp file is not an error: the file is already
-// published (doctor finds leftovers). Any other failure returns the OS error,
-// with nothing published; atLink reports that it came from link.
-func Publish(r fsys.Root, rel string, data []byte, perm fs.FileMode, replace bool) (atLink bool, err error) {
+// directory (spec/implementation.md, Writing a file): created exclusively
+// with mode perm, written in full and flushed to disk, then published — by
+// rename when replace is set, else by link, which never clobbers an existing
+// file — and the directory flushed, so the file survives a system crash whole
+// and before any later step. The temp file is then removed. Failing to flush
+// the directory or to remove the temp file is not an error: the file is
+// already published (doctor finds leftovers). Any other failure returns the
+// OS error, with nothing published.
+func Publish(r fsys.Root, rel string, data []byte, perm fs.FileMode, replace bool) error {
 	f, tmp, err := r.CreateTemp(path.Dir(rel), perm)
 	if err != nil {
-		return false, err
+		return err
 	}
 	_, err = f.Write(data)
 	if err == nil {
@@ -45,126 +33,227 @@ func Publish(r fsys.Root, rel string, data []byte, perm fs.FileMode, replace boo
 	}
 	if err != nil {
 		r.Remove(tmp)
-		return false, err
+		return err
 	}
 	if replace {
 		if err := r.Rename(tmp, rel); err != nil {
 			r.Remove(tmp)
-			return false, err
+			return err
 		}
 		r.SyncDir(path.Dir(rel))
-		return false, nil
+		return nil
 	}
 	if err := r.Link(tmp, rel); err != nil {
 		r.Remove(tmp)
-		return true, err
+		return err
 	}
 	r.SyncDir(path.Dir(rel))
 	r.Remove(tmp)
-	return false, nil
+	return nil
 }
 
-// Create publishes a new file at rel. A file already there is corrupt
-// (unexpected-file): under koan's invariants none can exist.
-func (tx *Tx) Create(rel string, data []byte) *errs.Error {
-	if e := tx.mustWrite("create " + rel); e != nil {
+// put publishes a file in the tree and records the change.
+func (t *Tree) put(rel string, data []byte, replace bool) *errs.Error {
+	if err := Publish(t.root, rel, data, FileMode, replace); err != nil {
+		return errs.FromOS(t.Abs(rel), err)
+	}
+	t.note(rel)
+	return nil
+}
+
+// WriteTask writes a task file into folder f: a new one when create is set,
+// which fails if a file is already there, otherwise over the old one.
+func (t *Tree) WriteTask(f model.Folder, tf *model.TaskFile, create bool) *errs.Error {
+	tf.Normalize()
+	data, err := model.Encode(tf)
+	if err != nil {
+		return errs.New(errs.Internal, "encode task %d: %v", tf.ID, err)
+	}
+	if e := t.put(TaskRel(f, tf.ID), data, !create); e != nil {
 		return e
 	}
-	atLink, err := Publish(tx.root, rel, data, FileMode, false)
+	t.files[tf.ID] = &Loaded{File: tf}
+	return nil
+}
+
+// WriteNotes writes a new task's notes.
+func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error {
+	return t.put(NotesRel(f, id), []byte(notes), true)
+}
+
+// WriteMeta writes koan.json with the given format.
+func (t *Tree) WriteMeta(schema int64, create bool) *errs.Error {
+	data, err := model.Encode(model.Meta{Schema: schema})
+	if err != nil {
+		return errs.New(errs.Internal, "encode %s: %v", MetaName, err)
+	}
+	if e := t.put(MetaName, data, !create); e != nil {
+		return e
+	}
+	t.Meta = &model.Meta{Schema: schema}
+	return nil
+}
+
+// SaveState writes the state file, which is outside the tree: its directory
+// is opened as a root of its own, and any temp file a killed write left
+// there is removed first, since doctor never sees that directory.
+func (t *Tree) SaveState() *errs.Error {
+	return WriteState(t.env, t.State, &t.changed)
+}
+
+// WriteState writes st as the state file, creating its directory if needed.
+func WriteState(env Env, st *model.State, changed *[]string) *errs.Error {
+	if st.Claims == nil {
+		st.Claims = map[string]model.Claim{}
+	}
+	data, err := model.Encode(st)
+	if err != nil {
+		return errs.New(errs.Internal, "encode the state file: %v", err)
+	}
+	if err := env.FS.MkdirAll(env.StateDir(), 0o700); err != nil {
+		return errs.FromOS(env.StateDir(), err)
+	}
+	dir, err := env.FS.OpenRoot(env.StateDir())
+	if err != nil {
+		return errs.FromOS(env.StateDir(), err)
+	}
+	defer dir.Close()
+	if entries, err := dir.ReadDir("."); err == nil {
+		for _, e := range entries {
+			if fsys.IsTemp(e.Name()) {
+				dir.Remove(e.Name())
+			}
+		}
+	}
+	if err := Publish(dir, StateName, data, StateMode, true); err != nil {
+		return errs.FromOS(env.StatePath(), err)
+	}
+	if changed != nil {
+		*changed = append(*changed, env.StatePath())
+	}
+	return nil
+}
+
+// EnsureFolder creates folder f and any missing folders above it, and
+// returns the ones it created, outermost first. Something on the path that
+// is not a folder is a not-a-folder conflict.
+func (t *Tree) EnsureFolder(f model.Folder) ([]model.Folder, *errs.Error) {
+	created := []model.Folder{}
+	cur := model.Root
+	for _, seg := range f.Segments() {
+		cur = cur.Join(seg)
+		err := t.root.Mkdir(cur.Rel(), FolderMode)
+		switch {
+		case err == nil:
+			t.root.SyncDir(cur.Parent().Rel())
+			t.note(cur.Rel())
+			created = append(created, cur)
+		case errs.IsErrno(err, syscall.EEXIST):
+			if e := t.mustBeFolder(cur); e != nil {
+				return created, e
+			}
+		case errs.IsErrno(err, syscall.ENOTDIR):
+			return created, notAFolder(t, cur.Parent())
+		default:
+			return created, errs.FromOS(t.Abs(cur.Rel()), err)
+		}
+	}
+	return created, nil
+}
+
+func notAFolder(t *Tree, f model.Folder) *errs.Error {
+	return errs.NewConflict(errs.RuleNotAFolder, "%s is not a folder", f).
+		WithFolders(string(f)).WithPaths(t.Abs(f.Rel()))
+}
+
+func (t *Tree) mustBeFolder(f model.Folder) *errs.Error {
+	fi, err := t.root.Lstat(f.Rel())
+	if err != nil {
+		return errs.FromOS(t.Abs(f.Rel()), err)
+	}
+	if !fi.IsDir() {
+		return notAFolder(t, f)
+	}
+	return nil
+}
+
+// FolderExists reports whether f is a folder. A missing one is not an
+// error; a file or symlink on the path is a not-a-folder conflict.
+func (t *Tree) FolderExists(f model.Folder) (bool, *errs.Error) {
+	cur := model.Root
+	for _, seg := range f.Segments() {
+		cur = cur.Join(seg)
+		fi, err := t.root.Lstat(cur.Rel())
+		switch {
+		case errs.IsErrno(err, syscall.ENOENT):
+			return false, nil
+		case err != nil:
+			return false, errs.FromOS(t.Abs(cur.Rel()), err)
+		case !fi.IsDir():
+			return false, notAFolder(t, cur)
+		}
+	}
+	return true, nil
+}
+
+// Move renames a file or folder to a name that must be free. exists is true
+// when something is already there, with nothing moved.
+func (t *Tree) Move(oldRel, newRel string) (exists bool, e *errs.Error) {
+	err := t.root.RenameNoReplace(oldRel, newRel)
 	switch {
 	case err == nil:
-		return nil
-	case atLink && isErrno(err, syscall.EEXIST):
-		return errs.Corrupt(tx.Path(rel), errs.CorruptUnexpectedFile)
+		t.root.SyncDir(path.Dir(newRel))
+		t.note(oldRel)
+		t.note(newRel)
+		return false, nil
+	case errs.IsErrno(err, syscall.EEXIST, syscall.ENOTEMPTY):
+		return true, nil
 	}
-	return tx.OSError(rel, err)
+	return false, errs.FromOS(t.Abs(oldRel), err)
 }
 
-// Replace publishes rel over any file already there.
-func (tx *Tx) Replace(rel string, data []byte) *errs.Error {
-	if e := tx.mustWrite("replace " + rel); e != nil {
-		return e
+// Remove removes one file. A file already gone is not an error.
+func (t *Tree) Remove(rel string) *errs.Error {
+	err := t.root.Remove(rel)
+	if err != nil && !errs.IsErrno(err, syscall.ENOENT) {
+		return errs.FromOS(t.Abs(rel), err)
 	}
-	if _, err := Publish(tx.root, rel, data, FileMode, true); err != nil {
-		return tx.OSError(rel, err)
+	if err == nil {
+		t.note(rel)
 	}
 	return nil
 }
 
-// ReplaceRaw is Replace returning the OS error, for a call site that gives
-// every error its own meaning (create's .md: a notes-missing warning).
-func (tx *Tx) ReplaceRaw(rel string, data []byte) error {
-	if e := tx.mustWrite("replace " + rel); e != nil {
-		return e
+// Discard removes a folder in one step as far as the tree is concerned: it
+// is renamed aside, to a hidden temp name in the root, then removed with
+// everything under it. Once renamed it is gone from the tree; a removal that
+// fails or is interrupted leaves a hidden leftover, which walks ignore and
+// doctor reports.
+func (t *Tree) Discard(rel string) *errs.Error {
+	tmp := fsys.TempName(".")
+	if err := t.root.RenameNoReplace(rel, tmp); err != nil {
+		return errs.FromOS(t.Abs(rel), err)
 	}
-	_, err := Publish(tx.root, rel, data, FileMode, true)
-	return err
-}
-
-// NotesMissing records the notes-missing warning for task id, whose .md at
-// rel could not be written because of err. An OS error with no symbolic name
-// still gets the warning, without code: the task exists, so the write can't
-// fail, and the notes must not be lost silently.
-func (tx *Tx) NotesMissing(rel string, id model.ID, err error) {
-	code, _ := tx.code(rel, err)
-	tx.Warn(errs.NotesMissing(tx.Path(rel), int64(id), code))
-}
-
-// Mkdir creates the folder rel, returning the OS error: whether EEXIST is an
-// error is the caller's call.
-func (tx *Tx) Mkdir(rel string) error {
-	if e := tx.mustWrite("mkdir " + rel); e != nil {
-		return e
-	}
-	return tx.root.Mkdir(rel, FolderMode)
-}
-
-// SetLastID records lastID in the state file, while the root's lock is held.
-// Before writing it removes any temp file an
-// interrupted write left in the config directory.
-func (tx *Tx) SetLastID(lastID int64) *errs.Error {
-	return tx.writeState(lastID)
-}
-
-func (tx *Tx) writeState(lastID int64) *errs.Error {
-	if e := tx.mustWrite("write " + StateName); e != nil {
-		return e
-	}
-	if e := writeState(tx.env, tx.rootPath, lastID); e != nil {
-		return e
-	}
-	tx.state = stateResult{state: StateOK, file: model.StateFile{Schema: model.StateSchema, Root: tx.rootPath, LastID: lastID}}
+	t.note(rel)
+	t.root.SyncDir(path.Dir(rel))
+	t.root.RemoveAll(tmp)
 	return nil
 }
 
-// SetMeta replaces koan.json with m, whole: migrate's last write.
-func (tx *Tx) SetMeta(m model.RootFile) *errs.Error {
-	data, err := m.Encode()
-	if err != nil {
-		return errs.Internal("encode " + MetaName + ": " + err.Error())
+// RemoveAll removes a leftover temp file or folder.
+func (t *Tree) RemoveAll(rel string) *errs.Error {
+	if err := t.root.RemoveAll(rel); err != nil {
+		return errs.FromOS(t.Abs(rel), err)
 	}
-	if e := tx.Replace(MetaName, data); e != nil {
-		return e
-	}
-	tx.meta = m
-	tx.metaSt = metaState{state: MetaOK, meta: m}
+	t.note(rel)
 	return nil
 }
 
-// OldMeta is the ordered tree of koan.json when it is in an older format,
-// with its schema, in a migration transaction; ok is false otherwise.
-func (tx *Tx) OldMeta() (obj *jsonio.Object, schema int64, ok bool) {
-	if tx.metaSt.state != MetaOldFormat {
-		return nil, 0, false
+// ReadNotes reads a notes file; missing reads as empty.
+func (t *Tree) ReadNotes(rel string) ([]byte, *errs.Error) {
+	data, err := t.root.ReadFile(rel)
+	if err != nil && !errs.IsErrno(err, syscall.ENOENT) {
+		return nil, errs.FromOS(t.Abs(rel), err)
 	}
-	return tx.metaSt.old, tx.metaSt.meta.Schema, true
-}
-
-// OldLastID is the last_id a koan.json in an older format holds, in a
-// migration transaction; ok is false when koan.json holds none.
-func (tx *Tx) OldLastID() (last int64, ok bool) {
-	if tx.metaSt.state != MetaOldFormat || tx.metaSt.oldLastID == nil {
-		return 0, false
-	}
-	return *tx.metaSt.oldLastID, true
+	return data, nil
 }

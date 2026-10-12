@@ -4,9 +4,11 @@
   "type": "object",
   "required": ["id"],
   "properties": {
-    "id": { "$ref": "task-file#/properties/id", "description": "The task to claim." },
-    "extra": { "$ref": "task-file#/properties/extra", "default": {}, "description": "Stored with the claim and returned with it; never interpreted." },
-    "use_token": { "type": "boolean", "default": false, "description": "Make the claim with a token, which locks the task (see Tokens)." }
+    "id": { "$ref": "task-file#/properties/id" },
+    "extra": {
+      "type": "object",
+      "default": {}
+    }
   },
   "additionalProperties": false
 }

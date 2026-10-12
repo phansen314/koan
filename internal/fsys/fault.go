@@ -15,7 +15,6 @@ const (
 	OpMkdir      = "mkdir"
 	OpMkdirAll   = "mkdirall"
 	OpReadFile   = "readfile"
-	OpStat       = "stat"
 	OpLstat      = "lstat"
 	OpReadDir    = "readdir"
 	OpCreateTemp = "createtemp"
@@ -99,41 +98,6 @@ func (f Fault) MkdirAll(p string, perm fs.FileMode) error {
 		return err
 	}
 	return f.FS.MkdirAll(p, perm)
-}
-
-func (f Fault) ReadFile(p string) ([]byte, error) {
-	if err := f.before(Op{Name: OpReadFile, Path: p}); err != nil {
-		return nil, err
-	}
-	return f.FS.ReadFile(p)
-}
-
-func (f Fault) Stat(p string) (fs.FileInfo, error) {
-	if err := f.before(Op{Name: OpStat, Path: p}); err != nil {
-		return nil, err
-	}
-	return f.FS.Stat(p)
-}
-
-func (f Fault) Lstat(p string) (fs.FileInfo, error) {
-	if err := f.before(Op{Name: OpLstat, Path: p}); err != nil {
-		return nil, err
-	}
-	return f.FS.Lstat(p)
-}
-
-func (f Fault) Rename(oldpath, newpath string) error {
-	if err := f.before(Op{Name: OpRename, Path: oldpath, NewPath: newpath, Mutating: true}); err != nil {
-		return err
-	}
-	return f.FS.Rename(oldpath, newpath)
-}
-
-func (f Fault) Remove(p string) error {
-	if err := f.before(Op{Name: OpRemove, Path: p, Mutating: true}); err != nil {
-		return err
-	}
-	return f.FS.Remove(p)
 }
 
 type faultRoot struct {

@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "root-file",
   "type": "object",
-  "required": ["schema", "migration"],
+  "required": ["schema"],
   "properties": {
-    "schema": { "const": 2 },
-    "migration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+    "schema": { "type": "integer", "minimum": 1, "description": "The tree's format." }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "description": "koan.json, in the root of the tree."
 }

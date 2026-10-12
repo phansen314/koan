@@ -1,643 +1,230 @@
 package ops
 
 import (
-	"bytes"
 	"cmp"
 	"fmt"
 	"maps"
-	"os"
 	"slices"
 	"strconv"
-	"strings"
-	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
-	"github.com/phansen314/koan/internal/jsonio"
-	"github.com/phansen314/koan/internal/migrations"
 	"github.com/phansen314/koan/internal/model"
 	"github.com/phansen314/koan/internal/store"
 )
 
-// Finding kinds (operations.md, Finding kinds).
-const (
-	kindTempLeftover      = "temp-leftover"
-	kindMetadataMissing   = "metadata-missing"
-	kindMetadataUnusable  = "metadata-unusable"
-	kindMigrationPending  = "migration-pending"
-	kindStateMissing      = "state-missing"
-	kindStateUnusable     = "state-unusable"
-	kindOldFormat         = "old-format"
-	kindIDAboveLastID     = "id-above-last-id"
-	kindDanglingReference = "dangling-reference"
-	kindOrphanNotes       = "orphan-notes"
-	kindDuplicateID       = "duplicate-id"
-	kindCycle             = "cycle"
-	kindUnusableFile      = "unusable-file"
-	kindNestedTree        = "nested-tree"
-	kindSkippedEntry      = "skipped-entry"
-	kindStrayEntry        = "stray-entry"
-	kindUnreadableFolder  = "unreadable-folder"
-	kindCaseClash         = "case-clash"
-	kindClaimsUnusable    = "claims-unusable"
-	kindClaimInert        = "claim-inert"
-)
-
-// Repair classes (design-spec.md, Diagnosis and repair).
-const (
-	classAuto      = "auto"
-	classOnRequest = "on-request"
-	classManual    = "manual"
-	// classInformational kinds are not damage: reported only when named,
-	// and never making a tree unhealthy.
-	classInformational = "informational"
-)
-
-// findingClass is each finding kind's repair class.
-var findingClass = map[string]string{
-	kindTempLeftover:      classAuto,
-	kindMetadataMissing:   classOnRequest,
-	kindMetadataUnusable:  classManual,
-	kindMigrationPending:  classManual,
-	kindStateMissing:      classOnRequest,
-	kindStateUnusable:     classManual,
-	kindOldFormat:         classManual,
-	kindIDAboveLastID:     classAuto,
-	kindDanglingReference: classAuto,
-	kindOrphanNotes:       classAuto,
-	kindDuplicateID:       classManual,
-	kindCycle:             classManual,
-	kindUnusableFile:      classManual,
-	kindNestedTree:        classManual,
-	kindSkippedEntry:      classManual,
-	kindStrayEntry:        classInformational,
-	kindUnreadableFolder:  classManual,
-	kindCaseClash:         classManual,
-	kindClaimsUnusable:    classOnRequest,
-	kindClaimInert:        classAuto,
+// loc is one task file: an ID in a folder.
+type loc struct {
+	f  model.Folder
+	id model.ID
 }
 
-// findingKinds is every finding kind, sorted.
-var findingKinds = slices.Sorted(maps.Keys(findingClass))
-
-// Actions: what repair does to an item.
-const (
-	actionRemove          = "remove"
-	actionCreateMetadata  = "create-metadata"
-	actionCreateState     = "create-state"
-	actionRaiseLastID     = "raise-last-id"
-	actionRemoveReference = "remove-reference"
-	actionResetClaims     = "reset-claims"
-	actionDropClaim       = "drop-claim"
-)
-
-// claim-inert reasons.
-const (
-	inertDone    = "done"
-	inertMissing = "missing"
-)
-
-// orphan-notes reasons.
-const (
-	orphanEmpty         = "empty"
-	orphanLinked        = "linked"
-	orphanTaskElsewhere = "task-elsewhere"
-	orphanNoTask        = "no-task"
-	orphanUnreadable    = "unreadable"
-)
-
-// findingCap is how many items a kind lists unless the input names it.
-const findingCap = 20
-
-// KindsInput is doctor's and repair's input: the kinds named, nil when
-// kinds is absent.
-type KindsInput struct {
-	Kinds []string
-}
-
-func decodeDoctor(f *model.Fields, p *model.Problems) any {
-	return KindsInput{Kinds: optionalKinds(f, p)}
-}
-
-func optionalKinds(f *model.Fields, p *model.Problems) []string {
-	v, ok := f.Optional("kinds")
-	if !ok {
-		return nil
-	}
-	kinds, _ := nonEmptySet(p, v, f.Ptr("kinds"), "kind", kindSet)
-	return kinds
-}
-
-// kindSet checks a value as a set of finding kinds. The schema types them as
-// strings, so an unknown kind is Additional validation.
-func kindSet(p *model.Problems, v any, ptr string) ([]string, bool) {
-	a, ok := p.Array(v, ptr)
-	if !ok {
-		return nil, false
-	}
-	kinds := make([]string, 0, len(a))
-	valid := make([]bool, 0, len(a))
-	for i, item := range a {
-		at := jsonio.Pointer(ptr, strconv.Itoa(i))
-		s, ok1 := p.String(item, at)
-		kinds = append(kinds, s)
-		valid = append(valid, ok1)
-		ok = ok && ok1
-		if ok1 && findingClass[s] == "" {
-			p.AddAdditional(at, "must be one of "+strings.Join(findingKinds, ", "))
-			ok = false
+// inTreeOrder lists every task file, copies of a duplicated ID included, by
+// folder in tree order and then by ID.
+func inTreeOrder(x *store.Index) []loc {
+	var ls []loc
+	for id := range x.Tasks {
+		for _, f := range copiesOf(x, id) {
+			ls = append(ls, loc{f, id})
 		}
 	}
-	return kinds, model.Unique(p, kinds, valid, ptr) && ok
+	sortLocs(x, ls)
+	return ls
 }
 
-// Finding is one kind's findings (finding).
-type Finding struct {
-	Kind      string `json:"kind"`
-	Class     string `json:"class"`
-	Count     int    `json:"count"`
-	Truncated bool   `json:"truncated"`
-	Items     []Item `json:"items"`
-}
-
-// Item is one finding (finding-item). The unexported fields are what repair
-// needs to act on it.
-type Item struct {
-	Paths     []string    `json:"paths"`
-	IDs       []model.ID  `json:"ids"`
-	Action    *string     `json:"action"`
-	Suggest   *string     `json:"suggest"`
-	Reason    string      `json:"reason,omitempty"`
-	Code      string      `json:"code,omitempty"`
-	Identical *bool       `json:"identical,omitempty"`
-	Group     []model.ID  `json:"group,omitempty"`
-	LastID    *int64      `json:"last_id,omitempty"`
-	Migration *int64      `json:"migration,omitempty"`
-	Error     *errs.Error `json:"error,omitempty"`
-
-	rel     string         // the entry acted on, relative to the root
-	loc     store.Location // dangling-reference: the referring task file
-	missing model.ID       // dangling-reference: the ID it names
-	linked  string         // orphan-notes linked: the task's notes it is
-}
-
-// stateFindings adds the state file's findings, read whatever koan.json's
-// state: state-missing (not while an older koan.json holds last_id, which
-// migrate moves), state-unusable, and id-above-last-id when it is usable.
-func stateFindings(tx *store.Tx, x *store.Index, fs findings, maxID int64) {
-	statePath := tx.StatePath()
-	st, stateErr := tx.StateState()
-	switch st {
-	case store.StateOK:
-		lastID := tx.LastID()
-		for _, l := range x.Tasks {
-			if int64(l.ID) > lastID {
-				fs.add(kindIDAboveLastID, Item{
-					Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID}, LastID: &maxID,
-					Action: ptr(actionRaiseLastID), Suggest: ptr("koan repair"),
-				})
-			}
-		}
-	case store.StateMissing:
-		if _, holds := tx.OldLastID(); holds {
-			return
-		}
-		it := Item{
-			Paths: []string{statePath}, LastID: &maxID, Action: ptr(actionCreateState),
-			Suggest: ptr("koan repair --kinds state-missing, unless a task with an ID above " + fmt.Sprint(maxID) + " was ever deleted; then restore the state file from a backup, or write it by hand with that ID as last_id"),
-		}
-		// A folder that can't be listed may hold a higher ID, so last_id
-		// can't be rebuilt from the walk.
-		if !x.Complete() {
-			it.Action, it.Suggest = nil, ptr("fix the unreadable folders first; then koan repair --kinds state-missing")
-		}
-		fs.add(kindStateMissing, it)
-	default:
-		it := Item{
-			Paths: []string{statePath}, Error: stateErr,
-			Suggest: ptr("fix the state file by hand, or remove it and run koan repair --kinds state-missing"),
-		}
-		if st == store.StateOtherRoot {
-			it.Suggest = ptr(suggestOtherRoot)
-		}
-		fs.add(kindStateUnusable, it)
+func sortLocs(x *store.Index, ls []loc) {
+	pos := map[model.Folder]int{}
+	for i, f := range x.Folders {
+		pos[f] = i
 	}
-}
-
-// suggestOtherRoot is what a person does about a state file or claims file
-// that names another root than the config does (design-spec.md, One root).
-const suggestOtherRoot = "put the config's root back if it was edited by hand; to change the root, remove the config, the state file, and the claims file, then run koan init"
-
-// suggestMigrate is what a person does about a pending migration.
-const suggestMigrate = "run koan migrate, after committing the tree when it is a git repository"
-
-// findings is every finding in a tree, by kind, unsorted and uncapped.
-type findings map[string][]Item
-
-func (fs findings) add(kind string, it Item) {
-	if it.Paths == nil {
-		it.Paths = []string{}
-	}
-	if it.IDs == nil {
-		it.IDs = []model.ID{}
-	}
-	fs[kind] = append(fs[kind], it)
-}
-
-// healthy reports whether there are no findings of any kind but
-// informational ones.
-func (fs findings) healthy() bool {
-	for kind, items := range fs {
-		if len(items) > 0 && findingClass[kind] != classInformational {
-			return false
+	slices.SortFunc(ls, func(a, b loc) int {
+		if a.f != b.f {
+			return pos[a.f] - pos[b.f]
 		}
-	}
-	return true
-}
-
-// report groups fs as findings are reported (operations.md, Findings): only
-// the kinds in only (when nil, every kind but the informational ones), sorted
-// by kind, each kind's items sorted and capped at findingCap unless full
-// names it.
-func (fs findings) report(only, full []string) []Finding {
-	out := []Finding{}
-	for _, kind := range slices.Sorted(maps.Keys(fs)) {
-		items := fs[kind]
-		switch {
-		case len(items) == 0:
-			continue
-		case only != nil && !slices.Contains(only, kind):
-			continue
-		case only == nil && findingClass[kind] == classInformational:
-			continue
-		}
-		items = slices.Clone(items)
-		slices.SortStableFunc(items, compareItems)
-		f := Finding{Kind: kind, Class: findingClass[kind], Count: len(items), Items: items}
-		if len(items) > findingCap && !slices.Contains(full, kind) {
-			f.Items, f.Truncated = items[:findingCap], true
-		}
-		out = append(out, f)
-	}
-	return out
-}
-
-// compareItems orders a kind's items: by the first entry of paths, then by
-// ids, element by element.
-func compareItems(a, b Item) int {
-	first := func(it Item) string {
-		if len(it.Paths) == 0 {
-			return ""
-		}
-		return it.Paths[0]
-	}
-	return cmp.Or(strings.Compare(first(a), first(b)), slices.Compare(a.IDs, b.IDs))
-}
-
-// DoctorOutput is doctor's result (doctor-output).
-type DoctorOutput struct {
-	Healthy  bool      `json:"healthy"`
-	Findings []Finding `json:"findings"`
-}
-
-// runDoctor reports every finding, under the write lock, changing nothing.
-func runDoctor(env Env, in KindsInput, w *errs.Collector) (any, *errs.Error) {
-	var out DoctorOutput
-	e := store.Diagnose(env.Env, w, func(tx *store.Tx) *errs.Error {
-		fs, e := diagnose(tx)
-		if e != nil {
-			return e
-		}
-		out = DoctorOutput{Healthy: fs.healthy(), Findings: fs.report(in.Kinds, in.Kinds)}
-		return nil
+		return cmp.Compare(a.id, b.id)
 	})
+}
+
+// diagnosis is doctor's findings, each with the fix repair would make: nil
+// for one a person has to resolve.
+type diagnosis struct {
+	findings []errs.Finding
+	fixes    []func() *errs.Error
+}
+
+func (d *diagnosis) add(kind, msg string, ids []model.ID, paths []string, fix func() *errs.Error) {
+	if ids == nil {
+		ids = []model.ID{}
+	}
+	if paths == nil {
+		paths = []string{}
+	}
+	d.findings = append(d.findings, errs.Finding{Kind: kind, Message: msg, IDs: ids, Paths: paths, Repairable: fix != nil})
+	d.fixes = append(d.fixes, fix)
+}
+
+// diagnose finds everything wrong with the tree (spec/design.md, Doctor and
+// repair). Findings come out by kind, in the order the design lists them,
+// and in tree order within a kind.
+func diagnose(c *call) (*diagnosis, *errs.Error) {
+	t := c.t
+	x, e := t.Walk(true)
 	if e != nil {
 		return nil, e
 	}
-	return out, nil
-}
-
-// diagnose runs every check (implementation-spec.md, Checks). Its only
-// errors are internal: an OS error with no symbolic name.
-func diagnose(tx *store.Tx) (findings, *errs.Error) {
-	fs := findings{}
-	x := tx.Index()
-	sv := x.Survey
-	if sv == nil {
-		return nil, errs.Internal("diagnose outside a diagnostic transaction")
-	}
-
-	// Every task file counts toward last_id by the ID in its filename,
-	// usable or not.
-	var maxID int64
-	for _, l := range x.Tasks {
-		maxID = max(maxID, int64(l.ID))
-	}
-	metaPath := tx.Path(store.MetaName)
-	// A task file in an older format is not damage, and it decides what a
-	// rebuilt koan.json records.
-	anyOld := false
-	for _, l := range x.Tasks {
-		if ld := tx.Load(l); ld.State == store.Unsupported && ld.Older {
-			anyOld = true
+	d := &diagnosis{}
+	files := inTreeOrder(x)
+	usable := map[model.ID]*model.TaskFile{} // by ID, for tasks with one copy
+	loaded := make([]*store.Loaded, len(files))
+	for i, l := range files {
+		loaded[i] = t.LoadAt(l.f, l.id)
+		if loaded[i].File != nil && len(x.Copies[l.id]) == 0 {
+			usable[l.id] = loaded[i].File
 		}
 	}
-	switch state, metaErr := tx.MetaState(); {
-	case state == store.MetaMissing:
-		// Nothing to convert records the latest step; an older task file
-		// leaves the root needing migration.
-		step := migrations.Latest()
-		if anyOld {
-			step = 0
-		}
-		fs.add(kindMetadataMissing, Item{
-			Paths: []string{metaPath}, Migration: &step, Action: ptr(actionCreateMetadata),
-			Suggest: ptr("koan repair --kinds metadata-missing"),
-		})
-	case state == store.MetaOK && metaErr == nil:
-	case state == store.MetaOK || state == store.MetaOldFormat:
-		fs.add(kindMigrationPending, Item{
-			Paths: []string{metaPath}, Error: metaErr,
-			Suggest: ptr(suggestMigrate),
-		})
-	default:
-		fs.add(kindMetadataUnusable, Item{
-			Paths: []string{metaPath}, Error: metaErr,
-			Suggest: ptr("fix koan.json by hand, or restore it from git; a binary that supports its format can use it as it is"),
-		})
-	}
-	stateFindings(tx, x, fs, maxID)
+	abs := func(l loc) string { return t.Abs(store.TaskRel(l.f, l.id)) }
 
-	for _, rel := range sv.Temps {
-		fs.add(kindTempLeftover, Item{Paths: []string{tx.Path(rel)}, Action: ptr(actionRemove), Suggest: ptr("koan repair"), rel: rel})
-	}
-	for _, rel := range sv.Nested {
-		fs.add(kindNestedTree, Item{Paths: []string{tx.Path(rel)}, Suggest: ptr("move the tree it belongs to out of this one, or remove this koan.json if the folder is part of this tree")})
-	}
-	for _, s := range sv.Strays {
-		p := []string{tx.Path(s.Rel)}
-		switch s.Reason {
-		case store.StraySymlink:
-			fs.add(kindSkippedEntry, Item{Paths: p, Reason: s.Reason, Suggest: ptr("koan never follows a symlink, so what it leads to is not part of the tree: move the real folder or file in instead, or remove the link")})
-		case store.StrayType:
-			fs.add(kindSkippedEntry, Item{Paths: p, Reason: s.Reason, Suggest: ptr("rename or remove it: it has a folder's or task file's name, but the wrong type, so koan skips it")})
-		default:
-			fs.add(kindStrayEntry, Item{Paths: p, Suggest: ptr("nothing to do: koan ignores it")})
-		}
-	}
-	for _, u := range x.Unreadable {
-		rel := store.FolderRel(u.Folder)
-		code, e := tx.Code(rel, u.Err)
-		if e != nil {
-			return nil, e
-		}
-		fs.add(kindUnreadableFolder, Item{Paths: []string{tx.Path(rel)}, Code: code, Suggest: ptr("fix its permissions; until then its tasks are missing from every result")})
+	for _, rel := range x.Temps {
+		d.add("temp-leftover", "a temp file koan left behind: `koan repair` removes it", nil,
+			[]string{t.Abs(rel)}, func() *errs.Error { return t.RemoveAll(rel) })
 	}
 
-	caseClashes(tx, x, fs)
-
-	// Task files: unusable ones, and the usable ones' edges.
-	usable := map[model.ID][]*store.Loaded{}
-	for _, l := range x.Tasks {
-		ld := tx.Load(l)
-		switch ld.State {
-		case store.Vanished:
-		case store.Usable:
-			usable[l.ID] = append(usable[l.ID], ld)
-		default:
-			if ld.State == store.Unsupported && ld.Older {
-				fs.add(kindOldFormat, Item{
-					Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID},
-					Suggest: ptr(suggestMigrate + "; a file migrate lists under unconverted breaks its own format's rules, so no step can read it: fix or remove it"),
-				})
-				continue
-			}
-			fs.add(kindUnusableFile, Item{
-				Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID}, Error: tx.Needed(ld),
-				Suggest: ptr("fix the file by hand, or restore it from git"),
+	var above []model.ID
+	var abovePaths []string
+	for _, l := range files {
+		if l.id > t.State.LastID {
+			above, abovePaths = append(above, l.id), append(abovePaths, abs(l))
+		}
+	}
+	if len(above) > 0 {
+		top := slices.Max(above)
+		d.add("id-above-counter", fmt.Sprintf("task IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
+			above, abovePaths, func() *errs.Error {
+				t.State.LastID = top
+				return t.SaveState()
 			})
+	}
+
+	for i, l := range files {
+		tf := loaded[i].File
+		if tf == nil {
+			continue
+		}
+		var gone []model.ID
+		for _, b := range tf.BlockedBy {
+			if _, ok := x.Tasks[b]; !ok {
+				gone = append(gone, b)
+			}
+		}
+		if len(gone) == 0 {
+			continue
+		}
+		d.add("dangling-reference", fmt.Sprintf("task %d is blocked by %v, which do not exist: `koan repair` removes them from its blocked_by", l.id, gone),
+			append([]model.ID{l.id}, gone...), []string{abs(l)}, func() *errs.Error {
+				tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
+				tf.UpdatedAt = c.now
+				return t.WriteTask(l.f, tf, false)
+			})
+	}
+
+	var stale []string
+	for _, key := range slices.Sorted(maps.Keys(t.State.Claims)) {
+		id, _ := strconv.ParseInt(key, 10, 64)
+		_, exists := x.Tasks[id]
+		if tf := usable[id]; !exists || (tf != nil && !tf.Open()) {
+			stale = append(stale, key)
+			d.add("stale-claim", fmt.Sprintf("a claim on task %d, which is done or gone: `koan repair` removes it", id),
+				[]model.ID{id}, []string{t.Env().StatePath()}, nil)
+		}
+	}
+	if len(stale) > 0 {
+		// One fix removes every stale claim; it is attached to each finding
+		// and does its work once.
+		fixed := false
+		fix := func() *errs.Error {
+			if fixed {
+				return nil
+			}
+			fixed = true
+			for _, key := range stale {
+				delete(t.State.Claims, key)
+			}
+			return t.SaveState()
+		}
+		for i := len(d.fixes) - len(stale); i < len(d.fixes); i++ {
+			d.fixes[i] = fix
+			d.findings[i].Repairable = true
 		}
 	}
 
-	if e := duplicates(tx, x, fs); e != nil {
-		return nil, e
-	}
-
-	// A blocker may be in a folder that could not be listed, so none is
-	// called dangling then, as for the warning.
-	if x.Complete() {
-		for _, l := range x.Tasks {
-			ld := tx.Load(l)
-			if ld.State != store.Usable {
-				continue
-			}
-			for _, b := range ld.Task.BlockedBy {
-				if len(x.Locations(b)) == 0 {
-					fs.add(kindDanglingReference, Item{
-						Paths: []string{tx.Path(l.Rel())}, IDs: []model.ID{l.ID, b},
-						Action: ptr(actionRemoveReference), Suggest: ptr("koan repair"), loc: l, missing: b,
-					})
-				}
+	var orphans []loc
+	for id, folders := range x.Notes {
+		for _, f := range folders {
+			if _, exists := x.Tasks[id]; !exists || !slices.Contains(copiesOf(x, id), f) {
+				orphans = append(orphans, loc{f, id})
 			}
 		}
+	}
+	sortLocs(x, orphans)
+	for _, l := range orphans {
+		fix, msg := orphanFix(t, x, l.f, l.id)
+		d.add("orphan-notes", fmt.Sprintf("notes with no task file beside them: %s", msg),
+			[]model.ID{l.id}, []string{t.Abs(store.NotesRel(l.f, l.id))}, fix)
+	}
+
+	for _, id := range slices.Sorted(maps.Keys(x.Copies)) {
+		var paths []string
+		for _, f := range x.Copies[id] {
+			paths = append(paths, t.Abs(store.TaskRel(f, id)))
+		}
+		d.add("duplicate-id", fmt.Sprintf("task %d has %d task files: keep one, and delete or renumber the others by hand", id, len(paths)),
+			[]model.ID{id}, paths, nil)
 	}
 
 	edges := map[model.ID][]model.ID{}
-	for id, lds := range usable {
-		var lists [][]model.ID
-		for _, ld := range lds {
-			lists = append(lists, ld.Task.BlockedBy)
-		}
-		edges[id] = graph.Edges(lists...)
+	for id, tf := range usable {
+		edges[id] = tf.BlockedBy
 	}
-	for _, g := range graph.CycleGroups(edges) {
-		c := graph.ExampleCycle(g, edges)
-		fs.add(kindCycle, Item{
-			IDs: c, Group: g,
-			Suggest: ptr(fmt.Sprintf("remove any one blocker on the cycle, e.g. koan unblock %d --blockers %d", c[0], c[1])),
-		})
+	for _, cycle := range graph.Cycles(edges) {
+		d.add("cycle", fmt.Sprintf("tasks %v block each other, each waiting on the next: `koan unblock` one of them", cycle), cycle, nil, nil)
 	}
 
-	if e := orphans(tx, x, fs); e != nil {
-		return nil, e
+	for i, l := range files {
+		if loaded[i].File == nil && loaded[i].OldFormat == 0 && !loaded[i].Gone {
+			d.add("unusable-file", loaded[i].Err.Message+": fix the file by hand, or `koan delete` the task",
+				[]model.ID{l.id}, []string{abs(l)}, nil)
+		}
 	}
-	claimFindings(tx, x, fs)
-	return fs, nil
+	for i, l := range files {
+		if loaded[i].OldFormat != 0 {
+			d.add("old-format", fmt.Sprintf("a task file in format %d: `koan migrate` converts it", loaded[i].OldFormat),
+				[]model.ID{l.id}, []string{abs(l)}, nil)
+		}
+	}
+	for _, rel := range x.Skipped {
+		d.add("skipped-entry", "a symlink, an entry of the wrong type, or a folder that can't be listed: koan ignores it",
+			nil, []string{t.Abs(rel)}, nil)
+	}
+	if d.findings == nil {
+		d.findings = []errs.Finding{}
+	}
+	return d, nil
 }
 
-// claimFindings adds the claims file's findings (implementation-spec.md,
-// Claims findings): claims-unusable for a file no operation can read, which
-// repair resets on request, unless a directory is in its place; and, for a
-// usable one, claim-inert for each entry whose task is done or gone. An entry
-// whose ID has several task files, an unusable one, or a skipped entry in its
-// place is inert too, but kept: the task may come back.
-func claimFindings(tx *store.Tx, x *store.Index, fs findings) {
-	p := tx.ClaimsPath()
-	state, dir, claimsErr := tx.ClaimsState()
-	if claimsErr != nil {
-		it := Item{
-			Paths: []string{p}, Error: claimsErr, Action: ptr(actionResetClaims),
-			Suggest: ptr("fix the file's permissions, or restore it, if you can; else koan repair --kinds claims-unusable, which forgets every claim and lock on this machine"),
-		}
-		switch {
-		case dir:
-			it.Action, it.Suggest = nil, ptr("remove the directory in the claims file's place")
-		case state == store.ClaimsOtherRoot:
-			it.Suggest = ptr(suggestOtherRoot + "; or koan repair --kinds claims-unusable, which forgets every claim and lock on this machine")
-		}
-		fs.add(kindClaimsUnusable, it)
-		return
+// orphanFix decides what repair does with a .md that has no task file beside
+// it: remove it when it is empty, move it to its task when the task is
+// elsewhere without notes, and otherwise leave it.
+func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (func() *errs.Error, string) {
+	rel := store.NotesRel(f, id)
+	if fi, err := t.Stat(rel); err == nil && fi.Size() == 0 {
+		return func() *errs.Error { return t.Remove(rel) }, "they are empty, and `koan repair` removes them"
 	}
-	if state != store.ClaimsOK {
-		return
+	home, exists := x.Tasks[id]
+	if exists && len(x.Copies[id]) == 0 && !slices.Contains(x.Notes[id], home) {
+		return func() *errs.Error {
+			_, e := t.Move(rel, store.NotesRel(home, id))
+			return e
+		}, fmt.Sprintf("`koan repair` moves them to their task in %s", home)
 	}
-	skipped := map[string]bool{}
-	for _, s := range x.Survey.Strays {
-		if s.Reason == store.StraySymlink || s.Reason == store.StrayType {
-			skipped[s.Rel[strings.LastIndex(s.Rel, "/")+1:]] = true
-		}
-	}
-	for _, id := range tx.ClaimIDs() {
-		reason := ""
-		switch locs := tx.Copies(id); {
-		case len(locs) == 1:
-			if ld := tx.Load(locs[0]); ld.State == store.Usable && !ld.Task.Open() {
-				reason = inertDone
-			}
-		case len(locs) == 0 && x.Complete() && !skipped[fmt.Sprintf("%d.json", id)]:
-			reason = inertMissing
-		}
-		if reason != "" {
-			fs.add(kindClaimInert, Item{Paths: []string{p}, IDs: []model.ID{id}, Reason: reason, Action: ptr(actionDropClaim), Suggest: ptr("koan repair")})
-		}
-	}
+	return nil, "move or delete them by hand"
 }
-
-// caseClashes adds a case-clash finding for each set of sibling folders
-// whose names differ only in case, listing them in tree order.
-func caseClashes(tx *store.Tx, x *store.Index, fs findings) {
-	type key struct {
-		parent model.FolderPath
-		folded string
-	}
-	groups := map[key][]model.FolderPath{}
-	var order []key
-	for _, f := range x.Folders {
-		segs := f.Segments()
-		if len(segs) == 0 {
-			continue
-		}
-		k := key{folderPrefix(f, len(segs)-1), store.FoldName(segs[len(segs)-1])}
-		if groups[k] == nil {
-			order = append(order, k)
-		}
-		groups[k] = append(groups[k], f)
-	}
-	for _, k := range order {
-		if len(groups[k]) < 2 {
-			continue
-		}
-		var paths []string
-		for _, f := range groups[k] {
-			paths = append(paths, tx.Path(store.FolderRel(f)))
-		}
-		fs.add(kindCaseClash, Item{Paths: paths, Suggest: ptr("rename all but one with koan move-folder, or merge them: on a case-insensitive filesystem, such as macOS's, they are one folder")})
-	}
-}
-
-// duplicates adds a duplicate-id finding for each ID with several task files,
-// saying whether the copies are the same, byte for byte.
-func duplicates(tx *store.Tx, x *store.Index, fs findings) *errs.Error {
-	seen := map[model.ID]bool{}
-	for _, l := range x.Tasks {
-		locs := x.Locations(l.ID)
-		if len(locs) < 2 || seen[l.ID] {
-			continue
-		}
-		seen[l.ID] = true
-		var paths []string
-		var first []byte
-		identical := true
-		for i, c := range locs {
-			paths = append(paths, tx.Path(c.Rel()))
-			data, err := tx.ReadFile(c.Rel())
-			switch {
-			case err != nil:
-				identical = false
-			case i == 0:
-				first = data
-			case !bytes.Equal(data, first):
-				identical = false
-			}
-		}
-		suggest := "keep the copy that is right, and remove the others, or move their task to a new ID with koan create"
-		if identical {
-			suggest = "the copies are the same: remove all but one"
-		}
-		fs.add(kindDuplicateID, Item{Paths: paths, IDs: []model.ID{l.ID}, Identical: &identical, Suggest: &suggest})
-	}
-	return nil
-}
-
-// orphans adds an orphan-notes finding for each .md with no task file of its
-// ID beside it; one that can't be looked at is unreadable, with its code.
-func orphans(tx *store.Tx, x *store.Index, fs findings) *errs.Error {
-	for _, n := range x.Survey.Notes {
-		locs := x.Locations(n.ID)
-		if slices.Contains(locs, n) {
-			continue
-		}
-		rel := n.NotesRel()
-		it := Item{Paths: []string{tx.Path(rel)}, IDs: []model.ID{n.ID}, rel: rel}
-		for _, l := range locs {
-			it.Paths = append(it.Paths, tx.Path(l.Rel()))
-		}
-		reason, linked, err := orphanReason(tx, rel, locs)
-		if errno, ok := errs.ErrnoOf(err); ok && errno == syscall.ENOENT {
-			continue // gone since the walk: nothing to say about it
-		}
-		if err != nil {
-			code, e := tx.Code(rel, err)
-			if e != nil {
-				return e
-			}
-			reason, it.Code = orphanUnreadable, code
-		}
-		it.Reason, it.linked = reason, linked
-		switch reason {
-		case orphanUnreadable:
-			it.Suggest = ptr("fix its permissions, then run koan doctor again to see what it is")
-		case orphanEmpty, orphanLinked:
-			it.Action, it.Suggest = ptr(actionRemove), ptr("koan repair")
-		case orphanTaskElsewhere:
-			it.Suggest = ptr("merge its text into " + tx.Path(locs[0].NotesRel()) + ", then remove it")
-		default:
-			it.Suggest = ptr("keep its text elsewhere if it is still wanted, then remove it")
-		}
-		fs.add(kindOrphanNotes, it)
-	}
-	return nil
-}
-
-// orphanReason is what an orphaned .md at rel is, given the task files of
-// its ID elsewhere (locs): for linked, also the notes it is the same file as.
-func orphanReason(tx *store.Tx, rel string, locs []store.Location) (reason, linked string, err error) {
-	fi, err := tx.Lstat(rel)
-	if err != nil {
-		return "", "", err
-	}
-	if fi.Size() == 0 {
-		return orphanEmpty, "", nil
-	}
-	for _, l := range locs {
-		if other, err := tx.Lstat(l.NotesRel()); err == nil && os.SameFile(fi, other) {
-			return orphanLinked, l.NotesRel(), nil
-		}
-	}
-	if len(locs) > 0 {
-		return orphanTaskElsewhere, "", nil
-	}
-	return orphanNoTask, "", nil
-}
-
-func ptr[T any](v T) *T { return &v }

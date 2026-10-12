@@ -4,13 +4,22 @@
   "type": "object",
   "required": ["title"],
   "properties": {
-    "title": { "type": "string", "description": "Untrimmed; trimmed and validated per Titles (see Additional validation)." },
+    "title": { "type": "string", "description": "Trimmed, then checked against the title rule." },
     "folder": { "$ref": "folder-path", "default": "/" },
     "priority": { "$ref": "task-file#/properties/priority", "default": null },
-    "tags": { "$ref": "task-file#/properties/tags", "default": [] },
-    "blocked_by": { "$ref": "task-file#/properties/blocked_by", "default": [] },
-    "extra": { "$ref": "task-file#/properties/extra", "default": {} },
-    "notes": { "type": "string", "default": "", "description": "Initial notes, written to the task's .md." }
+    "tags": {
+      "$ref": "task-file#/properties/tags",
+      "default": []
+    },
+    "blocked_by": {
+      "$ref": "task-file#/properties/blocked_by",
+      "default": []
+    },
+    "extra": {
+      "$ref": "task-file#/properties/extra",
+      "default": {}
+    },
+    "notes": { "type": "string", "default": "", "description": "The initial content of the .md." }
   },
   "additionalProperties": false
 }

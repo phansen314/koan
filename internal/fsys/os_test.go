@@ -470,42 +470,6 @@ func TestFolderFIFODoesNotBlock(t *testing.T) {
 	}
 }
 
-func TestFSReadFileFollowsSymlink(t *testing.T) {
-	dir := t.TempDir()
-	must(t, os.WriteFile(filepath.Join(dir, "real.toml"), []byte("x"), 0o644))
-	must(t, os.Symlink("real.toml", filepath.Join(dir, "config.toml")))
-	got, err := OS{}.ReadFile(filepath.Join(dir, "config.toml"))
-	must(t, err)
-	if string(got) != "x" {
-		t.Errorf("got %q", got)
-	}
-}
-
-func TestFSStatFollowsSymlink(t *testing.T) {
-	dir := t.TempDir()
-	must(t, os.Mkdir(filepath.Join(dir, "real"), 0o755))
-	must(t, os.Symlink("real", filepath.Join(dir, "link")))
-	fi, err := OS{}.Stat(filepath.Join(dir, "link"))
-	must(t, err)
-	if !fi.IsDir() {
-		t.Errorf("mode %v, want a directory", fi.Mode())
-	}
-	_, err = OS{}.Stat(filepath.Join(dir, "missing"))
-	wantErrno(t, err, syscall.ENOENT)
-}
-
-func TestFSLstatSeesDanglingSymlink(t *testing.T) {
-	dir := t.TempDir()
-	must(t, os.Symlink("nowhere", filepath.Join(dir, "link")))
-	fi, err := OS{}.Lstat(filepath.Join(dir, "link"))
-	must(t, err)
-	if fi.Mode()&os.ModeSymlink == 0 {
-		t.Errorf("mode %v, want a symlink", fi.Mode())
-	}
-	_, err = OS{}.Stat(filepath.Join(dir, "link"))
-	wantErrno(t, err, syscall.ENOENT)
-}
-
 // RenameNoReplace moves a file or folder, across folders, but never onto
 // anything — not even an empty folder, which rename(2) would replace.
 func TestRenameNoReplace(t *testing.T) {

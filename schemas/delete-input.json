@@ -4,8 +4,7 @@
   "type": "object",
   "required": ["id"],
   "properties": {
-    "id": { "$ref": "task-file#/properties/id" },
-    "token": { "$ref": "claims-file#/$defs/token", "description": "The token of the caller's locked claim on the task (see Targeting writes). Absent: the caller holds no lock." }
+    "id": { "$ref": "task-file#/properties/id" }
   },
   "additionalProperties": false
 }

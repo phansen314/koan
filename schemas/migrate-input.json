@@ -2,8 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "migrate-input",
   "type": "object",
+  "required": [],
   "properties": {
-    "dry_run": { "type": "boolean", "default": false, "description": "Report what would change, and write nothing." }
+    "dry_run": { "type": "boolean", "default": false }
   },
   "additionalProperties": false
 }

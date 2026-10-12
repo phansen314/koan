@@ -2,23 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "frontier-input",
   "type": "object",
+  "required": [],
   "properties": {
-    "folder": { "$ref": "folder-path", "default": "/", "description": "Only tasks in this folder are returned." },
-    "recursive": { "type": "boolean", "default": true, "description": "Also return tasks in the folder's subfolders." },
-    "tags_any": { "$ref": "#/$defs/tag-set", "description": "Only tasks with at least one of these tags (see Narrowing tasks)." },
-    "tags_all": { "$ref": "#/$defs/tag-set", "description": "Only tasks with every one of these tags (see Narrowing tasks)." },
-    "claimed": { "type": "boolean", "description": "true: only tasks with an effective claim. false: only tasks without one. Absent: no filter (see Narrowing tasks)." },
-    "limit": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "At most this many tasks, the first in the operation's order; absent, no limit (see Narrowing tasks)." },
+    "folder": { "$ref": "folder-path", "default": "/" },
+    "recursive": { "type": "boolean", "default": true },
+    "tags_any": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "tags_all": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "limit": { "type": "integer", "minimum": 1 },
     "fields": {
       "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": { "$ref": "task-field" },
-      "description": "Return each task as a Task projection of these fields, id always included; absent, whole Task views (see Narrowing tasks)."
+      "items": { "$ref": "task#/$defs/field" },
+      "uniqueItems": true
     }
   },
-  "additionalProperties": false,
-  "$defs": {
-    "tag-set": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "task-file#/$defs/name" } }
-  }
+  "additionalProperties": false
 }

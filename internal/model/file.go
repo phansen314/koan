@@ -1,222 +1,285 @@
 package model
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 
 	"github.com/phansen314/koan/internal/errs"
-	"github.com/phansen314/koan/internal/jsonio"
 )
 
-// FileStatus is the outcome of checking a versioned file (see design-spec.md,
-// File validity). Reading failures (not-json) happen before, in jsonio.
-type FileStatus int
+// Problem is one rule a file or an input breaks.
+type Problem = errs.Problem
 
-const (
-	FileOK FileStatus = iota
-	// FileCorrupt: the file fails a file-level rule; corrupt, reason invalid.
-	FileCorrupt
-	// FileUnsupported: the file's schema is not the supported version.
-	FileUnsupported
-)
+func prob(field, reason string) Problem { return Problem{Field: field, Reason: reason} }
 
-// FileResult is a checked file's status. Versioned reports whether the file
-// passed step 1 (parseable and versioned); Found is then its schema version,
-// whatever the final Status — info reports it even for a file corrupt at
-// step 3. Problems says what made it corrupt, each at a JSON Pointer into
-// the file; the corrupt error reports them. SchemaProblems are those
-// of a file corrupt at step 3 that its published schema also finds: not
-// repeated keys, nor the rules beyond the schema (see Problems.SchemaList).
-// The integer-literal rule is the exception: its problems are included,
-// though the schema accepts an integral 42.0, because Int reports a
-// fraction (which the schema rejects) and 42.0 alike. The agreement corpus
-// leaves such numbers out (implementation-spec.md, Agreement tests).
-type FileResult struct {
-	Status         FileStatus
-	Versioned      bool
-	Found          int64
-	Problems       []errs.Problem
-	SchemaProblems []errs.Problem
+// TaskFile is a task file's content. Field order is the order koan writes.
+type TaskFile struct {
+	Schema      int64          `json:"schema"`
+	ID          ID             `json:"id"`
+	Title       string         `json:"title"`
+	Priority    *int64         `json:"priority"`
+	CreatedAt   string         `json:"created_at"`
+	CompletedAt *string        `json:"completed_at"`
+	UpdatedAt   string         `json:"updated_at"`
+	BlockedBy   []ID           `json:"blocked_by"`
+	Tags        []string       `json:"tags"`
+	Extra       map[string]any `json:"extra"`
 }
 
-func corrupt(problems ...errs.Problem) FileResult {
-	return FileResult{Status: FileCorrupt, Problems: problems}
+// Open reports whether the task is open: not done.
+func (t *TaskFile) Open() bool { return t.CompletedAt == nil }
+
+// Claim is one entry of the state file's claims.
+type Claim struct {
+	ClaimedAt string         `json:"claimed_at"`
+	Extra     map[string]any `json:"extra"`
 }
 
-// checkVersion runs File validity steps 1 and 2 on a parsed file: schema
-// present, unrepeated, and an integer literal within ±(2^53 − 1); then the
-// supported version.
-func checkVersion(obj *jsonio.Object, repeated []string, supported int64) (FileResult, bool) {
-	if slices.Contains(repeated, "/schema") {
-		return corrupt(errs.Problem{Field: "/schema", Reason: "repeated, so its version is ambiguous"}), false
+// State is the state file's content.
+type State struct {
+	Schema int64            `json:"schema"`
+	LastID ID               `json:"last_id"`
+	Claims map[string]Claim `json:"claims"`
+}
+
+// ClaimKey is the key of a task's claim in State.Claims.
+func ClaimKey(id ID) string { return strconv.FormatInt(id, 10) }
+
+// Meta is koan.json's content.
+type Meta struct {
+	Schema int64 `json:"schema"`
+}
+
+// Task is a task as every command returns it: the file's fields and five
+// derived ones.
+type Task struct {
+	TaskFile
+	Folder    Folder    `json:"folder"`
+	NotesPath string    `json:"notes_path"`
+	Readiness Readiness `json:"readiness"`
+	Blocking  []ID      `json:"blocking"`
+	Claim     *Claim    `json:"claim"`
+}
+
+// TaskFields are the names of a Task's fields, in the order they are written.
+var TaskFields = []string{
+	"schema", "id", "title", "priority", "created_at", "completed_at", "updated_at",
+	"blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "blocking", "claim",
+}
+
+// Encode writes v as koan writes every file: two-space indentation, map keys
+// sorted, no HTML escaping, and a trailing newline.
+func Encode(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
 	}
-	v, ok := obj.Get("schema")
+	return b.Bytes(), nil
+}
+
+// Decode reads one JSON object into v, refusing unknown keys and anything
+// after the object. Numbers inside an `extra` keep their exact text.
+func Decode(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	dec.UseNumber()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if dec.More() {
+		return fmt.Errorf("unexpected data after the JSON value")
+	}
+	return nil
+}
+
+// Keys reads the top-level keys of a JSON object, each with its raw value.
+func Keys(data []byte) (map[string]json.RawMessage, error) {
+	var m map[string]json.RawMessage
+	if err := Decode(data, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, fmt.Errorf("not a JSON object")
+	}
+	return m, nil
+}
+
+// SchemaOf reads just the `schema` of a file: the format it is in.
+func SchemaOf(data []byte) (int64, error) {
+	m, err := Keys(data)
+	if err != nil {
+		return 0, err
+	}
+	raw, ok := m["schema"]
 	if !ok {
-		return corrupt(errs.Problem{Field: "/schema", Reason: reasonRequired}), false
+		return 0, fmt.Errorf("has no schema")
 	}
-	var p Problems
-	found, ok := p.Int(v, "/schema", -schemaMax, schemaMax)
-	if !ok {
-		return corrupt(p.List()...), false
+	var n int64
+	if err := json.Unmarshal(raw, &n); err != nil || n < 1 {
+		return 0, fmt.Errorf("schema is not a positive integer")
 	}
-	if found != supported {
-		return FileResult{Status: FileUnsupported, Versioned: true, Found: found}, false
-	}
-	return FileResult{Versioned: true, Found: found}, true
+	return n, nil
 }
 
-// schemaMax bounds a file's schema value: the integers every JSON reader
-// holds exactly (see design-spec.md, File validity).
-const schemaMax = 1<<53 - 1
-
-// finish turns what the adapter found into the result of a file that passed
-// steps 1 and 2 (version: that result): every repeated key and problem makes
-// it corrupt.
-func finish(version FileResult, repeated []string, p *Problems) FileResult {
-	var out []errs.Problem
-	for _, r := range repeated {
-		out = append(out, errs.Problem{Field: r, Reason: "repeated key"})
+// missing lists the keys of want that m lacks, or holds as null where null
+// is not allowed, as problems.
+func missing(m map[string]json.RawMessage, want []string, nullable ...string) []Problem {
+	var ps []Problem
+	for _, k := range want {
+		raw, ok := m[k]
+		switch {
+		case !ok:
+			ps = append(ps, prob("/"+k, "is missing"))
+		case string(raw) == "null" && !slices.Contains(nullable, k):
+			ps = append(ps, prob("/"+k, "is null"))
+		}
 	}
-	out = append(out, p.List()...)
-	if len(out) > 0 {
-		r := corrupt(out...)
-		r.Versioned, r.Found, r.SchemaProblems = true, version.Found, p.SchemaList()
-		return r
-	}
-	return version
+	return ps
 }
 
-// DecodeTaskFile checks a parsed task file (repeated: its repeated keys, from
-// jsonio) named by filenameID, and returns its content. The content is valid
-// only when the result's Status is FileOK.
-func DecodeTaskFile(obj *jsonio.Object, repeated []string, filenameID ID) (TaskFile, FileResult) {
-	version, ok := checkVersion(obj, repeated, TaskSchema)
-	if !ok {
-		return TaskFile{}, version
-	}
-	var p Problems
-	f, _ := p.Object(obj, "")
-	t := TaskFile{Schema: TaskSchema}
-	f.Required("schema") // already checked
+var taskKeys = TaskFields[:10]
 
-	idOK := false // id passed its field rules (step 3), whether or not it matches the filename
-	if v, ok := f.Required("id"); ok {
-		if id, ok := p.ID(v, "/id"); ok {
-			t.ID, idOK = id, true
-			if id != filenameID {
-				p.AddAdditional("/id", fmt.Sprintf("must match the ID in the filename (%d)", filenameID))
-			}
-		}
+// DecodeTaskFile reads a task file in this binary's format and checks every
+// rule. A nil error and no problems means the file is usable.
+func DecodeTaskFile(data []byte) (*TaskFile, []Problem, error) {
+	m, err := Keys(data)
+	if err != nil {
+		return nil, nil, err
 	}
-	if v, ok := f.Required("title"); ok {
-		if s, ok := p.String(v, "/title"); ok {
-			t.Title, _ = p.StoredTitle(s, "/title")
-		}
+	if ps := missing(m, taskKeys, "priority", "completed_at"); ps != nil {
+		return nil, ps, nil
 	}
-	if v, ok := f.Required("priority"); ok {
-		t.Priority, _ = p.Priority(v, "/priority")
+	var t TaskFile
+	if err := Decode(data, &t); err != nil {
+		return nil, []Problem{prob("", err.Error())}, nil
 	}
-	if v, ok := f.Required("created_at"); ok {
-		t.CreatedAt, _ = p.Timestamp(v, "/created_at")
-	}
-	if v, ok := f.Required("completed_at"); ok && v != nil {
-		if ts, ok := p.timestampOrNull(v, "/completed_at"); ok {
-			t.CompletedAt = &ts
-		}
-	}
-	if v, ok := f.Required("updated_at"); ok {
-		t.UpdatedAt, _ = p.Timestamp(v, "/updated_at")
-	}
-	if v, ok := f.Required("blocked_by"); ok {
-		// The self check runs even when the set has another problem (a
-		// duplicate, say), so each rule broken is named; an invalid item
-		// is 0 in ids, which no task's ID is.
-		ids, ok := p.IDs(v, "/blocked_by")
-		if ok {
-			t.BlockedBy = ids
-		}
-		if i := slices.Index(ids, t.ID); i >= 0 && idOK {
-			p.AddAdditional(jsonio.Pointer("/blocked_by", strconv.Itoa(i)), "must not be the task's own ID")
-		}
-	}
-	if v, ok := f.Required("tags"); ok {
-		t.Tags, _ = p.Tags(v, "/tags")
-	}
-	if v, ok := f.Required("extra"); ok {
-		if _, ok := p.Object(v, "/extra"); ok {
-			t.Extra = v.(*jsonio.Object)
-		}
-	}
-	f.Done()
-
-	r := finish(version, repeated, &p)
-	if r.Status != FileOK {
-		return TaskFile{}, r
-	}
-	t.Normalize()
-	return t, r
+	return &t, t.Check(), nil
 }
 
-// timestampOrNull checks a non-null value where a timestamp or null is
-// allowed.
-func (p *Problems) timestampOrNull(v any, ptr string) (Timestamp, bool) {
-	if _, ok := v.(string); !ok {
-		p.Add(ptr, "expected a timestamp string or null")
-		return "", false
+// Check lists the rules the task file breaks.
+func (t *TaskFile) Check() []Problem {
+	var ps []Problem
+	bad := func(field, reason string) { ps = append(ps, prob(field, reason)) }
+	if t.Schema != Format {
+		bad("/schema", fmt.Sprintf("is not %d", Format))
 	}
-	return p.Timestamp(v, ptr)
+	if !ValidID(t.ID) {
+		bad("/id", "is not a task ID")
+	}
+	if title, reason := CleanTitle(t.Title); reason != "" {
+		bad("/title", reason)
+	} else if title != t.Title {
+		bad("/title", "has leading or trailing whitespace")
+	}
+	if p := t.Priority; p != nil && (*p > MaxInt || *p < -MaxInt) {
+		bad("/priority", "is out of range")
+	}
+	if !ValidStamp(t.CreatedAt) {
+		bad("/created_at", "is not a timestamp")
+	}
+	if t.CompletedAt != nil && !ValidStamp(*t.CompletedAt) {
+		bad("/completed_at", "is not a timestamp")
+	}
+	if !ValidStamp(t.UpdatedAt) {
+		bad("/updated_at", "is not a timestamp")
+	}
+	seen := map[ID]bool{}
+	for i, b := range t.BlockedBy {
+		f := fmt.Sprintf("/blocked_by/%d", i)
+		switch {
+		case !ValidID(b):
+			bad(f, "is not a task ID")
+		case b == t.ID:
+			bad(f, "is the task's own ID")
+		case seen[b]:
+			bad(f, "is repeated")
+		}
+		seen[b] = true
+	}
+	tags := map[string]bool{}
+	for i, tag := range t.Tags {
+		f := fmt.Sprintf("/tags/%d", i)
+		switch {
+		case !ValidTag(tag):
+			bad(f, "is not a valid tag")
+		case tags[tag]:
+			bad(f, "is repeated")
+		}
+		tags[tag] = true
+	}
+	return ps
 }
 
-// DecodeRootFile checks a parsed koan.json (repeated: its repeated keys, from
-// jsonio) and returns its content, valid only when Status is FileOK.
-func DecodeRootFile(obj *jsonio.Object, repeated []string) (RootFile, FileResult) {
-	version, ok := checkVersion(obj, repeated, RootSchema)
-	if !ok {
-		return RootFile{}, version
+// Normalize puts the sets in the order koan writes them.
+func (t *TaskFile) Normalize() {
+	if t.BlockedBy == nil {
+		t.BlockedBy = []ID{}
 	}
-	var p Problems
-	f, _ := p.Object(obj, "")
-	r := RootFile{Schema: RootSchema}
-	f.Required("schema")
-	if v, ok := f.Required("migration"); ok {
-		r.Migration, _ = p.Int(v, "/migration", 0, MigrationMax)
+	if t.Tags == nil {
+		t.Tags = []string{}
 	}
-	f.Done()
-	res := finish(version, repeated, &p)
-	if res.Status != FileOK {
-		return RootFile{}, res
+	if t.Extra == nil {
+		t.Extra = map[string]any{}
 	}
-	return r, res
+	slices.Sort(t.BlockedBy)
+	slices.Sort(t.Tags)
 }
 
-// DecodeStateFile checks a parsed state file (repeated: its repeated keys,
-// from jsonio) and returns its content, valid only when Status is FileOK.
-// Whether it names the right root is the caller's to compare.
-func DecodeStateFile(obj *jsonio.Object, repeated []string) (StateFile, FileResult) {
-	version, ok := checkVersion(obj, repeated, StateSchema)
-	if !ok {
-		return StateFile{}, version
+// DecodeState reads a state file and checks it.
+func DecodeState(data []byte) (*State, []Problem, error) {
+	m, err := Keys(data)
+	if err != nil {
+		return nil, nil, err
 	}
-	var p Problems
-	f, _ := p.Object(obj, "")
-	s := StateFile{Schema: StateSchema}
-	f.Required("schema")
-	if v, ok := f.Required("root"); ok {
-		if str, ok := p.String(v, "/root"); ok {
-			if str == "" {
-				p.Add("/root", "must not be empty")
-			}
-			s.Root = str
+	if ps := missing(m, []string{"schema", "last_id", "claims"}); ps != nil {
+		return nil, ps, nil
+	}
+	var s State
+	if err := Decode(data, &s); err != nil {
+		return nil, []Problem{prob("", err.Error())}, nil
+	}
+	var ps []Problem
+	if s.Schema != Format {
+		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", Format)))
+	}
+	if s.LastID < 0 || s.LastID > MaxID {
+		ps = append(ps, prob("/last_id", "is out of range"))
+	}
+	for _, k := range slices.Sorted(maps.Keys(s.Claims)) {
+		c := s.Claims[k]
+		if id, err := strconv.ParseInt(k, 10, 64); err != nil || !ValidID(id) || ClaimKey(id) != k {
+			ps = append(ps, prob("/claims/"+k, "is not keyed by a task ID"))
+		}
+		if !ValidStamp(c.ClaimedAt) {
+			ps = append(ps, prob("/claims/"+k+"/claimed_at", "is not a timestamp"))
+		}
+		if c.Extra == nil {
+			ps = append(ps, prob("/claims/"+k+"/extra", "is missing"))
 		}
 	}
-	if v, ok := f.Required("last_id"); ok {
-		s.LastID, _ = p.Int(v, "/last_id", 0, IDMax)
+	return &s, ps, nil
+}
+
+// DecodeMeta reads koan.json.
+func DecodeMeta(data []byte) (*Meta, []Problem, error) {
+	n, err := SchemaOf(data)
+	if err != nil {
+		if _, kerr := Keys(data); kerr != nil {
+			return nil, nil, kerr
+		}
+		return nil, []Problem{prob("/schema", err.Error())}, nil
 	}
-	f.Done()
-	res := finish(version, repeated, &p)
-	if res.Status != FileOK {
-		return StateFile{}, res
+	var m Meta
+	if err := Decode(data, &m); err != nil {
+		return nil, []Problem{prob("", err.Error())}, nil
 	}
-	return s, res
+	m.Schema = n
+	return &m, nil, nil
 }

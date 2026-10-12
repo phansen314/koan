@@ -2,13 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "claim-next-input",
   "type": "object",
+  "required": [],
   "properties": {
-    "folder": { "$ref": "frontier-input#/properties/folder", "description": "Only tasks in this folder are candidates." },
-    "recursive": { "$ref": "frontier-input#/properties/recursive", "description": "Tasks in the folder's subfolders are candidates too." },
-    "tags_any": { "$ref": "frontier-input#/properties/tags_any", "description": "Only tasks with at least one of these tags are candidates." },
-    "tags_all": { "$ref": "frontier-input#/properties/tags_all", "description": "Only tasks with every one of these tags are candidates." },
-    "extra": { "$ref": "task-file#/properties/extra", "default": {}, "description": "Stored with the claim and returned with it; never interpreted." },
-    "use_token": { "type": "boolean", "default": false, "description": "Make the claim with a token, which locks the task (see Tokens)." }
+    "folder": { "$ref": "folder-path", "default": "/" },
+    "recursive": { "type": "boolean", "default": true },
+    "tags_any": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "tags_all": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "extra": {
+      "type": "object",
+      "default": {}
+    }
   },
   "additionalProperties": false
 }

@@ -2,11 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "init-output",
   "type": "object",
-  "required": ["root", "action", "last_id"],
+  "required": ["root", "state_path", "created"],
   "properties": {
-    "root": { "type": "string", "description": "Absolute root path, as recorded in the config." },
-    "action": { "type": "string", "enum": ["created", "attached"], "description": "created: a new, empty tree was created. attached: an existing tree (one already containing koan.json) was attached to this machine." },
-    "last_id": { "$ref": "state-file#/properties/last_id", "description": "The last_id the state file now holds." }
+    "root": { "type": "string" },
+    "state_path": { "type": "string" },
+    "created": {
+      "type": "array",
+      "items": { "enum": ["root", "metadata", "state"] },
+      "uniqueItems": true
+    }
   },
   "additionalProperties": false
 }

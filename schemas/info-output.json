@@ -2,55 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "info-output",
   "type": "object",
-  "required": ["config", "tree", "state", "claims", "initialized", "usable", "compatible", "migration_pending"],
+  "required": ["root", "state_path", "state", "missing", "format", "last_id", "claims", "error"],
   "properties": {
-    "config": {
-      "type": "object",
-      "required": ["path", "state", "root"],
-      "properties": {
-        "path": { "type": ["string", "null"], "description": "Path of the config; null when it can't be located (see Config file)." },
-        "state": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "ok"], "description": "State of the config; missing also when it can't be located." },
-        "root": { "type": ["string", "null"], "description": "Root path named by the config, cleaned and with ~/ expanded (the same form as notes_path); null if the config is missing, unreadable, doesn't parse, or names a root in an illegal form." }
-      },
-      "additionalProperties": false
-    },
-    "tree": {
-      "type": ["object", "null"],
-      "required": ["root_exists", "metadata", "schema", "migration"],
-      "properties": {
-        "root_exists": { "type": "boolean", "description": "Whether the root path leads, through symlinks, to a directory." },
-        "metadata": { "type": "string", "enum": ["missing", "unreadable", "corrupt", "old-format", "unsupported-format", "ok"], "description": "State of koan.json, per the three-step check (see File validity): corrupt fails step 1 or 3 (or is not a regular file), or is in an older format and breaks that format's rules; old-format fails step 2 with an older version, valid by its own rules, which migrate converts; unsupported-format fails step 2 with any other version, or passes every step but records a migration step past this binary's latest. ok says nothing about a step behind it: see migration_pending." },
-        "schema": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991, "description": "koan.json's schema value; set whenever step 1 passes — whether metadata ends up ok, old-format, unsupported-format, or corrupt after step 1 — otherwise null." },
-        "migration": { "anyOf": [{ "$ref": "root-file#/properties/migration" }, { "type": "null" }], "description": "The migration step koan.json records: its migration when metadata is ok, or unsupported-format for a step past the latest; for old-format, what that format records (0 at schema 1, which predates migrations); otherwise null." }
-      },
-      "additionalProperties": false,
-      "description": "State of the configured root; null when config.root is null."
-    },
+    "root": { "type": "string" },
+    "state_path": { "type": "string" },
     "state": {
-      "type": ["object", "null"],
-      "required": ["path", "state", "last_id"],
-      "properties": {
-        "path": { "type": "string", "description": "Path of the state file, beside the config." },
-        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the state file, per the three-step check (see File validity). other-root: it passes every other check but names a root other than config.root, which makes it corrupt (see One root). Only missing makes the root not initialized." },
-        "last_id": { "anyOf": [{ "$ref": "state-file#/properties/last_id" }, { "type": "null" }], "description": "Highest task ID issued; null unless state is ok." }
-      },
-      "additionalProperties": false,
-      "description": "State of this machine's state file for the configured root; null when config.root is null."
+      "enum": ["not-initialized", "unusable", "needs-migration", "too-new", "usable"]
+    },
+    "missing": {
+      "type": "array",
+      "items": { "enum": ["root", "metadata", "state"] },
+      "uniqueItems": true,
+      "description": "When not-initialized, what is missing; otherwise empty."
+    },
+    "format": {
+      "type": ["integer", "null"]
+    },
+    "last_id": {
+      "type": ["integer", "null"]
     },
     "claims": {
-      "type": ["object", "null"],
-      "required": ["path", "state"],
-      "properties": {
-        "path": { "type": "string", "description": "Path of the claims file, beside the config." },
-        "state": { "type": "string", "enum": ["missing", "other-root", "unreadable", "corrupt", "unsupported-format", "ok"], "description": "State of the claims file, per the three-step check (see File validity). missing means the root has no claims, which is normal. other-root: it passes every other check but names a root other than config.root, which makes it corrupt (see One root). Any state but missing and ok fails every operation that needs the claims file (see Claims file)." }
-      },
-      "additionalProperties": false,
-      "description": "State of this machine's claims file for the configured root; null when config.root is null. It never affects initialized or usable."
+      "type": ["integer", "null"]
     },
-    "initialized": { "type": "boolean", "description": "True unless the root is not initialized (see Root states). True, with tree null, when the config exists but is unusable. A missing state file makes it false only once koan.json is ok: a root that needs migration is initialized." },
-    "usable": { "type": "boolean", "description": "True when the root is usable (see Root states)." },
-    "compatible": { "type": ["boolean", "null"], "description": "Whether tree.schema equals this binary's supported koan.json version (see Format versions); null when tree.schema is null." },
-    "migration_pending": { "type": ["boolean", "null"], "description": "Whether the root needs migration (see Root states): koan.json is old-format, or records a step behind this binary's latest. When true, run migrate. null when tree.migration is null." }
+    "error": {
+      "anyOf": [{ "$ref": "error" }, { "type": "null" }],
+      "description": "When unusable, the error other commands fail with; otherwise null."
+    }
   },
   "additionalProperties": false
 }

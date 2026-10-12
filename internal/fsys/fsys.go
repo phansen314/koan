@@ -5,34 +5,16 @@ import (
 	"io/fs"
 )
 
-// FS opens roots, and makes the few calls that happen outside one: init's
-// creation of the root and the config directory, reading the config, and
-// checking what the root path leads to; and pick's reads of notes files.
+// FS opens roots, and makes the two calls that happen outside one: creating
+// the root itself, and the directory the state file is in.
 type FS interface {
 	// OpenRoot opens the directory at path, following symlinks. Every later
 	// call through the Root is relative to this one resolution.
 	OpenRoot(path string) (Root, error)
-	// Mkdir creates one directory; init never creates the root's parent.
+	// Mkdir creates one directory: the root. Its parent is never created.
 	Mkdir(path string, perm fs.FileMode) error
-	// MkdirAll creates the config directory and any missing parents.
+	// MkdirAll creates the state file's directory and any missing parents.
 	MkdirAll(path string, perm fs.FileMode) error
-	// ReadFile reads a file outside any root, following symlinks: the config
-	// (often a symlink into a dotfiles checkout), and pick's notes files.
-	ReadFile(path string) ([]byte, error)
-	// Stat follows symlinks: whether the root path leads to a directory
-	// (init's check of an existing root), and whether the config is a
-	// regular file, which must be known before reading it.
-	Stat(path string) (fs.FileInfo, error)
-	// Lstat does not follow a final symlink: whether anything is at the root
-	// path at all, so init can tell a dangling symlink from nothing, and
-	// whether a config exists.
-	Lstat(path string) (fs.FileInfo, error)
-	// Rename moves the config ftask left into koan's config directory
-	// (store.Migrate), which runs only while koan's config is missing.
-	Rename(oldpath, newpath string) error
-	// Remove removes ftask's config directory once emptied; a non-empty one
-	// fails, and is left.
-	Remove(path string) error
 }
 
 // Root is a directory opened once, through which every call is made. Names

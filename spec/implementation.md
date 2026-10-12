@@ -5,7 +5,7 @@ How koan is built: the mechanisms behind what [design.md](design.md), [operation
 ## Toolchain
 
 - **Go**, standard library first. Go 1.25 or later, for `os.Root`'s `Link`, `Rename`, and `RemoveAll`.
-- **Dependencies:** cobra, for the command line; `golang.org/x/sys/unix`, for the two system calls the standard library lacks (below). A JSON Schema validator is a test-only dependency.
+- **Dependencies:** cobra, for the command line; `golang.org/x/sys/unix`, for the two system calls the standard library lacks (below); and `golang.org/x/mod`, to check the version a build is stamped with. A JSON Schema validator is a test-only dependency.
 - **JSON is `encoding/json`**, with nothing wrapped around it. Files and inputs decode into structs with `DisallowUnknownFields`; `extra` is a `map[string]any`. Files are written with `MarshalIndent`, two spaces, and a trailing newline, with HTML escaping off.
 
 ## Packages
@@ -25,7 +25,7 @@ schemas/         the JSON Schemas, written by hand
 e2e/             tests against the built binary
 ```
 
-Imports go one way: `cli → ops → store → fsys`, with `graph`, `model`, and `errs` importable from anywhere and importing none of the others.
+Imports go one way: `cli → ops → store → fsys`. `errs`, `model`, and `graph` are importable from anywhere: `errs` imports nothing of koan's, `model` only `errs`, and `graph` only `model`.
 
 - **`ops` is the unit of behaviour.** Each command is a function from a decoded input and an environment to a result or an error. The CLI knows nothing about tasks: it builds the input object, calls the command, and prints what comes back.
 - **The environment is passed in**: `HOME`, the clock, and the `fsys` to use. Nothing in `ops` or below reads the process environment or the wall clock directly, which is what lets tests fix the time and inject faults.
