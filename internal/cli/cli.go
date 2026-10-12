@@ -67,6 +67,7 @@ type option struct {
 	name  string // the option, and in snake_case the input field
 	kind  kind
 	usage string
+	short string // a one-letter form, for the few options that have one
 }
 
 type command struct {
@@ -78,15 +79,15 @@ type command struct {
 }
 
 var scopeOptions = []option{
-	{"folder", text, "look only in this folder (default /)"},
-	{"recursive", boolean, "include the folders under it (default true)"},
-	{"tags-any", names, "only tasks with at least one of these tags"},
-	{"tags-all", names, "only tasks with all of these tags"},
+	{"folder", text, "look only in this folder (default /)", ""},
+	{"recursive", boolean, "include the folders under it (default true)", ""},
+	{"tags-any", names, "only tasks with at least one of these tags", ""},
+	{"tags-all", names, "only tasks with all of these tags", ""},
 }
 
 var narrowOptions = append(append([]option{}, scopeOptions...),
-	option{"limit", integer, "return at most this many"},
-	option{"fields", names, "return only these fields of each task"},
+	option{"limit", integer, "return at most this many", ""},
+	option{"fields", names, "return only these fields of each task", ""},
 )
 
 var commands = []command{
@@ -96,50 +97,50 @@ var commands = []command{
 	{name: "doctor", short: "Report everything wrong with the tree"},
 	{name: "repair", short: "Fix what can be fixed safely"},
 	{name: "migrate", short: "Convert the tree to this binary's format", options: []option{
-		{"dry-run", boolean, "report what would change and write nothing"}}},
+		{"dry-run", boolean, "report what would change and write nothing", ""}}},
 	{name: "create-folder", short: "Create a folder", subject: "folder"},
 	{name: "move-folder", short: "Move or rename a folder", subject: "folder", options: []option{
-		{"to", text, "the folder's new path (required)"}}},
+		{"to", text, "the folder's new path (required)", ""}}},
 	{name: "delete-folder", short: "Remove a folder and everything in it", subject: "folder", options: []option{
-		{"recursive", boolean, "remove a folder that is not empty"}}},
+		{name: "recursive", short: "r", kind: boolean, usage: "remove a folder that is not empty"}}},
 	{name: "create", short: "Create a task", subject: "title", options: []option{
-		{"folder", text, "where the task goes (default /)"},
-		{"priority", priority, "an integer; higher is more important"},
-		{"tags", names, "tags"},
-		{"blocked-by", ids, "IDs of the tasks it waits on"},
-		{"extra", object, "a JSON object stored with the task"},
-		{"notes", text, "the initial notes"},
-		{"notes-file", text, "read the initial notes from a file, or - for stdin"}}},
+		{"folder", text, "where the task goes (default /)", ""},
+		{"priority", priority, "an integer; higher is more important", ""},
+		{"tags", names, "tags", ""},
+		{"blocked-by", ids, "IDs of the tasks it waits on", ""},
+		{"extra", object, "a JSON object stored with the task", ""},
+		{"notes", text, "the initial notes", ""},
+		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
 	{name: "create-batch", short: "Create several tasks that may wait on each other (input only)"},
 	{name: "show", short: "Return one task", subject: "id", subjKin: integer},
 	{name: "update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
-		{"title", text, "the new title"},
-		{"priority", priority, "an integer, or null to clear it"},
-		{"tags-add", names, "tags to add"},
-		{"tags-remove", names, "tags to remove"},
-		{"tags-replace-all", names, "the whole new set of tags"},
-		{"extra-merge", object, "a JSON object of keys to set"},
-		{"extra-remove", keys, "a key to delete (repeatable)"},
-		{"extra-replace-all", object, "the whole new extra object"}}},
+		{"title", text, "the new title", ""},
+		{"priority", priority, "an integer, or null to clear it", ""},
+		{"tags-add", names, "tags to add", ""},
+		{"tags-remove", names, "tags to remove", ""},
+		{"tags-replace-all", names, "the whole new set of tags", ""},
+		{"extra-merge", object, "a JSON object of keys to set", ""},
+		{"extra-remove", keys, "a key to delete (repeatable)", ""},
+		{"extra-replace-all", object, "the whole new extra object", ""}}},
 	{name: "done", short: "Mark a task done", subject: "id", subjKin: integer},
 	{name: "reopen", short: "Make a done task open again", subject: "id", subjKin: integer},
 	{name: "block", short: "Add blockers to a task", subject: "id", subjKin: integer, options: []option{
-		{"blockers", ids, "IDs of the tasks to wait on (required)"}}},
+		{"blockers", ids, "IDs of the tasks to wait on (required)", ""}}},
 	{name: "unblock", short: "Remove blockers from a task", subject: "id", subjKin: integer, options: []option{
-		{"blockers", ids, "IDs to stop waiting on (required)"}}},
+		{"blockers", ids, "IDs to stop waiting on (required)", ""}}},
 	{name: "move", short: "Move a task to another folder", subject: "id", subjKin: integer, options: []option{
-		{"to", text, "the folder to move it into (required)"}}},
+		{"to", text, "the folder to move it into (required)", ""}}},
 	{name: "delete", short: "Remove a task", subject: "id", subjKin: integer},
 	{name: "frontier", short: "Return the ready, unclaimed tasks, in work order", options: narrowOptions},
 	{name: "list", short: "Return the tasks, and optionally folders, in scope", options: append(append([]option{}, narrowOptions...),
-		option{"claimed", boolean, "only claimed tasks, or with =false only unclaimed ones"},
-		option{"readiness", names, "which of ready, blocked, done to return (default ready,blocked)"},
-		option{"include-folders", boolean, "also return the folders in scope"})},
+		option{"claimed", boolean, "only claimed tasks, or with =false only unclaimed ones", ""},
+		option{"readiness", names, "which of ready, blocked, done to return (default ready,blocked)", ""},
+		option{"include-folders", boolean, "also return the folders in scope", ""})},
 	{name: "why", short: "Say what a task is waiting on", subject: "id", subjKin: integer},
 	{name: "claim", short: "Claim a task", subject: "id", subjKin: integer, options: []option{
-		{"extra", object, "a JSON object stored with the claim"}}},
+		{"extra", object, "a JSON object stored with the claim", ""}}},
 	{name: "claim-next", short: "Claim the first ready, unclaimed task", options: append(append([]option{}, scopeOptions...),
-		option{"extra", object, "a JSON object stored with the claim"})},
+		option{"extra", object, "a JSON object stored with the claim", ""})},
 	{name: "release", short: "End a claim", subject: "id", subjKin: integer},
 }
 
@@ -265,7 +266,7 @@ func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
 	for _, o := range c.options {
 		switch o.kind {
 		case boolean:
-			fs.Bool(o.name, false, o.usage)
+			fs.BoolP(o.name, o.short, false, o.usage)
 		case ids, names:
 			fs.StringSlice(o.name, nil, o.usage)
 		case keys:

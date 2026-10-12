@@ -33,7 +33,7 @@ An unknown input field, a missing required one, or a value of the wrong type is 
 | Field | Holds |
 |---|---|
 | `kind` | One of the kinds in [design.md](design.md#errors). |
-| `rule` | For `conflict` only: which rule refused the input. Each command lists its own. |
+| `rule` | For `conflict`, which rule refused the input; each command lists its own. `null` for every other kind. |
 | `message` | One sentence for a person. Not for parsing. |
 | `ids`, `folders`, `paths` | The tasks, folder paths, and files the error is about. `not-found` lists everything missing at once. |
 | `problems` | For `invalid-input`: one `{field, reason}` per problem, `field` a JSON pointer into the input. For `corrupt`: one per rule the file breaks. |
@@ -367,7 +367,7 @@ Say what a task is waiting on, by following its blockers, and theirs, through op
 | Field | Holds |
 |---|---|
 | `readiness` | The task's own. |
-| `ready` | The ready tasks it waits on, in work order: working on these is what moves it. Just the task itself when it is ready. |
+| `ready` | The IDs of the ready tasks it waits on, in work order: working on these is what moves it. Just the task itself when it is ready. |
 | `stuck` | The IDs no work will clear, ascending: blockers that are missing or unusable, and tasks that block each other. |
 
 - A done task has both lists empty. An open task has at least one of them non-empty.
