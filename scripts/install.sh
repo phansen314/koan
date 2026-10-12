@@ -300,10 +300,10 @@ if [[ -n $want_oc ]]; then
 fi
 
 if [[ $mode == install ]]; then
-	if ! koan info | jq -e .result.usable >/dev/null; then
+	if ! koan info | jq -e '.result.state == "usable"' >/dev/null; then
 		echo
-		echo "koan has no usable root yet. Set one up with, e.g.:"
-		echo "  koan init ~/koans"
+		echo "koan has no usable root yet. Set one up with:"
+		echo "  koan init"
 	fi
 	if [[ -n $want_claude ]] && command -v claude >/dev/null &&
 		! claude plugin list --json 2>/dev/null | jq -e 'any(.[]; .id == "koan@koan" and .enabled)' >/dev/null; then
