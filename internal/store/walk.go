@@ -2,6 +2,7 @@ package store
 
 import (
 	"io/fs"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -44,7 +45,7 @@ func (t *Tree) Walk(tolerant bool) (*Index, *errs.Error) {
 		return nil, e
 	}
 	if !tolerant && len(x.Copies) > 0 {
-		id := slices.Min(slices.Collect(mapKeys(x.Copies)))
+		id := slices.Min(slices.Collect(maps.Keys(x.Copies)))
 		e := errs.NewConflict(errs.RuleDuplicateID, "task %d has %d task files", id, len(x.Copies[id])).WithIDs(id)
 		for _, f := range x.Copies[id] {
 			e.WithPaths(t.Abs(TaskRel(f, id)))
@@ -54,21 +55,16 @@ func (t *Tree) Walk(tolerant bool) (*Index, *errs.Error) {
 	return x, nil
 }
 
-func mapKeys[V any](m map[model.ID]V) func(func(model.ID) bool) {
-	return func(yield func(model.ID) bool) {
-		for k := range m {
-			if !yield(k) {
-				return
-			}
-		}
-	}
-}
-
 func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 	entries, err := t.root.ReadDir(f.Rel())
 	if err != nil {
-		if tolerant {
+		switch {
+		case tolerant:
 			x.Skipped = append(x.Skipped, f.Rel())
+			return nil
+		case f != model.Root && errs.IsErrno(err, syscall.ENOENT):
+			// The folder was moved or removed by a concurrent write after
+			// its parent was listed: a read skips it, as it does a file.
 			return nil
 		}
 		return errs.FromOS(t.Abs(f.Rel()), err)

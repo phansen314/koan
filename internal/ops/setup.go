@@ -2,7 +2,6 @@ package ops
 
 import (
 	"runtime"
-	"slices"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/buildinfo"
@@ -34,9 +33,15 @@ func cmdInit(c *call) (any, *errs.Error) {
 	}
 	t, e := store.OpenLocked(env)
 	if e != nil {
-		return nil, e.WithChanged(created(env, res.Created)...)
+		if len(res.Created) > 0 {
+			e.WithChanged(env.RootPath())
+		}
+		return nil, e
 	}
 	c.t = t
+	if len(res.Created) > 0 {
+		t.Touched(".")
+	}
 	cond := t.Inspect()
 	if cond.Status == store.Unusable {
 		return nil, cond.Err
@@ -53,7 +58,11 @@ func cmdInit(c *call) (any, *errs.Error) {
 			return nil, e
 		}
 		st := &model.State{Schema: model.Format, Claims: map[string]model.Claim{}}
+		// Notes count too: a .md whose task is gone still holds its ID.
 		for id := range x.Tasks {
+			st.LastID = max(st.LastID, id)
+		}
+		for id := range x.Notes {
 			st.LastID = max(st.LastID, id)
 		}
 		t.State = st
@@ -63,13 +72,6 @@ func cmdInit(c *call) (any, *errs.Error) {
 		res.Created = append(res.Created, store.PartState)
 	}
 	return res, nil
-}
-
-func created(env store.Env, parts []string) []string {
-	if slices.Contains(parts, store.PartRoot) {
-		return []string{env.RootPath()}
-	}
-	return nil
 }
 
 type versionResult struct {
@@ -136,7 +138,7 @@ type doctorResult struct {
 // cmdDoctor reports every finding. It holds the write lock so that it sees
 // the tree at rest, and changes nothing.
 func cmdDoctor(c *call) (any, *errs.Error) {
-	if e := c.beginNeed(store.NeedInitalized, true); e != nil {
+	if e := c.beginNeed(store.NeedInitialized, true); e != nil {
 		return nil, e
 	}
 	d, e := diagnose(c)
@@ -165,10 +167,13 @@ func cmdRepair(c *call) (any, *errs.Error) {
 		if d.fixes[i] == nil {
 			continue
 		}
-		if e := d.fixes[i](); e != nil {
+		switch e := d.fixes[i](); {
+		case e == notFixed:
+		case e != nil:
 			return nil, e
+		default:
+			res.Repaired = append(res.Repaired, f)
 		}
-		res.Repaired = append(res.Repaired, f)
 	}
 	c.x = nil
 	c.t.ForgetAll()
@@ -195,7 +200,7 @@ type migrateResult struct {
 // each by its own schema, and writes koan.json last.
 func cmdMigrate(c *call) (any, *errs.Error) {
 	dry := c.in.top().boolean("dry_run", false)
-	if e := c.beginNeed(store.NeedInitalized, true); e != nil {
+	if e := c.beginNeed(store.NeedInitialized, true); e != nil {
 		return nil, e
 	}
 	x, e := c.t.Walk(true)

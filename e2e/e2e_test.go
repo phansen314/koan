@@ -76,6 +76,9 @@ func koan(t testing.TB, home, stdin string, extra []string, args ...string) run 
 		if err := schematest.Check(t, "envelope", out.Bytes()); err != nil {
 			t.Errorf("koan %v: envelope: %v\n%s", args, err, r.stdout)
 		}
+		if res, isOK := r.env["result"]; isOK && len(args) > 0 {
+			schematest.Must(t, args[0]+"-output", res)
+		}
 	}
 	return r
 }
@@ -155,6 +158,10 @@ func TestExitCodesAndStderr(t *testing.T) {
 		{[]string{"create", "x", "-i", "f"}, 2, "usage", ""},
 		{[]string{"create", "x", "--extra", "{"}, 2, "usage", ""},
 		{[]string{"create", "x", "--priority", "high"}, 1, "invalid-input", ""},
+		{[]string{"list", "--recursive=maybe"}, 1, "invalid-input", ""},
+		{[]string{"create", "x", "--tags", `a"b`}, 1, "invalid-input", ""},
+		{[]string{"__complete", "cre"}, 2, "usage", ""},
+		{[]string{"__completeNoDesc", "cre"}, 2, "usage", ""},
 	}
 	for _, c := range cases {
 		r := koan(t, home, "", nil, c.args...)

@@ -127,33 +127,20 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			})
 	}
 
-	var stale []string
-	for _, key := range slices.Sorted(maps.Keys(t.State.Claims)) {
+	var claimed []model.ID
+	for key := range t.State.Claims {
 		id, _ := strconv.ParseInt(key, 10, 64)
+		claimed = append(claimed, id)
+	}
+	slices.Sort(claimed)
+	for _, id := range claimed {
 		_, exists := x.Tasks[id]
 		if tf := usable[id]; !exists || (tf != nil && !tf.Open()) {
-			stale = append(stale, key)
 			d.add("stale-claim", fmt.Sprintf("a claim on task %d, which is done or gone: `koan repair` removes it", id),
-				[]model.ID{id}, []string{t.Env().StatePath()}, nil)
-		}
-	}
-	if len(stale) > 0 {
-		// One fix removes every stale claim; it is attached to each finding
-		// and does its work once.
-		fixed := false
-		fix := func() *errs.Error {
-			if fixed {
-				return nil
-			}
-			fixed = true
-			for _, key := range stale {
-				delete(t.State.Claims, key)
-			}
-			return t.SaveState()
-		}
-		for i := len(d.fixes) - len(stale); i < len(d.fixes); i++ {
-			d.fixes[i] = fix
-			d.findings[i].Repairable = true
+				[]model.ID{id}, []string{t.Env().StatePath()}, func() *errs.Error {
+					delete(t.State.Claims, model.ClaimKey(id))
+					return t.SaveState()
+				})
 		}
 	}
 
@@ -211,6 +198,10 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	return d, nil
 }
 
+// notFixed is what a fix returns when it found it could not make its
+// repair after all: the finding stays, and is not reported as repaired.
+var notFixed = errs.New(errs.Internal, "not fixed")
+
 // orphanFix decides what repair does with a .md that has no task file beside
 // it: remove it when it is empty, move it to its task when the task is
 // elsewhere without notes, and otherwise leave it.
@@ -222,7 +213,10 @@ func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (func
 	home, exists := x.Tasks[id]
 	if exists && len(x.Copies[id]) == 0 && !slices.Contains(x.Notes[id], home) {
 		return func() *errs.Error {
-			_, e := t.Move(rel, store.NotesRel(home, id))
+			taken, e := t.Move(rel, store.NotesRel(home, id))
+			if e == nil && taken {
+				return notFixed // another orphan of this task got there first
+			}
 			return e
 		}, fmt.Sprintf("`koan repair` moves them to their task in %s", home)
 	}

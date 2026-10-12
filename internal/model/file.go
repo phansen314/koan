@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"slices"
 	"strconv"
@@ -93,7 +94,7 @@ func Decode(data []byte, v any) error {
 	if err := dec.Decode(v); err != nil {
 		return err
 	}
-	if dec.More() {
+	if _, err := dec.Token(); err != io.EOF {
 		return fmt.Errorf("unexpected data after the JSON value")
 	}
 	return nil
@@ -128,10 +129,17 @@ func SchemaOf(data []byte) (int64, error) {
 	return n, nil
 }
 
-// missing lists the keys of want that m lacks, or holds as null where null
-// is not allowed, as problems.
+// missing lists what is wrong with an object's keys, as problems: the keys
+// of want that m lacks, or holds as null where null is not allowed, and any
+// key that is not in want. Keys are matched exactly: encoding/json would
+// take "Title" for "title".
 func missing(m map[string]json.RawMessage, want []string, nullable ...string) []Problem {
 	var ps []Problem
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		if !slices.Contains(want, k) {
+			ps = append(ps, prob("/"+k, "is not a key of this file"))
+		}
+	}
 	for _, k := range want {
 		raw, ok := m[k]
 		switch {
@@ -276,10 +284,14 @@ func DecodeMeta(data []byte) (*Meta, []Problem, error) {
 		}
 		return nil, []Problem{prob("/schema", err.Error())}, nil
 	}
-	var m Meta
-	if err := Decode(data, &m); err != nil {
-		return nil, []Problem{prob("", err.Error())}, nil
+	// A koan.json in another format may hold anything else: only its
+	// schema is read, so that it is reported as that format.
+	if n != Format {
+		return &Meta{Schema: n}, nil, nil
 	}
-	m.Schema = n
-	return &m, nil, nil
+	m, _ := Keys(data)
+	if ps := missing(m, []string{"schema"}); ps != nil {
+		return nil, ps, nil
+	}
+	return &Meta{Schema: n}, nil, nil
 }

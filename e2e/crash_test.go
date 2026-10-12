@@ -18,7 +18,7 @@ var crashCases = []struct {
 	name string
 	args []string
 }{
-	{"init", []string{"init"}},
+	{freshInit, []string{"init"}},
 	{"create", []string{"create", "new", "--folder", "/fresh/deep", "--blocked-by", "1", "--notes", "n"}},
 	{"create-batch", []string{"create-batch", "-i", "-"}},
 	{"create-folder", []string{"create-folder", "/x/y/z"}},
@@ -39,11 +39,19 @@ var crashCases = []struct {
 
 const batchInput = `{"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
 
+// freshInit marks the case that runs on a HOME where nothing exists yet.
+const freshInit = "init on a new home"
+
 // setup makes a tree with something for every command to act on: task 1 in
 // the root; 2 and 3 in /proj, 2 waiting on 1 and 3 claimed with notes; and
 // 4, done, in /proj/sub.
-func setup(t *testing.T) string {
+func setup(t *testing.T, name string) string {
 	t.Helper()
+	if name == freshInit {
+		home := t.TempDir()
+		os.Mkdir(filepath.Join(home, ".config"), 0o755) // as every real home has
+		return home
+	}
 	home := newHome(t)
 	ok(t, home, "create", "one")
 	ok(t, home, "create", "two", "--folder", "/proj", "--blocked-by", "1")
@@ -54,17 +62,22 @@ func setup(t *testing.T) string {
 	return home
 }
 
-// leftovers are the findings a killed or failed command may leave: every one
-// of them is something repair fixes.
-var leftovers = []string{"temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes"}
+// leftovers are the findings a killed or failed command may leave, as
+// spec/design.md lists them: a temp file, a reference to a deleted task, a
+// claim on a task that is done or gone, and notes without their task. Every
+// one is something repair fixes. An ID used with no task is not a finding.
+var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
 
 // checkAfter requires what the design promises after a crash or a failure:
 // the next write succeeds, doctor reports nothing but the expected kinds,
 // and repair leaves nothing it could have fixed.
 func checkAfter(t *testing.T, home, what string) {
 	t.Helper()
-	if r := koan(t, home, "", nil, "init"); r.exit != 0 {
-		t.Fatalf("%s: init afterwards: %s", what, r.stdout)
+	// Only init itself can leave the root half made, and init finishes it.
+	if what0 := koan(t, home, "", nil, "info").result()["state"]; what0 != "usable" {
+		if r := koan(t, home, "", nil, "init"); r.exit != 0 {
+			t.Fatalf("%s: left the root %v, and init afterwards failed: %s", what, what0, r.stdout)
+		}
 	}
 	if r := koan(t, home, "", nil, "create", "after"); r.exit != 0 {
 		t.Fatalf("%s: the next write failed: %s", what, r.stdout)
@@ -91,9 +104,9 @@ func stdinFor(args []string) string {
 }
 
 // changes counts the changes a command makes to the disk on the setup tree.
-func changes(t *testing.T, args []string) int {
+func changes(t *testing.T, name string, args []string) int {
 	t.Helper()
-	home := setup(t)
+	home := setup(t, name)
 	count := filepath.Join(t.TempDir(), "count")
 	if r := koan(t, home, stdinFor(args), []string{"KOAN_E2E_COUNT_FILE=" + count}, args...); r.exit != 0 {
 		t.Fatalf("koan %v on the setup tree: %s", args, r.stdout)
@@ -130,12 +143,12 @@ func TestCrashes(t *testing.T) {
 	for _, c := range crashCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			n := changes(t, c.args)
-			if n == 0 && c.name != "repair" && c.name != "init" {
+			n := changes(t, c.name, c.args)
+			if n == 0 && c.name != "repair" {
 				t.Fatal("the command changed nothing on disk")
 			}
 			for k := 1; k <= n; k++ {
-				home := setup(t)
+				home := setup(t, c.name)
 				r := koan(t, home, stdinFor(c.args), []string{fmt.Sprintf("KOAN_E2E_CRASH_BEFORE=%d", k)}, c.args...)
 				if !r.killed {
 					t.Fatalf("not killed before change %d of %d: %s", k, n, r.stdout)
@@ -155,9 +168,9 @@ func TestFailures(t *testing.T) {
 	for _, c := range crashCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			n := changes(t, c.args)
+			n := changes(t, c.name, c.args)
 			for k := 1; k <= n; k++ {
-				home := setup(t)
+				home := setup(t, c.name)
 				before := snapshot(t, home)
 				r := koan(t, home, stdinFor(c.args), []string{fmt.Sprintf("KOAN_E2E_ERRNO_BEFORE=%d", k)}, c.args...)
 				what := fmt.Sprintf("change %d of %d failed", k, n)

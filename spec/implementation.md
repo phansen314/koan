@@ -15,7 +15,7 @@ Everything but `main` is under `internal/`: koan's contract is the JSON its CLI 
 ```text
 cmd/koan         main: signals, run(), os.Exit
 internal/cli     cobra commands, command line to input, envelope to stdout, exit codes
-internal/ops     one file per command: decode and check input, do the work, build the result
+internal/ops     the commands, grouped by kind: decode and check input, do the work, build the result
 internal/store   root states, the lock wait, writing and moving files, the walk, the state file
 internal/graph   readiness, the cycle check, why: pure functions, no I/O
 internal/model   Task, the state file, names, IDs, timestamps, and their validation
@@ -28,7 +28,7 @@ e2e/             tests against the built binary
 Imports go one way: `cli → ops → store → fsys`. `errs`, `model`, and `graph` are importable from anywhere: `errs` imports nothing of koan's, `model` only `errs`, and `graph` only `model`.
 
 - **`ops` is the unit of behaviour.** Each command is a function from a decoded input and an environment to a result or an error. The CLI knows nothing about tasks: it builds the input object, calls the command, and prints what comes back.
-- **The environment is passed in**: `HOME`, the clock, and the `fsys` to use. Nothing in `ops` or below reads the process environment or the wall clock directly, which is what lets tests fix the time and inject faults.
+- **The environment is passed in**: `HOME`, the clock, and the `fsys` to use. Nothing in `ops` or below reads the process environment, or the wall clock for a timestamp, which is what lets tests fix the time and inject faults. The one use of the real clock is the lock wait, which measures elapsed time.
 
 ## The filesystem layer
 
@@ -119,7 +119,8 @@ There is no index on disk; a command that needs one builds it.
 The files in `schemas/` are written by hand and are the contract. The binary contains no schema validator: input is checked by decoding and by `model`'s validation. Tests close the gap in both directions:
 
 - every envelope any test produces is validated against its command's output schema;
-- for each input schema, a table of valid and invalid inputs is checked against both the schema and the command, and the two must agree.
+- every input any test sends a command is also checked against that command's input schema, and the two must agree on whether it is valid. Rules between fields (two options that can't be combined) and the title rule are exempt: the schemas don't state them.
+- the command table of the CLI, the commands in `ops`, and the input schemas must name the same commands and fields.
 
 ## Testing
 

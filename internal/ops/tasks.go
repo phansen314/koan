@@ -385,7 +385,7 @@ func readBlockers(c *call) (model.ID, []model.ID) {
 	in := c.in.top()
 	id := in.id("id", true)
 	bs := in.ids("blockers", true)
-	if c.in.has("blockers") && len(bs) == 0 && len(c.in.problems) == 0 {
+	if bs != nil && len(bs) == 0 {
 		c.in.bad("/blockers", "must hold at least one task ID")
 	}
 	return id, bs
@@ -500,14 +500,17 @@ func cmdDelete(c *call) (any, *errs.Error) {
 	if !ok {
 		return nil, notFoundTask(id)
 	}
-	dependents, e := c.unreference([]model.ID{id})
-	if e != nil {
-		return nil, e
-	}
+	// The task goes first: a kill after that leaves references to a task
+	// that is gone, which doctor finds. The other order would leave the task
+	// with its dependents already freed, and nothing to show for it.
 	if e := c.t.Remove(store.TaskRel(f, id)); e != nil {
 		return nil, e
 	}
 	if e := c.t.Remove(store.NotesRel(f, id)); e != nil {
+		return nil, e
+	}
+	dependents, e := c.unreference([]model.ID{id})
+	if e != nil {
 		return nil, e
 	}
 	if e := c.dropClaims(id); e != nil {

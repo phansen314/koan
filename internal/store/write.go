@@ -3,6 +3,7 @@ package store
 import (
 	"io/fs"
 	"path"
+	"slices"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
@@ -76,9 +77,10 @@ func (t *Tree) WriteTask(f model.Folder, tf *model.TaskFile, create bool) *errs.
 	return nil
 }
 
-// WriteNotes writes a new task's notes.
+// WriteNotes writes a new task's notes. Like every file that must be new, it
+// is published by link, so a .md already there is never overwritten.
 func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error {
-	return t.put(NotesRel(f, id), []byte(notes), true)
+	return t.put(NotesRel(f, id), []byte(notes), false)
 }
 
 // WriteMeta writes koan.json with the given format.
@@ -110,10 +112,16 @@ func WriteState(env Env, st *model.State, changed *[]string) *errs.Error {
 	if err != nil {
 		return errs.New(errs.Internal, "encode the state file: %v", err)
 	}
-	if err := env.FS.MkdirAll(env.StateDir(), 0o700); err != nil {
-		return errs.FromOS(env.StateDir(), err)
-	}
 	dir, err := env.FS.OpenRoot(env.StateDir())
+	if errs.IsErrno(err, syscall.ENOENT) {
+		if err := env.FS.MkdirAll(env.StateDir(), 0o700); err != nil {
+			return errs.FromOS(env.StateDir(), err)
+		}
+		if changed != nil {
+			*changed = append(*changed, env.StateDir())
+		}
+		dir, err = env.FS.OpenRoot(env.StateDir())
+	}
 	if err != nil {
 		return errs.FromOS(env.StateDir(), err)
 	}
@@ -128,7 +136,7 @@ func WriteState(env Env, st *model.State, changed *[]string) *errs.Error {
 	if err := Publish(dir, StateName, data, StateMode, true); err != nil {
 		return errs.FromOS(env.StatePath(), err)
 	}
-	if changed != nil {
+	if changed != nil && !slices.Contains(*changed, env.StatePath()) {
 		*changed = append(*changed, env.StatePath())
 	}
 	return nil

@@ -551,7 +551,7 @@ func TestBusy(t *testing.T) {
 // error says which.
 func TestBatchFailsPartway(t *testing.T) {
 	w := ready(t)
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 3, 28 /* ENOSPC */)}
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 5, 28 /* ENOSPC */)}
 	env := w.run("create-batch", `{"tasks":[{"title":"a"},{"title":"b"},{"title":"c"}]}`)
 	if env.OK || env.Error.Kind != errs.IO {
 		t.Fatalf("got %+v", env)

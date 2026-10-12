@@ -5,8 +5,10 @@ package ops
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"path"
 	"slices"
+	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
@@ -146,8 +148,10 @@ func (c *call) index() (*store.Index, *errs.Error) {
 	return x, nil
 }
 
+// warn reports a problem that does not stop the command, at most once per
+// kind and file.
 func (c *call) warn(kind, msg string, ids []model.ID, paths ...string) {
-	key := kind + "\x00" + msg
+	key := kind + "\x00" + strings.Join(paths, "\x00")
 	if c.warned[key] {
 		return
 	}
@@ -207,12 +211,16 @@ func (c *call) look(id model.ID) (graph.Node, bool) {
 	if tf == nil {
 		return graph.Node{}, false
 	}
+	var gone []model.ID
 	for _, b := range tf.BlockedBy {
 		if _, ok := c.x.Tasks[b]; !ok {
-			c.warn(errs.WarnDanglingReference,
-				"task "+model.ClaimKey(id)+" is blocked by "+model.ClaimKey(b)+", which does not exist",
-				[]model.ID{id, b}, c.t.Abs(store.TaskRel(c.x.Tasks[id], id)))
+			gone = append(gone, b)
 		}
+	}
+	if len(gone) > 0 {
+		c.warn(errs.WarnDanglingReference,
+			fmt.Sprintf("task %d is blocked by %v, which do not exist", id, gone),
+			append([]model.ID{id}, gone...), c.t.Abs(store.TaskRel(c.x.Tasks[id], id)))
 	}
 	return graph.Node{Open: tf.Open(), Priority: tf.Priority, BlockedBy: tf.BlockedBy}, true
 }

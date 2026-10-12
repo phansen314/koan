@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/fsys"
@@ -155,6 +156,11 @@ func usagef(format string, args ...any) error { return usageError(fmt.Sprintf(fo
 // exit code. It writes exactly one envelope line, or help text, to stdout,
 // and at most one line to stderr.
 func Run(args []string, env Env) int {
+	// cobra answers these hidden commands itself, with shell-completion
+	// text: koan has no completion, and prints nothing but envelopes.
+	if len(args) > 0 && strings.HasPrefix(args[0], "__complete") {
+		return deliver(env, ops.Failure(errs.New(errs.Usage, "unknown command %q: see koan --help", args[0])))
+	}
 	var help bytes.Buffer
 	var result *ops.Envelope
 	root := newRoot(env, &result)
@@ -266,10 +272,11 @@ func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
 	for _, o := range c.options {
 		switch o.kind {
 		case boolean:
-			fs.BoolP(o.name, o.short, false, o.usage)
-		case ids, names:
-			fs.StringSlice(o.name, nil, o.usage)
-		case keys:
+			// A string underneath, so that a value that is not true or
+			// false reaches the command, as it would through --input.
+			fs.StringP(o.name, o.short, "", o.usage)
+			fs.Lookup(o.name).NoOptDefVal = "true"
+		case ids, names, keys:
 			fs.StringArray(o.name, nil, o.usage)
 		default:
 			fs.String(o.name, "", o.usage)
@@ -320,16 +327,16 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 		field := strings.ReplaceAll(o.name, "-", "_")
 		switch o.kind {
 		case boolean:
-			in[field], _ = fs.GetBool(o.name)
+			s, _ := fs.GetString(o.name)
+			in[field] = scalar(boolean, s)
 		case ids:
-			vals, _ := fs.GetStringSlice(o.name)
-			list := make([]any, len(vals))
-			for i, v := range vals {
-				list[i] = scalar(integer, v)
+			list := []any{}
+			for _, v := range split(fs, o.name) {
+				list = append(list, scalar(integer, v))
 			}
 			in[field] = list
 		case names:
-			in[field], _ = fs.GetStringSlice(o.name)
+			in[field] = split(fs, o.name)
 		case keys:
 			in[field], _ = fs.GetStringArray(o.name)
 		case object:
@@ -362,6 +369,10 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 // invalid-input, exactly as it would through --input.
 func scalar(k kind, s string) any {
 	switch k {
+	case boolean:
+		if b, err := strconv.ParseBool(s); err == nil && (s == "true" || s == "false") {
+			return b
+		}
 	case priority:
 		if s == "null" {
 			return nil
@@ -373,6 +384,19 @@ func scalar(k kind, s string) any {
 		}
 	}
 	return s
+}
+
+// split is a list option's values: every occurrence, each split at commas.
+// An empty value gives an empty list.
+func split(fs *pflag.FlagSet, name string) []string {
+	vals, _ := fs.GetStringArray(name)
+	out := []string{}
+	for _, v := range vals {
+		if v != "" {
+			out = append(out, strings.Split(v, ",")...)
+		}
+	}
+	return out
 }
 
 // readFile reads a file an option names, or stdin for -.

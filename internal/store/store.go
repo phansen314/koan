@@ -183,8 +183,8 @@ func corrupt(p string, problems []model.Problem, err error) *errs.Error {
 type Need int
 
 const (
-	NeedUsable     Need = iota // a usable root
-	NeedInitalized             // usable, or needing migration: doctor and migrate
+	NeedUsable      Need = iota // a usable root
+	NeedInitialized             // usable, or needing migration: doctor and migrate
 )
 
 // Tree is an open tree: the handle every file call goes through, the state
@@ -219,24 +219,17 @@ func Open(env Env, need Need, write bool) (*Tree, *errs.Error) {
 		root.Close()
 		return nil, e
 	}
-	if e := need.check(Inspect(env, root, nil)); e != nil {
+	c = Inspect(env, root, nil)
+	if e := need.check(c); e != nil {
 		t.Close()
 		return nil, e
 	}
-	st, e := readState(env)
-	if e != nil || st == nil {
-		t.Close()
-		if e == nil {
-			e = errs.New(errs.NotInitialized, "the state file is gone: run `koan init`")
-		}
-		return nil, e
-	}
-	t.State = st
+	t.Meta, t.State = c.Meta, c.State
 	return t, nil
 }
 
 func (n Need) check(c Condition) *errs.Error {
-	if c.Status == Usable || (n == NeedInitalized && c.Status == NeedsMigration) {
+	if c.Status == Usable || (n == NeedInitialized && c.Status == NeedsMigration) {
 		return nil
 	}
 	return c.Err
@@ -296,6 +289,10 @@ func (t *Tree) Env() Env { return t.env }
 
 // Inspect reports the open root's state.
 func (t *Tree) Inspect() Condition { return Inspect(t.env, t.root, nil) }
+
+// Touched records a change made outside the tree's own methods: the root
+// directory itself, which init creates before there is a tree to open.
+func (t *Tree) Touched(rel string) { t.note(rel) }
 
 // Changed lists what the command has created, rewritten, or removed so far.
 func (t *Tree) Changed() []string { return t.changed }

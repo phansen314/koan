@@ -113,10 +113,11 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 			res.Deleted = append(res.Deleted, id)
 		}
 	}
-	if res.Dependents, e = c.unreference(res.Deleted); e != nil {
+	// The folder goes first, for the reason delete gives.
+	if e := c.t.Discard(f.Rel()); e != nil {
 		return nil, e
 	}
-	if e := c.t.Discard(f.Rel()); e != nil {
+	if res.Dependents, e = c.unreference(res.Deleted); e != nil {
 		return nil, e
 	}
 	if e := c.dropClaims(res.Deleted...); e != nil {

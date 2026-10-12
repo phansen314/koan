@@ -78,7 +78,7 @@ Every key is required and no other key is allowed.
 | `tags` | A set of labels, each following the folder-name rule but lowercase only: `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`. |
 | `extra` | Any JSON object. koan stores it and returns it, and never interprets it. A workflow `status` goes here: one key holds one value, where tags could hold two. |
 
-Integers are within ±(2^53 − 1). Timestamps are UTC to the second, `YYYY-MM-DDTHH:MM:SSZ`.
+Integers are within ±(2^53 − 1), and written without a fraction or an exponent: `4`, never `4.0`. Timestamps are UTC to the second, `YYYY-MM-DDTHH:MM:SSZ`, and name a real date and time. Keys are matched exactly: `Title` is not `title`. The schemas cannot say these three things; koan checks them.
 
 ### IDs
 
@@ -154,18 +154,18 @@ koan writes JSON with two-space indentation, keys in schema order, `blocked_by` 
 | State | When | Commands fail with |
 |---|---|---|
 | Not initialized | `~/koan-root`, its `koan.json`, or the state file is missing. | `not-initialized`. Run `init`. |
-| Unusable | `koan.json` or the state file is there but can't be read or is invalid. | `corrupt` or `io`. |
+| Unusable | `~/koan-root` is not a folder; or `koan.json` or the state file is there but can't be read or is invalid. | `conflict` (`not-a-folder`), `corrupt`, or `io`. |
 | Needs migration, or too new | See [Formats](#formats). | `migration-pending`, `unsupported-format`. |
 | Usable | Otherwise. | — |
 
-`init` creates whatever is missing and changes nothing that is there. A state file it creates beside an existing tree starts `last_id` at the highest ID in the tree. That is how a tree cloned onto a new machine is attached, and how a lost state file is replaced; in the second case an ID whose task was deleted can be issued again.
+`init` creates whatever is missing and changes nothing that is there. A state file it creates beside an existing tree starts `last_id` at the highest ID in any filename in the tree. That is how a tree cloned onto a new machine is attached, and how a lost state file is replaced; in the second case an ID whose task was deleted can be issued again.
 
 ### Walking
 
 There is no index: a command that looks a task up by ID walks the tree.
 
 - A walk skips hidden entries, entries whose names match neither rule, symlinks, and entries of the wrong type (a directory named `42.json`).
-- A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
+- A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree. One that is gone by the time a read reaches it was moved or removed by a concurrent write, and is skipped.
 - **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`). koan never picks a copy. `doctor` lists the copies, for a person to resolve.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.
 - **A dangling reference** counts as blocking, and is reported as a warning.

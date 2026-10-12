@@ -128,11 +128,12 @@ For each command below: **Input** lists its fields (required ones marked), **Res
 Create whatever is missing of `~/koan-root`, its `koan.json`, and the state file. What is already there is left alone, so running it again changes nothing.
 
 - **Input:** none.
-- A state file created beside an existing tree starts `last_id` at the highest ID in any task filename; otherwise at `0`.
+- A state file created beside an existing tree starts `last_id` at the highest ID in the name of any task file or notes file; otherwise at `0`.
 - `init` makes the folder when it is missing, then holds the write lock for everything else, so the highest ID is read from a tree at rest and two `init`s cannot overlap.
 - A folder without a `koan.json` is adopted as it is: `init` writes the `koan.json` and leaves everything else in the folder alone.
 - A tree that needs migration, or is too new, is not an error here: its `koan.json` is left alone, and a missing state file is still created.
 - **Result:** `root` and `state_path` (the two paths), and `created`: which of `root`, `metadata`, `state` it made.
+- **Result's `created`** lists what it made; on failure, `changed_paths` does.
 - **Refuses:** `not-a-folder` when `~/koan-root` is a file or leads nowhere, and `busy` when it can't get the lock. An existing `koan.json` or state file that is unusable fails with `corrupt` or `io`, and is never replaced.
 
 ### version
@@ -216,7 +217,7 @@ Remove a folder and everything under it, for good. koan keeps no trash; undo is 
 
 - **Input:** `folder` (required, not `/`), and `recursive` (default `false`).
 - Without `recursive`, the folder must hold nothing but hidden entries.
-- Every task outside the folder loses the removed tasks' IDs from its `blocked_by`, and the removed tasks' claims end.
+- Every task outside the folder loses the removed tasks' IDs from its `blocked_by`, and the removed tasks' claims end. The folder is removed first, as [`delete`](#delete) removes its task first.
 - **Result:** `folder`, `deleted` (IDs of the tasks removed), and `dependents` (IDs of the tasks whose `blocked_by` changed).
 - **Refuses:** `not-empty`, without `recursive`.
 
@@ -238,7 +239,7 @@ Create an open task.
 | `extra` | `{}` | |
 | `notes` | `""` | The initial content of the `.md`. |
 
-- The new ID is `last_id` + 1. The counter is written first, then the task file, then the notes. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task and its `changed_paths` the task file.
+- The new ID is `last_id` + 1. The counter is written first, then the task file, then the notes. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `.md` is always written, empty when no notes are given, and never over a file already there.
 - A new task can't close a cycle, since nothing waits on it yet.
 - **Result:** `task`, `folders_created`.
 
@@ -330,7 +331,7 @@ Remove a task and its notes, for good, and remove its ID from every other task's
 
 - **Input:** `id` (required).
 - The task file need not be usable: `delete` goes by its filename, which makes it the way to remove a broken task.
-- The other tasks are rewritten first, then the task is removed, then its claim.
+- The task is removed first, then the other tasks are rewritten, then its claim ends. A kill in between leaves references to a task that is gone, which `doctor` finds; the other order would free its dependents with nothing to show for it.
 - **Result:** `id`, and `dependents` (IDs of the tasks whose `blocked_by` changed).
 
 ## Queries

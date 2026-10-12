@@ -57,10 +57,12 @@ func (c *call) tasks(s scope, keep func(model.Task) bool) ([]model.Task, *errs.E
 			continue
 		}
 		tf := c.pass(l.id)
-		if tf == nil || !s.matches(tf) {
+		if tf == nil {
 			continue
 		}
-		if t := c.task(l.f, tf); keep(t) {
+		// Every task in scope is looked at before any is filtered out, so
+		// that warnings do not depend on narrowing.
+		if t := c.task(l.f, tf); s.matches(tf) && keep(t) {
 			out = append(out, t)
 		}
 	}
