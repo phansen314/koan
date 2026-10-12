@@ -78,9 +78,20 @@ func (t *Tree) WriteTask(f model.Folder, tf *model.TaskFile, create bool) *errs.
 }
 
 // WriteNotes writes a new task's notes. Like every file that must be new, it
-// is published by link, so a .md already there is never overwritten.
+// is published by link, so a .md already there is never overwritten: the
+// task then has that file as its notes, and the error says so.
 func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error {
-	return t.put(NotesRel(f, id), []byte(notes), false)
+	rel := NotesRel(f, id)
+	err := Publish(t.root, rel, []byte(notes), FileMode, false)
+	switch {
+	case err == nil:
+		t.note(rel)
+		return nil
+	case errs.IsErrno(err, syscall.EEXIST):
+		return errs.New(errs.IO, "%s was already there and was left as it is: task %d was created, and has that file as its notes", t.Abs(rel), id).
+			WithPaths(t.Abs(rel))
+	}
+	return errs.FromOS(t.Abs(rel), err)
 }
 
 // WriteMeta writes koan.json with the given format.
@@ -97,29 +108,29 @@ func (t *Tree) WriteMeta(schema int64, create bool) *errs.Error {
 }
 
 // SaveState writes the state file, which is outside the tree: its directory
-// is opened as a root of its own, and any temp file a killed write left
-// there is removed first, since doctor never sees that directory.
+// is opened as a root of its own, and created if it is missing. Any temp file
+// a killed write left there is removed first, since doctor never sees that
+// directory.
 func (t *Tree) SaveState() *errs.Error {
-	return WriteState(t.env, t.State, &t.changed)
-}
-
-// WriteState writes st as the state file, creating its directory if needed.
-func WriteState(env Env, st *model.State, changed *[]string) *errs.Error {
-	if st.Claims == nil {
-		st.Claims = map[string]model.Claim{}
+	env := t.env
+	if t.State.Claims == nil {
+		t.State.Claims = map[string]model.Claim{}
 	}
-	data, err := model.Encode(st)
+	data, err := model.Encode(t.State)
 	if err != nil {
 		return errs.New(errs.Internal, "encode the state file: %v", err)
+	}
+	record := func(p string) {
+		if !slices.Contains(t.changed, p) {
+			t.changed = append(t.changed, p)
+		}
 	}
 	dir, err := env.FS.OpenRoot(env.StateDir())
 	if errs.IsErrno(err, syscall.ENOENT) {
 		if err := env.FS.MkdirAll(env.StateDir(), 0o700); err != nil {
 			return errs.FromOS(env.StateDir(), err)
 		}
-		if changed != nil {
-			*changed = append(*changed, env.StateDir())
-		}
+		record(env.StateDir())
 		dir, err = env.FS.OpenRoot(env.StateDir())
 	}
 	if err != nil {
@@ -136,9 +147,7 @@ func WriteState(env Env, st *model.State, changed *[]string) *errs.Error {
 	if err := Publish(dir, StateName, data, StateMode, true); err != nil {
 		return errs.FromOS(env.StatePath(), err)
 	}
-	if changed != nil && !slices.Contains(*changed, env.StatePath()) {
-		*changed = append(*changed, env.StatePath())
-	}
+	record(env.StatePath())
 	return nil
 }
 

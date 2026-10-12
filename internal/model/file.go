@@ -254,6 +254,18 @@ func DecodeState(data []byte) (*State, []Problem, error) {
 		return nil, []Problem{prob("", err.Error())}, nil
 	}
 	var ps []Problem
+	var claims map[string]json.RawMessage
+	json.Unmarshal(m["claims"], &claims)
+	for _, k := range slices.Sorted(maps.Keys(claims)) {
+		if cm, err := Keys(claims[k]); err == nil {
+			for _, p := range missing(cm, []string{"claimed_at", "extra"}) {
+				ps = append(ps, prob("/claims/"+k+p.Field, p.Reason))
+			}
+		}
+	}
+	if ps != nil {
+		return nil, ps, nil
+	}
 	if s.Schema != Format {
 		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", Format)))
 	}

@@ -52,7 +52,7 @@ There are two kinds, `unusable-file` and `dangling-reference`, both defined in [
 ### Rules for every command
 
 - **A usable root.** Every command but `init`, `version`, and `info` fails unless the root is usable ([Root states](design.md#root-states)). `doctor` and `migrate` also run on a root that needs migration.
-- **Reads and writes.** A read takes no lock and changes nothing. A write takes the write lock, and fails with `busy` if it can't get it in 5 seconds.
+- **Reads and writes.** A write holds the tree's lock alone; a read shares it with other reads, and changes nothing. So a read never sees part of a write. Either fails with `busy` if it can't get the lock in 5 seconds. `info` and `version` take no lock.
 - **Folders are made as needed.** A command that puts something into a folder creates that folder, and any above it, when it is missing: `create`, `create-batch`, `move`, `move-folder`, and `create-folder`. Their results list what was created in `folders_created`. A command that only reads a folder, or removes one, fails with `not-found` when it is missing.
 - **Asking for what already holds is not an error.** `done` on a done task, `block` with a blocker already there, `move` to the folder the task is in: the command succeeds, writes nothing, and returns `changed: false`.
 - **`updated_at`** is set to the command's time whenever a command changes a field of a task file, and only then.
@@ -96,7 +96,7 @@ Their results always carry `total`, the number of tasks before `limit`, and `tru
 | [`init`](#init) | setup | Create the tree and the state file, or whichever is missing. |
 | [`version`](#version) | — | Report the binary's version and format. |
 | [`info`](#info) | read | Report the root's state. |
-| [`doctor`](#doctor) | read, locked | Report everything wrong with the tree. |
+| [`doctor`](#doctor) | read, alone | Report everything wrong with the tree. |
 | [`repair`](#repair) | write | Fix what can be fixed safely. |
 | [`migrate`](#migrate) | write | Convert the tree to this binary's format. |
 | [`create-folder`](#create-folder) | write | Create a folder. |
@@ -129,11 +129,11 @@ Create whatever is missing of `~/koan-root`, its `koan.json`, and the state file
 
 - **Input:** none.
 - A state file created beside an existing tree starts `last_id` at the highest ID in the name of any task file or notes file; otherwise at `0`.
-- `init` makes the folder when it is missing, then holds the write lock for everything else, so the highest ID is read from a tree at rest and two `init`s cannot overlap.
+- `init` makes the folder when it is missing, then holds the lock alone for everything else, so the highest ID is read from a tree at rest and two `init`s cannot overlap. It needs the whole tree for that: a folder it can't list fails it with `io`.
 - A folder without a `koan.json` is adopted as it is: `init` writes the `koan.json` and leaves everything else in the folder alone.
 - A tree that needs migration, or is too new, is not an error here: its `koan.json` is left alone, and a missing state file is still created.
 - **Result:** `root` and `state_path` (the two paths), and `created`: which of `root`, `metadata`, `state` it made.
-- **Result's `created`** lists what it made; on failure, `changed_paths` does.
+- On failure, `changed_paths` lists what it made.
 - **Refuses:** `not-a-folder` when `~/koan-root` is a file or leads nowhere, and `busy` when it can't get the lock. An existing `koan.json` or state file that is unusable fails with `corrupt` or `io`, and is never replaced.
 
 ### version
@@ -160,7 +160,7 @@ Report the root's state without failing on it.
 
 ### doctor
 
-Report every [finding](design.md#doctor-and-repair) in the tree. It holds the write lock while it looks, so that it sees the tree at rest, and changes nothing. It runs on a root that needs migration.
+Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lock alone while it looks, as a write does, and changes nothing. It runs on a root that needs migration.
 
 - **Input:** none.
 - **Result:** `healthy` (no findings), and `findings`, each:
@@ -239,7 +239,8 @@ Create an open task.
 | `extra` | `{}` | |
 | `notes` | `""` | The initial content of the `.md`. |
 
-- The new ID is `last_id` + 1. The counter is written first, then the task file, then the notes. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `.md` is always written, empty when no notes are given, and never over a file already there.
+- The new ID is `last_id` + 1. The counter is written first, then the task file, then the notes. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
+- The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
 - A new task can't close a cycle, since nothing waits on it yet.
 - **Result:** `task`, `folders_created`.
 
@@ -255,6 +256,7 @@ Create several open tasks in one write, where later ones may wait on earlier one
 | `blocked_by` | A mix of integers, the IDs of existing tasks, and strings, the `ref`s of **earlier** tasks in the batch. |
 
 - Refs may only point backwards, so a batch cannot contain a cycle.
+- Every folder's path is checked too, before an ID is used.
 - IDs are consecutive, in input order, and every task gets the same `created_at`.
 - The counter is raised once, by the size of the batch. Then the tasks are written in input order, each as `create` writes one.
 - So a failure partway leaves the first tasks of the batch created and the rest not: the error's `ids` lists the created ones, in input order. To finish, drop those tasks from the input, replace each `ref` to one of them with its ID, and run the rest. The IDs set aside for the tasks not created are not reused.
@@ -308,6 +310,7 @@ Add blockers to a task. All of them are checked before anything is written.
 - Blockers already in `blocked_by` are ignored.
 - **Result:** `task`, `changed`.
 - **Refuses:** `cycle`, when a new blocker already waits on `id`, directly or through other tasks. `ids` is one such cycle: `id`, the blocker, and the tasks from it back to `id`.
+- A cycle through a task file that can't be read can't be ruled out, so when the search from a new blocker meets one, `block` fails with that file's error, `corrupt` or `unsupported-format`.
 
 ### unblock
 
@@ -331,7 +334,7 @@ Remove a task and its notes, for good, and remove its ID from every other task's
 
 - **Input:** `id` (required).
 - The task file need not be usable: `delete` goes by its filename, which makes it the way to remove a broken task.
-- The task is removed first, then the other tasks are rewritten, then its claim ends. A kill in between leaves references to a task that is gone, which `doctor` finds; the other order would free its dependents with nothing to show for it.
+- The notes are removed first, then the task file, then the other tasks are rewritten, then its claim ends. A kill after the notes leaves the task, and `delete` can be run again. A kill in between leaves references to a task that is gone, which `doctor` finds; the other order would free its dependents with nothing to show for it.
 - **Result:** `id`, and `dependents` (IDs of the tasks whose `blocked_by` changed).
 
 ## Queries

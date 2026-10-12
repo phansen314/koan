@@ -60,9 +60,11 @@ type Root interface {
 	// RemoveAll removes a folder and everything under it, never following a
 	// symlink; a name that is already gone is not an error.
 	RemoveAll(name string) error
-	// Lock takes the write lock: flock(LOCK_EX|LOCK_NB) on the root
-	// directory itself. A held lock fails with EAGAIN; EINTR is retried.
-	Lock() (Lock, error)
+	// Lock takes the tree's lock, a flock on the root directory itself,
+	// without waiting: exclusive (LOCK_EX) for a write, or shared (LOCK_SH)
+	// for a read, which other readers may hold with it. A lock that is held
+	// the other way fails with EAGAIN; EINTR is retried.
+	Lock(shared bool) (Lock, error)
 	Close() error
 }
 
@@ -74,7 +76,7 @@ type File interface {
 	Close() error
 }
 
-// Lock is a held write lock. It keeps the locked descriptor referenced until
+// Lock is a held lock. It keeps the locked descriptor referenced until
 // Unlock, which closes it and so releases the lock.
 type Lock interface {
 	Unlock() error

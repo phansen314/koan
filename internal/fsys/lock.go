@@ -8,7 +8,11 @@ import (
 // flock is syscall.Flock; a test replaces it to inject EINTR.
 var flock = syscall.Flock
 
-func (r *osRoot) Lock() (Lock, error) {
+func (r *osRoot) Lock(shared bool) (Lock, error) {
+	how := syscall.LOCK_EX
+	if shared {
+		how = syscall.LOCK_SH
+	}
 	f, err := r.r.Open(".")
 	if err != nil {
 		return nil, err
@@ -21,7 +25,7 @@ func (r *osRoot) Lock() (Lock, error) {
 	var ferr error
 	if err := c.Control(func(fd uintptr) {
 		for {
-			ferr = flock(int(fd), syscall.LOCK_EX|syscall.LOCK_NB)
+			ferr = flock(int(fd), how|syscall.LOCK_NB)
 			if ferr != syscall.EINTR {
 				return
 			}

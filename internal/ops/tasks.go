@@ -102,6 +102,9 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	if e := c.mustExist(n.blockers); e != nil {
 		return nil, e
 	}
+	if _, e := c.t.FolderExists(n.folder); e != nil {
+		return nil, e
+	}
 	id, e := c.issue(1)
 	if e != nil {
 		return nil, e
@@ -198,6 +201,11 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	}
 	if e := c.mustExist(existing); e != nil {
 		return nil, e
+	}
+	for _, n := range tasks {
+		if _, e := c.t.FolderExists(n.folder); e != nil {
+			return nil, e
+		}
 	}
 	first, e := c.issue(len(tasks))
 	if e != nil {
@@ -401,19 +409,34 @@ func cmdBlock(c *call) (any, *errs.Error) {
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
+	if e := c.mustExist(append([]model.ID{id}, bs...)); e != nil {
+		return nil, e
+	}
 	return c.edit(id, func(tf *model.TaskFile) *errs.Error {
-		if e := c.mustExist(bs); e != nil {
-			return e
+		// The search for a cycle follows blocked_by, which it can't read
+		// from an unusable file: meeting one, the block is refused, since a
+		// cycle through that file can't be ruled out.
+		var unreadable *errs.Error
+		look := func(n model.ID) (graph.Node, bool) {
+			if f, ok := c.x.Tasks[n]; ok && unreadable == nil {
+				if l := c.t.Load(f, n); l.Err != nil && !l.Gone {
+					unreadable = l.Err
+				}
+			}
+			return c.look(n)
 		}
 		for _, b := range bs {
 			if slices.Contains(tf.BlockedBy, b) {
 				continue
 			}
-			if path := graph.Path(b, id, c.look); path != nil {
+			if path := graph.Path(b, id, look); path != nil {
 				cycle := append([]model.ID{id}, path[:len(path)-1]...)
 				return errs.NewConflict(errs.RuleCycle, "task %d already waits on task %d, so blocking %d by %d would make a cycle", b, id, id, b).
 					WithIDs(cycle...)
 			}
+		}
+		if unreadable != nil {
+			return unreadable
 		}
 		for _, b := range bs {
 			if !slices.Contains(tf.BlockedBy, b) {
@@ -500,13 +523,20 @@ func cmdDelete(c *call) (any, *errs.Error) {
 	if !ok {
 		return nil, notFoundTask(id)
 	}
-	// The task goes first: a kill after that leaves references to a task
-	// that is gone, which doctor finds. The other order would leave the task
-	// with its dependents already freed, and nothing to show for it.
-	if e := c.t.Remove(store.TaskRel(f, id)); e != nil {
-		return nil, e
+	// The task goes before its dependents are rewritten: a kill after that
+	// leaves references to a task that is gone, which doctor finds. The other
+	// order would leave the task with its dependents already freed, and
+	// nothing to show for it. Its notes go before the task file, so that a
+	// kill between the two leaves a task, which delete can be run on again,
+	// and not notes without one. Only a regular file is its notes: the walk
+	// ignores anything else of that name, and so does delete.
+	notes := store.NotesRel(f, id)
+	if fi, err := c.t.Stat(notes); err == nil && fi.Mode().IsRegular() {
+		if e := c.t.Remove(notes); e != nil {
+			return nil, e
+		}
 	}
-	if e := c.t.Remove(store.NotesRel(f, id)); e != nil {
+	if e := c.t.Remove(store.TaskRel(f, id)); e != nil {
 		return nil, e
 	}
 	dependents, e := c.unreference([]model.ID{id})

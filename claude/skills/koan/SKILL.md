@@ -43,11 +43,11 @@ A failed command may still have changed something: **`.error.changed_paths` list
 
 Error kinds worth handling:
 
-- `busy` — the write lock stayed held for 5 seconds; koan already waited. Don't retry in a loop: tell the user something is holding the lock (a `doctor`, `repair`, or `migrate` on a very large tree, or a stuck `koan` process), and retry once they say so.
+- `busy` — the tree's lock stayed held for 5 seconds; koan already waited. Reads can get this too. Don't retry in a loop: tell the user something is holding the lock (a `doctor`, `repair`, or `migrate` on a very large tree, or a stuck `koan` process), and retry once they say so.
 - `not-found` — `.error.ids` and `.error.folders` name everything that's missing.
 - `invalid-input` — `.error.problems[]` lists every bad field.
 - `conflict` — `.error.rule` says which rule refused it:
-  - `cycle` — the block would make a cycle; `.error.ids` shows it.
+  - `cycle` — the block would make a cycle; `.error.ids` shows it. (A `corrupt` from `block` means the check met a task file it can't read: report it, as below.)
   - `not-empty` — `delete-folder` without `--recursive` on a folder that holds anything. Don't add `--recursive` on your own: ask the user.
   - `destination-exists` — `move-folder`'s `--to` already exists (folders are never merged), or `move` would overwrite a `.md` with text in the target folder; show it to the user.
   - `not-a-folder` — something on a folder path is a file or a symlink.
@@ -176,7 +176,7 @@ EOF
 - The result is small: `ids` (in input order), `refs` (ref → ID), and `folders_created`.
 - Everything is checked before anything is written: an `invalid-input` names every bad field as `/tasks/<i>/…`, and a `not-found` every missing ID. Fix and rerun.
 - To make an existing task wait on the plan, `block` it afterwards: `koan block 40 --blockers <ids>`.
-- An `io` error with IDs in `.error.ids` stopped partway through: the first `len(.error.ids)` tasks of the input were created, in order, and the rest weren't. Don't rerun the whole batch (it would duplicate them). Rerun only the rest, with each ref to a created task replaced by its ID, and tell the user what happened.
+- A `create-batch` error with IDs in `.error.ids` stopped partway through: the first `len(.error.ids)` tasks of the input were created, in order, and the rest weren't. Don't rerun the whole batch (it would duplicate them). Rerun only the rest, with each ref to a created task replaced by its ID, and tell the user what happened.
 
 Rules the commands enforce:
 

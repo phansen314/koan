@@ -6,7 +6,7 @@ How a coordinator that starts its own workers can use koan so that no two of the
 
 koan guarantees that its own commands are safe to run at the same time:
 
-- **Commands never interleave.** Every write holds one lock, and every file is replaced whole or not at all.
+- **Commands never interleave.** A write holds the tree's lock alone, and a read waits for it, so a read never sees part of a write. Every file is replaced whole or not at all.
 - **Merges keep both sides.** Two `update`s that add different tags or `extra` keys both take effect.
 - **`claim` hands a task to one caller.** A second `claim` of the same task fails with `conflict`, and `claim-next` never returns the same task twice.
 

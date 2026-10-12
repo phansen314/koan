@@ -143,10 +143,10 @@ func TestFaultUnlockReleases(t *testing.T) {
 	must(t, err)
 	defer r.Close()
 
-	l, err := r.Lock()
+	l, err := r.Lock(false)
 	must(t, err)
 	wantErrno(t, l.Unlock(), syscall.EIO)
-	l, err = r.Lock()
+	l, err = r.Lock(false)
 	must(t, err)
 	must(t, l.Unlock())
 }

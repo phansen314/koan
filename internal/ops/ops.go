@@ -92,9 +92,6 @@ func Run(env store.Env, name string, raw []byte) Envelope {
 		return Failure(e)
 	}
 	c := &call{env: env, in: in, now: model.Stamp(env.Now()), warned: map[string]bool{}}
-	if name != "version" && !path.IsAbs(env.Home) {
-		return Failure(errs.New(errs.IO, "HOME is not set to an absolute path"))
-	}
 	result, e := cmd(c)
 	if c.t != nil {
 		if e != nil {
@@ -124,7 +121,7 @@ type call struct {
 func (c *call) begin(write bool) *errs.Error { return c.beginNeed(store.NeedUsable, write) }
 
 func (c *call) beginNeed(need store.Need, write bool) *errs.Error {
-	if e := c.in.done(); e != nil {
+	if e := c.checked(); e != nil {
 		return e
 	}
 	t, e := store.Open(c.env, need, write)
@@ -132,6 +129,18 @@ func (c *call) beginNeed(need store.Need, write bool) *errs.Error {
 		return e
 	}
 	c.t = t
+	return nil
+}
+
+// checked ends input checking for a command that uses the root: the input's
+// problems come first, then HOME, which says where the root is.
+func (c *call) checked() *errs.Error {
+	if e := c.in.done(); e != nil {
+		return e
+	}
+	if !path.IsAbs(c.env.Home) {
+		return errs.New(errs.IO, "HOME is not set to an absolute path")
+	}
 	return nil
 }
 

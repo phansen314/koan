@@ -193,11 +193,11 @@ func (r *faultRoot) Remove(name string) error {
 	return r.r.Remove(name)
 }
 
-func (r *faultRoot) Lock() (Lock, error) {
+func (r *faultRoot) Lock(shared bool) (Lock, error) {
 	if err := r.before(Op{Name: OpLock, Path: "."}); err != nil {
 		return nil, err
 	}
-	l, err := r.r.Lock()
+	l, err := r.r.Lock(shared)
 	if err != nil {
 		return nil, err
 	}

@@ -45,14 +45,21 @@ func sortLocs(x *store.Index, ls []loc) {
 	})
 }
 
+// fix makes one repair. fixed is false when it found it could not after
+// all: the finding stays, and is not reported as repaired.
+type fix func() (fixed bool, e *errs.Error)
+
+// done is the result of a fix that did its work unless it failed.
+func done(e *errs.Error) (bool, *errs.Error) { return e == nil, e }
+
 // diagnosis is doctor's findings, each with the fix repair would make: nil
 // for one a person has to resolve.
 type diagnosis struct {
 	findings []errs.Finding
-	fixes    []func() *errs.Error
+	fixes    []fix
 }
 
-func (d *diagnosis) add(kind, msg string, ids []model.ID, paths []string, fix func() *errs.Error) {
+func (d *diagnosis) add(kind, msg string, ids []model.ID, paths []string, fix fix) {
 	if ids == nil {
 		ids = []model.ID{}
 	}
@@ -86,7 +93,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 
 	for _, rel := range x.Temps {
 		d.add("temp-leftover", "a temp file koan left behind: `koan repair` removes it", nil,
-			[]string{t.Abs(rel)}, func() *errs.Error { return t.RemoveAll(rel) })
+			[]string{t.Abs(rel)}, func() (bool, *errs.Error) { return done(t.RemoveAll(rel)) })
 	}
 
 	var above []model.ID
@@ -99,9 +106,9 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	if len(above) > 0 {
 		top := slices.Max(above)
 		d.add("id-above-counter", fmt.Sprintf("task IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
-			above, abovePaths, func() *errs.Error {
+			above, abovePaths, func() (bool, *errs.Error) {
 				t.State.LastID = top
-				return t.SaveState()
+				return done(t.SaveState())
 			})
 	}
 
@@ -120,10 +127,10 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			continue
 		}
 		d.add("dangling-reference", fmt.Sprintf("task %d is blocked by %v, which do not exist: `koan repair` removes them from its blocked_by", l.id, gone),
-			append([]model.ID{l.id}, gone...), []string{abs(l)}, func() *errs.Error {
+			append([]model.ID{l.id}, gone...), []string{abs(l)}, func() (bool, *errs.Error) {
 				tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
 				tf.UpdatedAt = c.now
-				return t.WriteTask(l.f, tf, false)
+				return done(t.WriteTask(l.f, tf, false))
 			})
 	}
 
@@ -137,9 +144,9 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		_, exists := x.Tasks[id]
 		if tf := usable[id]; !exists || (tf != nil && !tf.Open()) {
 			d.add("stale-claim", fmt.Sprintf("a claim on task %d, which is done or gone: `koan repair` removes it", id),
-				[]model.ID{id}, []string{t.Env().StatePath()}, func() *errs.Error {
+				[]model.ID{id}, []string{t.Env().StatePath()}, func() (bool, *errs.Error) {
 					delete(t.State.Claims, model.ClaimKey(id))
-					return t.SaveState()
+					return done(t.SaveState())
 				})
 		}
 	}
@@ -189,8 +196,10 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		}
 	}
 	for _, rel := range x.Skipped {
-		d.add("skipped-entry", "a symlink, an entry of the wrong type, or a folder that can't be listed: koan ignores it",
-			nil, []string{t.Abs(rel)}, nil)
+		d.add("skipped-entry", "a symlink, or an entry of the wrong type: koan ignores it", nil, []string{t.Abs(rel)}, nil)
+	}
+	for _, rel := range x.Unlistable {
+		d.add("skipped-entry", "a folder that can't be listed: every command but doctor fails on it", nil, []string{t.Abs(rel)}, nil)
 	}
 	if d.findings == nil {
 		d.findings = []errs.Finding{}
@@ -198,26 +207,20 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	return d, nil
 }
 
-// notFixed is what a fix returns when it found it could not make its
-// repair after all: the finding stays, and is not reported as repaired.
-var notFixed = errs.New(errs.Internal, "not fixed")
-
 // orphanFix decides what repair does with a .md that has no task file beside
 // it: remove it when it is empty, move it to its task when the task is
 // elsewhere without notes, and otherwise leave it.
-func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (func() *errs.Error, string) {
+func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (fix, string) {
 	rel := store.NotesRel(f, id)
 	if fi, err := t.Stat(rel); err == nil && fi.Size() == 0 {
-		return func() *errs.Error { return t.Remove(rel) }, "they are empty, and `koan repair` removes them"
+		return func() (bool, *errs.Error) { return done(t.Remove(rel)) }, "they are empty, and `koan repair` removes them"
 	}
 	home, exists := x.Tasks[id]
 	if exists && len(x.Copies[id]) == 0 && !slices.Contains(x.Notes[id], home) {
-		return func() *errs.Error {
+		return func() (bool, *errs.Error) {
+			// taken: another orphan of this task got there first.
 			taken, e := t.Move(rel, store.NotesRel(home, id))
-			if e == nil && taken {
-				return notFixed // another orphan of this task got there first
-			}
-			return e
+			return e == nil && !taken, e
 		}, fmt.Sprintf("`koan repair` moves them to their task in %s", home)
 	}
 	return nil, "move or delete them by hand"

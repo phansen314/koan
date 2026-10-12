@@ -46,11 +46,12 @@ Every operation opens `~/koan-root` once, with `os.OpenRoot`, and does all its f
 - **The path is opened with `/.` appended.** `os.OpenRoot` checks the type only after opening, so a FIFO at the path would block and a regular file would give an error with no errno. With `/.`, the kernel refuses both with `ENOTDIR` before opening anything. This also resolves the one symlink the design allows.
 - **No symlink inside the tree is followed.** `os.Root` follows symlinks that stay inside the root, which koan must not. So an entry is opened in two steps: its parent folder through the `os.Root`, then the entry itself with `openat(2)` and `O_NOFOLLOW`, from `x/sys/unix`. A symlink fails with `ELOOP` in the one call, with no window between checking and opening.
 
-### The write lock
+### The lock
 
 - **`flock` on the root directory itself**, taken on the descriptor from `root.Open(".")`. There is no lock file to create, clean up, or delete from under a holder, and every path to the directory reaches the same lock.
 - **`flock`, never `fcntl` record locks.** A record lock is dropped when the process closes *any* descriptor to the file, so one stray open-and-close inside a write silently releases it.
-- **Polled**: `fsys` makes one attempt with `LOCK_EX|LOCK_NB`, and `store` repeats it every 10 ms for up to 5 seconds, then reports `busy`. A blocking `flock` can only be cut short by a signal.
+- **Exclusive for a write, shared for a read**: `LOCK_EX` or `LOCK_SH`. A read holds it from before its walk to after its last file is loaded, which is what makes a read see whole writes. `flock` promises no fairness, so a steady stream of reads could hold a write off until it gives up; koan's reads take milliseconds, and nothing is done about it.
+- **Polled**: `fsys` makes one attempt with `LOCK_NB`, and `store` repeats it every 10 ms for up to 5 seconds, then reports `busy`. A blocking `flock` can only be cut short by a signal.
 - **The `*os.File` must stay referenced** until the write ends, which is why the lock is a value that holds it. If it becomes unreachable, Go's finalizer may close it mid-write, which releases the lock.
 - **Not inherited**: Go opens files close-on-exec, so a program koan starts never holds the lock.
 
@@ -82,7 +83,7 @@ The second `fsys` implementation wraps the real one and, at a chosen call, retur
 
 `~/.config/koan/state.json` is outside the tree, so its directory is opened as a second root handle, and the file is read and published through that handle exactly as a file in the tree is. It is written only while the tree's lock is held; its own directory is never locked. `doctor` cannot see that directory, so each write of the state file first removes any `.koan-tmp-*` left there.
 
-A write that needs the counter or the claims reads the state file after taking the lock, never before.
+Every command reads the state file after taking the lock, never before.
 
 ## Walking the tree
 
@@ -91,7 +92,7 @@ There is no index on disk; a command that needs one builds it.
 - **By name only.** The walk lists folders depth-first, each folder's entries sorted, and classifies every entry by its name and type without opening any file. It returns each task ID with its path, and the list of folders. Two paths for one ID is the `duplicate-id` error.
 - **Task files are loaded when needed**, and each at most once per command. Finding a task by ID, or proving it absent, costs one walk and one file read. Only commands that need every task's fields load them all: `frontier`, `list`, `claim-next`, `delete` and `delete-folder` (to find references), `doctor`, and `migrate`.
 - **Commands that need no walk don't make one:** `create` without `blocked_by`, `create-folder`, `release`, `version`, `info`. `init` walks, by name only, when it has to make a state file for a tree that is already there.
-- **A file that vanishes** between the walk and its load was deleted or moved by a concurrent write. A read skips it; if it was the task the command was asked for, that is `not-found`.
+- **A file that vanishes** between the walk and its load can only be an outside change, since the command holds the lock. It is skipped; if it was the task the command was asked for, that is `not-found`.
 
 ## The graph
 
@@ -126,6 +127,6 @@ The files in `schemas/` are written by hand and are the contract. The binary con
 
 - **Unit tests** per package. `ops` tests run against a real temp directory, with `HOME` pointed at it and the clock fixed.
 - **End-to-end tests** in `e2e/` run the built binary, with `HOME` set per test.
-- **The lock**, in `e2e/` on both platforms: a second write gets `busy` while a first is held; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `block`s racing never both succeed.
+- **The lock**, in `e2e/` on both platforms: a second write, and a read, get `busy` while a write is held; every `list` run while tasks and folders are moved returns every task; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `block`s racing never both succeed.
 - **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair` followed by `doctor` must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect.
 - **CI** runs on Linux amd64 and macOS arm64: `gofmt`, `go vet`, `go test ./...`, a race-detector run over everything but `e2e/`, and `govulncheck`.

@@ -264,3 +264,133 @@ func TestBlockReportsEveryProblem(t *testing.T) {
 		t.Errorf("problems %v, want both", e.Problems)
 	}
 }
+
+func TestDeleteFolderRemovesTheFolderFirst(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/gone"},{"title":"b","blocked_by":["a"]}]}`)
+	// The rewrite of task 2 starts with a temp file; fail it.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 1, syscall.ENOSPC)}
+	w.fail("delete-folder", `{"folder":"/gone","recursive":true}`, errs.IO, "")
+	w.env.FS = fsys.OS{}
+	if tk := task(w.ok("show", `{"id":2}`)); tk["readiness"] != "blocked" {
+		t.Errorf("the dependent was freed though delete-folder failed: %v", tk)
+	}
+	fs := w.ok("doctor", `{}`)["findings"].([]any)
+	if len(fs) != 1 || fs[0].(map[string]any)["kind"] != "dangling-reference" {
+		t.Errorf("doctor: %v", fs)
+	}
+}
+
+// A command that succeeds leaves nothing for doctor to find.
+func TestSuccessLeavesTheTreeHealthy(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/p/q","notes":"n"},{"title":"b","folder":"/p","blocked_by":["a"]},{"title":"c"}]}`)
+	for _, step := range [][2]string{
+		{"claim", `{"id":1}`}, {"update", `{"id":2,"tags_add":["x"]}`}, {"move", `{"id":1,"to":"/r"}`},
+		{"move-folder", `{"folder":"/p","to":"/s/p"}`}, {"done", `{"id":1}`}, {"reopen", `{"id":1}`},
+		{"claim-next", `{}`}, {"delete", `{"id":3}`}, {"delete-folder", `{"folder":"/s","recursive":true}`},
+		{"delete-folder", `{"folder":"/r","recursive":true}`},
+	} {
+		w.ok(step[0], step[1])
+		if got := w.ok("doctor", `{}`); got["healthy"] != true {
+			t.Fatalf("after %s %s: %v", step[0], step[1], got["findings"])
+		}
+	}
+}
+
+// Everything in a batch is checked before anything is written, a folder
+// path that runs through a file included.
+func TestBatchChecksFoldersFirst(t *testing.T) {
+	w := ready(t)
+	os.WriteFile(w.root("afile"), nil, 0o644)
+	e := w.fail("create-batch", `{"tasks":[{"title":"a"},{"title":"b","folder":"/afile/x"}]}`, errs.Conflict, errs.RuleNotAFolder)
+	if len(e.ChangedPaths) != 0 || len(e.IDs) != 0 {
+		t.Errorf("changed %v, ids %v: want nothing written", e.ChangedPaths, e.IDs)
+	}
+	w.fail("create", `{"title":"c","folder":"/afile"}`, errs.Conflict, errs.RuleNotAFolder)
+	if id := task(w.ok("create", `{"title":"d"}`))["id"]; id != float64(1) {
+		t.Errorf("the refused creates used IDs: next is %v", id)
+	}
+}
+
+// block can't rule out a cycle through a file it can't read, so it refuses.
+func TestBlockRefusesThroughAnUnusableFile(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"ref":"b","title":"b","blocked_by":["a"]},{"title":"c","blocked_by":["b"]},{"title":"d"}]}`)
+	good := w.file("2.json")
+	os.WriteFile(w.root("2.json"), []byte("{"), 0o644)
+	w.fail("block", `{"id":1,"blockers":[3]}`, errs.Corrupt, "") // 3 waits on 2, which can't be read
+	w.fail("block", `{"id":1,"blockers":[2]}`, errs.Corrupt, "") // the new blocker itself
+	w.ok("block", `{"id":4,"blockers":[1]}`)                     // nothing unreadable on the way
+	os.WriteFile(w.root("2.json"), []byte(good), 0o644)
+	w.fail("block", `{"id":1,"blockers":[3]}`, errs.Conflict, errs.RuleCycle)
+	if got := w.ok("doctor", `{}`); got["healthy"] != true {
+		t.Errorf("doctor: %v", got)
+	}
+}
+
+func TestBlockNamesEverythingMissing(t *testing.T) {
+	w := ready(t)
+	if e := w.fail("block", `{"id":99,"blockers":[98,97]}`, errs.NotFound, ""); len(e.IDs) != 3 {
+		t.Errorf("ids %v, want all three", e.IDs)
+	}
+}
+
+// init can't know the highest ID in a tree it can't list.
+func TestInitNeedsTheWholeTree(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can list anything")
+	}
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/locked"}`)
+	os.Remove(w.env.StatePath())
+	os.Chmod(w.root("locked"), 0)
+	defer os.Chmod(w.root("locked"), 0o755)
+	w.fail("init", `{}`, errs.IO, "")
+	if _, err := os.Stat(w.env.StatePath()); !os.IsNotExist(err) {
+		t.Error("init made a state file without having seen the whole tree")
+	}
+}
+
+func TestPrecedence(t *testing.T) {
+	w := ready(t)
+	// Input comes before everything, HOME included.
+	home := w.env.Home
+	w.env.Home = "relative"
+	w.fail("show", `{"id":"abc"}`, errs.InvalidInput, "")
+	w.fail("show", `{"id":1}`, errs.IO, "")
+	w.fail("init", `{}`, errs.IO, "")
+	w.ok("version", `{}`)
+	w.env.Home = home
+
+	// The root's state comes before busy, for init too.
+	os.WriteFile(w.root("koan.json"), []byte("{"), 0o644)
+	held, e := store.OpenLocked(w.env)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer held.Close()
+	w.fail("init", `{}`, errs.Corrupt, "")
+	w.fail("list", `{}`, errs.Corrupt, "")
+}
+
+func TestStateFileKeysAreExact(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`)
+	w.ok("claim", `{"id":1}`)
+	state, _ := os.ReadFile(w.env.StatePath())
+	os.WriteFile(w.env.StatePath(), []byte(strings.Replace(string(state), `"claimed_at"`, `"Claimed_At"`, 1)), 0o600)
+	w.fail("show", `{"id":1}`, errs.Corrupt, "")
+}
+
+// delete removes a task's notes, and nothing else that has their name.
+func TestDeleteLeavesWhatIsNotNotes(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`)
+	os.Remove(w.root("1.md"))
+	os.Mkdir(w.root("1.md"), 0o755)
+	w.ok("delete", `{"id":1}`)
+	if fi, err := os.Stat(w.root("1.md")); err != nil || !fi.IsDir() {
+		t.Errorf("delete removed a directory named like the notes: %v", err)
+	}
+}

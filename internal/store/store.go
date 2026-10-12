@@ -18,10 +18,10 @@ type Env struct {
 	Home     string           // the HOME directory, absolute
 	Now      func() time.Time // the clock
 	FS       fsys.FS
-	LockWait time.Duration // how long a write waits for the lock
+	LockWait time.Duration // how long a command waits for the lock
 }
 
-// DefaultLockWait is how long a write waits for the lock before busy.
+// DefaultLockWait is how long a command waits for the lock before busy.
 const DefaultLockWait = 5 * time.Second
 
 // Names and modes of what koan creates.
@@ -199,8 +199,11 @@ type Tree struct {
 	files   map[model.ID]*Loaded
 }
 
-// Open opens the tree for a command. A write takes the lock and then reads
-// the state file again, so that it decides on current state. The caller
+// Open opens the tree for a command and takes its lock: exclusive for a
+// write, shared for a read, so that a read sees the tree between writes and
+// never part of one. The root's state is checked before the lock, so that a
+// root that is not usable is reported as that and not as busy, and read
+// again under it, so that the command decides on current state. The caller
 // closes the tree.
 func Open(env Env, need Need, write bool) (*Tree, *errs.Error) {
 	root, err := env.FS.OpenRoot(env.RootPath())
@@ -211,11 +214,8 @@ func Open(env Env, need Need, write bool) (*Tree, *errs.Error) {
 		}
 		return nil, e
 	}
-	t := &Tree{env: env, root: root, Meta: c.Meta, State: c.State, files: map[model.ID]*Loaded{}}
-	if !write {
-		return t, nil
-	}
-	if e := t.takeLock(); e != nil {
+	t := &Tree{env: env, root: root, files: map[model.ID]*Loaded{}}
+	if e := t.takeLock(!write); e != nil {
 		root.Close()
 		return nil, e
 	}
@@ -235,15 +235,15 @@ func (n Need) check(c Condition) *errs.Error {
 	return c.Err
 }
 
-// lockPoll is how often a write retries a held lock.
+// lockPoll is how often a command retries a held lock.
 const lockPoll = 10 * time.Millisecond
 
-// takeLock takes the write lock, retrying while it is held until the wait
-// has passed: busy if it is still held then.
-func (t *Tree) takeLock() *errs.Error {
+// takeLock takes the lock, retrying while it is held until the wait has
+// passed: busy if it is still held then.
+func (t *Tree) takeLock(shared bool) *errs.Error {
 	deadline := time.Now().Add(t.env.LockWait)
 	for {
-		l, err := t.root.Lock()
+		l, err := t.root.Lock(shared)
 		if err == nil {
 			t.lock = l
 			return nil
@@ -252,7 +252,7 @@ func (t *Tree) takeLock() *errs.Error {
 			return errs.FromOS(t.env.RootPath(), err)
 		}
 		if !time.Now().Before(deadline) {
-			return errs.New(errs.Busy, "another koan command held the write lock for %v", t.env.LockWait)
+			return errs.New(errs.Busy, "another koan command held the lock for %v", t.env.LockWait)
 		}
 		time.Sleep(min(lockPoll, time.Until(deadline)))
 	}
@@ -269,7 +269,7 @@ func OpenLocked(env Env) (*Tree, *errs.Error) {
 		return nil, errs.FromOS(env.RootPath(), err)
 	}
 	t := &Tree{env: env, root: root, files: map[model.ID]*Loaded{}}
-	if e := t.takeLock(); e != nil {
+	if e := t.takeLock(false); e != nil {
 		root.Close()
 		return nil, e
 	}

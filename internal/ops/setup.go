@@ -19,7 +19,7 @@ type initResult struct {
 // cmdInit creates whatever is missing of the root, its koan.json, and the
 // state file, and changes nothing that is there.
 func cmdInit(c *call) (any, *errs.Error) {
-	if e := c.in.done(); e != nil {
+	if e := c.checked(); e != nil {
 		return nil, e
 	}
 	env := c.env
@@ -30,6 +30,15 @@ func cmdInit(c *call) (any, *errs.Error) {
 		res.Created = append(res.Created, store.PartRoot)
 	case !errs.IsErrno(err, syscall.EEXIST):
 		return nil, errs.FromOS(env.RootPath(), err)
+	}
+	// As for every command, the root's state comes before busy: a file that
+	// is there and unusable is reported as that, lock held or not.
+	if root, err := env.FS.OpenRoot(env.RootPath()); err == nil {
+		cond := store.Inspect(env, root, nil)
+		root.Close()
+		if cond.Status == store.Unusable {
+			return nil, cond.Err
+		}
 	}
 	t, e := store.OpenLocked(env)
 	if e != nil {
@@ -53,9 +62,15 @@ func cmdInit(c *call) (any, *errs.Error) {
 		res.Created = append(res.Created, store.PartMeta)
 	}
 	if cond.State == nil {
+		// Duplicated IDs don't matter to the counter, but a folder that
+		// can't be listed does: an ID in it would be issued again.
 		x, e := t.Walk(true)
 		if e != nil {
 			return nil, e
+		}
+		if len(x.Unlistable) > 0 {
+			p := t.Abs(x.Unlistable[0])
+			return nil, errs.New(errs.IO, "%s can't be listed, so the highest ID in the tree is not known", p).WithPaths(p)
 		}
 		st := &model.State{Schema: model.Format, Claims: map[string]model.Claim{}}
 		// Notes count too: a .md whose task is gone still holds its ID.
@@ -108,7 +123,7 @@ type infoResult struct {
 
 // cmdInfo reports the root's state without failing on it.
 func cmdInfo(c *call) (any, *errs.Error) {
-	if e := c.in.done(); e != nil {
+	if e := c.checked(); e != nil {
 		return nil, e
 	}
 	root, err := c.env.FS.OpenRoot(c.env.RootPath())
@@ -167,16 +182,14 @@ func cmdRepair(c *call) (any, *errs.Error) {
 		if d.fixes[i] == nil {
 			continue
 		}
-		switch e := d.fixes[i](); {
-		case e == notFixed:
-		case e != nil:
+		fixed, e := d.fixes[i]()
+		if e != nil {
 			return nil, e
-		default:
+		}
+		if fixed {
 			res.Repaired = append(res.Repaired, f)
 		}
 	}
-	c.x = nil
-	c.t.ForgetAll()
 	after, e := diagnose(c)
 	if e != nil {
 		return nil, e

@@ -15,12 +15,13 @@ import (
 
 // Index is what a walk finds, by name alone: no file is opened.
 type Index struct {
-	Folders []model.Folder              // every folder, the root included, in tree order
-	Tasks   map[model.ID]model.Folder   // each task's folder; for a duplicated ID, its first
-	Copies  map[model.ID][]model.Folder // every ID with more than one task file
-	Notes   map[model.ID][]model.Folder // every notes file
-	Temps   []string                    // temp files and folders koan left, root-relative
-	Skipped []string                    // symlinks, wrong-typed entries, unlistable folders
+	Folders    []model.Folder              // every folder, the root included, in tree order
+	Tasks      map[model.ID]model.Folder   // each task's folder; for a duplicated ID, its first
+	Copies     map[model.ID][]model.Folder // every ID with more than one task file
+	Notes      map[model.ID][]model.Folder // every notes file
+	Temps      []string                    // temp files and folders koan left, root-relative
+	Skipped    []string                    // symlinks and wrong-typed entries
+	Unlistable []string                    // folders that can not be listed
 }
 
 // IDs returns every task ID, ascending.
@@ -58,13 +59,8 @@ func (t *Tree) Walk(tolerant bool) (*Index, *errs.Error) {
 func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 	entries, err := t.root.ReadDir(f.Rel())
 	if err != nil {
-		switch {
-		case tolerant:
-			x.Skipped = append(x.Skipped, f.Rel())
-			return nil
-		case f != model.Root && errs.IsErrno(err, syscall.ENOENT):
-			// The folder was moved or removed by a concurrent write after
-			// its parent was listed: a read skips it, as it does a file.
+		if tolerant {
+			x.Unlistable = append(x.Unlistable, f.Rel())
 			return nil
 		}
 		return errs.FromOS(t.Abs(f.Rel()), err)
@@ -135,9 +131,6 @@ func (t *Tree) Load(f model.Folder, id model.ID) *Loaded {
 // LoadAt reads one copy of a task file without remembering it: doctor's and
 // migrate's way, which must see every copy of a duplicated ID.
 func (t *Tree) LoadAt(f model.Folder, id model.ID) *Loaded { return t.load(f, id) }
-
-// ForgetAll drops everything Load remembers, after files changed.
-func (t *Tree) ForgetAll() { t.files = map[model.ID]*Loaded{} }
 
 func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
 	p := t.Abs(TaskRel(f, id))

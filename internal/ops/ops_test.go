@@ -542,9 +542,20 @@ func TestBusy(t *testing.T) {
 	}
 	w.fail("create", `{"title":"x"}`, errs.Busy, "")
 	w.fail("create", `{"title":""}`, errs.InvalidInput, "") // input is checked before the lock
-	w.ok("list", `{}`)                                      // reads take no lock
+	w.fail("list", `{}`, errs.Busy, "")                     // a read waits for a write to finish
+	w.ok("info", `{}`)                                      // info and version take no lock
 	held.Close()
 	w.ok("create", `{"title":"x"}`)
+
+	// Readers share the lock with each other, and hold off writers.
+	reader, e := store.Open(w.env, store.NeedUsable, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	w.ok("list", `{}`)
+	w.fail("create", `{"title":"y"}`, errs.Busy, "")
+	reader.Close()
+	w.ok("create", `{"title":"y"}`)
 }
 
 // A failure partway through a batch leaves the first tasks created, and the

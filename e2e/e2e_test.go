@@ -125,6 +125,9 @@ func TestCommandLine(t *testing.T) {
 	ok(t, home, "release", "1")
 	ok(t, home, "done", "1")
 	ok(t, home, "delete-folder", "/proj", "--recursive")
+	if got := ok(t, home, "doctor"); got["healthy"] != true {
+		t.Errorf("doctor after a run of ordinary commands: %v", got)
+	}
 
 	// --input and --notes-file read stdin only when - names it.
 	r := koan(t, home, `{"tasks":[{"ref":"a","title":"First"},{"title":"Second","blocked_by":["a"]}]}`, nil, "create-batch", "-i", "-")
@@ -238,8 +241,11 @@ func TestLockBusyAndKilledHolder(t *testing.T) {
 	if r.exit != 1 || r.err()["kind"] != "busy" {
 		t.Fatalf("a write under a held lock: exit %d, %s", r.exit, r.stdout)
 	}
-	if r := koan(t, home, "", nil, "list"); r.exit != 0 {
-		t.Errorf("a read under a held lock: %s", r.stdout)
+	if r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=100"}, "list"); r.err()["kind"] != "busy" {
+		t.Errorf("a read under a held write lock: %s", r.stdout)
+	}
+	if r := koan(t, home, "", nil, "info"); r.exit != 0 {
+		t.Errorf("info under a held lock: %s", r.stdout)
 	}
 	h.Process.Signal(syscall.SIGKILL)
 	h.Wait()
@@ -334,4 +340,45 @@ func TestRacingClaims(t *testing.T) {
 	if len(slices.Compact(slices.Clone(got))) != 8 || len(got) != 8 {
 		t.Errorf("claimed %v, want eight distinct tasks", got)
 	}
+}
+
+// A read sees the tree between writes, never part of one: while tasks and a
+// folder are moved back and forth, every list returns every task.
+func TestReadsSeeWholeWrites(t *testing.T) {
+	home := newHome(t)
+	const n = 20
+	for i := 0; i < n; i++ {
+		ok(t, home, "create", fmt.Sprintf("t%d", i), "--folder", "/a/m")
+	}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			from, to := "/a/m", "/z/m"
+			if i%2 == 1 {
+				from, to = to, from
+			}
+			if i%4 < 2 {
+				koan(t, home, "", nil, "move-folder", from, "--to", to)
+			} else {
+				koan(t, home, "", nil, "move", "5", "--to", "/elsewhere"+fmt.Sprint(i%3))
+			}
+		}
+	}()
+	for i := 0; i < 150; i++ {
+		r := koan(t, home, "", nil, "list", "--fields", "id")
+		if r.exit != 0 || r.result()["total"] != float64(n) || len(r.env["warnings"].([]any)) != 0 {
+			t.Errorf("list during moves: %s", r.stdout)
+			break
+		}
+	}
+	close(stop)
+	wg.Wait()
 }

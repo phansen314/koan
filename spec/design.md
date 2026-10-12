@@ -13,7 +13,7 @@ Linux and macOS only.
 
 Both paths are fixed, on both platforms, and are found from `HOME`, which must be an absolute path. There is no config file. To keep the tree somewhere else, make `~/koan-root` a symlink to it: koan resolves that one link, and follows no symlink inside the tree.
 
-One tree per user, written from one machine. Separate bodies of work are folders of the one tree (`/work`, `/home`). The tree must be on a local filesystem, since the write lock relies on `flock`.
+One tree per user, written from one machine. Separate bodies of work are folders of the one tree (`/work`, `/home`). The tree must be on a local filesystem, since the lock relies on `flock`.
 
 ## Assumptions
 
@@ -125,7 +125,7 @@ The root holds one metadata file, which marks the directory as a tree and record
 }
 ```
 
-`last_id` is the highest ID ever issued, and `claims` has one entry per [claimed](#claims) task, keyed by ID. It is written only under the [write lock](#concurrency).
+`last_id` is the highest ID ever issued, and `claims` has one entry per [claimed](#claims) task, keyed by ID. It is written only under the [lock](#concurrency).
 
 ### Formats
 
@@ -138,7 +138,7 @@ The root holds one metadata file, which marks the directory as a tree and record
 | More than N | Every command but `init`, `info`, and `version` fails with `unsupported-format`: a newer koan wrote this tree. |
 
 - **Every change to a file's fields is a new format**, and ships with a conversion from the one before.
-- **`migrate` converts each file by its own `schema`**, under the write lock, and writes `koan.json` last. A file already at N is not touched, so a run cut short is finished by running it again, and old files a merge brings in later are converted by the next run.
+- **`migrate` converts each file by its own `schema`**, under the lock, and writes `koan.json` last. A file already at N is not touched, so a run cut short is finished by running it again, and old files a merge brings in later are converted by the next run.
 - **A migration is not an edit**: it changes no field a task had, `updated_at` included.
 - **Forward only.** Undoing a migration is git's job: commit the tree first.
 - The state file is not in the tree, so `migrate` does not cover it: a binary reads every earlier format of it, and writes the current one.
@@ -165,7 +165,7 @@ koan writes JSON with two-space indentation, keys in schema order, `blocked_by` 
 There is no index: a command that looks a task up by ID walks the tree.
 
 - A walk skips hidden entries, entries whose names match neither rule, symlinks, and entries of the wrong type (a directory named `42.json`).
-- A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree. One that is gone by the time a read reaches it was moved or removed by a concurrent write, and is skipped.
+- A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
 - **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`). koan never picks a copy. `doctor` lists the copies, for a person to resolve.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.
 - **A dangling reference** counts as blocking, and is reported as a warning.
@@ -174,12 +174,13 @@ There is no index: a command that looks a task up by ID walks the tree.
 
 Several processes may use one tree at once, with no coordinator between them.
 
-- **Writes are serialized** by one lock: a `flock` on the root directory itself. There is no lock file, and the lock is gone when its holder exits, however it exits.
-- **Input is checked before the lock is taken.** A write that finds the lock held waits up to 5 seconds, then fails with `busy`, which is always safe to retry.
+- **One lock**: a `flock` on the root directory itself. There is no lock file, and the lock is gone when its holder exits, however it exits.
+- **Writes are serialized.** A write holds the lock alone, from before it reads anything to after its last change.
+- **A read sees the tree between writes**, never part of one. Reads share the lock: any number run at once, a read waits for a write to finish, and a write for the reads before it. `info` and `version` take no lock.
+- **Input is checked before the lock is taken.** A command that finds the lock held against it waits up to 5 seconds, then fails with `busy`, which is always safe to retry.
 - **A write decides on current state**: everything it depends on is read after it has the lock. So two writes to one task both take effect, and no write breaks an [invariant](#invariants).
 - **Files are replaced atomically**: written to a hidden temp file, flushed, then renamed. A reader never sees half a file koan wrote.
-- **Reads take no lock** and are not snapshots. A read that overlaps a write may see part of it, and skips a file that vanishes under it.
-- `doctor`, `repair`, and `migrate` hold the lock for their whole run, so they see the tree at rest.
+- `doctor` holds the lock alone, as a write does, though it changes nothing: on a large tree it is the command others are most likely to wait for.
 
 ### Crashes and failures
 
@@ -226,7 +227,7 @@ Every failure has one **kind**:
 |---|---|
 | `invalid-input` | The input breaks a rule in this document or the command's schema. |
 | `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The root is not usable (see [Root states](#root-states)); or, for `corrupt` and `unsupported-format`, a task file the command needs is not. |
-| `busy` | The write lock was held for 5 seconds. |
+| `busy` | The lock was held against the command for 5 seconds. |
 | `not-found` | A task or folder named in the input does not exist. |
 | `conflict` | The input is valid but the tree's state refuses it; a `rule` says which: `duplicate-id`, `claimed`, `cycle`, and the commands' own. |
 | `io` | The operating system refused something. |
