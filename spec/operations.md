@@ -94,7 +94,7 @@ Inputs take [references](design.md#references) wherever they name a task or a fo
 - **A folder**, in every `folder` and in `move`'s `to`: a path, or an ID as an integer or a string `"41"` or `"@41"`. A folder given by ID must exist, `not-found` otherwise, and is never made as needed; one given by path is made as needed where the command says so.
 - **Paths only** where the folder is new: `create-folder`'s `folder`, and `move-folder`'s `to`.
 
-Results use the plain forms: an ID is an integer, a folder a path. A `not-found` for an ID lists it in `ids`, and its message says when the ID is the other kind's. Giving a folder by ID can also fail with `duplicate-id`, and warns `unusable-file` for each folder file koan can't use, since any of them might have held the ID.
+JSON results use the plain forms: an ID is an integer, a folder a path. Only `where`'s `ref` writes a reference, `@` and all. A `not-found` for an ID lists it in `ids`, and its message says when the ID is the other kind's. Giving a folder by ID can also fail with `duplicate-id`, and warns `unusable-file` for each folder file koan can't use, since any of them might have held the ID.
 
 ### Orders
 
@@ -262,7 +262,7 @@ Change a folder's title or `extra`. Fields not given are left alone, and notes a
 Move a folder, with everything under it, to a new path. Renaming is moving to a sibling path.
 
 - **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into, so a path only.
-- Neither may be `/`, and `to` may not be under `folder`: `invalid-input`.
+- Neither may be `/`, and `to` may not be under `folder`: `invalid-input`. For a `folder` given by ID, the second is known only once the tree is read, so it is reported after the root's state and `busy`.
 - No file is rewritten: a task's folder is where its file is, and the folder's own files move with it, its ID included.
 - **Result:** `folder` (its record, at the new path), `folders_created`, `changed`.
 - **Refuses:** `destination-exists` when anything is at `to`.
@@ -313,10 +313,10 @@ Create several open tasks in one write, where later ones may wait on earlier one
 | Field | Holds |
 |---|---|
 | `ref` | A name for this task within the batch, following the tag rule. Unique in the batch. Never stored. |
-| `blocked_by` | A mix of integers, the IDs of existing tasks, and strings, the `ref`s of **earlier** tasks in the batch. |
+| `blocked_by` | A mix of existing tasks' IDs, as integers or as strings with `@` (`"@42"`), and the `ref`s of **earlier** tasks in the batch, as strings without (`"42"` is a ref). |
 
 - Refs may only point backwards, so a batch cannot contain a cycle.
-- Every folder's path is checked too, before an ID is used.
+- Every folder is checked too, before an ID is used: one given by path, that it can be made; one given by ID, that it exists.
 - Task IDs are consecutive, in input order, after the IDs of the folders the batch makes, and every task gets the same `created_at`.
 - The counter is raised once, by the number of folders and tasks the batch makes. Then the folders are made, parents first, and the tasks written in input order, each as `create` writes one.
 - So a failure partway leaves the first tasks of the batch created and the rest not: the error's `ids` lists the created ones, in input order. To finish, drop those tasks from the input, replace each `ref` to one of them with its ID, and run the rest. The IDs set aside for the tasks not created are not reused.
@@ -440,8 +440,9 @@ Say what a task is waiting on, by following its blockers, and theirs, through op
 
 Turn a [reference](design.md#references) into where it is on disk, or a path on disk into its reference: the two forms for the key-plus-hint convention, and the absolute paths to open.
 
-- **Input:** exactly one of `ref`, a reference given as a string (`@42`, `/proj`, `/proj:docs/plan.md`, `@41:docs/plan.md`, each ID with or without the `@`). An ID names whichever task or folder has it; with material after it, a folder., and `file`, an absolute path on disk.
-- **From `file`:** the path is made clean without touching the disk (`a/../b` is `b`), and must be the tree's directory or under it, as `~/koan-root` or as the directory it links to; anywhere else is `not-found`. Its leading `@` folder names lead through folders, each of which must exist. What follows names the folder itself (nothing, `@folder.json`, or `@folder.md`); a task (`@42.json` or `@42.md`, the task file existing); or material, the rest of the path, whose first entry is not named with `@`. Any other `@` entry there is not one of koan's and has no reference: `not-found`.
+- **Input:** exactly one of `ref`, a reference given as a string (`@42`, `/proj`, `/proj:docs/plan.md`, `@41:docs/plan.md`, each ID with or without the `@`), and `file`, an absolute path on disk.
+- An ID in `ref` names whichever task or folder has it; with material after it, a folder. Either way it reads every folder file, as a folder given by ID does: two holders is `duplicate-id`, and each folder file koan can't use is an `unusable-file` warning.
+- **From `file`:** the path is made clean without touching the disk (`a/../b` is `b`), and must be the tree's directory or under it, as `~/koan-root` or as the directory it links to. A path that is neither is tried again with the symlinks in its longest existing prefix resolved, so one reaching the tree through a link of its own (`~/k` for `~/koan-root`) is found; this reads only the path's own directories. Anywhere else is `not-found`. Its leading `@` folder names lead through folders, each of which must exist. What follows names the folder itself (nothing, `@folder.json`, or `@folder.md`); a task (`@42.json` or `@42.md`, the task file existing); or material, the rest of the path, whose first entry is not named with `@`. Any other `@` entry there, a folder name on something that is not a folder included, is not one of koan's and has no reference: `not-found`.
 - The folders must exist, and a task must; material need not, and is never looked at. An ID given for material that is a task's is `not-found`, saying so.
 - **Result:**
 

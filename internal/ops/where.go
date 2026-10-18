@@ -50,8 +50,10 @@ func cmdWhere(c *call) (any, *errs.Error) {
 	file, hasFile := in.text("file")
 	var to target
 	switch {
-	case c.in.has("ref") == c.in.has("file"):
-		c.in.bad("", "must give one of ref and file")
+	case !c.in.has("ref") && !c.in.has("file"):
+		c.in.bad("/ref", "is required, unless file is given")
+	case c.in.has("ref") && c.in.has("file"):
+		c.in.bad("/file", "may not be given with ref")
 	case hasRef:
 		var ok bool
 		if to, ok = parseRef(ref); !ok {
@@ -124,6 +126,9 @@ func (c *call) fromFile(p string) (target, *errs.Error) {
 	p = path.Clean(p)
 	rel, ok := c.inTree(p)
 	if !ok {
+		rel, ok = c.inTree(c.resolveLinks(p))
+	}
+	if !ok {
 		return target{}, errs.New(errs.NotFound, "%s is not in the tree, %s", p, c.t.Abs(".")).WithPaths(p)
 	}
 	segs := strings.Split(rel, "/")
@@ -138,6 +143,11 @@ func (c *call) fromFile(p string) (target, *errs.Error) {
 		}
 		f, segs = f.Join(name), segs[1:]
 		if e := c.folderOrNotFound(f); e != nil {
+			// A folder name on something else is a stray entry, as a
+			// walk sees it: not koan's.
+			if e.HasRule(errs.RuleNotAFolder) {
+				e = errs.New(errs.NotFound, "%s is not one of koan's entries, and has no reference", p).WithPaths(p)
+			}
 			return target{}, e
 		}
 	}
@@ -160,6 +170,20 @@ func (c *call) fromFile(p string) (target, *errs.Error) {
 		return target{any: id}, nil
 	}
 	return target{}, errs.New(errs.NotFound, "%s is not one of koan's entries, and has no reference", p).WithPaths(p)
+}
+
+// resolveLinks is p with the symlinks in its longest existing prefix
+// resolved, for a path that reaches the tree through a link of its own.
+// What lies beyond that prefix, which does not exist, is kept as it is.
+func (c *call) resolveLinks(p string) string {
+	for q, rest := p, ""; ; q, rest = path.Dir(q), path.Join(path.Base(q), rest) {
+		if real, err := c.env.FS.EvalSymlinks(q); err == nil {
+			return path.Join(real, rest)
+		}
+		if q == "/" {
+			return p
+		}
+	}
 }
 
 // inTree is p relative to the tree's directory, "" for the directory

@@ -32,7 +32,7 @@ koan reads stdin only when `-` names it, so it is safe in a loop that feeds stdi
 Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 
 - **A command is named after its operation**, and an option after the input field it sets, in kebab-case: `blocked_by` is `--blocked-by`.
-- **The one required subject is positional**: the task's ID, the folder's path, the new task's title. Everything else is an option, so a bare word has one meaning.
+- **The one subject is positional**: the task's ID, the folder (its path, or its ID where it must exist), the new task's title, `where`'s reference. It is required, but for `where`, which takes `--file` in its place. Everything else is an option, so a bare word has one meaning.
 - **Folder paths are exact**: always from the root, with a leading `/`. koan never completes one or derives one from the working directory.
 - **References**: wherever an input takes a [reference](design.md#references), the command line does too: `koan show 42`, `koan block @42 --blockers 17,@18`, `koan list --folder 41`, with or without the `@`. An ID without `@` in a task position is passed to the operation as an integer; everything else as the string typed.
 - **Booleans**: `--recursive` is `true`, `--recursive=false` is `false`.

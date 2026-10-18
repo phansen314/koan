@@ -237,7 +237,7 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		for j, b := range blockers {
 			bat := fmt.Sprintf("%s/blocked_by/%d", at, j)
 			var ref string
-			isRef := model.Decode(b, &ref) == nil && !strings.HasPrefix(ref, model.Mark)
+			isRef := model.Decode(b, &ref) == nil && string(b) != "null" && !strings.HasPrefix(ref, model.Mark)
 			// A string without @ is a ref; anything else, an ID.
 			switch id, isID := idOf(b); {
 			case !isRef && isID:

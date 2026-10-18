@@ -278,7 +278,10 @@ func newRoot(env Env, result **ops.Envelope) *cobra.Command {
 
 func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
 	use := c.name
-	if c.subject != "" {
+	switch {
+	case c.subjOpt:
+		use += " [<" + c.subject + ">]"
+	case c.subject != "":
 		use += " <" + c.subject + ">"
 	}
 	cmd := &cobra.Command{

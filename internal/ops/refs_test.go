@@ -194,3 +194,77 @@ func TestWhere(t *testing.T) {
 	os.WriteFile(w.root("p/folder.json"), []byte("{"), 0o644)
 	w.fail("where", `{"ref":"/p"}`, errs.Corrupt, "")
 }
+
+// A task's ID where a folder is wanted is not-found, in every command that
+// takes a folder by ID; and a folder's ID where a task is wanted.
+func TestIDsOfTheOtherKind(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p"}`) // 1
+	w.ok("create", `{"title":"a"}`)          // 2
+	for _, c := range [][2]string{
+		{"update-folder", `{"folder":"@2","title":"x"}`},
+		{"delete-folder", `{"folder":"2"}`},
+		{"move-folder", `{"folder":2,"to":"/q"}`},
+		{"show-folder", `{"folder":2}`},
+	} {
+		if e := w.fail(c[0], c[1], errs.NotFound, ""); !strings.Contains(e.Message, "task") {
+			t.Errorf("%s: message %q", c[0], e.Message)
+		}
+	}
+	if e := w.fail("create-batch", `{"tasks":[{"title":"b","blocked_by":["@1"]}]}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
+		t.Errorf("create-batch: message %q", e.Message)
+	}
+	w.fail("create-batch", `{"tasks":[{"title":"b","blocked_by":["@9"]}]}`, errs.NotFound, "")
+	if e := w.fail("create-batch", `{"tasks":[{"title":"b","blocked_by":[null]}]}`, errs.InvalidInput, ""); !strings.Contains(e.Message, "task ID or a ref") {
+		t.Errorf("null blocker: message %q", e.Message)
+	}
+
+	// A folder file that repeats a task's ID: a task found by ID is not
+	// told, a folder found by ID, or where, is.
+	data, _ := os.ReadFile(w.root("p/folder.json"))
+	os.WriteFile(w.root("p/folder.json"), []byte(strings.Replace(string(data), `"id": 1`, `"id": 2`, 1)), 0o644)
+	w.ok("show", `{"id":2}`)
+	w.fail("update-folder", `{"folder":2,"title":"x"}`, errs.Conflict, errs.RuleDuplicateID)
+	w.fail("delete-folder", `{"folder":2}`, errs.Conflict, errs.RuleDuplicateID)
+	w.fail("where", `{"ref":"2"}`, errs.Conflict, errs.RuleDuplicateID)
+}
+
+// An ID given to where reads every folder file, and warns once for each one
+// koan can't use, however many times the command reads them.
+func TestWhereWarnsOfUnusableFolderFiles(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p"}`) // 1
+	w.ok("create-folder", `{"folder":"/q"}`) // 2
+	w.ok("create", `{"title":"a"}`)          // 3
+	os.WriteFile(w.root("q/folder.json"), []byte("{"), 0o644)
+	for _, c := range [][2]string{{"where", `{"ref":"3"}`}, {"list", `{"folder":"@1","include_folders":true}`}, {"list", `{"folder":1}`}} {
+		env := w.run(c[0], c[1])
+		if !env.OK || len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
+			t.Errorf("%s %s: %+v", c[0], c[1], env)
+		}
+	}
+}
+
+// where --file takes a folder name on anything but a folder for what the
+// walk takes it: a stray entry, with no reference.
+func TestWhereFileThroughStrayEntries(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p"}`)
+	os.WriteFile(w.root("p/stray"), nil, 0o644)
+	os.Symlink(t.TempDir(), w.root("p/lnk"))
+	for _, p := range []string{w.root("p/stray"), w.root("p/stray") + "/x", w.root("p/lnk") + "/x"} {
+		w.fail("where", `{"file":"`+p+`"}`, errs.NotFound, "")
+	}
+	// A link of the user's own into the tree is followed, to a material
+	// path that need not exist.
+	os.MkdirAll(w.disk("@p", "docs"), 0o755)
+	k := t.TempDir() + "/k"
+	os.Symlink(w.disk("@p", "docs"), k)
+	if got := w.ok("where", `{"file":"`+k+`/new/x.md"}`); got["ref"] != "@1:docs/new/x.md" {
+		t.Errorf("through a link: %v", got)
+	}
+	w.fail("where", `{"file":"`+t.TempDir()+`/x"}`, errs.NotFound, "")
+	// By reference it is a folder path, and not-a-folder, as for show-folder.
+	w.fail("where", `{"ref":"/p/stray"}`, errs.Conflict, errs.RuleNotAFolder)
+	w.fail("where", `{"ref":"@1:a\u0000b"}`, errs.InvalidInput, "")
+}

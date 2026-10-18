@@ -3,7 +3,7 @@
   "$id": "where-input",
   "type": "object",
   "properties": {
-    "ref": { "type": "string", "pattern": "^(?:/|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+|@?[1-9][0-9]{0,14})(?::(?:[^/.@][^/]*|\\.[^/.][^/]*|\\.\\.[^/]+)(?:/(?:[^/.][^/]*|\\.[^/.][^/]*|\\.\\.[^/]+))*)?$", "description": "A reference: 42 or @42, /proj, @41, /proj:docs/plan.md, or @41:docs/plan.md." },
+    "ref": { "type": "string", "pattern": "^(?:/|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+|@?[1-9][0-9]{0,14})(?::(?:[^\\x00/.@][^\\x00/]*|\\.[^\\x00/.][^\\x00/]*|\\.\\.[^\\x00/]+)(?:/(?:[^\\x00/.][^\\x00/]*|\\.[^\\x00/.][^\\x00/]*|\\.\\.[^\\x00/]+))*)?$", "description": "A reference: 42 or @42, /proj, @41, /proj:docs/plan.md, or @41:docs/plan.md." },
     "file": { "type": "string", "pattern": "^/", "description": "An absolute path on disk." }
   },
   "oneOf": [{ "required": ["ref"] }, { "required": ["file"] }],
