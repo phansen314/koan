@@ -62,6 +62,16 @@ Decided 2026-10-18. Today the same mistake can be `usage` (exit 2) in one comman
 - `cli.md` states the split once.
 - Fix the message for a problem with no field (`update 3` with nothing to change), which renders as `the input is invalid:  gives nothing to change`.
 
+### Input and output odds and ends
+
+- A `batch` folder entry names its path `path`; `folder create` calls it `folder`. Use `folder` in both.
+- `--notes-file` exists only on the command line (through `-i`, `notes_file` is refused), and `where --file` is made absolute only by the CLI (through `-i`, a relative path is `invalid-input`). Either state these as CLI conveniences in `cli.md`, or accept both through `-i`.
+- Task output carries the file's `schema` field, which means nothing to a caller. Leave it out of results.
+
+## Cycles without Tarjan
+
+`graph.Cycles` finds cycles with a hand-written Tarjan's strongly connected components (`components`, about 65 lines). Trees are small, so a task is in a cycle exactly when `Path` leads from one of its blockers back to it, and the cycles can be built from that with the `Path` already there. Do it with the graph tests as the check: `doctor`'s `cycle` findings, their order, and their `ids` must not change.
+
 ## `forget-folder` and `forget-task`
 
 Turn a koan folder or task back into plain files, leaving the work itself in place. Designed together, since what happens to a forgotten task's koan data and notes is `forget-folder`'s core question.
