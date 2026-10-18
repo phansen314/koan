@@ -5,7 +5,8 @@ How koan is built: the mechanisms behind what [design.md](design.md), [operation
 ## Toolchain
 
 - **Go**, standard library first. Go 1.25 or later, for `os.Root`'s `Link`, `Rename`, and `RemoveAll`.
-- **Dependencies:** cobra, for the command line; `golang.org/x/sys/unix`, for the no-replace rename the standard library lacks (below); and `golang.org/x/mod`, to check the version a build is stamped with. A JSON Schema validator is a test-only dependency.
+- **Dependencies:** cobra, for the command line; and `golang.org/x/sys/unix`, for the no-replace rename the standard library lacks (below). A JSON Schema validator is a test-only dependency.
+- **The version comes from Go's build information** (`runtime/debug.ReadBuildInfo`): the main module's version when it is a release tag, as for `go install …@vX.Y.Z`, else `0.0.0-dev`; the commit, its time, and uncommitted changes from the VCS stamp, or, for a binary installed from a pseudo-version, the commit and time the pseudo-version names.
 - **JSON is `encoding/json`**, with nothing wrapped around it. Files and inputs decode into structs with `DisallowUnknownFields`; `extra` is a `map[string]any`. Files are written with `MarshalIndent`, two spaces, and a trailing newline, with HTML escaping off.
 
 ## Packages
