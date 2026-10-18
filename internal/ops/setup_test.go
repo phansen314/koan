@@ -8,6 +8,7 @@ import (
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/fsys"
 	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/schematest"
 	"github.com/phansen314/koan/internal/store"
 )
 
@@ -21,6 +22,7 @@ func TestInit(t *testing.T) {
 	if c := got["created"].([]any); len(c) != 3 {
 		t.Errorf("created %v, want all three", c)
 	}
+	schematest.Must(t, "root-file", readJSON(t, w.root("koan.json")))
 	if c := w.ok("init", `{}`)["created"].([]any); len(c) != 0 {
 		t.Errorf("second init created %v", c)
 	}

@@ -125,7 +125,7 @@ There is no index on disk; a command that needs one builds it.
 
 - **One exit point.** `main` calls `run()`, which returns the exit code; nothing else calls `os.Exit`, so deferred cleanup always runs.
 - **The envelope is written with one `Write`**, and stdout's `Close` is checked. Only then does koan exit `0`, `1`, or `2`, and only then is the stderr line written.
-- **SIGPIPE is caught**, so a write to a closed pipe returns `EPIPE` and takes the same "could not write" path as a full disk, with a non-zero exit above `2`.
+- **SIGPIPE is caught**, so a write to a closed pipe returns `EPIPE` and takes the same "could not write" path as a full disk, with exit `3`.
 - **`debug.SetTraceback("crash")` is set at startup.** Go's default exit status for a panic is `2`, which is koan's code for a usage error, where nothing ran. With it, a panic ends by `SIGABRT`, exit 134: outcome unknown, as it should be.
 - No handler is installed for `SIGINT` or `SIGTERM`: an interrupted koan dies by the signal, like any crash.
 
