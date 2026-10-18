@@ -261,15 +261,6 @@ func (r *Root) Remove(name string) error {
 	return r.r.Remove(name)
 }
 
-// RemoveAll removes a folder and everything under it, never following a
-// symlink; a name that is already gone is not an error.
-func (r *Root) RemoveAll(name string) error {
-	if err := r.before(Op{Name: OpRemoveAll, Path: name, Mutating: true}); err != nil {
-		return err
-	}
-	return r.r.RemoveAll(name)
-}
-
 // Close closes the root even when a hook fails it.
 func (r *Root) Close() error {
 	err := r.before(Op{Name: OpCloseRoot, Path: "."})

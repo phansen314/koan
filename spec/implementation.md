@@ -4,7 +4,7 @@ How koan is built: the mechanisms behind what [design.md](design.md), [operation
 
 ## Toolchain
 
-- **Go**, standard library first. Go 1.25 or later, for `os.Root`'s `Link`, `Rename`, and `RemoveAll`.
+- **Go**, standard library first. Go 1.25 or later, for `os.Root`'s `Link` and `Rename`.
 - **Dependencies:** cobra, for the command line; and `golang.org/x/sys/unix`, for the no-replace rename the standard library lacks (below). A JSON Schema validator is a test-only dependency.
 - **The version comes from Go's build information** (`runtime/debug.ReadBuildInfo`): the main module's version when it is a release tag, as for `go install …@vX.Y.Z`, else `0.0.0-dev`; the commit, its time, and uncommitted changes from the VCS stamp, or, for a binary installed from a pseudo-version, the commit and time the pseudo-version names.
 - **JSON is `encoding/json`**, with nothing wrapped around it. Files and inputs decode into structs with `DisallowUnknownFields`; `extra` is a `map[string]any`. Files are written with `MarshalIndent`, two spaces, and a trailing newline, with HTML escaping off.
@@ -77,7 +77,7 @@ Every file koan writes goes through a temp file named `.koan-tmp-<random>` in th
 
 - **Moves never replace.** `move` and `move-folder` rename with `renameat2(RENAME_NOREPLACE)` on Linux and `renameatx_np(RENAME_EXCL)` on macOS. Plain `rename(2)` silently replaces an empty directory, so a check made beforehand would be the only guard.
 - **A folder is made with `mkdir`**, then its folder file and notes are written in it as any file is. A kill or failure between leaves a folder without its folder file, `doctor`'s `missing-folder-file`. A folder that appears under the name first, by an outside change, wins: the command does not list it in `folders_created`. `changed_paths` lists the folder, not its files.
-- **A folder is removed with `RemoveAll`**, and is in `changed_paths` even when that fails, since it may have removed part of it. What a partial removal leaves is the folder's remains, and running `delete-folder` again removes them.
+- **A folder is removed depth first, one entry at a time, each folder's `@folder.json` last of its entries**, so a removal cut short never leaves a folder without its folder file, which `repair` would give a new ID. A symlink is removed, never followed. The folder is in `changed_paths` even when the removal fails, since it may have removed part of it; running `delete-folder` again removes the rest.
 
 ### Fault injection
 
@@ -134,5 +134,5 @@ The files in `schemas/` are written by hand and are the contract. The binary con
 - **Unit tests** per package. `ops` tests run against a real temp directory, with `HOME` pointed at it and the clock fixed.
 - **End-to-end tests** in `e2e/` run the built binary, with `HOME` set per test.
 - **The lock**, in `e2e/` on both platforms: a second write, and a read, get `busy` while a write is held; every `list` run while tasks and folders are moved returns every task; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `block`s racing never both succeed.
-- **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair`, then `repair` of the kinds it fixes only when asked by name, followed by `doctor`, must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect. A kill or failure between making a folder and writing its folder file leaves `missing-folder-file`, which `repair` fixes. A removal killed partway through, which leaves a folder partly removed, is one step to the hook, and is not tested.
+- **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair`, then `repair` of the kinds it fixes only when asked by name, followed by `doctor`, must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect. A kill or failure between making a folder and writing its folder file leaves `missing-folder-file`, which `repair` fixes.
 - **CI** runs on Linux amd64 and macOS arm64: `gofmt`, `go vet`, `go test ./...`, a race-detector run over everything but `e2e/`, and `govulncheck`.

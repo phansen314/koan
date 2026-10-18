@@ -25,7 +25,6 @@ const (
 	OpRenameNR   = "rename-noreplace"
 	OpSyncDir    = "syncdir"
 	OpRemove     = "remove"
-	OpRemoveAll  = "removeall"
 	OpLock       = "lock"
 	OpUnlock     = "unlock"
 	OpCloseRoot  = "closeroot"

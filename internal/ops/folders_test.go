@@ -2,6 +2,7 @@ package ops
 
 import (
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"syscall"
@@ -181,6 +182,37 @@ func TestDeleteFolderRemovesTheFolderFirst(t *testing.T) {
 	fs := w.ok("doctor", `{}`)["findings"].([]any)
 	if len(fs) != 1 || fs[0].(map[string]any)["kind"] != "dangling-reference" {
 		t.Errorf("doctor: %v", fs)
+	}
+}
+
+// delete-folder removes each folder's folder file after everything else in
+// it, so a removal cut short leaves no folder without one; and it removes a
+// symlink without following it.
+func TestDeleteFolderRemovesFolderFilesLast(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/p/q","notes":"n"}`)
+	os.MkdirAll(w.disk("keep"), 0o755)
+	os.WriteFile(w.disk("keep/x"), nil, 0o644)
+	os.Symlink("../../keep", w.disk("@p/@q/link"))
+	removed := 0
+	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
+		if op.Name == fsys.OpRemove && path.Base(op.Path) == "@folder.json" {
+			removed++
+			if ents, _ := os.ReadDir(w.disk(path.Dir(op.Path))); len(ents) != 1 {
+				t.Errorf("%s removed before the rest of its folder: %d entries left", op.Path, len(ents))
+			}
+		}
+		return nil
+	}}
+	w.ok("delete-folder", `{"folder":"/p","recursive":true,"force":true}`)
+	if removed != 2 {
+		t.Errorf("removed %d folder files, want 2", removed)
+	}
+	if _, err := os.Stat(w.disk("@p")); !os.IsNotExist(err) {
+		t.Errorf("the folder is still there: %v", err)
+	}
+	if _, err := os.Stat(w.disk("keep/x")); err != nil {
+		t.Errorf("followed a symlink: %v", err)
 	}
 }
 

@@ -331,23 +331,3 @@ func TestRenameNoReplace(t *testing.T) {
 		t.Errorf("moved file: %q, %v", b, err)
 	}
 }
-
-// RemoveAll removes a folder with everything under it, and never follows a
-// symlink out of it.
-func TestRemoveAll(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.MkdirAll(filepath.Join(dir, "a/b"), 0o755))
-		must(t, os.WriteFile(filepath.Join(dir, "a/b/1.json"), nil, 0o644))
-		must(t, os.Mkdir(filepath.Join(dir, "keep"), 0o755))
-		must(t, os.WriteFile(filepath.Join(dir, "keep/x"), nil, 0o644))
-		must(t, os.Symlink("../keep", filepath.Join(dir, "a/link")))
-	})
-	must(t, r.RemoveAll("a"))
-	must(t, r.RemoveAll("a"))
-	if _, err := os.Lstat(filepath.Join(dir, "a")); !os.IsNotExist(err) {
-		t.Errorf("a: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "keep/x")); err != nil {
-		t.Errorf("followed a symlink: %v", err)
-	}
-}

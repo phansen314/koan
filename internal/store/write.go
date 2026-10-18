@@ -264,10 +264,45 @@ func (t *Tree) Remove(rel string) *errs.Error {
 // is interrupted leaves the folder partly removed, which a second Discard
 // finishes; it is reported as changed either way.
 func (t *Tree) Discard(rel string) *errs.Error {
-	err := t.root.RemoveAll(rel)
+	err := t.discard(rel)
 	t.note(rel)
 	if err != nil {
 		return errs.FromOS(t.Abs(rel), err)
 	}
 	return nil
+}
+
+// discard removes folder rel depth first, each folder's folder file last of
+// its entries, so a removal cut short never leaves a folder without its
+// folder file, which repair would give a new one. A symlink is removed, never
+// followed; an entry already gone is not an error.
+func (t *Tree) discard(rel string) error {
+	ents, err := t.root.ReadDir(rel)
+	if err != nil {
+		return ignoreGone(err)
+	}
+	for _, e := range ents {
+		p := path.Join(rel, e.Name())
+		switch {
+		case e.Name() == FolderFileName:
+		case e.IsDir():
+			err = t.discard(p)
+		default:
+			err = ignoreGone(t.root.Remove(p))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if err := ignoreGone(t.root.Remove(path.Join(rel, FolderFileName))); err != nil {
+		return err
+	}
+	return ignoreGone(t.root.Remove(rel))
+}
+
+func ignoreGone(err error) error {
+	if errs.IsErrno(err, syscall.ENOENT) {
+		return nil
+	}
+	return err
 }
