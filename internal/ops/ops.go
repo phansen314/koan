@@ -437,14 +437,14 @@ func (c *call) makeFolders(missing []model.Folder, first model.ID, asked ...newF
 			}
 		}
 		ok, e := c.t.MakeFolder(f, ff, notes)
+		if ok {
+			made = append(made, f)
+		}
 		if e != nil {
 			return made, e
 		}
 		if !ok && j >= 0 {
 			return made, c.destinationExists("appeared while it was being made: its title, extra, and notes were not set", f)
-		}
-		if ok {
-			made = append(made, f)
 		}
 	}
 	return made, nil

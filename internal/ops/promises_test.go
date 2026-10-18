@@ -891,35 +891,34 @@ func TestBatchFolderEntriesRefused(t *testing.T) {
 	}
 }
 
-// A batch cut short leaves the folders made so far, each whole, and says
-// what it made.
+// A batch cut short leaves the folders made so far, and says what it made:
+// a folder cut short has no folder file, which repair gives it.
 func TestBatchFoldersFailPartway(t *testing.T) {
 	w := ready(t)
 	// Each folder's two files are linked into place: the third link is /b's
-	// first, so /a is made whole and /b not at all.
+	// first, so /a is made whole and /b without its files.
 	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpLink, "", 3, 28 /* ENOSPC */)}
 	env := w.run("create-batch", `{"folders":[{"path":"/a","title":"A"},{"path":"/b"}],"tasks":[{"title":"t","folder":"/b"}]}`)
 	w.env.FS = fsys.FS{}
-	if env.OK || env.Error.Kind != errs.IO || len(env.Error.IDs) != 0 {
+	if env.OK || env.Error.Kind != errs.IO || len(env.Error.IDs) != 0 || !slices.Equal(env.Error.Folders, []string{"/a", "/b"}) {
 		t.Fatalf("got %+v", env)
 	}
 	if r := w.record(w.ok("show-folder", `{"folder":"/a"}`)); !strings.Contains(r, `"title":"A"`) || !strings.Contains(r, `"id":1`) {
 		t.Errorf("/a: %s", r)
 	}
-	w.fail("show-folder", `{"folder":"/b"}`, errs.NotFound, "")
 	if id := task(w.ok("create", `{"title":"d"}`))["id"]; id != float64(4) {
 		t.Errorf("next ID %v: the batch's IDs must not be reused", id)
 	}
-	if got := w.ok("doctor", `{}`); got["healthy"] != true {
-		t.Errorf("doctor after a failed batch: %v", got)
+	if fs := w.findings(); !slices.Equal(fs, []string{"missing-folder-file @b"}) {
+		t.Errorf("doctor after a failed batch: %v", fs)
 	}
 }
 
 // raceAt makes the folder dir, as an outside change, just before koan
-// renames a new folder into place there.
+// makes a new folder there.
 func raceAt(dir string) fsys.Hook {
 	return func(op fsys.Op) error {
-		if op.Name == fsys.OpRenameNR && strings.HasSuffix(dir, "/"+op.NewPath) {
+		if op.Name == fsys.OpMkdir && strings.HasSuffix(dir, "/"+op.Path) {
 			os.Mkdir(dir, 0o755)
 		}
 		return nil

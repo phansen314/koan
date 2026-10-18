@@ -79,27 +79,11 @@ func setup(t *testing.T, name string) string {
 
 // leftovers are the findings a killed or failed command may leave, as
 // spec/design.md lists them: a temp file, a reference to a deleted task, a
-// claim on a task that is done or gone, and notes without their task. Every
-// one is something repair fixes, the reference, and a claim on a task that is
-// gone, only when asked for by name. An ID used with no task is not a
-// finding. A folder with no folder file is not one either: folders are made
-// whole. Only repair's setup has one, @hand, which a repair killed before it
-// writes the file leaves as it is.
-var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
-
-// handOnly reports whether a finding is the missing folder file of repair's
-// setup folder @hand, and of nothing else.
-func handOnly(f map[string]any) bool {
-	if f["kind"] != "missing-folder-file" {
-		return false
-	}
-	for _, p := range f["paths"].([]any) {
-		if !strings.HasSuffix(p.(string), "/@hand") {
-			return false
-		}
-	}
-	return true
-}
+// claim on a task that is done or gone, notes without their task, and a
+// folder without its folder file. Every one is something repair fixes, the
+// reference, and a claim on a task that is gone, only when asked for by
+// name. An ID used with no task is not a finding.
+var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes", "missing-folder-file"}
 
 // checkAfter requires what the design promises after a crash or a failure:
 // the next write succeeds, doctor reports nothing but the expected kinds,
@@ -117,7 +101,7 @@ func checkAfter(t *testing.T, home, what string) {
 	}
 	for _, f := range ok(t, home, "doctor")["findings"].([]any) {
 		f := f.(map[string]any)
-		if !slices.Contains(leftovers, f["kind"].(string)) && !handOnly(f) {
+		if !slices.Contains(leftovers, f["kind"].(string)) {
 			t.Errorf("%s: doctor found %v", what, f)
 		}
 	}
@@ -215,7 +199,7 @@ func TestFailures(t *testing.T) {
 				switch {
 				case r.exit == 0:
 					// A failure koan may ignore: a directory flush, or the
-					// removal of a temp file or a folder renamed aside.
+					// removal of a temp file.
 				case r.exit == 1 && r.err()["kind"] == "io":
 					after := snapshot(t, home)
 					var reported []string

@@ -5,7 +5,7 @@ How koan is built: the mechanisms behind what [design.md](design.md), [operation
 ## Toolchain
 
 - **Go**, standard library first. Go 1.25 or later, for `os.Root`'s `Link`, `Rename`, and `RemoveAll`.
-- **Dependencies:** cobra, for the command line; `golang.org/x/sys/unix`, for the two system calls the standard library lacks (below); and `golang.org/x/mod`, to check the version a build is stamped with. A JSON Schema validator is a test-only dependency.
+- **Dependencies:** cobra, for the command line; `golang.org/x/sys/unix`, for the no-replace rename the standard library lacks (below); and `golang.org/x/mod`, to check the version a build is stamped with. A JSON Schema validator is a test-only dependency.
 - **JSON is `encoding/json`**, with nothing wrapped around it. Files and inputs decode into structs with `DisallowUnknownFields`; `extra` is a `map[string]any`. Files are written with `MarshalIndent`, two spaces, and a trailing newline, with HTML escaping off.
 
 ## Packages
@@ -45,8 +45,8 @@ What the two provide together:
 
 Every operation opens `~/koan-root` once, with `os.OpenRoot`, and does all its file work through that handle. The path is resolved one time, so a write cannot be split across two directories by a symlink repointed under it.
 
-- **The path is opened with `/.` appended.** `os.OpenRoot` checks the type only after opening, so a FIFO at the path would block and a regular file would give an error with no errno. With `/.`, the kernel refuses both with `ENOTDIR` before opening anything. This also resolves the one symlink the design allows.
-- **No symlink inside the tree is followed.** `os.Root` follows symlinks that stay inside the root, which koan must not. So an entry is opened in two steps: its parent folder through the `os.Root`, then the entry itself with `openat(2)` and `O_NOFOLLOW`, from `x/sys/unix`. A symlink fails with `ELOOP` in the one call, with no window between checking and opening.
+- **The path is opened with `/.` appended.** `os.OpenRoot` checks the type only after opening, so a FIFO at the path would block and a regular file would give an error with no errno, where koan must report `not-a-folder`. With `/.`, the kernel refuses both with `ENOTDIR` before opening anything. This also resolves the one symlink the design allows.
+- **No symlink inside the tree is followed.** `os.Root` follows symlinks that stay inside the root, which koan must not, so koan looks at an entry's type before it opens it: the walk by the type its listing gives, a folder path by `Lstat` on each folder in it, and a file read by `Lstat` just before, refusing a symlink with `ELOOP` and reading anything else that is not a regular file, a FIFO included, as empty. An entry swapped between the look and the open can only be an outside change, and is not defended against.
 
 ### The lock
 
@@ -75,8 +75,8 @@ Every file koan writes goes through a temp file named `.koan-tmp-<random>` in th
 ### Moving and removing
 
 - **Moves never replace.** `move` and `move-folder` rename with `renameat2(RENAME_NOREPLACE)` on Linux and `renameatx_np(RENAME_EXCL)` on macOS. Plain `rename(2)` silently replaces an empty directory, so a check made beforehand would be the only guard.
-- **A folder is made by building it aside**: a directory `.koan-tmp-<random>` in its parent, with its folder file and empty notes written in it as any file is, flushed, then renamed to its `@` name with `RENAME_NOREPLACE`. A kill before the rename leaves a hidden folder that walks ignore and `doctor` reports as a temp leftover; a folder that appears under the name meanwhile wins, the temp is removed, and the command does not list it in `folders_created`. The temp folder is never in `changed_paths`: it is gone by the time the command reports.
-- **A folder is removed by renaming it aside** to `.koan-tmp-<random>` in the root, then removing that. The rename is the single step that takes the folder out of the tree; a failure during the removal leaves a hidden folder that walks ignore and `doctor` reports.
+- **A folder is made with `mkdir`**, then its folder file and notes are written in it as any file is. A kill or failure between leaves a folder without its folder file, `doctor`'s `missing-folder-file`. A folder that appears under the name first, by an outside change, wins: the command does not list it in `folders_created`. `changed_paths` lists the folder, not its files.
+- **A folder is removed with `RemoveAll`**, and is in `changed_paths` even when that fails, since it may have removed part of it. What a partial removal leaves is the folder's remains, and running `delete-folder` again removes them.
 
 ### Fault injection
 
@@ -133,5 +133,5 @@ The files in `schemas/` are written by hand and are the contract. The binary con
 - **Unit tests** per package. `ops` tests run against a real temp directory, with `HOME` pointed at it and the clock fixed.
 - **End-to-end tests** in `e2e/` run the built binary, with `HOME` set per test.
 - **The lock**, in `e2e/` on both platforms: a second write, and a read, get `busy` while a write is held; every `list` run while tasks and folders are moved returns every task; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `block`s racing never both succeed.
-- **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair`, then `repair` of the kinds it fixes only when asked by name, followed by `doctor`, must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect.
+- **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair`, then `repair` of the kinds it fixes only when asked by name, followed by `doctor`, must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect. A kill or failure between making a folder and writing its folder file leaves `missing-folder-file`, which `repair` fixes. A removal killed partway through, which leaves a folder partly removed, is one step to the hook, and is not tested.
 - **CI** runs on Linux amd64 and macOS arm64: `gofmt`, `go vet`, `go test ./...`, a race-detector run over everything but `e2e/`, and `govulncheck`.

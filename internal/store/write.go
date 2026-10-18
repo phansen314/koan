@@ -168,44 +168,34 @@ func (t *Tree) Missing(f model.Folder) ([]model.Folder, *errs.Error) {
 	return missing, nil
 }
 
-// MakeFolder creates folder f, whose parent is there, whole: a hidden temp
-// folder in the parent gets the folder file ff and the notes,
-// and is then renamed into place, so the folder never appears without its
-// folder file. made is false when something was already at f, which only an
-// outside change can do: a not-a-folder conflict when it is not a folder,
-// and otherwise left as it is. The temp folder is removed either way, so it
-// is not a change; one a kill leaves behind is doctor's.
+// MakeFolder creates folder f, whose parent is there, then writes its folder
+// file ff and its notes in it. A kill or a failure between the steps leaves
+// the folder without its folder file, or without its notes, as it is: the
+// first is doctor's missing-folder-file. made is false when something was
+// already at f, which only an outside change can do: a not-a-folder conflict
+// when it is not a folder, and otherwise left as it is.
 func (t *Tree) MakeFolder(f model.Folder, ff *model.FolderFile, notes string) (made bool, e *errs.Error) {
-	tmp := fsys.TempName(f.Parent().Rel())
-	if err := t.root.Mkdir(tmp, FolderMode); err != nil {
-		return false, errs.FromOS(t.Abs(tmp), err)
-	}
-	fail := func(rel string, err error) (bool, *errs.Error) {
-		t.root.RemoveAll(tmp)
-		return false, errs.FromOS(t.Abs(rel), err)
-	}
 	data, err := model.Encode(ff)
 	if err != nil {
-		t.root.RemoveAll(tmp)
 		return false, errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
 	}
-	if err := Publish(t.root, path.Join(tmp, FolderFileName), data, FileMode, false); err != nil {
-		return fail(path.Join(tmp, FolderFileName), err)
-	}
-	if err := Publish(t.root, path.Join(tmp, FolderNotesName), []byte(notes), FileMode, false); err != nil {
-		return fail(path.Join(tmp, FolderNotesName), err)
-	}
-	err = t.root.RenameNoReplace(tmp, f.Rel())
-	switch {
-	case err == nil:
-		t.root.SyncDir(f.Parent().Rel())
-		t.note(f.Rel())
-		return true, nil
-	case errs.IsErrno(err, syscall.EEXIST, syscall.ENOTEMPTY):
-		t.root.RemoveAll(tmp)
+	err = t.root.Mkdir(f.Rel(), FolderMode)
+	if errs.IsErrno(err, syscall.EEXIST) {
 		return false, t.mustBeFolder(f)
 	}
-	return fail(f.Rel(), err)
+	if err != nil {
+		return false, errs.FromOS(t.Abs(f.Rel()), err)
+	}
+	t.root.SyncDir(f.Parent().Rel())
+	t.note(f.Rel())
+	// The folder's own path covers its files in changed_paths.
+	if err := Publish(t.root, FolderFileRel(f), data, FileMode, false); err != nil {
+		return true, errs.FromOS(t.Abs(FolderFileRel(f)), err)
+	}
+	if err := Publish(t.root, FolderNotesRel(f), []byte(notes), FileMode, false); err != nil {
+		return true, errs.FromOS(t.Abs(FolderNotesRel(f)), err)
+	}
+	return true, nil
 }
 
 // WriteFolderFile writes folder f's folder file: a new one when create is
@@ -270,27 +260,14 @@ func (t *Tree) Remove(rel string) *errs.Error {
 	return nil
 }
 
-// Discard removes a folder in one step as far as the tree is concerned: it
-// is renamed aside, to a hidden temp name in the root, then removed with
-// everything under it. Once renamed it is gone from the tree; a removal that
-// fails or is interrupted leaves a hidden leftover, which walks ignore and
-// doctor reports.
+// Discard removes a folder with everything under it. A removal that fails or
+// is interrupted leaves the folder partly removed, which a second Discard
+// finishes; it is reported as changed either way.
 func (t *Tree) Discard(rel string) *errs.Error {
-	tmp := fsys.TempName(".")
-	if err := t.root.RenameNoReplace(rel, tmp); err != nil {
+	err := t.root.RemoveAll(rel)
+	t.note(rel)
+	if err != nil {
 		return errs.FromOS(t.Abs(rel), err)
 	}
-	t.note(rel)
-	t.root.SyncDir(path.Dir(rel))
-	t.root.RemoveAll(tmp)
-	return nil
-}
-
-// RemoveAll removes a leftover temp file or folder.
-func (t *Tree) RemoveAll(rel string) *errs.Error {
-	if err := t.root.RemoveAll(rel); err != nil {
-		return errs.FromOS(t.Abs(rel), err)
-	}
-	t.note(rel)
 	return nil
 }

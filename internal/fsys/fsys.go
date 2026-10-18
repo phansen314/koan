@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -77,10 +76,10 @@ func (f FS) before(op Op) error { return before(f.Hook, op) }
 // Root is a directory opened once, through which every call is made. Names
 // are slash-separated and relative to the root; "." is the root itself.
 //
-// No call follows a symlink in a name's last component: ReadFile and ReadDir
-// fail with ELOOP on one, and Lstat reports it. Symlinks in earlier
-// components that stay inside the root are followed, so callers that must
-// not follow them (the path walk) Lstat each component in turn.
+// ReadFile fails with ELOOP on a symlink, and Lstat reports one; otherwise
+// os.Root's own calls follow symlinks that stay inside the root. Callers
+// that must not follow them check an entry's type first: the walk by the
+// type ReadDir gives, and the path walk by Lstat on each component.
 //
 // A name that escapes the root — through "..", or a symlink in an earlier
 // component that leads outside — fails with os.Root's error, which holds no
@@ -107,23 +106,26 @@ func (r *Root) Lstat(name string) (fs.FileInfo, error) {
 	return r.r.Lstat(name)
 }
 
-// ReadFile reads a whole file. A directory fails with EISDIR. Anything that
-// is neither a regular file nor a directory — a FIFO, a socket, a device —
-// reads as empty, without being read: a FIFO with a writer would block on
-// Linux and fail with EAGAIN on macOS, and a device may never end.
+// ReadFile reads a whole file. Its type is checked first, by Lstat: a
+// symlink fails with ELOOP, and anything else that is neither a regular file
+// nor a directory — a FIFO, a socket, a device — reads as empty, without
+// being opened, since a FIFO would block. A directory fails with EISDIR. An
+// entry replaced between the check and the read, which only an outside
+// change can do, is read as it then is.
 func (r *Root) ReadFile(name string) ([]byte, error) {
 	if err := r.before(Op{Name: OpReadFile, Path: name}); err != nil {
 		return nil, err
 	}
-	f, fi, err := r.openNoFollow(name)
-	if err != nil {
+	fi, err := r.r.Lstat(name)
+	switch {
+	case err != nil:
 		return nil, err
-	}
-	defer f.Close()
-	if !fi.Mode().IsRegular() && !fi.IsDir() {
+	case fi.Mode()&fs.ModeSymlink != 0:
+		return nil, &os.PathError{Op: "open", Path: name, Err: syscall.ELOOP}
+	case !fi.Mode().IsRegular() && !fi.IsDir():
 		return []byte{}, nil
 	}
-	return io.ReadAll(f)
+	return r.r.ReadFile(name)
 }
 
 // ReadDir lists a directory in the order the OS gives; callers sort.
@@ -131,7 +133,7 @@ func (r *Root) ReadDir(name string) ([]fs.DirEntry, error) {
 	if err := r.before(Op{Name: OpReadDir, Path: name}); err != nil {
 		return nil, err
 	}
-	f, _, err := r.openNoFollow(name)
+	f, err := r.r.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -149,26 +151,20 @@ func (r *Root) Mkdir(name string, perm fs.FileMode) error {
 // TempPrefix begins the name of every temp file koan creates.
 const TempPrefix = ".koan-tmp-"
 
-// IsTemp reports whether name is a temp file's or folder's.
+// IsTemp reports whether name is a temp file's.
 func IsTemp(name string) bool { return strings.HasPrefix(name, TempPrefix) }
-
-// TempName is a fresh temp name in dir: hidden, recognizably koan's, and
-// random, so two writes never collide. For a temp that is not created by
-// CreateTemp — a hard link, or a folder renamed aside.
-func TempName(dir string) string {
-	var b [12]byte
-	rand.Read(b[:])
-	return path.Join(dir, TempPrefix+hex.EncodeToString(b[:]))
-}
 
 // CreateTemp creates a new, empty temp file in dir, exclusively, with mode
 // perm before the umask. Its name, .koan-tmp-<random>, is hidden from reads
-// and recognizable to doctor. The returned name includes dir.
+// and recognizable to doctor, and random, so two writes never collide. The
+// returned name includes dir.
 func (r *Root) CreateTemp(dir string, perm fs.FileMode) (f *File, name string, err error) {
 	if err := r.before(Op{Name: OpCreateTemp, Path: dir, Mutating: true}); err != nil {
 		return nil, "", err
 	}
-	name = TempName(dir)
+	var b [12]byte
+	rand.Read(b[:])
+	name = path.Join(dir, TempPrefix+hex.EncodeToString(b[:]))
 	of, err := r.r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
 		return nil, "", err
@@ -198,7 +194,7 @@ func (r *Root) SyncDir(name string) error {
 	if err := r.before(Op{Name: OpSyncDir, Path: name}); err != nil {
 		return err
 	}
-	d, err := r.openDir(name)
+	d, err := r.r.Open(name)
 	if err != nil {
 		return err
 	}
@@ -218,12 +214,12 @@ func (r *Root) RenameNoReplace(oldname, newname string) error {
 	if err := r.before(Op{Name: OpRenameNR, Path: oldname, NewPath: newname, Mutating: true}); err != nil {
 		return err
 	}
-	od, err := r.openDir(path.Dir(oldname))
+	od, err := r.r.Open(path.Dir(oldname))
 	if err != nil {
 		return err
 	}
 	defer od.Close()
-	nd, err := r.openDir(path.Dir(newname))
+	nd, err := r.r.Open(path.Dir(newname))
 	if err != nil {
 		return err
 	}
@@ -281,67 +277,6 @@ func (r *Root) Close() error {
 		err = cerr
 	}
 	return err
-}
-
-// openDir opens the folder name through the root. Like OpenRoot, it hands
-// os.Root name + "/.", which resolves only through a directory: a FIFO or
-// file in its place — put there by an outside change since the caller
-// looked — fails with ENOTDIR at once, where a plain open of a FIFO would
-// block forever, with the write lock held.
-func (r *Root) openDir(name string) (*os.File, error) {
-	return r.r.Open(name + "/.")
-}
-
-// beforeOpen, when set by a test, runs just before openNoFollow's openat, so
-// the test can swap the entry.
-var beforeOpen func(name string)
-
-// openNoFollow opens name for reading without following a symlink in its
-// last component: a symlink there fails with ELOOP. os.Root ignores
-// O_NOFOLLOW — it adds the flag itself and, on ELOOP, follows the symlink
-// when its target stays inside the root — so name's folder is opened through
-// the root and name itself with openat(2) and O_NOFOLLOW, from
-// golang.org/x/sys/unix, which has openat on Linux and macOS alike. The one
-// call decides: there is no window between a check and the open, so a file
-// replaced by a concurrent write's rename is simply read in one version or
-// the other.
-//
-// O_NONBLOCK keeps a FIFO from blocking the open, and openDir one in the
-// folder's place. The returned FileInfo is the opened file's.
-func (r *Root) openNoFollow(name string) (*os.File, fs.FileInfo, error) {
-	d, err := r.openDir(path.Dir(name))
-	if err != nil {
-		return nil, nil, err
-	}
-	defer d.Close()
-	c, err := d.SyscallConn()
-	if err != nil {
-		return nil, nil, err
-	}
-	if beforeOpen != nil {
-		beforeOpen(name)
-	}
-	fd, oerr := -1, error(nil)
-	if err := c.Control(func(dfd uintptr) {
-		for {
-			fd, oerr = unix.Openat(int(dfd), path.Base(name), unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
-			if oerr != unix.EINTR {
-				return
-			}
-		}
-	}); err != nil {
-		return nil, nil, err
-	}
-	if oerr != nil {
-		return nil, nil, &os.PathError{Op: "openat", Path: name, Err: oerr}
-	}
-	f := os.NewFile(uintptr(fd), name)
-	fi, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, nil, err
-	}
-	return f, fi, nil
 }
 
 // File is a temp file being written.
