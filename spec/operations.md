@@ -131,7 +131,7 @@ Their results always carry `total`, the number of tasks before `limit`, and `tru
 | [`show-folder`](#show-folder) | read | Return one folder. |
 | [`update-folder`](#update-folder) | write | Change a folder's title or `extra`. |
 | [`create`](#create) | write | Create a task. |
-| [`create-batch`](#create-batch) | write | Create several tasks that may wait on each other. |
+| [`create-batch`](#create-batch) | write | Create folders, and tasks that may wait on each other, in one write. |
 | [`show`](#show) | read | Return one task. |
 | [`update`](#update) | write | Change a task's title, priority, tags, or `extra`. |
 | [`done`](#done) | write | Mark a task done. |
@@ -306,21 +306,25 @@ Create an open task.
 
 ### create-batch
 
-Create several open tasks in one write, where later ones may wait on earlier ones. Everything is checked before anything is written.
+Create folders, and open tasks in them, in one write, where later tasks may wait on earlier ones: a piece of work laid out whole. Everything is checked before anything is written.
 
-- **Input:** `folder` (default `/`), the folder of every task that names none; and `tasks` (required, 1–1000), each with `create`'s fields but `blocks`, plus:
+- **Input:** `folders` (default `[]`), the folders to make; `folder` (default `/`), the folder of every task that names none; and `tasks` (default `[]`), each with `create`'s fields but `blocks`. The two lists hold 1–1000 entries between them.
+- **A folder entry** has `create-folder`'s fields: `path` (required, a path, not `/`), `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`). No two entries have one path. A task goes into a folder of the batch by naming its path in `folder`, as into any other.
+- **A task entry** has, besides `create`'s fields:
 
 | Field | Holds |
 |---|---|
 | `ref` | A name for this task within the batch, following the tag rule. Unique in the batch. Never stored. |
 | `blocked_by` | A mix of existing tasks' IDs, as integers or as strings with `@` (`"@42"`), and the `ref`s of **earlier** tasks in the batch, as strings without (`"42"` is a ref). |
 
-- Refs may only point backwards, so a batch cannot contain a cycle.
-- Every folder is checked too, before an ID is used: one given by path, that it can be made; one given by ID, that it exists.
-- Task IDs are consecutive, in input order, after the IDs of the folders the batch makes, and every task gets the same `created_at`.
-- The counter is raised once, by the number of folders and tasks the batch makes. Then the folders are made, parents first, and the tasks written in input order, each as `create` writes one.
-- So a failure partway leaves the first tasks of the batch created and the rest not: the error's `ids` lists the created ones, in input order. To finish, drop those tasks from the input, replace each `ref` to one of them with its ID, and run the rest. The IDs set aside for the tasks not created are not reused.
-- **Result:** `ids` (in input order), `refs` (each `ref` and the ID it got), `folders_created`.
+- Refs are global to the batch, and may only point backwards, so a batch cannot contain a cycle.
+- Every folder is checked before an ID is used: each folder entry, that nothing is at its path; each task's folder given by path, that it can be made; one given by ID, that it exists.
+- A folder entry's missing parents, and a task's missing folder, are made as needed, with no title, as by any command.
+- **IDs**: the folders the batch makes take theirs first, in tree order, parents before children, entries and folders made as needed alike; then the tasks, consecutively, in input order. Every task gets the same `created_at`.
+- The counter is raised once, by the number of folders and tasks the batch makes. Then the folders are made, parents first, each whole, an entry with its fields and notes; then the tasks are written in input order, each as `create` writes one.
+- So a failure partway leaves the folders made so far, and the first tasks of the batch, and not the rest: the error's `ids` lists the tasks created, in input order, and `changed_paths` everything made. To finish, drop the folders and tasks made from the input, replace each `ref` to a task made with its ID, and run the rest. The IDs set aside for what was not made are not reused.
+- **Result:** `ids` (the tasks', in input order), `refs` (each `ref` and the ID it got), `folders` (each folder the batch made, by path, and the ID it got), and `folders_created` (their paths, in tree order).
+- **Refuses:** `destination-exists`, when something is at a folder entry's path, listing every such path in `folders` and `paths`: a folder entry means one to make. To put tasks into a folder already there, name it in their `folder`; to set its fields, use `update-folder`. A folder entry that appears while the batch runs, only by an outside change, is refused the same way, after the folders before it are made.
 
 ### show
 

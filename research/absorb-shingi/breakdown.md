@@ -95,10 +95,13 @@ The largest unit; it can be split into 6a and 6b as two branches.
 
 ### 7. Folders in `create-batch`
 
-- Folder entries with `gates`, `title`, `extra`, `notes`, `after`, `before`, and inline tasks; checks before anything is written (duplicate paths, names, lineage, cycles through gates).
-- One counter block for folders and tasks; the result maps folders and refs to their IDs.
-- A failure partway reports the existing task files rewritten, as well as what was created.
-- Settles review open item 4 (refs' scope, top-level tasks naming gates, `@id` in `after`).
+Decided 2026-10-18, without gates; specified in `operations.md#create-batch`.
+
+- `folders`: entries with `create-folder`'s fields (`path`, `title`, `extra`, `notes`). No inline tasks: tasks stay in `tasks` and name a batch folder by path in `folder`. A batch may be folders only; the two lists hold 1–1000 entries between them.
+- A folder entry for a folder already there is refused (`destination-exists`, listing them all); missing parents are made as needed.
+- One counter block: the folders made take IDs first, in tree order, then the tasks. The result adds `folders`, a path → ID map of every folder made.
+- A failure partway: the folders made so far stay, each whole; `changed_paths` lists them. No existing task file is rewritten (that was gates), so nothing more to report.
+- Settles review open item 4: refs are global to the batch; the gate questions (top-level tasks naming gates, `@id` in `after`) went with gates.
 
 ### 8. `forget-folder`
 

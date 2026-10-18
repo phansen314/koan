@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "create-batch-output",
   "type": "object",
-  "required": ["ids", "refs", "folders_created"],
+  "required": ["ids", "refs", "folders", "folders_created"],
   "properties": {
     "ids": {
       "type": "array",
@@ -13,6 +13,12 @@
       "type": "object",
       "additionalProperties": { "$ref": "task-file#/properties/id" },
       "description": "Each ref and the ID it got."
+    },
+    "folders": {
+      "type": "object",
+      "propertyNames": { "$ref": "folder-path" },
+      "additionalProperties": { "$ref": "task-file#/properties/id" },
+      "description": "Each folder the batch made, by path, and the ID it got."
     },
     "folders_created": {
       "type": "array",
