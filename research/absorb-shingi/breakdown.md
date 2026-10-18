@@ -1,6 +1,14 @@
 # Breakdown into units of work
 
-2026-10-17. Units of work for [review.md](review.md)'s decisions, with changes to existing features first and new features last. Each unit is one branch: its spec changes (`spec/`, `schemas/`) first, then the code and tests, merged before the next one starts unless it says otherwise.
+2026-10-17. Units of work for [review.md](review.md)'s decisions, with changes to existing features first and new features last.
+
+## Status and how the work goes (2026-10-18)
+
+- **Where:** the worktree `.claude/worktrees/absorb-shingi` of `/home/phansen/code/koan`, branch `repair-kinds`. Every unit builds on that branch, one after another; nothing is merged to `main` or pushed yet.
+- **Done:** units 1–4, each committed with the fixes its review found. Unit 6 is dropped (gates deferred, below). **Next: unit 5.**
+- **Per unit:** agree the decisions with the user; draft the spec (`spec/`, `schemas/`) and show it; implement with tests (`go vet ./...`, `go test -count=1 ./...`, crash tests included); commit when the user says so; spawn a read-only Opus review session with sesshin (job `review-<unit>`, findings written to a file in the scratchpad); check each finding against the code, fix, commit.
+- **Conventions in the tests:** `w.root("p/3.json")` is `<root>/@p/@3.json` (it adds the `@`); `w.disk(...)` takes names as they are on disk, for material. Folders take IDs from the shared counter, so task IDs in tests account for the folders made first. `w.findings()` lists doctor's findings as `kind paths`; `paths(records)` and `w.record(res)` read folder records.
+- **Decisions are recorded here and in review.md**; where they and design-notes.md disagree, these win.
 
 ## Gates deferred (decided 2026-10-18)
 
@@ -55,10 +63,13 @@ koan's rule is that every change to a file's fields is a new format, with a conv
 
 ### 5. References
 
-- `@id` for a folder anywhere a folder path is taken; `42` or `@42` for a task.
-- Material references: `/path:material` and `@id:material`, never entering a koan folder or leaving the folder with `..`.
-- `koan where`: resolves a reference to its disk path, and a disk path to its stable reference with its hint.
-- Every output that names a folder carries `path` and `dir`.
+Proposed 2026-10-18, **not yet confirmed by the user** (items a–d below are the open choices):
+
+- **`@id` for a folder** in every input that names an existing folder: `show-folder`, `update-folder`, `delete-folder`, `move-folder`'s `folder`, the `folder` scope of `list`, `frontier`, and `claim-next`, and `create`'s and `create-batch`'s `folder` when it exists. (a) A destination that may not exist yet stays a path only: `move-folder`'s `to`, and a folder `create` would make. Resolving `@41` reads the folder files, only when an `@` reference is given; an unknown ID is `not-found`, a task's ID `not-found` saying it is a task.
+- **`@42` for a task** wherever a task ID is taken: `id`, `blocked_by`, `blockers`, `blocks`. In JSON an integer or the string `"@42"`; in create-batch's `blocked_by`, a ref can't clash, since a ref holds no `@`.
+- **Material references:** `/path:docs/plan.md` and `@41:docs/plan.md`. The part after the colon is a disk path: no `..`, no empty segment, and no segment starting with `@`, which would enter what is koan's. (c) The file need not exist, so an agent can ask where to write one.
+- **`koan where`**, both ways. `where <ref>` returns `path`, `dir`, the folder's `id`, and for material `material` and its absolute `file`; (b) for a task's `@42`, its folder and notes path. `where <disk path>` returns a path inside `~/koan-root` as its stable reference and its hint: `@41:docs/plan.md` and `/work/HOME-12345/research:docs/plan.md`. (d) A path outside the tree is `not-found` until worktree markers (unit 9).
+- Dropped from the first plan: "every output that names a folder carries `path` and `dir`". Folder records already do, and unit 4 decided other results keep plain paths.
 
 ### 6. Gates
 
