@@ -45,7 +45,8 @@ const freshInit = "init on a new home"
 
 // setup makes a tree with something for every command to act on: task 1 in
 // the root; 2 and 3 in /proj, 2 waiting on 1 and 3 claimed with notes; and
-// 4, done, in /proj/sub. For repair, 1 is claimed and its task file is gone,
+// 4, done, in /proj/sub. The tasks are made in the root and moved, so that
+// they keep the IDs 1 to 4, and the folders take 5 and 6. For repair, 1 is claimed and its task file is gone,
 // leaving a dangling reference, a claim on a task that is gone, and notes
 // without their task.
 func setup(t *testing.T, name string) string {
@@ -57,14 +58,17 @@ func setup(t *testing.T, name string) string {
 	}
 	home := newHome(t)
 	ok(t, home, "create", "one")
-	ok(t, home, "create", "two", "--folder", "/proj", "--blocked-by", "1")
-	ok(t, home, "create", "three", "--folder", "/proj", "--notes", "notes")
-	ok(t, home, "create", "four", "--folder", "/proj/sub")
+	ok(t, home, "create", "two", "--blocked-by", "1")
+	ok(t, home, "create", "three", "--notes", "notes")
+	ok(t, home, "create", "four")
+	ok(t, home, "move", "2", "--to", "/proj")
+	ok(t, home, "move", "3", "--to", "/proj")
+	ok(t, home, "move", "4", "--to", "/proj/sub")
 	ok(t, home, "done", "4")
 	ok(t, home, "claim", "3")
 	if strings.HasPrefix(name, "repair") {
 		ok(t, home, "claim", "1")
-		os.Remove(filepath.Join(home, "koan-root", "1.json"))
+		os.Remove(filepath.Join(home, "koan-root", "@1.json"))
 	}
 	return home
 }

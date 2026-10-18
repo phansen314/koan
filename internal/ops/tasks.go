@@ -39,7 +39,7 @@ func readNewTask(f fields, defFolder model.Folder) newTask {
 
 func (n newTask) file(id model.ID, now string, blockers []model.ID) *model.TaskFile {
 	return &model.TaskFile{
-		Schema: model.Format, ID: id, Title: n.title, Priority: n.priority,
+		Schema: model.FileFormat, ID: id, Title: n.title, Priority: n.priority,
 		CreatedAt: now, UpdatedAt: now, BlockedBy: blockers, Tags: n.tags, Extra: n.extra,
 	}
 }
@@ -75,16 +75,13 @@ func (c *call) issue(n int) (model.ID, *errs.Error) {
 	return first, c.t.SaveState()
 }
 
-// writeNew writes one new task: its folder, its task file, then its notes.
-// created is true once the task file exists.
-func (c *call) writeNew(n newTask, tf *model.TaskFile) (folders []model.Folder, created bool, e *errs.Error) {
-	if folders, e = c.t.EnsureFolder(n.folder); e != nil {
-		return folders, false, e
-	}
+// writeNew writes one new task, whose folder is there: its task file, then
+// its notes. created is true once the task file exists.
+func (c *call) writeNew(n newTask, tf *model.TaskFile) (created bool, e *errs.Error) {
 	if e = c.t.WriteTask(n.folder, tf, true); e != nil {
-		return folders, false, e
+		return false, e
 	}
-	return folders, true, c.t.WriteNotes(n.folder, tf.ID, n.notes)
+	return true, c.t.WriteNotes(n.folder, tf.ID, n.notes)
 }
 
 type createResult struct {
@@ -102,15 +99,21 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	if e := c.mustExist(n.blockers); e != nil {
 		return nil, e
 	}
-	if _, e := c.t.FolderExists(n.folder); e != nil {
-		return nil, e
-	}
-	id, e := c.issue(1)
+	missing, e := c.plan(n.folder)
 	if e != nil {
 		return nil, e
 	}
+	first, e := c.issue(len(missing) + 1)
+	if e != nil {
+		return nil, e
+	}
+	folders, e := c.makeFolders(missing, first)
+	if e != nil {
+		return nil, e
+	}
+	id := first + model.ID(len(missing))
 	tf := n.file(id, c.now, n.blockers)
-	folders, created, e := c.writeNew(n, tf)
+	created, e := c.writeNew(n, tf)
 	if e != nil {
 		if created {
 			e.WithIDs(id)
@@ -202,24 +205,30 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	if e := c.mustExist(existing); e != nil {
 		return nil, e
 	}
-	for _, n := range tasks {
-		if _, e := c.t.FolderExists(n.folder); e != nil {
-			return nil, e
-		}
+	targets := make([]model.Folder, len(tasks))
+	for i, n := range tasks {
+		targets[i] = n.folder
 	}
-	first, e := c.issue(len(tasks))
+	missing, e := c.plan(targets...)
 	if e != nil {
 		return nil, e
 	}
-	res := batchResult{IDs: []model.ID{}, Refs: map[string]model.ID{}, FoldersCreated: []model.Folder{}}
+	first, e := c.issue(len(missing) + len(tasks))
+	if e != nil {
+		return nil, e
+	}
+	res := batchResult{IDs: []model.ID{}, Refs: map[string]model.ID{}}
+	if res.FoldersCreated, e = c.makeFolders(missing, first); e != nil {
+		return nil, e
+	}
+	base := first + model.ID(len(missing))
 	for i, n := range tasks {
-		id := first + model.ID(i)
+		id := base + model.ID(i)
 		blockers := slices.Clone(n.blockers)
 		for _, ref := range n.refs {
-			blockers = append(blockers, first+model.ID(refAt[ref]))
+			blockers = append(blockers, base+model.ID(refAt[ref]))
 		}
-		folders, created, e := c.writeNew(n, n.file(id, c.now, blockers))
-		res.FoldersCreated = append(res.FoldersCreated, folders...)
+		created, e := c.writeNew(n, n.file(id, c.now, blockers))
 		if created {
 			res.IDs = append(res.IDs, id)
 		}
@@ -471,7 +480,7 @@ func cmdMove(c *call) (any, *errs.Error) {
 	}
 	res := moveResult{FoldersCreated: []model.Folder{}, Changed: from != to}
 	if res.Changed {
-		if res.FoldersCreated, e = c.t.EnsureFolder(to); e != nil {
+		if res.FoldersCreated, e = c.ensure(to); e != nil {
 			return nil, e
 		}
 		exists := errs.NewConflict(errs.RuleDestinationExists, "%s already holds files of task %d", to, id).

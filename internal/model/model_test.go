@@ -25,7 +25,7 @@ func TestFolders(t *testing.T) {
 		}
 	}
 	f := Folder("/proj/travel")
-	if f.Rel() != "proj/travel" || Root.Rel() != "." || f.Parent() != "/proj" || Folder("/proj").Parent() != Root {
+	if f.Rel() != "@proj/@travel" || Root.Rel() != "." || f.Parent() != "/proj" || Folder("/proj").Parent() != Root {
 		t.Error("Rel or Parent")
 	}
 	if !Folder("/proj").Holds(f) || Folder("/pro").Holds(f) || !Root.Holds(f) || !f.Holds(f) || Folder("/proj").Holds("/proj-b") {
@@ -37,12 +37,12 @@ func TestNames(t *testing.T) {
 	if !ValidTag("a-1") || ValidTag("A") || ValidTag("") || ValidTag("a b") {
 		t.Error("ValidTag")
 	}
-	for name, want := range map[string]ID{"42.json": 42, "42.md": 42, "999999999999999.json": 999999999999999} {
+	for name, want := range map[string]ID{"@42.json": 42, "@42.md": 42, "@999999999999999.json": 999999999999999} {
 		if id, _, ok := TaskFilename(name); !ok || id != want {
 			t.Errorf("%s: %d %v", name, id, ok)
 		}
 	}
-	for _, name := range []string{"042.json", "0.json", "42.txt", "42", "a.json", "1000000000000000.json", "42.json.bak"} {
+	for _, name := range []string{"42.json", "@042.json", "@0.json", "@42.txt", "@42", "@a.json", "@1000000000000000.json", "@42.json.bak"} {
 		if _, _, ok := TaskFilename(name); ok {
 			t.Errorf("%s accepted", name)
 		}

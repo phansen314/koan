@@ -21,7 +21,8 @@ import (
 func TestTreeOrderPutsChildrenBeforeLaterSiblings(t *testing.T) {
 	w := ready(t)
 	w.ok("create-batch", `{"tasks":[{"title":"a","folder":"/proj-b"},{"title":"b","folder":"/proj/travel"},{"title":"c","folder":"/proj"},{"title":"d","folder":"/Zed"}]}`)
-	wantIDs(t, "list", w.ok("list", `{}`)["tasks"], 4, 3, 2, 1)
+	// The four folders take 1 to 4; the tasks, in input order, 5 to 8.
+	wantIDs(t, "list", w.ok("list", `{}`)["tasks"], 8, 7, 6, 5)
 	folders, _ := json.Marshal(w.ok("list", `{"include_folders":true}`)["folders"])
 	if string(folders) != `["/","/Zed","/proj","/proj/travel","/proj-b"]` {
 		t.Errorf("folders %s", folders)
@@ -218,19 +219,19 @@ func TestFilesInOtherShapes(t *testing.T) {
 	w.fail("show", `{"id":1} {"id":1}`, errs.InvalidInput, "")
 
 	// A koan.json from a newer koan is that, whatever else it holds.
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 2, "name": "x"}`), 0o644)
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3, "name": "x"}`), 0o644)
 	w.fail("show", `{"id":1}`, errs.UnsupportedFormat, "")
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 1, "name": "x"}`), 0o644)
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 2, "name": "x"}`), 0o644)
 	w.fail("show", `{"id":1}`, errs.Corrupt, "")
 }
 
 func TestRepairReportsOnlyWhatItRepaired(t *testing.T) {
 	w := ready(t)
-	w.ok("create", `{"title":"a","folder":"/home"}`)
-	os.Remove(w.root("home/1.md"))
+	w.ok("create", `{"title":"a","folder":"/home"}`) // task 2, in /home, 1
+	os.Remove(w.root("home/2.md"))
 	for _, dir := range []string{"x", "y"} {
-		os.Mkdir(w.root(dir), 0o755)
-		os.WriteFile(w.root(dir, "1.md"), []byte(dir), 0o644)
+		w.ok("create-folder", `{"folder":"/`+dir+`"}`)
+		os.WriteFile(w.root(dir, "2.md"), []byte(dir), 0o644)
 	}
 	got := w.ok("repair", `{}`)
 	if len(got["repaired"].([]any)) != 1 || len(got["findings"].([]any)) != 1 {
@@ -314,11 +315,12 @@ func TestBlockReportsEveryProblem(t *testing.T) {
 func TestDeleteFolderRemovesTheFolderFirst(t *testing.T) {
 	w := ready(t)
 	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/gone"},{"title":"b","blocked_by":["a"]}]}`)
-	// The rewrite of task 2 starts with a temp file; fail it.
+	// /gone is 1, a 2, b 3. The rewrite of task 3 starts with a temp
+	// file; fail it.
 	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 1, syscall.ENOSPC)}
 	w.fail("delete-folder", `{"folder":"/gone","recursive":true}`, errs.IO, "")
 	w.env.FS = fsys.OS{}
-	if tk := task(w.ok("show", `{"id":2}`)); tk["readiness"] != "blocked" {
+	if tk := task(w.ok("show", `{"id":3}`)); tk["readiness"] != "blocked" {
 		t.Errorf("the dependent was freed though delete-folder failed: %v", tk)
 	}
 	fs := w.ok("doctor", `{}`)["findings"].([]any)
@@ -332,9 +334,9 @@ func TestSuccessLeavesTheTreeHealthy(t *testing.T) {
 	w := ready(t)
 	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/p/q","notes":"n"},{"title":"b","folder":"/p","blocked_by":["a"]},{"title":"c"}]}`)
 	for _, step := range [][2]string{
-		{"claim", `{"id":1}`}, {"update", `{"id":2,"tags_add":["x"]}`}, {"move", `{"id":1,"to":"/r"}`},
-		{"move-folder", `{"folder":"/p","to":"/s/p"}`}, {"done", `{"id":1}`}, {"reopen", `{"id":1}`},
-		{"claim-next", `{}`}, {"delete", `{"id":3}`}, {"delete-folder", `{"folder":"/s","recursive":true}`},
+		{"claim", `{"id":3}`}, {"update", `{"id":4,"tags_add":["x"]}`}, {"move", `{"id":3,"to":"/r"}`},
+		{"move-folder", `{"folder":"/p","to":"/s/p"}`}, {"done", `{"id":3}`}, {"reopen", `{"id":3}`},
+		{"claim-next", `{}`}, {"delete", `{"id":5}`}, {"delete-folder", `{"folder":"/s","recursive":true}`},
 		{"delete-folder", `{"folder":"/r","recursive":true}`},
 	} {
 		w.ok(step[0], step[1])
@@ -438,5 +440,126 @@ func TestDeleteLeavesWhatIsNotNotes(t *testing.T) {
 	w.ok("delete", `{"id":1}`)
 	if fi, err := os.Stat(w.root("1.md")); err != nil || !fi.IsDir() {
 		t.Errorf("delete removed a directory named like the notes: %v", err)
+	}
+}
+
+// findings lists doctor's findings as "kind paths", the paths relative to
+// the root.
+func (w *world) findings() []string {
+	var fs []string
+	for _, f := range w.ok("doctor", `{}`)["findings"].([]any) {
+		f := f.(map[string]any)
+		var paths []string
+		for _, p := range f["paths"].([]any) {
+			paths = append(paths, strings.TrimPrefix(p.(string), w.disk()+"/"))
+		}
+		fs = append(fs, f["kind"].(string)+" "+strings.Join(paths, ","))
+	}
+	return fs
+}
+
+// Only what is named with @ is koan's: everything else is material, never
+// walked into, whatever its name, @ folders inside it included.
+func TestMaterialIsNeverRead(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/p"}`) // /p is 1, the task 2
+	for _, dir := range []string{"@p/docs/@inner", "docs", "@p/node_modules/@types"} {
+		os.MkdirAll(w.disk(dir), 0o755)
+	}
+	for _, f := range []string{"@p/docs/@3.json", "@p/docs/@inner/@folder.json", "@p/2026.md", "@p/7.json", "notes.md", ".hidden"} {
+		os.WriteFile(w.disk(f), []byte("material"), 0o644)
+	}
+	if fs := w.findings(); len(fs) != 0 {
+		t.Errorf("doctor found %v in material", fs)
+	}
+	got := w.ok("list", `{"include_folders":true}`)
+	if folders, _ := json.Marshal(got["folders"]); string(folders) != `["/","/p"]` {
+		t.Errorf("folders %s", folders)
+	}
+	wantIDs(t, "tasks", got["tasks"], 2)
+	// A non-recursive delete-folder refuses visible material, and notes.
+	w.fail("delete-folder", `{"folder":"/p"}`, errs.Conflict, errs.RuleNotEmpty)
+	w.ok("create-folder", `{"folder":"/q"}`)
+	os.WriteFile(w.root("q/folder.md"), []byte("notes"), 0o644)
+	w.fail("delete-folder", `{"folder":"/q"}`, errs.Conflict, errs.RuleNotEmpty)
+	os.WriteFile(w.root("q/folder.md"), nil, 0o644)
+	os.WriteFile(w.disk("@q/.gitignore"), nil, 0o644)
+	w.ok("delete-folder", `{"folder":"/q"}`)
+}
+
+// An entry named with @ that is none of koan's is reported, and skipped.
+func TestStrayAtNamesAreSkipped(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p"}`)
+	os.WriteFile(w.disk("@p/@notes.txt"), nil, 0o644)
+	os.WriteFile(w.disk("@folder.json"), nil, 0o644) // the root has no folder file
+	os.Mkdir(w.disk("@p/@5.json"), 0o755)
+	os.Symlink("nowhere", w.disk("@p/@link"))
+	want := []string{"skipped-entry @folder.json", "skipped-entry @p/@5.json", "skipped-entry @p/@link", "skipped-entry @p/@notes.txt"}
+	if fs := w.findings(); !slices.Equal(fs, want) {
+		t.Errorf("findings %v, want %v", fs, want)
+	}
+}
+
+// A folder made by hand, without a folder file, is still a folder; repair
+// gives it a new ID, above every ID in the tree.
+func TestRepairGivesAFolderItsFile(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`)
+	os.Mkdir(w.root("hand"), 0o755)
+	data, _ := os.ReadFile(w.root("1.json"))
+	os.WriteFile(w.root("hand/9.json"), []byte(strings.Replace(string(data), `"id": 1`, `"id": 9`, 1)), 0o644)
+	if fs := w.findings(); !slices.Equal(fs, []string{"id-above-counter @hand/@9.json", "missing-folder-file @hand"}) {
+		t.Errorf("findings %v", fs)
+	}
+	wantIDs(t, "tasks", w.ok("list", `{}`)["tasks"], 1, 9)
+	got := w.ok("repair", `{"kinds":["missing-folder-file"]}`)
+	if len(got["repaired"].([]any)) != 1 {
+		t.Errorf("repaired %v", got["repaired"])
+	}
+	if data, _ := os.ReadFile(w.root("hand/folder.json")); !strings.Contains(string(data), `"id": 10`) {
+		t.Errorf("folder file %s, want ID 10", data)
+	}
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(10) {
+		t.Errorf("last_id %v, want 10", n)
+	}
+}
+
+// Folders and tasks share one counter, so an ID in two of their files is a
+// duplicate; a folder file koan can't use is reported, and init passes it.
+func TestFolderFilesAndIDs(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/p"}`) // /p is 1, the task 2
+	w.ok("create-folder", `{"folder":"/q"}`)      // 3
+	w.ok("create-folder", `{"folder":"/r"}`)      // 4
+	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":1,"id":2,"title":null,"start":null,"done":null,"extra":{}}`), 0o644)
+	os.WriteFile(w.root("r/folder.json"), []byte(`{"schema":1,"id":4}`), 0o644)
+	want := []string{"duplicate-id @p/@2.json,@q/@folder.json", "unusable-file @r/@folder.json"}
+	if fs := w.findings(); !slices.Equal(fs, want) {
+		t.Errorf("findings %v, want %v", fs, want)
+	}
+	os.Remove(w.env.StatePath())
+	w.ok("init", `{}`)
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(2) {
+		t.Errorf("last_id %v, want 2: /r's file can't be read", n)
+	}
+}
+
+// A tree from before the @ names has no @koan.json: koan finds it not set
+// up, and init adopts it with everything in it as material.
+func TestATreeInFormatOneIsMaterial(t *testing.T) {
+	w := newWorld(t)
+	os.MkdirAll(w.disk("proj"), 0o755)
+	os.WriteFile(w.disk("koan.json"), []byte(`{"schema": 1}`), 0o644)
+	os.WriteFile(w.disk("proj", "1.json"), []byte("{}"), 0o644)
+	if got := w.ok("info", `{}`); got["state"] != "not-initialized" {
+		t.Errorf("info: %v", got)
+	}
+	w.ok("init", `{}`)
+	if fs := w.findings(); len(fs) != 0 {
+		t.Errorf("findings %v", fs)
+	}
+	if got := w.ok("list", `{}`); got["total"] != float64(0) {
+		t.Errorf("list: %v", got)
 	}
 }

@@ -105,13 +105,14 @@ func TestCommandLine(t *testing.T) {
 	res := ok(t, home, "create", "Book flights", "--folder", "/proj/travel", "--priority", "2",
 		"--tags", "travel,urgent", "--extra", `{"status":"waiting"}`, "--notes", "hi")
 	task := res["task"].(map[string]any)
-	if task["id"] != float64(1) || task["folder"] != "/proj/travel" || task["priority"] != float64(2) {
+	// /proj and /proj/travel took 1 and 2.
+	if task["id"] != float64(3) || task["folder"] != "/proj/travel" || task["priority"] != float64(2) {
 		t.Errorf("create: %v", task)
 	}
-	ok(t, home, "create", "--blocked-by", "1", "--", "-starts with a dash")
-	ok(t, home, "update", "2", "--priority", "null", "--tags-add", "a", "--tags-add", "b,c", "--extra-merge", `{"k":"v"}`, "--extra-remove", "x,y")
-	ok(t, home, "block", "2", "--blockers", "1")
-	ok(t, home, "move", "2", "--to", "/archive")
+	ok(t, home, "create", "--blocked-by", "3", "--", "-starts with a dash")
+	ok(t, home, "update", "4", "--priority", "null", "--tags-add", "a", "--tags-add", "b,c", "--extra-merge", `{"k":"v"}`, "--extra-remove", "x,y")
+	ok(t, home, "block", "4", "--blockers", "3")
+	ok(t, home, "move", "4", "--to", "/archive")
 	if got := ok(t, home, "list", "--fields", "id,title", "--readiness", "ready,blocked,done"); got["total"] != float64(2) {
 		t.Errorf("list: %v", got)
 	}
@@ -122,8 +123,8 @@ func TestCommandLine(t *testing.T) {
 	if got := ok(t, home, "list", "--claimed"); got["total"] != float64(1) {
 		t.Errorf("list --claimed: %v", got)
 	}
-	ok(t, home, "release", "1")
-	ok(t, home, "done", "1")
+	ok(t, home, "release", "3")
+	ok(t, home, "done", "3")
 	ok(t, home, "delete-folder", "/proj", "--recursive")
 	if got := ok(t, home, "doctor"); got["healthy"] != true {
 		t.Errorf("doctor after a run of ordinary commands: %v", got)
@@ -186,7 +187,7 @@ func TestExitCodesAndStderr(t *testing.T) {
 	}
 	// A success with warnings says so on stderr.
 	ok(t, home, "create", "a")
-	os.WriteFile(filepath.Join(home, "koan-root", "7.json"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(home, "koan-root", "@7.json"), []byte("x"), 0o644)
 	if r := koan(t, home, "", nil, "list"); r.exit != 0 || r.stderr != "koan: 1 warning\n" {
 		t.Errorf("warnings: exit %d, stderr %q", r.exit, r.stderr)
 	}

@@ -26,8 +26,10 @@ const DefaultLockWait = 5 * time.Second
 
 // Names and modes of what koan creates.
 const (
-	MetaName  = "koan.json"
-	StateName = "state.json"
+	MetaName        = "@koan.json"
+	FolderFileName  = "@folder.json"
+	FolderNotesName = "@folder.md"
+	StateName       = "state.json"
 
 	FolderMode = 0o755
 	FileMode   = 0o644
@@ -312,12 +314,18 @@ func (t *Tree) Abs(rel string) string { return path.Join(t.env.RootPath(), rel) 
 
 // TaskRel and NotesRel are the root-relative paths of a task's two files.
 func TaskRel(f model.Folder, id model.ID) string {
-	return path.Join(f.Rel(), model.ClaimKey(id)+model.TaskSuffix)
+	return path.Join(f.Rel(), model.Mark+model.ClaimKey(id)+model.TaskSuffix)
 }
 
 func NotesRel(f model.Folder, id model.ID) string {
-	return path.Join(f.Rel(), model.ClaimKey(id)+model.NotesSuffix)
+	return path.Join(f.Rel(), model.Mark+model.ClaimKey(id)+model.NotesSuffix)
 }
+
+// FolderFileRel and FolderNotesRel are the root-relative paths of a
+// folder's two files.
+func FolderFileRel(f model.Folder) string { return path.Join(f.Rel(), FolderFileName) }
+
+func FolderNotesRel(f model.Folder) string { return path.Join(f.Rel(), FolderNotesName) }
 
 // Claim is the task's claim, nil when it has none.
 func (t *Tree) Claim(id model.ID) *model.Claim {

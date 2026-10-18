@@ -263,6 +263,52 @@ func (c *call) folderOrNotFound(f model.Folder) *errs.Error {
 	return nil
 }
 
+// plan lists the folders missing on the paths to the folders fs, each
+// once, in tree order: the order they are made in, and take IDs in.
+func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
+	var missing []model.Folder
+	for _, f := range fs {
+		m, e := c.t.Missing(f)
+		if e != nil {
+			return nil, e
+		}
+		for _, g := range m {
+			if !slices.Contains(missing, g) {
+				missing = append(missing, g)
+			}
+		}
+	}
+	slices.SortFunc(missing, model.TreeOrder)
+	return missing, nil
+}
+
+// makeFolders makes the planned folders, parents first, the first taking
+// the ID first and each the next. It returns the folders it made.
+func (c *call) makeFolders(missing []model.Folder, first model.ID) ([]model.Folder, *errs.Error) {
+	made := []model.Folder{}
+	for i, f := range missing {
+		if e := c.t.MakeFolder(f, first+model.ID(i)); e != nil {
+			return made, e
+		}
+		made = append(made, f)
+	}
+	return made, nil
+}
+
+// ensure makes folder f and any missing folders above it, each with an ID
+// of its own, and returns the folders it made.
+func (c *call) ensure(f model.Folder) ([]model.Folder, *errs.Error) {
+	missing, e := c.plan(f)
+	if e != nil || len(missing) == 0 {
+		return []model.Folder{}, e
+	}
+	first, e := c.issue(len(missing))
+	if e != nil {
+		return []model.Folder{}, e
+	}
+	return c.makeFolders(missing, first)
+}
+
 // dropClaim ends a task's claim, if it has one, and saves the state file.
 func (c *call) dropClaims(ids ...model.ID) *errs.Error {
 	dropped := false

@@ -6,6 +6,7 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 type folderResult struct {
@@ -19,7 +20,7 @@ func cmdCreateFolder(c *call) (any, *errs.Error) {
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
-	created, e := c.t.EnsureFolder(f)
+	created, e := c.ensure(f)
 	if e != nil {
 		return nil, e
 	}
@@ -57,7 +58,7 @@ func cmdMoveFolder(c *call) (any, *errs.Error) {
 	if _, err := c.t.Stat(to.Rel()); err == nil {
 		return nil, exists()
 	}
-	created, e := c.t.EnsureFolder(to.Parent())
+	created, e := c.ensure(to.Parent())
 	res.FoldersCreated = created
 	if e != nil {
 		return nil, e
@@ -97,7 +98,13 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 			return nil, e
 		}
 		for _, entry := range entries {
-			if !strings.HasPrefix(entry.Name(), ".") {
+			name := entry.Name()
+			own := name == store.FolderFileName
+			if name == store.FolderNotesName {
+				fi, err := c.t.Stat(store.FolderNotesRel(f))
+				own = err == nil && fi.Mode().IsRegular() && fi.Size() == 0
+			}
+			if !own && !strings.HasPrefix(name, ".") {
 				return nil, errs.NewConflict(errs.RuleNotEmpty, "%s is not empty: pass recursive to remove everything in it", f).
 					WithFolders(string(f))
 			}

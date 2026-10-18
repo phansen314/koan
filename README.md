@@ -132,9 +132,9 @@ koan repair --kinds dangling-reference,stale-claim   # remove blockers and claim
 
 ```sh
 cd ~/koan-root
-git log --diff-filter=D --oneline -- '*/42.json' '42.json'     # the commit that removed task 42, if committed
-git restore -- proj/42.json proj/42.md                          # not yet committed: from the last commit
-git restore --source=<commit>^ -- proj/42.json proj/42.md       # committed: from the commit before
+git log --diff-filter=D --oneline -- '*/@42.json' '@42.json'     # the commit that removed task 42, if committed
+git restore -- @proj/@42.json @proj/@42.md                        # not yet committed: from the last commit
+git restore --source=<commit>^ -- @proj/@42.json @proj/@42.md     # committed: from the commit before
 ```
 
 Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Every file in the tree is safe to commit and restore, with no `.gitignore` needed, because the ID counter is kept outside it. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `block` again after restoring. Then run `koan doctor`: a restored task may name blockers deleted since.

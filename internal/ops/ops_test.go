@@ -38,7 +38,23 @@ func ready(t *testing.T) *world {
 	return w
 }
 
+// root is the path on disk of an entry of koan's, named as koan names it
+// before the @: root("p/3.json") is <root>/@p/@3.json. A hidden name keeps
+// its own. disk takes names as they are on disk, for material.
 func (w *world) root(rel ...string) string {
+	var segs []string
+	for _, r := range rel {
+		for _, s := range strings.Split(r, "/") {
+			if !strings.HasPrefix(s, ".") {
+				s = "@" + s
+			}
+			segs = append(segs, s)
+		}
+	}
+	return w.disk(segs...)
+}
+
+func (w *world) disk(rel ...string) string {
 	return filepath.Join(append([]string{w.env.RootPath()}, rel...)...)
 }
 
@@ -165,8 +181,9 @@ func TestInitAdoptsTree(t *testing.T) {
 	if c := w.ok("init", `{}`)["created"].([]any); len(c) != 1 || c[0] != "state" {
 		t.Errorf("created %v, want state", c)
 	}
-	if id := task(w.ok("create", `{"title":"c"}`))["id"]; id != float64(3) {
-		t.Errorf("next ID %v, want 3", id)
+	// /proj took 1, its tasks 2 and 3: the folder's ID counts too.
+	if id := task(w.ok("create", `{"title":"c"}`))["id"]; id != float64(4) {
+		t.Errorf("next ID %v, want 4", id)
 	}
 }
 
@@ -189,7 +206,7 @@ func TestCreateAndShow(t *testing.T) {
 	w := ready(t)
 	got := w.ok("create", `{"title":"  Book flights ","folder":"/proj/travel","priority":2,"tags":["urgent","travel"],"extra":{"n":1.50,"big":12345678901234567890},"notes":"hello"}`)
 	tk := task(got)
-	if tk["title"] != "Book flights" || tk["id"] != float64(1) || tk["folder"] != "/proj/travel" || tk["readiness"] != "ready" {
+	if tk["title"] != "Book flights" || tk["id"] != float64(3) || tk["folder"] != "/proj/travel" || tk["readiness"] != "ready" {
 		t.Errorf("task: %v", tk)
 	}
 	if fc := got["folders_created"].([]any); len(fc) != 2 || fc[0] != "/proj" {
@@ -198,15 +215,30 @@ func TestCreateAndShow(t *testing.T) {
 	if notes, _ := os.ReadFile(tk["notes_path"].(string)); string(notes) != "hello" {
 		t.Errorf("notes %q", notes)
 	}
+	// The folders made took IDs first, parents first, and were made whole.
+	for f, id := range map[string]int{"proj": 1, "proj/travel": 2} {
+		data, err := os.ReadFile(w.root(f, "folder.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		schematest.Must(t, "folder-file", json.RawMessage(data))
+		var ff struct{ ID int }
+		if json.Unmarshal(data, &ff); ff.ID != id {
+			t.Errorf("%s has ID %d, want %d", f, ff.ID, id)
+		}
+		if n, err := os.ReadFile(w.root(f, "folder.md")); err != nil || len(n) != 0 {
+			t.Errorf("%s notes %q %v", f, n, err)
+		}
+	}
 	// Numbers in extra keep their exact text, and sets are sorted.
-	file, _ := os.ReadFile(w.root("proj/travel/1.json"))
+	file, _ := os.ReadFile(w.root("proj/travel/3.json"))
 	for _, want := range []string{`"n": 1.50`, `"big": 12345678901234567890`, "\"travel\",\n    \"urgent\""} {
 		if !strings.Contains(string(file), want) {
 			t.Errorf("task file lacks %s:\n%s", want, file)
 		}
 	}
 	schematest.Must(t, "task-file", json.RawMessage(file))
-	if got := task(w.ok("show", `{"id":1}`)); got["title"] != "Book flights" {
+	if got := task(w.ok("show", `{"id":3}`)); got["title"] != "Book flights" {
 		t.Errorf("show: %v", got)
 	}
 	w.fail("show", `{"id":9}`, errs.NotFound, "")
@@ -216,7 +248,7 @@ func TestCreateAndShow(t *testing.T) {
 		t.Errorf("want every problem reported, got %v", e.Problems)
 	}
 	w.fail("create", `{"title":"x","blocked_by":[7,8]}`, errs.NotFound, "")
-	if n := task(w.ok("create", `{"title":"next"}`))["id"]; n != float64(2) {
+	if n := task(w.ok("create", `{"title":"next"}`))["id"]; n != float64(4) {
 		t.Errorf("a refused create used an ID: next is %v", n)
 	}
 }
@@ -301,18 +333,18 @@ func TestFoldersAndMove(t *testing.T) {
 	}
 	w.ok("create", `{"title":"t","folder":"/a/b","notes":"n"}`)
 
-	got := w.ok("move", `{"id":1,"to":"/c/d"}`)
+	got := w.ok("move", `{"id":3,"to":"/c/d"}`)
 	if task(got)["folder"] != "/c/d" || got["changed"] != true || len(got["folders_created"].([]any)) != 2 {
 		t.Errorf("move: %v", got)
 	}
-	if n, _ := os.ReadFile(w.root("c/d/1.md")); string(n) != "n" {
+	if n, _ := os.ReadFile(w.root("c/d/3.md")); string(n) != "n" {
 		t.Errorf("notes did not move: %q", n)
 	}
-	if got := w.ok("move", `{"id":1,"to":"/c/d"}`); got["changed"] != false {
+	if got := w.ok("move", `{"id":3,"to":"/c/d"}`); got["changed"] != false {
 		t.Error("move to the same folder changed something")
 	}
-	os.WriteFile(w.root("a/1.md"), []byte("someone's"), 0o644)
-	w.fail("move", `{"id":1,"to":"/a"}`, errs.Conflict, errs.RuleDestinationExists)
+	os.WriteFile(w.root("a/3.md"), []byte("someone's"), 0o644)
+	w.fail("move", `{"id":3,"to":"/a"}`, errs.Conflict, errs.RuleDestinationExists)
 
 	w.fail("move-folder", `{"folder":"/c","to":"/c/x"}`, errs.InvalidInput, "")
 	w.fail("move-folder", `{"folder":"/nope","to":"/x"}`, errs.NotFound, "")
@@ -320,17 +352,23 @@ func TestFoldersAndMove(t *testing.T) {
 	if got := w.ok("move-folder", `{"folder":"/c","to":"/z/y"}`); got["folder"] != "/z/y" || got["changed"] != true {
 		t.Errorf("move-folder: %v", got)
 	}
-	if tk := task(w.ok("show", `{"id":1}`)); tk["folder"] != "/z/y/d" {
+	if tk := task(w.ok("show", `{"id":3}`)); tk["folder"] != "/z/y/d" {
 		t.Errorf("task after move-folder: %v", tk["folder"])
+	}
+	// The moved folder keeps its ID; the one made for it, /z, took the next.
+	for f, want := range map[string]string{"z/y": `"id": 4`, "z": `"id": 6`} {
+		if data, _ := os.ReadFile(w.root(f, "folder.json")); !strings.Contains(string(data), want) {
+			t.Errorf("%s: %s, want %s", f, data, want)
+		}
 	}
 
 	w.fail("delete-folder", `{"folder":"/z"}`, errs.Conflict, errs.RuleNotEmpty)
 	w.fail("delete-folder", `{"folder":"/"}`, errs.InvalidInput, "")
-	w.ok("create", `{"title":"outside","blocked_by":[1]}`)
-	w.ok("claim", `{"id":1}`)
+	w.ok("create", `{"title":"outside","blocked_by":[3]}`)
+	w.ok("claim", `{"id":3}`)
 	got = w.ok("delete-folder", `{"folder":"/z","recursive":true}`)
-	wantIDs(t, "deleted", got["deleted"], 1)
-	wantIDs(t, "dependents", got["dependents"], 2)
+	wantIDs(t, "deleted", got["deleted"], 3)
+	wantIDs(t, "dependents", got["dependents"], 7)
 	if n := w.ok("info", `{}`)["claims"]; n != float64(0) {
 		t.Errorf("claims after delete-folder: %v", n)
 	}
@@ -346,20 +384,21 @@ func TestListAndFrontier(t *testing.T) {
 		{"title":"none","folder":"/Zed"},
 		{"title":"blocked","blocked_by":["low"]},
 		{"title":"done","folder":"/proj"}]}`)
-	w.ok("done", `{"id":5}`)
+	// /Zed, /proj, and /proj/sub take 1 to 3, in tree order; the tasks 4 to 8.
+	w.ok("done", `{"id":8}`)
 
-	wantIDs(t, "frontier is in work order", w.ok("frontier", `{}`)["tasks"], 2, 1, 3)
-	wantIDs(t, "list is in tree order", w.ok("list", `{}`)["tasks"], 4, 3, 1, 2)
-	wantIDs(t, "list done", w.ok("list", `{"readiness":["done"]}`)["tasks"], 5)
-	wantIDs(t, "scope", w.ok("list", `{"folder":"/proj","recursive":false}`)["tasks"], 1)
-	wantIDs(t, "tags_all", w.ok("frontier", `{"tags_all":["x","y"]}`)["tasks"], 2)
-	wantIDs(t, "tags_any", w.ok("frontier", `{"tags_any":["y","q"]}`)["tasks"], 2)
+	wantIDs(t, "frontier is in work order", w.ok("frontier", `{}`)["tasks"], 5, 4, 6)
+	wantIDs(t, "list is in tree order", w.ok("list", `{}`)["tasks"], 7, 6, 4, 5)
+	wantIDs(t, "list done", w.ok("list", `{"readiness":["done"]}`)["tasks"], 8)
+	wantIDs(t, "scope", w.ok("list", `{"folder":"/proj","recursive":false}`)["tasks"], 4)
+	wantIDs(t, "tags_all", w.ok("frontier", `{"tags_all":["x","y"]}`)["tasks"], 5)
+	wantIDs(t, "tags_any", w.ok("frontier", `{"tags_any":["y","q"]}`)["tasks"], 5)
 
 	got := w.ok("frontier", `{"limit":1,"fields":["title","readiness"]}`)
 	if got["total"] != float64(3) || got["truncated"] != true {
 		t.Errorf("limit: %v", got)
 	}
-	if one, _ := json.Marshal(got["tasks"]); string(one) != `[{"id":2,"readiness":"ready","title":"high"}]` {
+	if one, _ := json.Marshal(got["tasks"]); string(one) != `[{"id":5,"readiness":"ready","title":"high"}]` {
 		t.Errorf("fields: %s", one)
 	}
 	folders, _ := json.Marshal(w.ok("list", `{"include_folders":true}`)["folders"])
@@ -454,7 +493,8 @@ func TestDoctorAndRepair(t *testing.T) {
 	if got := w.ok("doctor", `{}`); got["healthy"] != true {
 		t.Fatalf("a new tree is not healthy: %v", got)
 	}
-	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]},{"title":"c","folder":"/p","notes":"keep"},{"title":"d"}]}`)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]},{"title":"c","notes":"keep"},{"title":"d"}]}`)
+	w.ok("move", `{"id":3,"to":"/p"}`) // /p takes ID 5, after the tasks
 	w.ok("claim", `{"id":1}`)
 
 	os.Remove(w.root("1.json"))                       // dangling reference in 2, stale claim, orphan notes (empty)
@@ -463,7 +503,7 @@ func TestDoctorAndRepair(t *testing.T) {
 	data, _ := os.ReadFile(w.root("4.json"))          // id above counter
 	os.WriteFile(w.root("9.json"), []byte(strings.Replace(string(data), `"id": 4`, `"id": 9`, 1)), 0o644)
 	os.WriteFile(w.root("p/4.json"), data, 0o644)          // duplicate
-	os.WriteFile(w.root("p/5.json"), []byte("{}"), 0o644)  // unusable (and above the counter)
+	os.WriteFile(w.root("p/6.json"), []byte("{}"), 0o644)  // unusable (and above the counter)
 	os.Symlink("nowhere", w.root("link"))                  // skipped entry
 	os.WriteFile(w.root("p/7.md"), []byte("stray"), 0o644) // orphan with content and no task
 
@@ -551,10 +591,17 @@ func TestDoctorFindsCycles(t *testing.T) {
 func TestFormats(t *testing.T) {
 	w := ready(t)
 	w.ok("create", `{"title":"a"}`)
-	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(1) {
+	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(2) {
 		t.Errorf("migrate on a current tree: %v", got)
 	}
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 2}`), 0o644)
+
+	// Format 1 has no conversion: migrate and doctor refuse it.
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 1}`), 0o644)
+	w.fail("show", `{"id":1}`, errs.MigrationPending, "")
+	w.fail("migrate", `{}`, errs.Conflict, errs.RuleNoConversion)
+	w.fail("doctor", `{}`, errs.Conflict, errs.RuleNoConversion)
+
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3}`), 0o644)
 	w.fail("show", `{"id":1}`, errs.UnsupportedFormat, "")
 	w.fail("migrate", `{}`, errs.UnsupportedFormat, "")
 	w.fail("doctor", `{}`, errs.UnsupportedFormat, "")

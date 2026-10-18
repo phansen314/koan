@@ -50,6 +50,67 @@ type State struct {
 // ClaimKey is the key of a task's claim in State.Claims.
 func ClaimKey(id ID) string { return strconv.FormatInt(id, 10) }
 
+// FolderFile is a folder file's content. Field order is the order koan
+// writes.
+type FolderFile struct {
+	Schema int64          `json:"schema"`
+	ID     ID             `json:"id"`
+	Title  *string        `json:"title"`
+	Start  *ID            `json:"start"`
+	Done   *ID            `json:"done"`
+	Extra  map[string]any `json:"extra"`
+}
+
+// NewFolderFile is the folder file of a new folder.
+func NewFolderFile(id ID) *FolderFile {
+	return &FolderFile{Schema: FileFormat, ID: id, Extra: map[string]any{}}
+}
+
+var folderKeys = []string{"schema", "id", "title", "start", "done", "extra"}
+
+// DecodeFolderFile reads a folder file in this binary's format and checks
+// every rule. A nil error and no problems means the file is usable.
+func DecodeFolderFile(data []byte) (*FolderFile, []Problem, error) {
+	m, err := Keys(data)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ps := missing(m, folderKeys, "title", "start", "done"); ps != nil {
+		return nil, ps, nil
+	}
+	var f FolderFile
+	if err := Decode(data, &f); err != nil {
+		return nil, []Problem{prob("", err.Error())}, nil
+	}
+	return &f, f.Check(), nil
+}
+
+// Check lists the rules the folder file breaks.
+func (f *FolderFile) Check() []Problem {
+	var ps []Problem
+	bad := func(field, reason string) { ps = append(ps, prob(field, reason)) }
+	if f.Schema != FileFormat {
+		bad("/schema", fmt.Sprintf("is not %d", FileFormat))
+	}
+	if !ValidID(f.ID) {
+		bad("/id", "is not an ID")
+	}
+	if f.Title != nil {
+		if title, reason := CleanTitle(*f.Title); reason != "" {
+			bad("/title", reason)
+		} else if title != *f.Title {
+			bad("/title", "has leading or trailing whitespace")
+		}
+	}
+	if f.Start != nil && !ValidID(*f.Start) {
+		bad("/start", "is not a task ID")
+	}
+	if f.Done != nil && !ValidID(*f.Done) {
+		bad("/done", "is not a task ID")
+	}
+	return ps
+}
+
 // Meta is koan.json's content.
 type Meta struct {
 	Schema int64 `json:"schema"`
@@ -175,8 +236,8 @@ func DecodeTaskFile(data []byte) (*TaskFile, []Problem, error) {
 func (t *TaskFile) Check() []Problem {
 	var ps []Problem
 	bad := func(field, reason string) { ps = append(ps, prob(field, reason)) }
-	if t.Schema != Format {
-		bad("/schema", fmt.Sprintf("is not %d", Format))
+	if t.Schema != FileFormat {
+		bad("/schema", fmt.Sprintf("is not %d", FileFormat))
 	}
 	if !ValidID(t.ID) {
 		bad("/id", "is not a task ID")
@@ -266,8 +327,8 @@ func DecodeState(data []byte) (*State, []Problem, error) {
 	if ps != nil {
 		return nil, ps, nil
 	}
-	if s.Schema != Format {
-		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", Format)))
+	if s.Schema != FileFormat {
+		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", FileFormat)))
 	}
 	if s.LastID < 0 || s.LastID > MaxID {
 		ps = append(ps, prob("/last_id", "is out of range"))

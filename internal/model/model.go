@@ -5,6 +5,7 @@ package model
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,8 +13,16 @@ import (
 	"unicode/utf8"
 )
 
-// Format is the one format this binary reads and writes.
-const Format = 1
+// Format is the one tree format this binary reads and writes: the tree's
+// layout, and what koan.json records.
+const Format = 2
+
+// FileFormat is the format of the task files, folder files, and state file
+// this binary writes.
+const FileFormat = 1
+
+// Mark starts the name of every entry koan owns in the tree.
+const Mark = "@"
 
 // ID is a task ID.
 type ID = int64
@@ -30,7 +39,7 @@ func ValidID(n ID) bool { return n >= 1 && n <= MaxID }
 var (
 	folderName = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$`)
 	tagName    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
-	taskName   = regexp.MustCompile(`^([1-9][0-9]{0,14})\.(json|md)$`)
+	taskName   = regexp.MustCompile(`^@([1-9][0-9]{0,14})\.(json|md)$`)
 	timestamp  = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`)
 )
 
@@ -46,7 +55,7 @@ const (
 	NotesSuffix = ".md"
 )
 
-// TaskFilename splits a filename like 42.json or 42.md into its ID and
+// TaskFilename splits a filename like @42.json or @42.md into its ID and
 // suffix; ok is false for any other name.
 func TaskFilename(name string) (id ID, suffix string, ok bool) {
 	m := taskName.FindStringSubmatch(name)
@@ -55,6 +64,16 @@ func TaskFilename(name string) (id ID, suffix string, ok bool) {
 	}
 	id, _ = strconv.ParseInt(m[1], 10, 64)
 	return id, "." + m[2], true
+}
+
+// FolderDir is the name on disk of the folder named name.
+func FolderDir(name string) string { return Mark + name }
+
+// FolderName is the folder name an entry on disk stands for: ok is false
+// when the entry's name is not `@` and a folder name.
+func FolderName(entry string) (name string, ok bool) {
+	name, ok = strings.CutPrefix(entry, Mark)
+	return name, ok && ValidFolderName(name)
 }
 
 // Folder is a folder path from the root: "/" or "/proj/travel".
@@ -79,12 +98,17 @@ func ParseFolder(s string) (Folder, bool) {
 	return Folder(s), true
 }
 
-// Rel is the folder's path relative to the root directory: "." for the root.
+// Rel is the folder's path relative to the root directory, each name with
+// its `@`: "@proj/@travel", and "." for the root.
 func (f Folder) Rel() string {
 	if f == Root {
 		return "."
 	}
-	return string(f[1:])
+	segs := f.Segments()
+	for i, s := range segs {
+		segs[i] = FolderDir(s)
+	}
+	return path.Join(segs...)
 }
 
 // Parent is the folder holding f; the root is its own parent.
@@ -96,6 +120,12 @@ func (f Folder) Join(name string) Folder { return Folder(path.Join(string(f), na
 // Holds reports whether g is f or under it.
 func (f Folder) Holds(g Folder) bool {
 	return f == Root || g == f || strings.HasPrefix(string(g), string(f)+"/")
+}
+
+// TreeOrder compares two folders in tree order: a parent before its
+// children, siblings by name, byte for byte.
+func TreeOrder(a, b Folder) int {
+	return slices.Compare(a.Segments(), b.Segments())
 }
 
 // Segments are the names along the path; none for the root.

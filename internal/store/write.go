@@ -151,31 +151,76 @@ func (t *Tree) SaveState() *errs.Error {
 	return nil
 }
 
-// EnsureFolder creates folder f and any missing folders above it, and
-// returns the ones it created, outermost first. Something on the path that
-// is not a folder is a not-a-folder conflict.
-func (t *Tree) EnsureFolder(f model.Folder) ([]model.Folder, *errs.Error) {
-	created := []model.Folder{}
+// Missing lists the folders on the path to f, f included, that are not
+// there, outermost first. Something on the path that is not a folder is a
+// not-a-folder conflict.
+func (t *Tree) Missing(f model.Folder) ([]model.Folder, *errs.Error) {
+	var missing []model.Folder
 	cur := model.Root
 	for _, seg := range f.Segments() {
 		cur = cur.Join(seg)
-		err := t.root.Mkdir(cur.Rel(), FolderMode)
+		if len(missing) > 0 {
+			missing = append(missing, cur)
+			continue
+		}
+		fi, err := t.root.Lstat(cur.Rel())
 		switch {
-		case err == nil:
-			t.root.SyncDir(cur.Parent().Rel())
-			t.note(cur.Rel())
-			created = append(created, cur)
-		case errs.IsErrno(err, syscall.EEXIST):
-			if e := t.mustBeFolder(cur); e != nil {
-				return created, e
-			}
-		case errs.IsErrno(err, syscall.ENOTDIR):
-			return created, notAFolder(t, cur.Parent())
-		default:
-			return created, errs.FromOS(t.Abs(cur.Rel()), err)
+		case errs.IsErrno(err, syscall.ENOENT):
+			missing = append(missing, cur)
+		case err != nil:
+			return nil, errs.FromOS(t.Abs(cur.Rel()), err)
+		case !fi.IsDir():
+			return nil, notAFolder(t, cur)
 		}
 	}
-	return created, nil
+	return missing, nil
+}
+
+// MakeFolder creates folder f, whose parent is there, whole: a hidden temp
+// folder in the parent gets the folder file, with ID id, and empty notes,
+// and is then renamed into place, so the folder never appears without its
+// folder file. Something already at f is a not-a-folder conflict when it is
+// not a folder, and otherwise left as it is, with the temp folder removed.
+func (t *Tree) MakeFolder(f model.Folder, id model.ID) *errs.Error {
+	tmp := fsys.TempName(f.Parent().Rel())
+	if err := t.root.Mkdir(tmp, FolderMode); err != nil {
+		return errs.FromOS(t.Abs(tmp), err)
+	}
+	t.note(tmp)
+	data, err := model.Encode(model.NewFolderFile(id))
+	if err != nil {
+		return errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
+	}
+	if err := Publish(t.root, path.Join(tmp, FolderFileName), data, FileMode, false); err != nil {
+		t.root.RemoveAll(tmp)
+		return errs.FromOS(t.Abs(path.Join(tmp, FolderFileName)), err)
+	}
+	if err := Publish(t.root, path.Join(tmp, FolderNotesName), nil, FileMode, false); err != nil {
+		t.root.RemoveAll(tmp)
+		return errs.FromOS(t.Abs(path.Join(tmp, FolderNotesName)), err)
+	}
+	err = t.root.RenameNoReplace(tmp, f.Rel())
+	switch {
+	case err == nil:
+		t.root.SyncDir(f.Parent().Rel())
+		t.note(f.Rel())
+		return nil
+	case errs.IsErrno(err, syscall.EEXIST, syscall.ENOTEMPTY):
+		t.root.RemoveAll(tmp)
+		return t.mustBeFolder(f)
+	}
+	t.root.RemoveAll(tmp)
+	return errs.FromOS(t.Abs(f.Rel()), err)
+}
+
+// WriteFolderFile writes a folder file into folder f, which must not have
+// one: repair's way to give a folder an ID.
+func (t *Tree) WriteFolderFile(f model.Folder, ff *model.FolderFile) *errs.Error {
+	data, err := model.Encode(ff)
+	if err != nil {
+		return errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
+	}
+	return t.put(FolderFileRel(f), data, false)
 }
 
 func notAFolder(t *Tree, f model.Folder) *errs.Error {
