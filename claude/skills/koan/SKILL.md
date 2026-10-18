@@ -49,7 +49,7 @@ Error kinds worth handling:
 - `conflict` — `.error.rule` says which rule refused it:
   - `cycle` — the block would make a cycle; `.error.ids` shows it. (A `corrupt` from `task block` means the check met a task file it can't read: report it, as below.)
   - `not-empty` — `folder delete` without `--contents` on a folder that holds anything. Don't add `--contents` on your own: ask the user.
-  - `has-material` — `folder delete --contents` on a folder holding the user's own files (material); `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good.
+  - `has-material` — `folder delete --contents` on a folder holding the user's own files (material), hidden ones such as `.git` or `.env` included; `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good.
   - `destination-exists` — `folder move`'s `--to` already exists (folders are never merged), or `task move` would overwrite a `@<id>.md` with text in the target folder; show it to the user.
   - `not-a-folder` — something on a folder path is a file or a symlink.
   - `claimed` — someone has claimed the task; `.error.message` says since when and with what `extra`. See Claims.

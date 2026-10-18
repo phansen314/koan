@@ -286,8 +286,8 @@ Move a folder, with everything under it, to a new path. Renaming is moving to a 
 Remove a folder and everything under it, for good. koan keeps no trash; undo is git's.
 
 - **Input:** `folder` (required, not `/`), `contents` (default `false`), and `force` (default `false`).
-- Without `contents`, the folder must hold nothing but its folder file, empty notes, and hidden entries.
-- With `contents`, everything under it is removed. **Material blocks it unless `force` is given**: koan never deletes what it didn't write without being told to. Material here is every entry in the folder or in a folder under it that is not koan's and not hidden, an entry named with `@` that is not one of koan's included. Hidden entries (`.gitignore`, `.obsidian`) don't block, and are removed with the folder. Finding material takes a listing of each folder, never a look inside the material.
+- Without `contents`, the folder must hold nothing but its folder file, empty notes, and **disposable** entries: temp files koan left, and a `.DS_Store`.
+- With `contents`, everything under it is removed. **Material blocks it unless `force` is given**: koan never deletes what it didn't write without being told to. Material here is every entry in the folder or in a folder under it that is not koan's and not disposable: an entry named with `@` that is not one of koan's, and hidden entries (`.git`, `.gitignore`, `.env`, `.venv`), included. A hidden entry may be something git can't restore, untracked or ignored, or another repository's history. Finding material takes a listing of each folder, never a look inside the material.
 - Every task outside the folder loses the removed tasks' IDs from its `blocked_by`, and the removed tasks' claims end. The folder is removed first, as [`task delete`](#task-delete) removes its task first.
 - **Result:** `folder` (its record, as it was), `deleted` (IDs of the tasks removed), and `dependents` (IDs of the tasks whose `blocked_by` changed).
 - **Refuses:** `not-empty`, without `contents`; `has-material`, with `contents` and without `force`, listing in `paths` each material entry found, not what is inside it.

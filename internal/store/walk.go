@@ -221,8 +221,9 @@ func (t *Tree) PutRaw(rel string, data []byte) *errs.Error { return t.put(rel, d
 func (t *Tree) Stat(rel string) (fs.FileInfo, error) { return t.root.Lstat(rel) }
 
 // Material lists the entries of folder f, not the root, that are not
-// koan's, hidden ones aside: what folder delete removes only when told to.
-// It looks at names and types alone, never inside an entry.
+// koan's, hidden ones included, but for the Disposable: what folder delete
+// removes only when told to. It looks at names and types alone, never
+// inside an entry.
 func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
 	entries, e := t.List(f)
 	if e != nil {
@@ -231,7 +232,7 @@ func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
 	var material []string
 	for _, en := range entries {
 		name := en.Name()
-		if strings.HasPrefix(name, ".") {
+		if Disposable(en) {
 			continue
 		}
 		_, _, isTask := model.TaskFilename(name)
@@ -242,6 +243,15 @@ func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
 		}
 	}
 	return material, nil
+}
+
+// Disposable reports whether an entry that is not koan's goes with its
+// folder without being asked for: a temp file koan left, or a .DS_Store.
+// Any other hidden entry may be something git can't bring back, such as
+// another repository's .git or an ignored .env.
+func Disposable(en fs.DirEntry) bool {
+	name := en.Name()
+	return en.Type().IsRegular() && (fsys.IsTemp(name) || name == ".DS_Store")
 }
 
 // List lists a folder's entry names, hidden ones included.
