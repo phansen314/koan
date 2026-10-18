@@ -7,12 +7,12 @@ How a coordinator that starts its own workers can use koan so that no two of the
 koan guarantees that its own commands are safe to run at the same time:
 
 - **Commands never interleave.** A write holds the tree's lock alone, and a read waits for it, so a read never sees part of a write. Every file is replaced whole or not at all.
-- **Merges keep both sides.** Two `update`s that add different tags or `extra` keys both take effect.
-- **`claim` hands a task to one caller.** A second `claim` of the same task fails with `conflict`, and `claim-next` never returns the same task twice.
+- **Merges keep both sides.** Two `task update`s that add different tags or `extra` keys both take effect.
+- **`task claim` hands a task to one caller.** A second claim of the same task fails with `conflict`, and `task claim-next` never returns the same task twice.
 
 It leaves two things open:
 
-- **A claim is advisory.** It refuses other claims and hides the task from `frontier`, and nothing else: `update`, `done`, `move`, and `delete` work on a claimed task for any caller. koan cannot tell callers apart, so it cannot do more ([design](../spec/design.md#claims)).
+- **A claim is advisory.** It refuses other claims and hides the task from `task frontier`, and nothing else: `task update`, `task done`, `task move`, and `task delete` work on a claimed task for any caller. koan cannot tell callers apart, so it cannot do more ([design](../spec/design.md#claims)).
 - **Notes are plain files.** A task's `@<id>.md` is edited with any editor, and nothing stops two editors from overwriting each other.
 
 The coordinator closes both, by deciding who may do what.
@@ -23,10 +23,11 @@ The coordinator closes both, by deciding who may do what.
 
 | Action | Coordinator | Worker |
 |---|---|---|
-| Read: `show`, `list`, `frontier`, `why`, `show-folder`, `where` | yes | yes |
-| `claim-next`, `claim`, `release` | yes | no |
-| `create`, `create-batch`, `update`, `done`, `reopen` | yes | no |
-| `block`, `unblock`, `move`, `delete`, folder commands | yes | no |
+| Read: `task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `where` | yes | yes |
+| `task claim-next`, `task claim`, `task release` | yes | no |
+| `task create`, `batch`, `task update`, `task done`, `task reopen` | yes | no |
+| `task block`, `task unblock`, `task move`, `task delete` | yes | no |
+| `folder create`, `folder update`, `folder move`, `folder delete` | yes | no |
 | Edit the `@<id>.md` of its own task | no | yes |
 | Edit any other file in the tree | no | no |
 
@@ -36,34 +37,34 @@ With one party making every claim, a claim is no longer a request that others mi
 
 ```sh
 # 1. Take the next task, recording who gets it.
-koan claim-next --folder /proj --extra '{"worker":"w3"}'
+koan task claim-next --folder /proj --extra '{"worker":"w3"}'
 #    .result.task is the task, with its id and notes_path; null means nothing is ready.
 
 # 2. Start worker w3 with the task's id, title, and notes_path.
 #    The worker reads what it likes, edits that one .md, and reports back.
 
 # 3. Record the outcome.
-koan done 42                      # finished: this also ends the claim
-koan release 42                   # not finished: the task goes back to the frontier
+koan task done 42                 # finished: this also ends the claim
+koan task release 42              # not finished: the task goes back to the frontier
 
 # 4. Add whatever the worker found.
-koan create-batch -i followups.json
+koan batch -i followups.json
 ```
 
 - **Workers report, the coordinator writes.** A worker that finds follow-up work, or wants a tag or a priority changed, says so in its report. It does not run the command itself.
-- **Start as many workers as there are tasks claimed.** Each `claim-next` returns a different task, so the workers' notes files never overlap.
-- **Don't move or delete a task that is out.** `move` and `move-folder` change its `notes_path` under the worker.
+- **Start as many workers as there are tasks claimed.** Each `task claim-next` returns a different task, so the workers' notes files never overlap.
+- **Don't move or delete a task that is out.** `task move` and `folder move` change its `notes_path` under the worker.
 
 ## Seeing what is out
 
 ```sh
-koan list --claimed --fields id,title,claim
+koan task list --claimed --fields id,title,claim
 ```
 
 Each task's `claim` holds `claimed_at` and the `extra` given at step 1, so this is the table of who has what and since when.
 
-- **A worker that ended without reporting** leaves its claim behind, since claims never expire. Look at what it left in the notes, then `release` the task or mark it `done`.
-- **A `claim-next` whose outcome is unclear** (the coordinator was killed, or lost the output) may have claimed a task nobody was given. The same listing shows it: a claim with no live worker.
+- **A worker that ended without reporting** leaves its claim behind, since claims never expire. Look at what it left in the notes, then release the task or mark it done.
+- **A `task claim-next` whose outcome is unclear** (the coordinator was killed, or lost the output) may have claimed a task nobody was given. The same listing shows it: a claim with no live worker.
 
 ## Enforcing the rule
 
@@ -95,7 +96,7 @@ You are given one koan task: its ID, its title, and the path of its notes file.
 
 - Do the task. Write what you did and what you found to the notes file you were given.
 - In `~/koan-root`, that notes file is the only file you may change.
-- You may run `koan show`, `koan list`, `koan frontier`, `koan why`, `koan show-folder`, and `koan where`. Run no other koan command.
+- You may run `koan task show`, `koan task list`, `koan task frontier`, `koan task why`, `koan folder show`, `koan folder list`, and `koan where`. Run no other koan command.
 - When something else in the tree should change (a new task, a tag, a blocker, this task being done), say so in your final report. The coordinator makes the change.
 ```
 
@@ -117,9 +118,14 @@ Bash)
     case "$cmd" in
     *koan-root*|*"$real"*) deny "use Read and Edit for files in the tree, not the shell" ;;
     esac
-    for sub in $(printf '%s' "$cmd" | grep -Eo '(^|[^[:alnum:]_-])koan +[a-z-]+' | awk '{print $NF}'); do
+    # Each koan command named, with its group's command after task or folder.
+    subs=$(printf '%s' "$cmd" | grep -Eo '(^|[^[:alnum:]_-])koan +[a-z-]+( +[a-z-]+)?' |
+        awk '{ print ($2 == "task" || $2 == "folder") ? $2 " " $3 : $2 }')
+    IFS='
+'
+    for sub in $subs; do
         case "$sub" in
-        show|list|frontier|why|show-folder|where) ;;
+        "task show"|"task list"|"task frontier"|"task why"|"folder show"|"folder list"|where) ;;
         *) deny "workers may not run 'koan $sub': report it to the coordinator" ;;
         esac
     done
@@ -137,7 +143,7 @@ Edit|Write)
     esac
     id=$(basename "$rel" .md)
     id=${id#@}
-    koan show "$id" 2>/dev/null |
+    koan task show "$id" 2>/dev/null |
         jq -e --arg a "$root$rel" --arg b "$real$rel" \
             '.result.task | .claim != null and (.notes_path == $a or .notes_path == $b)' >/dev/null ||
         deny "$file is not the notes of a claimed task"

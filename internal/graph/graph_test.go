@@ -35,8 +35,8 @@ func TestReadiness(t *testing.T) {
 		}
 	}
 	n, _ := g.look(3)
-	if _, blocking := Readiness(n, g.look); !slices.Equal(blocking, []model.ID{2, 9}) {
-		t.Errorf("blocking %v: want the open and the missing blocker, ascending", blocking)
+	if _, open := Readiness(n, g.look); !slices.Equal(open, []model.ID{2, 9}) {
+		t.Errorf("open blockers %v: want the open and the missing blocker, ascending", open)
 	}
 }
 

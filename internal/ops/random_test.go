@@ -88,7 +88,7 @@ func (m *expected) ids() []int64 {
 	return ids
 }
 
-func (m *expected) blocking(t *mtask) []int64 {
+func (m *expected) openBlockers(t *mtask) []int64 {
 	out := []int64{}
 	if !t.open {
 		return out // a done task waits on nothing
@@ -106,7 +106,7 @@ func (m *expected) readiness(t *mtask) string {
 	switch {
 	case !t.open:
 		return "done"
-	case len(m.blocking(t)) > 0:
+	case len(m.openBlockers(t)) > 0:
 		return "blocked"
 	}
 	return "ready"
@@ -310,14 +310,14 @@ func (r *random) step() {
 			pri = &p
 		}
 		want := cond(r.missing(blockers...), "not-found", "")
-		res := r.do("create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": blockers, "priority": pri}), want)
+		res := r.do("task create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": blockers, "priority": pri}), want)
 		if res != nil {
 			m.addFolder(folder)
-			r.created(int64(task(res)["id"].(float64)), &mtask{folder: folder, open: true, blockers: blockers, priority: pri})
+			r.created(int64(res["id"].(float64)), &mtask{folder: folder, open: true, blockers: blockers, priority: pri})
 		}
-	case n < 24: // create-batch: a chain of three in two folders
+	case n < 24: // batch: a chain of three in two folders
 		f1, f2 := r.folder(), r.folder()
-		res := r.do("create-batch", js(map[string]any{"folder": f1, "tasks": []any{
+		res := r.do("batch", js(map[string]any{"folder": f1, "tasks": []any{
 			map[string]any{"ref": "x", "title": "x"},
 			map[string]any{"ref": "y", "title": "y", "folder": f2, "blocked_by": []any{"x"}},
 			map[string]any{"title": "z", "blocked_by": []any{"x", "y"}},
@@ -334,17 +334,17 @@ func (r *random) step() {
 		id := r.id()
 		tags := [][]string{{}, {"x"}, {"x", "y"}}[r.rng.Intn(3)]
 		p := int64(r.rng.Intn(5) - 1)
-		if r.do("update", js(map[string]any{"id": id, "priority": p, "tags_replace_all": tags}), cond(r.missing(id), "not-found", "")) != nil {
+		if r.do("task update", js(map[string]any{"id": id, "priority": p, "tags_replace_all": tags}), cond(r.missing(id), "not-found", "")) != nil {
 			m.tasks[id].priority, m.tasks[id].tags = &p, tags
 		}
 	case n < 40: // done
 		id := r.id()
-		if r.do("done", js(map[string]any{"id": id}), cond(r.missing(id), "not-found", "")) != nil {
+		if r.do("task done", js(map[string]any{"id": id}), cond(r.missing(id), "not-found", "")) != nil {
 			m.tasks[id].open, m.tasks[id].claimed = false, false
 		}
 	case n < 44: // reopen
 		id := r.id()
-		if r.do("reopen", js(map[string]any{"id": id}), cond(r.missing(id), "not-found", "")) != nil {
+		if r.do("task reopen", js(map[string]any{"id": id}), cond(r.missing(id), "not-found", "")) != nil {
 			m.tasks[id].open = true
 		}
 	case n < 54: // block
@@ -362,7 +362,7 @@ func (r *random) step() {
 		}):
 			want = "conflict/cycle"
 		}
-		if r.do("block", js(map[string]any{"id": id, "blockers": bs}), want) != nil {
+		if r.do("task block", js(map[string]any{"id": id, "blocked_by": bs}), want) != nil {
 			for _, b := range bs {
 				if !slices.Contains(m.tasks[id].blockers, b) {
 					m.tasks[id].blockers = append(m.tasks[id].blockers, b)
@@ -374,21 +374,21 @@ func (r *random) step() {
 		if len(bs) == 0 {
 			return
 		}
-		if r.do("unblock", js(map[string]any{"id": id, "blockers": bs}), cond(r.missing(id), "not-found", "")) != nil {
+		if r.do("task unblock", js(map[string]any{"id": id, "blocked_by": bs}), cond(r.missing(id), "not-found", "")) != nil {
 			m.tasks[id].blockers = slices.DeleteFunc(m.tasks[id].blockers, func(b int64) bool { return slices.Contains(bs, b) })
 		}
 	case n < 66: // move
 		id, to := r.id(), r.folder()
-		if r.do("move", js(map[string]any{"id": id, "to": to}), cond(r.missing(id), "not-found", "")) != nil {
+		if r.do("task move", js(map[string]any{"id": id, "to": to}), cond(r.missing(id), "not-found", "")) != nil {
 			m.tasks[id].folder = to
 			m.addFolder(to)
 		}
-	case n < 70: // create-folder
+	case n < 70: // folder create
 		f := r.folder()
-		if r.do("create-folder", js(map[string]any{"folder": f}), "") != nil {
+		if r.do("folder create", js(map[string]any{"folder": f}), "") != nil {
 			m.addFolder(f)
 		}
-	case n < 77: // move-folder
+	case n < 77: // folder move
 		from, to := r.existingFolder(), r.folder()
 		want := ""
 		switch {
@@ -399,7 +399,7 @@ func (r *random) step() {
 		case from != to && m.folders[to]:
 			want = "conflict/destination-exists"
 		}
-		if r.do("move-folder", js(map[string]any{"folder": from, "to": to}), want) != nil && from != to {
+		if r.do("folder move", js(map[string]any{"folder": from, "to": to}), want) != nil && from != to {
 			rename := func(f string) string { return to + strings.TrimPrefix(f, from) }
 			var moved []string
 			for f := range m.folders {
@@ -422,11 +422,11 @@ func (r *random) step() {
 		}
 	case n < 82: // delete
 		id := r.id()
-		if r.do("delete", js(map[string]any{"id": id}), cond(r.missing(id), "not-found", "")) != nil {
+		if r.do("task delete", js(map[string]any{"id": id}), cond(r.missing(id), "not-found", "")) != nil {
 			m.remove([]int64{id})
 		}
-	case n < 86: // delete-folder
-		f, recursive := r.existingFolder(), r.rng.Intn(3) > 0
+	case n < 86: // folder delete
+		f, contents := r.existingFolder(), r.rng.Intn(3) > 0
 		empty := true
 		for g := range m.folders {
 			empty = empty && (g == f || !holds(f, g))
@@ -443,10 +443,10 @@ func (r *random) step() {
 			want = "invalid-input"
 		case !m.folders[f]:
 			want = "not-found"
-		case !recursive && (!empty || len(inside) > 0):
+		case !contents && (!empty || len(inside) > 0):
 			want = "conflict/not-empty"
 		}
-		if r.do("delete-folder", js(map[string]any{"folder": f, "recursive": recursive}), want) != nil {
+		if r.do("folder delete", js(map[string]any{"folder": f, "contents": contents}), want) != nil {
 			for g := range m.folders {
 				if holds(f, g) {
 					delete(m.folders, g)
@@ -465,12 +465,12 @@ func (r *random) step() {
 		case m.tasks[id].claimed:
 			want = "conflict/claimed"
 		}
-		if r.do("claim", js(map[string]any{"id": id}), want) != nil {
+		if r.do("task claim", js(map[string]any{"id": id}), want) != nil {
 			m.tasks[id].claimed = true
 		}
 	case n < 96: // claim-next
 		front := m.frontier()
-		res := r.do("claim-next", `{}`, "")
+		res := r.do("task claim-next", `{}`, "")
 		switch {
 		case res == nil:
 		case len(front) == 0:
@@ -485,7 +485,7 @@ func (r *random) step() {
 	default: // release
 		id := r.id()
 		was := !r.missing(id) && m.tasks[id].claimed
-		if res := r.do("release", js(map[string]any{"id": id}), ""); res != nil {
+		if res := r.do("task release", js(map[string]any{"id": id}), ""); res != nil {
 			if res["changed"] != was {
 				r.failf("release %d: changed %v, want %v", id, res["changed"], was)
 			}
@@ -513,10 +513,10 @@ func (r *random) created(id int64, t *mtask) {
 func (r *random) compare() {
 	r.t.Helper()
 	m := r.m
-	res := r.w.ok("list", `{"readiness":["ready","blocked","done"],"include_folders":true}`)
+	res := r.w.ok("task list", `{"readiness":["ready","blocked","done"]}`)
 
 	// Folders, in tree order: a parent before its children, siblings by
-	// name, byte for byte.
+	// name, byte for byte. folder list leaves out the root it lists.
 	want := []string{}
 	for f := range m.folders {
 		want = append(want, f)
@@ -524,8 +524,8 @@ func (r *random) compare() {
 	slices.SortFunc(want, func(a, b string) int {
 		return slices.Compare(strings.Split(strings.Trim(a, "/"), "/"), strings.Split(strings.Trim(b, "/"), "/"))
 	})
-	got := []string{}
-	for _, f := range res["folders"].([]any) {
+	got := []string{"/"}
+	for _, f := range r.w.ok("folder list", `{}`)["folders"].([]any) {
 		got = append(got, f.(map[string]any)["path"].(string))
 	}
 	if !slices.Equal(got, want) {
@@ -558,13 +558,13 @@ func (r *random) compare() {
 		claimed := mt.claimed && mt.open
 		if tk["folder"] != mt.folder || tk["readiness"] != m.readiness(mt) || tk["priority"] != pri ||
 			(tk["claim"] != nil) != claimed || (tk["completed_at"] == nil) != mt.open ||
-			!slices.Equal(ids(tk["blocked_by"]), blockers) || !slices.Equal(ids(tk["blocking"]), m.blocking(mt)) ||
+			!slices.Equal(ids(tk["blocked_by"]), blockers) || !slices.Equal(ids(tk["open_blockers"]), m.openBlockers(mt)) ||
 			js(tk["tags"]) != js(tags) {
-			r.failf("task %d is %v\n  the model has %+v, readiness %s, blocking %v", id, tk, *mt, m.readiness(mt), m.blocking(mt))
+			r.failf("task %d is %v\n  the model has %+v, readiness %s, open blockers %v", id, tk, *mt, m.readiness(mt), m.openBlockers(mt))
 		}
 	}
 
-	if g := ids(r.w.ok("frontier", `{}`)["tasks"]); !slices.Equal(g, m.frontier()) {
+	if g := ids(r.w.ok("task frontier", `{}`)["tasks"]); !slices.Equal(g, m.frontier()) {
 		r.failf("frontier %v, want %v", g, m.frontier())
 	}
 	info := r.w.ok("info", `{}`)

@@ -14,7 +14,7 @@ import (
 
 func TestInit(t *testing.T) {
 	w := newWorld(t)
-	w.fail("show", `{"id":1}`, errs.NotInitialized, "")
+	w.fail("task show", `{"id":1}`, errs.NotInitialized, "")
 	if got := w.ok("info", `{}`); got["state"] != "not-initialized" {
 		t.Errorf("info before init: %v", got)
 	}
@@ -35,16 +35,16 @@ func TestInit(t *testing.T) {
 // A state file made beside an existing tree starts at the highest ID in it.
 func TestInitAdoptsTree(t *testing.T) {
 	w := ready(t)
-	w.ok("create-batch", `{"tasks":[{"title":"a"},{"title":"b","folder":"/proj"}]}`)
+	w.ok("batch", `{"tasks":[{"title":"a"},{"title":"b","folder":"/proj"}]}`)
 	if err := os.Remove(w.env.StatePath()); err != nil {
 		t.Fatal(err)
 	}
-	w.fail("show", `{"id":1}`, errs.NotInitialized, "")
+	w.fail("task show", `{"id":1}`, errs.NotInitialized, "")
 	if c := w.ok("init", `{}`)["created"].([]any); len(c) != 1 || c[0] != "state" {
 		t.Errorf("created %v, want state", c)
 	}
 	// /proj took 1, its tasks 2 and 3: the folder's ID counts too.
-	if id := task(w.ok("create", `{"title":"c"}`))["id"]; id != float64(4) {
+	if id := w.ok("task create", `{"title":"c"}`)["id"]; id != float64(4) {
 		t.Errorf("next ID %v, want 4", id)
 	}
 }
@@ -89,7 +89,7 @@ func TestInitNeedsTheWholeTree(t *testing.T) {
 		t.Skip("root can list anything")
 	}
 	w := ready(t)
-	w.ok("create", `{"title":"a","folder":"/locked"}`)
+	w.ok("task create", `{"title":"a","folder":"/locked"}`)
 	os.Remove(w.env.StatePath())
 	os.Chmod(w.root("locked"), 0)
 	defer os.Chmod(w.root("locked"), 0o755)
@@ -102,7 +102,7 @@ func TestInitNeedsTheWholeTree(t *testing.T) {
 // init takes the counter from folder IDs too, with no task to give one.
 func TestInitCountsFolderIDs(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/a/b/c"}`)
+	w.ok("folder create", `{"folder":"/a/b/c"}`)
 	os.Remove(w.env.StatePath())
 	w.ok("init", `{}`)
 	if n := w.ok("info", `{}`)["last_id"]; n != float64(3) {
@@ -124,26 +124,26 @@ func TestATreeInFormatOneIsMaterial(t *testing.T) {
 	if fs := w.findings(); len(fs) != 0 {
 		t.Errorf("findings %v", fs)
 	}
-	if got := w.ok("list", `{}`); got["total"] != float64(0) {
+	if got := w.ok("task list", `{}`); got["total"] != float64(0) {
 		t.Errorf("list: %v", got)
 	}
 }
 
 func TestFormats(t *testing.T) {
 	w := ready(t)
-	w.ok("create", `{"title":"a"}`)
+	w.ok("task create", `{"title":"a"}`)
 	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(2) {
 		t.Errorf("migrate on a current tree: %v", got)
 	}
 
 	// Format 1 has no conversion: migrate and doctor refuse it.
 	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 1}`), 0o644)
-	w.fail("show", `{"id":1}`, errs.MigrationPending, "")
+	w.fail("task show", `{"id":1}`, errs.MigrationPending, "")
 	w.fail("migrate", `{}`, errs.Conflict, errs.RuleNoConversion)
 	w.fail("doctor", `{}`, errs.Conflict, errs.RuleNoConversion)
 
 	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3}`), 0o644)
-	w.fail("show", `{"id":1}`, errs.UnsupportedFormat, "")
+	w.fail("task show", `{"id":1}`, errs.UnsupportedFormat, "")
 	w.fail("migrate", `{}`, errs.UnsupportedFormat, "")
 	w.fail("doctor", `{}`, errs.UnsupportedFormat, "")
 	if got := w.ok("info", `{}`); got["state"] != "too-new" {
@@ -160,8 +160,8 @@ func TestPrecedence(t *testing.T) {
 	// Input comes before everything, HOME included.
 	home := w.env.Home
 	w.env.Home = "relative"
-	w.fail("show", `{"id":"abc"}`, errs.InvalidInput, "")
-	w.fail("show", `{"id":1}`, errs.IO, "")
+	w.fail("task show", `{"id":"abc"}`, errs.InvalidInput, "")
+	w.fail("task show", `{"id":1}`, errs.IO, "")
 	w.fail("init", `{}`, errs.IO, "")
 	w.ok("version", `{}`)
 	w.env.Home = home
@@ -174,7 +174,7 @@ func TestPrecedence(t *testing.T) {
 	}
 	defer held.Close()
 	w.fail("init", `{}`, errs.Corrupt, "")
-	w.fail("list", `{}`, errs.Corrupt, "")
+	w.fail("task list", `{}`, errs.Corrupt, "")
 }
 
 func TestBusy(t *testing.T) {
@@ -183,20 +183,20 @@ func TestBusy(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	w.fail("create", `{"title":"x"}`, errs.Busy, "")
-	w.fail("create", `{"title":""}`, errs.InvalidInput, "") // input is checked before the lock
-	w.fail("list", `{}`, errs.Busy, "")                     // a read waits for a write to finish
-	w.ok("info", `{}`)                                      // info and version take no lock
+	w.fail("task create", `{"title":"x"}`, errs.Busy, "")
+	w.fail("task create", `{"title":""}`, errs.InvalidInput, "") // input is checked before the lock
+	w.fail("task list", `{}`, errs.Busy, "")                     // a read waits for a write to finish
+	w.ok("info", `{}`)                                           // info and version take no lock
 	held.Close()
-	w.ok("create", `{"title":"x"}`)
+	w.ok("task create", `{"title":"x"}`)
 
 	// Readers share the lock with each other, and hold off writers.
 	reader, e := store.Open(w.env, store.NeedUsable, false)
 	if e != nil {
 		t.Fatal(e)
 	}
-	w.ok("list", `{}`)
-	w.fail("create", `{"title":"y"}`, errs.Busy, "")
+	w.ok("task list", `{}`)
+	w.fail("task create", `{"title":"y"}`, errs.Busy, "")
 	reader.Close()
-	w.ok("create", `{"title":"y"}`)
+	w.ok("task create", `{"title":"y"}`)
 }

@@ -1,12 +1,13 @@
 // Package cli maps the koan command line onto the commands in ops: it
 // builds one command's input from the arguments, runs it, and prints its
-// envelope (spec/cli.md). It adds no behavior of its own, but for making
-// where's --file absolute.
+// envelope (spec/cli.md). It adds no behavior of its own, but for the CLI
+// conveniences: --notes-file, and making where's --file absolute.
 package cli
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -96,6 +97,12 @@ var narrowOptions = append(append([]option{}, scopeOptions...),
 	option{"fields", names, "return only these fields of each task", ""},
 )
 
+// groups are the nouns the task and folder commands sit under.
+var groups = []struct{ name, short string }{
+	{"folder", "Create, show, change, and remove folders"},
+	{"task", "Create, show, change, find, and claim tasks"},
+}
+
 var commands = []command{
 	{name: "init", short: "Create the tree and the state file, or whichever is missing"},
 	{name: "version", short: "Report the binary's version and format"},
@@ -105,23 +112,28 @@ var commands = []command{
 		{"kinds", names, "only these finding kinds, and every fix of them (default: all, but not dangling-reference, nor a stale-claim on a task that is gone)", ""}}},
 	{name: "migrate", short: "Convert the tree to this binary's format", options: []option{
 		{"dry-run", boolean, "report what would change and write nothing", ""}}},
-	{name: "create-folder", short: "Create a folder", subject: "folder", options: []option{
+	{name: "folder create", short: "Create a folder", subject: "folder", options: []option{
 		{"title", nullText, "the folder's title", ""},
 		{"extra", object, "a JSON object stored with the folder", ""},
 		{"notes", text, "the initial notes", ""},
 		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
-	{name: "show-folder", short: "Return one folder", subject: "folder"},
-	{name: "update-folder", short: "Change a folder's title or extra", subject: "folder", options: []option{
+	{name: "folder show", short: "Return one folder", subject: "folder"},
+	{name: "folder update", short: "Change a folder's title or extra", subject: "folder", options: []option{
 		{"title", nullText, "the new title, or null to clear it", ""},
 		{"extra-merge", object, "a JSON object of keys to set", ""},
 		{"extra-remove", keys, "a key to delete (repeatable)", ""},
 		{"extra-replace-all", object, "the whole new extra object", ""}}},
-	{name: "move-folder", short: "Move or rename a folder", subject: "folder", options: []option{
+	{name: "folder move", short: "Move or rename a folder", subject: "folder", options: []option{
 		{"to", text, "the folder's new path (required)", ""}}},
-	{name: "delete-folder", short: "Remove a folder and everything in it", subject: "folder", options: []option{
-		{name: "recursive", short: "r", kind: boolean, usage: "remove a folder that is not empty"},
-		{"force", boolean, "with --recursive, remove material too: files and folders koan did not make", ""}}},
-	{name: "create", short: "Create a task", subject: "title", options: []option{
+	{name: "folder delete", short: "Remove a folder and everything in it", subject: "folder", options: []option{
+		{"contents", boolean, "remove a folder that is not empty", ""},
+		{"force", boolean, "with --contents, remove material too: files and folders koan did not make", ""}}},
+	{name: "folder list", short: "Return the folders under a folder", options: []option{
+		{"folder", text, "the folders under this one (default /)", ""},
+		{"recursive", boolean, "include the folders under those (default true)", ""},
+		{"limit", integer, "return at most this many", ""},
+		{"fields", names, "return only these fields of each folder", ""}}},
+	{name: "task create", short: "Create a task", subject: "title", options: []option{
 		{"folder", text, "where the task goes (default /)", ""},
 		{"priority", priority, "an integer; higher is more important", ""},
 		{"tags", names, "tags", ""},
@@ -130,9 +142,9 @@ var commands = []command{
 		{"extra", object, "a JSON object stored with the task", ""},
 		{"notes", text, "the initial notes", ""},
 		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
-	{name: "create-batch", short: "Create folders, and tasks that may wait on each other, in one write (input only)"},
-	{name: "show", short: "Return one task", subject: "id", subjKin: integer},
-	{name: "update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
+	{name: "batch", short: "Create folders, and tasks that may wait on each other, in one write (input only)"},
+	{name: "task show", short: "Return one task", subject: "id", subjKin: integer},
+	{name: "task update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
 		{"title", text, "the new title", ""},
 		{"priority", priority, "an integer, or null to clear it", ""},
 		{"tags-add", names, "tags to add", ""},
@@ -141,28 +153,27 @@ var commands = []command{
 		{"extra-merge", object, "a JSON object of keys to set", ""},
 		{"extra-remove", keys, "a key to delete (repeatable)", ""},
 		{"extra-replace-all", object, "the whole new extra object", ""}}},
-	{name: "done", short: "Mark a task done", subject: "id", subjKin: integer},
-	{name: "reopen", short: "Make a done task open again", subject: "id", subjKin: integer},
-	{name: "block", short: "Add blockers to a task", subject: "id", subjKin: integer, options: []option{
-		{"blockers", ids, "IDs of the tasks to wait on (required)", ""}}},
-	{name: "unblock", short: "Remove blockers from a task", subject: "id", subjKin: integer, options: []option{
-		{"blockers", ids, "IDs to stop waiting on (required)", ""}}},
-	{name: "move", short: "Move a task to another folder", subject: "id", subjKin: integer, options: []option{
+	{name: "task done", short: "Mark a task done", subject: "id", subjKin: integer},
+	{name: "task reopen", short: "Make a done task open again", subject: "id", subjKin: integer},
+	{name: "task block", short: "Add blockers to a task", subject: "id", subjKin: integer, options: []option{
+		{"blocked-by", ids, "IDs of the tasks to wait on (required)", ""}}},
+	{name: "task unblock", short: "Remove blockers from a task", subject: "id", subjKin: integer, options: []option{
+		{"blocked-by", ids, "IDs to stop waiting on (required)", ""}}},
+	{name: "task move", short: "Move a task to another folder", subject: "id", subjKin: integer, options: []option{
 		{"to", text, "the folder to move it into (required)", ""}}},
-	{name: "delete", short: "Remove a task", subject: "id", subjKin: integer},
-	{name: "frontier", short: "Return the ready, unclaimed tasks, in work order", options: narrowOptions},
-	{name: "list", short: "Return the tasks, and optionally folders, in scope", options: append(append([]option{}, narrowOptions...),
+	{name: "task delete", short: "Remove a task", subject: "id", subjKin: integer},
+	{name: "task frontier", short: "Return the ready, unclaimed tasks, in work order", options: narrowOptions},
+	{name: "task list", short: "Return the tasks in scope", options: append(append([]option{}, narrowOptions...),
 		option{"claimed", boolean, "only claimed tasks, or with =false only unclaimed ones", ""},
-		option{"readiness", names, "which of ready, blocked, done to return (default ready,blocked)", ""},
-		option{"include-folders", boolean, "also return the folders in scope", ""})},
-	{name: "why", short: "Say what a task is waiting on", subject: "id", subjKin: integer},
+		option{"readiness", names, "which of ready, blocked, done to return (default ready,blocked)", ""})},
+	{name: "task why", short: "Say what a task is waiting on", subject: "id", subjKin: integer},
 	{name: "where", short: "Turn a reference into disk paths, or a disk path into a reference", subject: "ref", subjOpt: true, options: []option{
 		{"file", diskPath, "a path on disk to give the reference of, in place of <ref>", ""}}},
-	{name: "claim", short: "Claim a task", subject: "id", subjKin: integer, options: []option{
+	{name: "task claim", short: "Claim a task", subject: "id", subjKin: integer, options: []option{
 		{"extra", object, "a JSON object stored with the claim", ""}}},
-	{name: "claim-next", short: "Claim the first ready, unclaimed task", options: append(append([]option{}, scopeOptions...),
+	{name: "task claim-next", short: "Claim the first ready, unclaimed task", options: append(append([]option{}, scopeOptions...),
 		option{"extra", object, "a JSON object stored with the claim", ""})},
-	{name: "release", short: "End a claim", subject: "id", subjKin: integer},
+	{name: "task release", short: "End a claim", subject: "id", subjKin: integer},
 }
 
 // usageError is a command line koan can't turn into an input.
@@ -192,7 +203,11 @@ func Run(args []string, env Env) int {
 	case result != nil:
 		return deliver(env, *result)
 	case err != nil:
-		return deliver(env, ops.Failure(errs.New(errs.Usage, "%s", err.Error())))
+		var e *errs.Error
+		if !errors.As(err, &e) {
+			e = errs.New(errs.Usage, "%s", err.Error())
+		}
+		return deliver(env, ops.Failure(e))
 	}
 	return write(env, help.Bytes(), ExitOK, "") // --help
 }
@@ -251,17 +266,12 @@ func write(env Env, out []byte, code int, note string) int {
 
 func newRoot(env Env, result **ops.Envelope) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "koan <command>",
-		Short:         "Local, file-based task management with JSON output",
-		Long:          "Local, file-based task management. Every command prints one JSON envelope on stdout.",
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return usagef("missing command: see koan --help")
-			}
-			return usagef("unknown command %q: see koan --help", args[0])
-		},
+		Use:               "koan <command>",
+		Short:             "Local, file-based task management with JSON output",
+		Long:              "Local, file-based task management. Every command prints one JSON envelope on stdout.",
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		Args:              noCommand,
 		RunE:              func(*cobra.Command, []string) error { return nil },
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
@@ -270,14 +280,34 @@ func newRoot(env Env, result **ops.Envelope) *cobra.Command {
 	root.SetHelpCommand(&cobra.Command{Use: "help", Hidden: true, Args: cobra.ArbitraryArgs,
 		RunE: func(*cobra.Command, []string) error { return usagef(`unknown command "help": use --help`) }})
 	root.Flags().SortFlags = false
+	parents := map[string]*cobra.Command{"": root}
+	for _, g := range groups {
+		group := &cobra.Command{Use: g.name + " <command>", Short: g.short, Args: noCommand,
+			RunE: func(*cobra.Command, []string) error { return nil }}
+		root.AddCommand(group)
+		parents[g.name] = group
+	}
 	for _, c := range commands {
-		root.AddCommand(newCommand(c, env, result))
+		group, _, _ := strings.Cut(c.name, " ")
+		if group == c.name {
+			group = ""
+		}
+		parents[group].AddCommand(newCommand(c, env, result))
 	}
 	return root
 }
 
+// noCommand answers the root or a group run without one of its commands:
+// cobra would print help.
+func noCommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return usagef("missing command: see %s --help", cmd.CommandPath())
+	}
+	return usagef("unknown command %q: see %s --help", args[0], cmd.CommandPath())
+}
+
 func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
-	use := c.name
+	use := c.name[strings.LastIndex(c.name, " ")+1:]
 	switch {
 	case c.subjOpt:
 		use += " [<" + c.subject + ">]"
@@ -368,7 +398,7 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 			dec.UseNumber()
 			var v any
 			if err := dec.Decode(&v); err != nil || dec.More() {
-				return nil, usagef("--%s is not one JSON value", o.name)
+				v = s // not JSON: the command refuses it
 			}
 			in[field] = v
 		default:
@@ -384,7 +414,7 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 			if o.kind == diskPath && s != "" {
 				abs, err := filepath.Abs(s)
 				if err != nil {
-					return nil, usagef("--%s: %v", o.name, err)
+					return nil, errs.New(errs.IO, "--%s: %v", o.name, err)
 				}
 				s = abs
 			}
@@ -439,13 +469,13 @@ func readFile(name string, env Env) ([]byte, error) {
 	if name == "-" {
 		data, err := io.ReadAll(env.Stdin)
 		if err != nil {
-			return nil, usagef("read stdin: %v", err)
+			return nil, errs.New(errs.IO, "read stdin: %v", err)
 		}
 		return data, nil
 	}
 	data, err := os.ReadFile(name)
 	if err != nil {
-		return nil, usagef("read %s: %v", name, err)
+		return nil, errs.FromOS(name, err)
 	}
 	return data, nil
 }

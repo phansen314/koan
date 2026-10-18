@@ -11,17 +11,23 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/ops"
 	"github.com/phansen314/koan/internal/schematest"
 )
 
 // The command table, the commands in ops, and the input schemas must name
-// the same commands and the same fields.
+// the same commands and the same fields, but for the CLI conveniences; and
+// every command has an output schema.
 func TestTableMatchesOpsAndSchemas(t *testing.T) {
 	var names []string
 	for _, c := range commands {
 		names = append(names, c.name)
-		data, err := os.ReadFile(filepath.Join(schematest.Dir(), c.name+"-input.json"))
+		file := filepath.Join(schematest.Dir(), strings.ReplaceAll(c.name, " ", "-"))
+		if _, err := os.Stat(file + "-output.json"); err != nil {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		data, err := os.ReadFile(file + "-input.json")
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -47,7 +53,7 @@ func TestTableMatchesOpsAndSchemas(t *testing.T) {
 		}
 		slices.Sort(fields)
 		slices.Sort(want)
-		if c.name != "create-batch" && !slices.Equal(fields, want) {
+		if c.name != "batch" && !slices.Equal(fields, want) {
 			t.Errorf("%s: the command line sets %v, the input schema has %v", c.name, fields, want)
 		}
 	}
@@ -63,31 +69,40 @@ func TestBuildInput(t *testing.T) {
 		args []string
 		want string // "" for a usage error
 	}{
-		{[]string{"show", "42"}, `{"id":42}`},
-		{[]string{"show", "abc"}, `{"id":"abc"}`},
-		{[]string{"show", "@42"}, `{"id":"@42"}`},
-		{[]string{"block", "@1", "--blockers", "2,@3"}, `{"blockers":[2,"@3"],"id":"@1"}`},
-		{[]string{"list", "--folder", "41"}, `{"folder":"41"}`},
+		{[]string{"task", "show", "42"}, `{"id":42}`},
+		{[]string{"task", "show", "abc"}, `{"id":"abc"}`},
+		{[]string{"task", "show", "@42"}, `{"id":"@42"}`},
+		{[]string{"task", "block", "@1", "--blocked-by", "2,@3"}, `{"blocked_by":[2,"@3"],"id":"@1"}`},
+		{[]string{"task", "list", "--folder", "41"}, `{"folder":"41"}`},
 		{[]string{"where", "@41:docs/plan.md"}, `{"ref":"@41:docs/plan.md"}`},
 		{[]string{"where", "--file", "/a/../b"}, `{"file":"/b"}`},
 		{[]string{"where"}, `{}`},
 		{[]string{"where", "a", "b"}, ""},
-		{[]string{"create", "Book flights", "--priority", "2", "--tags", "a,b", "--tags", "c"}, `{"priority":2,"tags":["a","b","c"],"title":"Book flights"}`},
-		{[]string{"update", "1", "--priority", "null", "--extra-remove", "a,b", "--extra-remove", "c"}, `{"extra_remove":["a,b","c"],"id":1,"priority":null}`},
-		{[]string{"update", "1", "--extra-merge", `{"n":1.50}`}, `{"extra_merge":{"n":1.50},"id":1}`},
-		{[]string{"block", "1", "--blockers", "2,x"}, `{"blockers":[2,"x"],"id":1}`},
+		{[]string{"task", "create", "Book flights", "--priority", "2", "--tags", "a,b", "--tags", "c"}, `{"priority":2,"tags":["a","b","c"],"title":"Book flights"}`},
+		{[]string{"task", "update", "1", "--priority", "null", "--extra-remove", "a,b", "--extra-remove", "c"}, `{"extra_remove":["a,b","c"],"id":1,"priority":null}`},
+		{[]string{"task", "update", "1", "--extra-merge", `{"n":1.50}`}, `{"extra_merge":{"n":1.50},"id":1}`},
+		{[]string{"task", "update", "1", "--extra-merge", "{"}, `{"extra_merge":"{","id":1}`},
+		{[]string{"task", "claim", "1", "--extra", "nope"}, `{"extra":"nope","id":1}`},
+		{[]string{"task", "block", "1", "--blocked-by", "2,x"}, `{"blocked_by":[2,"x"],"id":1}`},
 		{[]string{"repair", "--kinds", "temp-leftover,stale-claim", "--kinds", "orphan-notes"}, `{"kinds":["temp-leftover","stale-claim","orphan-notes"]}`},
-		{[]string{"create", "a", "--blocks", "1,2"}, `{"blocks":[1,2],"title":"a"}`},
-		{[]string{"update-folder", "/p", "--title", "null"}, `{"folder":"/p","title":null}`},
-		{[]string{"create-folder", "/p", "--title", "P", "--extra", `{"k":1}`}, `{"extra":{"k":1},"folder":"/p","title":"P"}`},
-		{[]string{"list", "--recursive=false", "--claimed", "--limit", "5"}, `{"claimed":true,"limit":5,"recursive":false}`},
-		{[]string{"create", "--priority", "-3", "--", "-x"}, `{"priority":-3,"title":"-x"}`},
-		{[]string{"create", "a", "b"}, ""},
+		{[]string{"task", "create", "a", "--blocks", "1,2"}, `{"blocks":[1,2],"title":"a"}`},
+		{[]string{"folder", "update", "/p", "--title", "null"}, `{"folder":"/p","title":null}`},
+		{[]string{"folder", "create", "/p", "--title", "P", "--extra", `{"k":1}`}, `{"extra":{"k":1},"folder":"/p","title":"P"}`},
+		{[]string{"folder", "delete", "/p", "--contents", "--force"}, `{"contents":true,"folder":"/p","force":true}`},
+		{[]string{"folder", "list", "--folder", "/p", "--recursive=false", "--limit", "2", "--fields", "title"}, `{"fields":["title"],"folder":"/p","limit":2,"recursive":false}`},
+		{[]string{"task", "list", "--recursive=false", "--claimed", "--limit", "5"}, `{"claimed":true,"limit":5,"recursive":false}`},
+		{[]string{"task", "create", "--priority", "-3", "--", "-x"}, `{"priority":-3,"title":"-x"}`},
+		{[]string{"task", "create", "a", "b"}, ""},
+		{[]string{"task", "show"}, ""},
 		{[]string{"init", "extra"}, ""},
-		{[]string{"list", "--recursive", "false"}, ""},
-		{[]string{"show", "1", "--input", "f"}, ""},
-		{[]string{"update", "1", "--extra-merge", "{"}, ""},
-		{[]string{"list", "--tag", "x"}, ""},
+		{[]string{"task", "list", "--recursive", "false"}, ""},
+		{[]string{"task", "show", "1", "--input", "f"}, ""},
+		{[]string{"task", "create", "a", "--notes", "n", "--notes-file", "f"}, ""},
+		{[]string{"task", "list", "--tag", "x"}, ""},
+		{[]string{"folder", "delete", "/p", "-r"}, ""},
+		{[]string{"task"}, ""},
+		{[]string{"task", "frob"}, ""},
+		{[]string{"show", "1"}, ""},
 	}
 	// A relative --file is taken from the working directory.
 	wd, _ := os.Getwd()
@@ -99,13 +114,21 @@ func TestBuildInput(t *testing.T) {
 		var got []byte
 		var failed error
 		root := newRoot(Env{}, new(*ops.Envelope))
-		for _, sub := range root.Commands() {
-			spec := specOf(sub.Name())
-			sub.RunE = func(cmd *cobra.Command, args []string) error {
-				got, failed = buildInput(spec, cmd, args, Env{Stdin: bytes.NewReader(nil)})
-				return failed
+		var record func(*cobra.Command)
+		record = func(parent *cobra.Command) {
+			for _, sub := range parent.Commands() {
+				if sub.HasSubCommands() {
+					record(sub)
+					continue
+				}
+				spec := specOf(strings.TrimPrefix(sub.CommandPath(), "koan "))
+				sub.RunE = func(cmd *cobra.Command, args []string) error {
+					got, failed = buildInput(spec, cmd, args, Env{Stdin: bytes.NewReader(nil)})
+					return failed
+				}
 			}
 		}
+		record(root)
 		root.SetArgs(c.args)
 		root.SetOut(new(bytes.Buffer))
 		root.SetErr(new(bytes.Buffer))
@@ -115,6 +138,31 @@ func TestBuildInput(t *testing.T) {
 			t.Errorf("koan %v: built %s, want a usage error", c.args, got)
 		case c.want != "" && (err != nil || string(got) != c.want):
 			t.Errorf("koan %v: built %s (%v), want %s", c.args, got, err, c.want)
+		}
+	}
+}
+
+// A command line koan can't understand is usage, exit 2; a file it can't
+// read is io, exit 1. Neither reaches the command.
+func TestRunErrors(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		kind errs.Kind
+		code int
+	}{
+		{[]string{"task"}, errs.Usage, ExitUsage},
+		{[]string{"folder", "frob"}, errs.Usage, ExitUsage},
+		{[]string{"task", "create", "a", "--notes-file", filepath.Join(t.TempDir(), "none")}, errs.IO, ExitError},
+		{[]string{"batch", "-i", t.TempDir()}, errs.IO, ExitError},
+	} {
+		var out bytes.Buffer
+		code := Run(c.args, Env{Stdin: bytes.NewReader(nil), Stdout: &out, Stderr: new(bytes.Buffer)})
+		var env struct {
+			Error struct{ Kind errs.Kind }
+		}
+		json.Unmarshal(out.Bytes(), &env)
+		if code != c.code || env.Error.Kind != c.kind {
+			t.Errorf("koan %v: exit %d, %s; want %d, %s", c.args, code, out.Bytes(), c.code, c.kind)
 		}
 	}
 }

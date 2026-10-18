@@ -28,7 +28,7 @@ func cmdClaim(c *call) (any, *errs.Error) {
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
-	f, tf, e := c.find(id)
+	_, tf, e := c.find(id)
 	if e != nil {
 		return nil, e
 	}
@@ -42,11 +42,10 @@ func cmdClaim(c *call) (any, *errs.Error) {
 	if e := c.claim(id, extra); e != nil {
 		return nil, e
 	}
-	t := c.task(f, tf)
-	return claimResult{Task: &t}, nil
+	return written{ID: id, Changed: true}, nil
 }
 
-// cmdClaimNext is frontier and claim under one lock, so two callers asking
+// cmdClaimNext is task frontier and task claim under one lock, so two callers asking
 // at once never get the same task.
 func cmdClaimNext(c *call) (any, *errs.Error) {
 	in := c.in.top()

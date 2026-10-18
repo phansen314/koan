@@ -221,7 +221,7 @@ func (t *Tree) PutRaw(rel string, data []byte) *errs.Error { return t.put(rel, d
 func (t *Tree) Stat(rel string) (fs.FileInfo, error) { return t.root.Lstat(rel) }
 
 // Material lists the entries of folder f, not the root, that are not
-// koan's, hidden ones aside: what delete-folder removes only when told to.
+// koan's, hidden ones aside: what folder delete removes only when told to.
 // It looks at names and types alone, never inside an entry.
 func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
 	entries, e := t.List(f)

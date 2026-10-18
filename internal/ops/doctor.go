@@ -227,7 +227,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		edges[id] = tf.BlockedBy
 	}
 	for _, cycle := range graph.Cycles(edges) {
-		d.add(errs.FindingCycle, fmt.Sprintf("tasks %v block each other, each waiting on the next: `koan unblock` one of them", cycle), cycle, nil, nil)
+		d.add(errs.FindingCycle, fmt.Sprintf("tasks %v block each other, each waiting on the next: `koan task unblock` one of them", cycle), cycle, nil, nil)
 	}
 
 	// Unusable files come in tree order: a folder's own file before its
@@ -243,7 +243,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		}
 		for _, i := range byFolder[f] {
 			if l := files[i]; loaded[i].File == nil && loaded[i].OldFormat == 0 && !loaded[i].Gone {
-				d.add(errs.FindingUnusableFile, loaded[i].Err.Message+": fix the file by hand, or `koan delete` the task",
+				d.add(errs.FindingUnusableFile, loaded[i].Err.Message+": fix the file by hand, or `koan task delete` the task",
 					[]model.ID{l.id}, []string{abs(l)}, nil)
 			}
 		}

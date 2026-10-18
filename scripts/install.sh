@@ -27,7 +27,7 @@ skill_src=$repo/claude/skills/koan
 claude_dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 claude_settings=$claude_dir/settings.json
 claude_allow='["Bash(koan:*)", "Bash(jq:*)"]'
-claude_ask='["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]'
+claude_ask='["Bash(koan init:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]'
 
 oc_dir=${XDG_CONFIG_HOME:-$HOME/.config}/opencode
 oc_json=$oc_dir/opencode.json
@@ -38,8 +38,8 @@ oc_rules='{
   "koan *": "allow",
   "jq *": "allow",
   "koan init*": "ask",
-  "koan delete *": "ask",
-  "koan delete-folder *": "ask",
+  "koan task delete *": "ask",
+  "koan folder delete *": "ask",
   "koan repair*": "ask",
   "koan migrate*": "ask"
 }'

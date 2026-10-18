@@ -85,12 +85,13 @@ type narrowing struct {
 	fields []string
 }
 
-func readNarrowing(f fields) narrowing {
+// readNarrowing reads limit, and fields, each one of allowed.
+func readNarrowing(f fields, allowed []string) narrowing {
 	var n narrowing
 	if f.get("limit", false, &n.limit, "a positive integer") && n.limit < 1 {
 		f.in.bad("/limit", "must be a positive integer")
 	}
-	n.fields, _ = f.oneOf("fields", model.TaskFields)
+	n.fields, _ = f.oneOf("fields", allowed)
 	return n
 }
 
@@ -101,24 +102,34 @@ type listing struct {
 }
 
 func (n narrowing) apply(tasks []model.Task) (listing, *errs.Error) {
-	l := listing{Total: len(tasks), Tasks: []json.RawMessage{}}
-	if n.limit > 0 && len(tasks) > n.limit {
-		tasks, l.Truncated = tasks[:n.limit], true
-	}
-	for _, t := range tasks {
-		raw, err := project(t, n.fields)
-		if err != nil {
-			return l, errs.New(errs.Internal, "encode task %d: %v", t.ID, err)
-		}
-		l.Tasks = append(l.Tasks, raw)
-	}
-	return l, nil
+	l := listing{Total: len(tasks)}
+	var e *errs.Error
+	l.Tasks, l.Truncated, e = narrow(n, tasks, model.TaskFields, "id")
+	return l, e
 }
 
-// project encodes a task with only the chosen fields, and always id, in the
-// order a whole task has them. No fields chosen means all of them.
-func project(t model.Task, fields []string) (json.RawMessage, error) {
-	whole, err := json.Marshal(t)
+// narrow cuts items to the limit, and encodes each with only the chosen
+// fields and those it always has, in order, the order its fields are
+// written in. No fields chosen means all of them.
+func narrow[T any](n narrowing, items []T, order []string, always ...string) ([]json.RawMessage, bool, *errs.Error) {
+	truncated := n.limit > 0 && len(items) > n.limit
+	if truncated {
+		items = items[:n.limit]
+	}
+	out := []json.RawMessage{}
+	for _, v := range items {
+		raw, err := project(v, order, n.fields, always)
+		if err != nil {
+			return nil, false, errs.New(errs.Internal, "encode the result: %v", err)
+		}
+		out = append(out, raw)
+	}
+	return out, truncated, nil
+}
+
+// project encodes v with only the fields named in fields or always.
+func project(v any, order, fields, always []string) (json.RawMessage, error) {
+	whole, err := json.Marshal(v)
 	if err != nil || fields == nil {
 		return whole, err
 	}
@@ -128,8 +139,8 @@ func project(t model.Task, fields []string) (json.RawMessage, error) {
 	}
 	var b bytes.Buffer
 	b.WriteByte('{')
-	for _, k := range model.TaskFields {
-		if k != "id" && !slices.Contains(fields, k) {
+	for _, k := range order {
+		if !slices.Contains(always, k) && !slices.Contains(fields, k) {
 			continue
 		}
 		if b.Len() > 1 {
@@ -146,7 +157,7 @@ func project(t model.Task, fields []string) (json.RawMessage, error) {
 
 func cmdFrontier(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	s, n := readScope(in), readNarrowing(in)
+	s, n := readScope(in), readNarrowing(in, model.TaskFields)
 	if e := c.begin(false); e != nil {
 		return nil, e
 	}
@@ -160,7 +171,7 @@ func cmdFrontier(c *call) (any, *errs.Error) {
 
 func cmdList(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	s, n := readScope(in), readNarrowing(in)
+	s, n := readScope(in), readNarrowing(in, model.TaskFields)
 	var claimed bool
 	hasClaimed := in.get("claimed", false, &claimed, "true or false")
 	readiness, ok := in.oneOf("readiness", []string{"ready", "blocked", "done"})
@@ -169,7 +180,6 @@ func cmdList(c *call) (any, *errs.Error) {
 	} else if len(readiness) == 0 {
 		c.in.bad("/readiness", "must hold at least one of ready, blocked, done")
 	}
-	folders := in.boolean("include_folders", false)
 	if e := c.begin(false); e != nil {
 		return nil, e
 	}
@@ -179,23 +189,7 @@ func cmdList(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	l, e := n.apply(tasks)
-	if e != nil {
-		return nil, e
-	}
-	if !folders {
-		return l, nil
-	}
-	fs := []model.FolderRecord{}
-	for _, f := range c.x.Folders {
-		if s.folder.Holds(f) {
-			fs = append(fs, c.passFolder(f))
-		}
-	}
-	return struct {
-		listing
-		Folders []model.FolderRecord `json:"folders"`
-	}{l, fs}, nil
+	return n.apply(tasks)
 }
 
 type whyResult struct {

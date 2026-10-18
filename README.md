@@ -22,17 +22,18 @@ The tree is always at `~/koan-root`, and koan's own state (the ID counter and th
 ## A taste
 
 ```sh
-koan create 'Design schema' --folder /work/api --priority 2 --tags db   # folders are made as needed: /work is 1, /work/api 2, the task 3
-koan create 'Write migrations' --folder /work/api --blocked-by 3
-koan frontier --limit 10 --fields id,title                       # what can be taken now, in work order
-koan why 4                                                       # why 4 isn't ready: .result.ready would move it
-koan done 3
-jq -n '{folder: "/work/api", tasks: [                             # a plan in one call: refs name earlier tasks
+koan task create 'Design schema' --folder /work/api --priority 2 --tags db   # folders are made as needed: /work is 1, /work/api 2, the task 3
+koan task create 'Write migrations' --folder /work/api --blocked-by 3
+koan task frontier --limit 10 --fields id,title                       # what can be taken now, in work order
+koan task why 4                                                       # why 4 isn't ready: .result.ready would move it
+koan task done 3
+koan folder list --folder /work --fields id,path,title
+jq -n '{folder: "/work/api", tasks: [                                  # a plan in one call: refs name earlier tasks
   {ref: "endpoints", title: "Add endpoints"},
-  {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan create-batch -i -
+  {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan batch -i -
 ```
 
-A task's notes are a plain file, edited with any editor: `koan show 4 | jq -r .result.task.notes_path` says where.
+A write returns what it changed, by ID (`.result.id`); a read returns the whole record. A task's notes are a plain file, edited with any editor: `koan task show 4 | jq -r .result.task.notes_path` says where.
 
 ## Use it from Claude Code and OpenCode
 
@@ -61,7 +62,7 @@ Claude Code, in `~/.claude/settings.json`:
 {
   "permissions": {
     "allow": ["Bash(koan:*)", "Bash(jq:*)"],
-    "ask": ["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan delete-folder:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]
+    "ask": ["Bash(koan init:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]
   }
 }
 ```
@@ -75,8 +76,8 @@ OpenCode, in `~/.config/opencode/opencode.json` (the script leaves an `opencode.
       "koan *": "allow",
       "jq *": "allow",
       "koan init*": "ask",
-      "koan delete *": "ask",
-      "koan delete-folder *": "ask",
+      "koan task delete *": "ask",
+      "koan folder delete *": "ask",
       "koan repair*": "ask",
       "koan migrate*": "ask"
     }
@@ -99,11 +100,11 @@ Tags are lowercase only (`db`, `needs-review`), so matching a tag is always exac
 Two agents that each read the list of ready tasks would start the same one. A **claim** reserves a task: once it is claimed, no one else can claim it, and it leaves the frontier, until it is released or done.
 
 ```sh
-koan claim-next --folder /work --extra '{"worker":"w3"}'   # claim the first task of the frontier; task is null when it is empty
-koan claim 42                                              # or this task; a second claim is refused: conflict, rule claimed
-koan list --claimed --fields id,title,claim                # what is out, to whom, and since when
-koan done 42                                               # ends the claim
-koan release 42                                            # or give it back unfinished
+koan task claim-next --folder /work --extra '{"worker":"w3"}'   # claim the first task of the frontier; task is null when it is empty
+koan task claim 42                                              # or this task; a second claim is refused: conflict, rule claimed
+koan task list --claimed --fields id,title,claim                # what is out, to whom, and since when
+koan task done 42                                               # ends the claim
+koan task release 42                                            # or give it back unfinished
 ```
 
 A claim is a reservation and nothing more: it never expires, and every other command still works on a claimed task. See [Claims](spec/design.md#claims). [docs/coordination.md](docs/coordination.md) shows how a coordinator that starts its own workers builds safe edits on top of this, with a worked example for Claude Code subagents.
@@ -122,7 +123,7 @@ koan repair --kinds dangling-reference,stale-claim   # remove blockers and claim
 
 ## Undoing a delete
 
-`koan delete` and `koan delete-folder` remove files for good; koan keeps no trash. Keep the tree in git (`git init` in it, and commit now and then) and a delete can be undone, back to the last commit:
+`koan task delete` and `koan folder delete` remove files for good; koan keeps no trash. Keep the tree in git (`git init` in it, and commit now and then) and a delete can be undone, back to the last commit:
 
 ```sh
 cd ~/koan-root
@@ -131,7 +132,7 @@ git restore -- @proj/@42.json @proj/@42.md                        # not yet comm
 git restore --source=<commit>^ -- @proj/@42.json @proj/@42.md     # committed: from the commit before
 ```
 
-Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Every file in the tree is safe to commit and restore, with no `.gitignore` needed, because the ID counter is kept outside it. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `block` again after restoring. Then run `koan doctor`: a restored task may name blockers deleted since.
+Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Every file in the tree is safe to commit and restore, with no `.gitignore` needed, because the ID counter is kept outside it. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `task block` again after restoring. Then run `koan doctor`: a restored task may name blockers deleted since.
 
 ## More than one machine
 
