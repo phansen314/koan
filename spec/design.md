@@ -223,7 +223,7 @@ There is no index: a command that looks a task up by ID walks the tree.
 
 - A walk enters only folders: directories named `@` and a folder name, in the root or in a folder it entered. Within a folder, an entry named with `@` is a task file `@<id>.json`, notes `@<id>.md`, the folder file `@folder.json` or notes `@folder.md` (not in the root), or a folder. Every other entry is material, and is skipped without a look.
 - An entry named with `@` that is none of these, a symlink, or of the wrong type (a directory named `@42.json`) is skipped too, and `doctor` reports it.
-- A walk lists entries by name only. Folder files are read only by the commands that need folder IDs or records, by any command given a folder by ID, or `where` given any ID, and by a `not-found` for a task ID, to say when it is a folder's.
+- A walk lists entries by name only; folder files are read only by the commands that need them ([implementation.md](implementation.md)).
 - A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
 - **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`). koan never picks a copy. `doctor` lists the copies, for a person to resolve.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.
