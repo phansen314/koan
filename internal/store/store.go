@@ -76,7 +76,7 @@ type Condition struct {
 
 // Inspect reports the root's state without failing on it. root may be nil
 // when the root directory could not be opened, with err the reason.
-func Inspect(env Env, root fsys.Root, openErr error) Condition {
+func Inspect(env Env, root *fsys.Root, openErr error) Condition {
 	c := Condition{Missing: []string{}}
 	var bad *errs.Error
 	switch {
@@ -119,7 +119,7 @@ func Inspect(env Env, root fsys.Root, openErr error) Condition {
 }
 
 // readMeta reads @koan.json. Both results are nil when it is missing.
-func readMeta(env Env, root fsys.Root) (*model.Meta, *errs.Error) {
+func readMeta(env Env, root *fsys.Root) (*model.Meta, *errs.Error) {
 	p := path.Join(env.RootPath(), MetaName)
 	data, err := root.ReadFile(MetaName)
 	if errs.IsErrno(err, syscall.ENOENT) {
@@ -194,8 +194,8 @@ const (
 // file as read, and, for a write, the held lock.
 type Tree struct {
 	env     Env
-	root    fsys.Root
-	lock    fsys.Lock
+	root    *fsys.Root
+	lock    *fsys.Lock
 	Meta    *model.Meta
 	State   *model.State
 	changed []string

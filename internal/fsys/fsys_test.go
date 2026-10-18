@@ -14,13 +14,13 @@ import (
 )
 
 // newRoot creates a temp directory, runs setup in it, and opens it as a Root.
-func newRoot(t *testing.T, setup func(dir string)) (Root, string) {
+func newRoot(t *testing.T, setup func(dir string)) (*Root, string) {
 	t.Helper()
 	dir := t.TempDir()
 	if setup != nil {
 		setup(dir)
 	}
-	r, err := OS{}.OpenRoot(dir)
+	r, err := FS{}.OpenRoot(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,80 +64,12 @@ func TestReadFileRejectsSymlink(t *testing.T) {
 	wantErrno(t, err, syscall.ELOOP)
 }
 
-func TestReadDirRejectsSymlink(t *testing.T) {
-	r, _ := newRoot(t, symlinkTree(t))
-	if _, err := r.ReadDir("sub"); err != nil {
-		t.Fatal(err)
-	}
-	_, err := r.ReadDir("link")
-	wantErrno(t, err, syscall.ELOOP)
-}
-
 func TestLstatReportsSymlink(t *testing.T) {
 	r, _ := newRoot(t, symlinkTree(t))
 	fi, err := r.Lstat("link")
 	must(t, err)
 	if fi.Mode()&fs.ModeSymlink == 0 {
 		t.Fatalf("mode %v, want a symlink", fi.Mode())
-	}
-}
-
-// An entry swapped for a symlink just before the open fails with ELOOP: the
-// open itself refuses it.
-func TestReadFileRejectsSwap(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.WriteFile(filepath.Join(dir, "1.json"), []byte("a"), 0o644))
-		must(t, os.WriteFile(filepath.Join(dir, "2.json"), []byte("b"), 0o644))
-	})
-	beforeOpen = func(name string) {
-		p := filepath.Join(dir, name)
-		must(t, os.Remove(p))
-		must(t, os.Symlink("2.json", p))
-	}
-	t.Cleanup(func() { beforeOpen = nil })
-	_, err := r.ReadFile("1.json")
-	wantErrno(t, err, syscall.ELOOP)
-}
-
-// A file renamed away and replaced by a symlink to itself is refused too, not
-// followed back to the same file.
-func TestReadFileRejectsSwapToSameFile(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.WriteFile(filepath.Join(dir, "1.json"), []byte("a"), 0o644))
-	})
-	beforeOpen = func(name string) {
-		p := filepath.Join(dir, name)
-		must(t, os.Rename(p, filepath.Join(dir, "2.json")))
-		must(t, os.Symlink("2.json", p))
-	}
-	t.Cleanup(func() { beforeOpen = nil })
-	_, err := r.ReadFile("1.json")
-	wantErrno(t, err, syscall.ELOOP)
-}
-
-// A file replaced by a concurrent write just before the open is read in its
-// new version, not reported as a symlink.
-func TestReadFileFollowsReplacement(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.WriteFile(filepath.Join(dir, "1.json"), []byte("old"), 0o644))
-	})
-	calls := 0
-	beforeOpen = func(name string) {
-		calls++
-		if calls == 1 {
-			tmp := filepath.Join(dir, "tmp")
-			must(t, os.WriteFile(tmp, []byte("new"), 0o644))
-			must(t, os.Rename(tmp, filepath.Join(dir, name)))
-		}
-	}
-	t.Cleanup(func() { beforeOpen = nil })
-	got, err := r.ReadFile("1.json")
-	must(t, err)
-	if string(got) != "new" {
-		t.Errorf("got %q, want the new version", got)
-	}
-	if calls != 1 {
-		t.Errorf("opened %d times, want 1", calls)
 	}
 }
 
@@ -181,72 +113,6 @@ func TestReadFileUnderConcurrentReplacement(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
-}
-
-// A folder swapped for a symlink just before the open is refused as a file
-// is.
-func TestReadDirRejectsSwap(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
-		must(t, os.Mkdir(filepath.Join(dir, "other"), 0o755))
-		must(t, os.WriteFile(filepath.Join(dir, "other", "x"), nil, 0o644))
-	})
-	calls := 0
-	beforeOpen = func(name string) {
-		calls++
-		if calls == 1 {
-			p := filepath.Join(dir, name)
-			must(t, os.Remove(p))
-			must(t, os.Symlink("other", p))
-		}
-	}
-	t.Cleanup(func() { beforeOpen = nil })
-	_, err := r.ReadDir("sub")
-	wantErrno(t, err, syscall.ELOOP)
-}
-
-// A folder renamed away and replaced by a symlink to itself is caught as a
-// file is.
-func TestReadDirRejectsSwapToSameDir(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
-	})
-	beforeOpen = func(name string) {
-		p := filepath.Join(dir, name)
-		must(t, os.Rename(p, filepath.Join(dir, "other")))
-		must(t, os.Symlink("other", p))
-	}
-	t.Cleanup(func() { beforeOpen = nil })
-	_, err := r.ReadDir("sub")
-	wantErrno(t, err, syscall.ELOOP)
-}
-
-// A folder replaced just before the open is listed in its new version.
-func TestReadDirFollowsReplacement(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
-	})
-	calls := 0
-	beforeOpen = func(name string) {
-		calls++
-		if calls == 1 {
-			tmp := filepath.Join(dir, "new")
-			must(t, os.Mkdir(tmp, 0o755))
-			must(t, os.WriteFile(filepath.Join(tmp, "y"), nil, 0o644))
-			// os.Rename refuses a directory over a directory; rename(2)
-			// replaces an empty one on Linux and macOS.
-			must(t, syscall.Rename(tmp, filepath.Join(dir, name)))
-		}
-	}
-	t.Cleanup(func() { beforeOpen = nil })
-	got, err := r.ReadDir("sub")
-	must(t, err)
-	if len(got) != 1 || got[0].Name() != "y" {
-		t.Errorf("got %v, want [y]", got)
-	}
-	if calls != 1 {
-		t.Errorf("opened %d times, want 1", calls)
-	}
 }
 
 func TestReadFileDirectory(t *testing.T) {
@@ -385,17 +251,17 @@ func TestRenameReplaces(t *testing.T) {
 
 func TestOpenRootErrors(t *testing.T) {
 	dir := t.TempDir()
-	_, err := OS{}.OpenRoot(filepath.Join(dir, "missing"))
+	_, err := FS{}.OpenRoot(filepath.Join(dir, "missing"))
 	wantErrno(t, err, syscall.ENOENT)
 	file := filepath.Join(dir, "file")
 	must(t, os.WriteFile(file, nil, 0o644))
-	_, err = OS{}.OpenRoot(file)
+	_, err = FS{}.OpenRoot(file)
 	wantErrno(t, err, syscall.ENOTDIR)
 	var pe *os.PathError
 	if !errors.As(err, &pe) || pe.Path != file {
 		t.Errorf("got %v, want a *os.PathError on %q", err, file)
 	}
-	_, err = OS{}.OpenRoot("")
+	_, err = FS{}.OpenRoot("")
 	wantErrno(t, err, syscall.ENOENT)
 }
 
@@ -415,7 +281,7 @@ func TestOpenRootFollowsSymlink(t *testing.T) {
 	must(t, os.WriteFile(filepath.Join(dir, "real", "x"), []byte("x"), 0o644))
 	link := filepath.Join(dir, "link")
 	must(t, os.Symlink("real", link))
-	r, err := OS{}.OpenRoot(link)
+	r, err := FS{}.OpenRoot(link)
 	must(t, err)
 	defer r.Close()
 	got, err := r.ReadFile("x")
@@ -431,7 +297,7 @@ func TestOpenRootFIFO(t *testing.T) {
 	must(t, syscall.Mkfifo(fifo, 0o644))
 	done := make(chan error, 1)
 	go func() {
-		_, err := OS{}.OpenRoot(fifo)
+		_, err := FS{}.OpenRoot(fifo)
 		done <- err
 	}()
 	select {
@@ -439,34 +305,6 @@ func TestOpenRootFIFO(t *testing.T) {
 		wantErrno(t, err, syscall.ENOTDIR)
 	case <-time.After(5 * time.Second):
 		t.Fatal("OpenRoot blocked on a FIFO")
-	}
-}
-
-// A FIFO where a folder should be — put there by an outside change after
-// the caller looked — is refused with ENOTDIR, never opened, which would
-// block with the write lock held.
-func TestFolderFIFODoesNotBlock(t *testing.T) {
-	r, _ := newRoot(t, func(dir string) {
-		must(t, syscall.Mkfifo(filepath.Join(dir, "a"), 0o644))
-		must(t, os.WriteFile(filepath.Join(dir, "x"), nil, 0o644))
-	})
-	for name, call := range map[string]func() error{
-		"ReadFile":                func() error { _, err := r.ReadFile("a/1.json"); return err },
-		"ReadDir":                 func() error { _, err := r.ReadDir("a/b"); return err },
-		"SyncDir":                 func() error { return r.SyncDir("a") },
-		"RenameNoReplace from it": func() error { return r.RenameNoReplace("a/x", "y") },
-		"RenameNoReplace into it": func() error { return r.RenameNoReplace("x", "a/y") },
-	} {
-		done := make(chan error, 1)
-		go func() { done <- call() }()
-		select {
-		case err := <-done:
-			if !errors.Is(err, syscall.ENOTDIR) {
-				t.Errorf("%s: got %v, want ENOTDIR", name, err)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatalf("%s blocked on a FIFO", name)
-		}
 	}
 }
 
@@ -491,25 +329,5 @@ func TestRenameNoReplace(t *testing.T) {
 	}
 	if b, err := os.ReadFile(filepath.Join(dir, "q/1.json")); err != nil || string(b) != "x" {
 		t.Errorf("moved file: %q, %v", b, err)
-	}
-}
-
-// RemoveAll removes a folder with everything under it, and never follows a
-// symlink out of it.
-func TestRemoveAll(t *testing.T) {
-	r, dir := newRoot(t, func(dir string) {
-		must(t, os.MkdirAll(filepath.Join(dir, "a/b"), 0o755))
-		must(t, os.WriteFile(filepath.Join(dir, "a/b/1.json"), nil, 0o644))
-		must(t, os.Mkdir(filepath.Join(dir, "keep"), 0o755))
-		must(t, os.WriteFile(filepath.Join(dir, "keep/x"), nil, 0o644))
-		must(t, os.Symlink("../keep", filepath.Join(dir, "a/link")))
-	})
-	must(t, r.RemoveAll("a"))
-	must(t, r.RemoveAll("a"))
-	if _, err := os.Lstat(filepath.Join(dir, "a")); !os.IsNotExist(err) {
-		t.Errorf("a: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "keep/x")); err != nil {
-		t.Errorf("followed a symlink: %v", err)
 	}
 }

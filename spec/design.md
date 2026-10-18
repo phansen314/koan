@@ -239,12 +239,11 @@ Several processes may use one tree at once, with no coordinator between them.
 - **Input is checked before the lock is taken.** A command that finds the lock held against it waits up to 5 seconds, then fails with `busy`, which is always safe to retry.
 - **A write decides on current state**: everything it depends on is read after it has the lock. So two writes to one task both take effect, and no write breaks an [invariant](#invariants).
 - **Files are replaced atomically**: written to a hidden temp file, flushed, then renamed. A reader never sees half a file koan wrote.
-- **Folders are made whole**: built under a hidden temp name with their folder file and empty notes, then renamed into place. A reader never sees a new folder without its folder file.
 - `doctor` holds the lock alone, as a write does, though it changes nothing: on a large tree it is the command others are most likely to wait for.
 
 ### Crashes and failures
 
-A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file or folder. None of these stops later commands, and `doctor` finds all of them.
+A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `delete-folder` cut short shows up as some of these, in what is left of it: run `delete-folder` again to finish.
 
 koan keeps no journal and takes no idempotency keys. After an unclear outcome, look (`show`, `list`, `doctor`), then decide. Commands that set a state (`done`, `reopen`, `block`, `unblock`, `update`, `release`) are safe to run again; `create` and `claim-next` make a new task or claim each time.
 

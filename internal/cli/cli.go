@@ -45,7 +45,7 @@ const (
 // standard streams.
 func ProcessEnv() Env {
 	return Env{
-		Ops:    store.Env{Home: os.Getenv("HOME"), Now: time.Now, FS: fsys.OS{}, LockWait: store.DefaultLockWait},
+		Ops:    store.Env{Home: os.Getenv("HOME"), Now: time.Now, FS: fsys.FS{}, LockWait: store.DefaultLockWait},
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,

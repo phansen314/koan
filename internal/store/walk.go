@@ -20,7 +20,7 @@ type Index struct {
 	Copies     map[model.ID][]model.Folder // every ID with more than one task file
 	Notes      map[model.ID][]model.Folder // every notes file
 	Filed      map[model.Folder]bool       // every folder with a folder file
-	Temps      []string                    // temp files and folders koan left, root-relative
+	Temps      []string                    // temp files koan left, root-relative
 	Skipped    []string                    // entries named with @ that are not koan's
 	Unlistable []string                    // folders that can not be listed
 }
@@ -85,7 +85,7 @@ func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 	for _, e := range entries {
 		name := e.Name()
 		rel := path.Join(f.Rel(), name)
-		if fsys.IsTemp(name) {
+		if fsys.IsTemp(name) && e.Type().IsRegular() {
 			x.Temps = append(x.Temps, rel)
 			continue
 		}

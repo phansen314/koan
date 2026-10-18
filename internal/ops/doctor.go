@@ -107,8 +107,8 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	highest := max(t.State.LastID, highestID(x, folderFiles))
 
 	for _, rel := range x.Temps {
-		d.add("temp-leftover", "a temp file or folder koan left behind: `koan repair` removes it", nil,
-			[]string{t.Abs(rel)}, func() (bool, *errs.Error) { return done(t.RemoveAll(rel)) })
+		d.add("temp-leftover", "a temp file koan left behind: `koan repair` removes it", nil,
+			[]string{t.Abs(rel)}, func() (bool, *errs.Error) { return done(t.Remove(rel)) })
 	}
 
 	var above []model.ID

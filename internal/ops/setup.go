@@ -100,8 +100,8 @@ func cmdVersion(c *call) (any, *errs.Error) {
 	}
 	b := buildinfo.Read()
 	return versionResult{
-		Version: b.Version, Commit: b.Commit, CommitTime: b.CommitTime, Dirty: b.UncommittedChanges,
-		Go: runtime.Version(), Platform: b.Platform, Format: model.Format,
+		Version: b.Version, Commit: b.Commit, CommitTime: b.CommitTime, Dirty: b.Dirty,
+		Go: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, Format: model.Format,
 	}, nil
 }
 

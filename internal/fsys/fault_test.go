@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-func TestFaultPassesThrough(t *testing.T) {
+func TestHookSeesEveryCall(t *testing.T) {
 	dir := t.TempDir()
 	var ops []Op
-	fsys := Fault{FS: OS{}, Hook: Record(&ops)}
+	fsys := FS{Hook: Record(&ops)}
 	r, err := fsys.OpenRoot(dir)
 	must(t, err)
 	defer r.Close()
@@ -52,17 +52,9 @@ func TestFaultPassesThrough(t *testing.T) {
 	}
 }
 
-// A Fault without a Hook passes every call through.
-func TestFaultNilHook(t *testing.T) {
-	r, err := Fault{FS: OS{}}.OpenRoot(t.TempDir())
-	must(t, err)
-	must(t, r.Mkdir("proj", 0o755))
-	must(t, r.Close())
-}
-
 func TestErrnoAt(t *testing.T) {
 	dir := t.TempDir()
-	fsys := Fault{FS: OS{}, Hook: ErrnoAt(OpWrite, "", 2, syscall.ENOSPC)}
+	fsys := FS{Hook: ErrnoAt(OpWrite, "", 2, syscall.ENOSPC)}
 	r, err := fsys.OpenRoot(dir)
 	must(t, err)
 	defer r.Close()
@@ -82,11 +74,11 @@ func TestErrnoAt(t *testing.T) {
 	}
 }
 
-// ErrnoAtMutating counts only calls that change the disk: the reads between
-// them do not move it on.
-func TestErrnoAtMutating(t *testing.T) {
+// Nth with Mutating counts only calls that change the disk: the reads
+// between them do not move it on.
+func TestNthMutating(t *testing.T) {
 	dir := t.TempDir()
-	fsys := Fault{FS: OS{}, Hook: ErrnoAtMutating(2, syscall.EIO)}
+	fsys := FS{Hook: Nth(2, Mutating, Fail(syscall.EIO))}
 	r, err := fsys.OpenRoot(dir)
 	must(t, err)
 	defer r.Close()
@@ -105,7 +97,7 @@ func TestErrnoAtPath(t *testing.T) {
 	dir := t.TempDir()
 	must(t, os.WriteFile(filepath.Join(dir, "1.json"), nil, 0o644))
 	must(t, os.WriteFile(filepath.Join(dir, "2.json"), nil, 0o644))
-	fsys := Fault{FS: OS{}, Hook: ErrnoAt(OpReadFile, "2.json", 1, syscall.EACCES)}
+	fsys := FS{Hook: ErrnoAt(OpReadFile, "2.json", 1, syscall.EACCES)}
 	r, err := fsys.OpenRoot(dir)
 	must(t, err)
 	defer r.Close()
@@ -122,7 +114,7 @@ func TestErrnoAtPath(t *testing.T) {
 
 func TestFaultLinkError(t *testing.T) {
 	dir := t.TempDir()
-	fsys := Fault{FS: OS{}, Hook: ErrnoAt(OpLink, "", 1, syscall.EEXIST)}
+	fsys := FS{Hook: ErrnoAt(OpLink, "", 1, syscall.EEXIST)}
 	r, err := fsys.OpenRoot(dir)
 	must(t, err)
 	defer r.Close()
@@ -138,7 +130,7 @@ func TestFaultLinkError(t *testing.T) {
 // An injected unlock fault still releases the real lock.
 func TestFaultUnlockReleases(t *testing.T) {
 	dir := t.TempDir()
-	fsys := Fault{FS: OS{}, Hook: ErrnoAt(OpUnlock, "", 1, syscall.EIO)}
+	fsys := FS{Hook: ErrnoAt(OpUnlock, "", 1, syscall.EIO)}
 	r, err := fsys.OpenRoot(dir)
 	must(t, err)
 	defer r.Close()
@@ -151,19 +143,14 @@ func TestFaultUnlockReleases(t *testing.T) {
 	must(t, l.Unlock())
 }
 
-// An injected close fault still closes the real root: the inner Fault sees
-// the close.
+// An injected close fault still closes the real root.
 func TestFaultCloseRootCloses(t *testing.T) {
-	var inner []Op
-	fsys := Fault{
-		FS:   Fault{FS: OS{}, Hook: Record(&inner)},
-		Hook: ErrnoAt(OpCloseRoot, "", 1, syscall.EIO),
-	}
+	fsys := FS{Hook: ErrnoAt(OpCloseRoot, "", 1, syscall.EIO)}
 	r, err := fsys.OpenRoot(t.TempDir())
 	must(t, err)
 	wantErrno(t, r.Close(), syscall.EIO)
-	if last := inner[len(inner)-1]; last.Name != OpCloseRoot {
-		t.Errorf("inner calls %+v, want the real root closed", inner)
+	if _, err := r.r.Lstat("."); !errors.Is(err, os.ErrClosed) {
+		t.Errorf("got %v, want the real root closed", err)
 	}
 }
 
@@ -177,11 +164,11 @@ func TestHooksFirstErrorWins(t *testing.T) {
 	}
 }
 
-// CrashBefore kills the process, so it runs in a child: the test binary
+// Crash kills the process, so it runs in a child: the test binary
 // re-executed with FSYS_CRASH_DIR set.
-func TestCrashBefore(t *testing.T) {
+func TestCrash(t *testing.T) {
 	if dir := os.Getenv("FSYS_CRASH_DIR"); dir != "" {
-		fsys := Fault{FS: OS{}, Hook: CrashBefore(2)}
+		fsys := FS{Hook: Nth(2, Mutating, Crash)}
 		r, _ := fsys.OpenRoot(dir)
 		r.Mkdir("a", 0o755)
 		r.Mkdir("b", 0o755)
@@ -190,7 +177,7 @@ func TestCrashBefore(t *testing.T) {
 	dir := t.TempDir()
 	exe, err := os.Executable()
 	must(t, err)
-	p, err := os.StartProcess(exe, []string{exe, "-test.run=^TestCrashBefore$"}, &os.ProcAttr{
+	p, err := os.StartProcess(exe, []string{exe, "-test.run=^TestCrash$"}, &os.ProcAttr{
 		Env:   append(os.Environ(), "FSYS_CRASH_DIR="+dir),
 		Files: []*os.File{nil, nil, os.Stderr},
 	})

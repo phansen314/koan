@@ -1,8 +1,10 @@
 package store
 
 import (
+	"cmp"
 	"io/fs"
 	"path"
+	"slices"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
@@ -19,7 +21,7 @@ import (
 // the directory or to remove the temp file is not an error: the file is
 // already published (doctor finds leftovers). Any other failure returns the
 // OS error, with nothing published.
-func Publish(r fsys.Root, rel string, data []byte, perm fs.FileMode, replace bool) error {
+func Publish(r *fsys.Root, rel string, data []byte, perm fs.FileMode, replace bool) error {
 	f, tmp, err := r.CreateTemp(path.Dir(rel), perm)
 	if err != nil {
 		return err
@@ -168,44 +170,34 @@ func (t *Tree) Missing(f model.Folder) ([]model.Folder, *errs.Error) {
 	return missing, nil
 }
 
-// MakeFolder creates folder f, whose parent is there, whole: a hidden temp
-// folder in the parent gets the folder file ff and the notes,
-// and is then renamed into place, so the folder never appears without its
-// folder file. made is false when something was already at f, which only an
-// outside change can do: a not-a-folder conflict when it is not a folder,
-// and otherwise left as it is. The temp folder is removed either way, so it
-// is not a change; one a kill leaves behind is doctor's.
+// MakeFolder creates folder f, whose parent is there, then writes its folder
+// file ff and its notes in it. A kill or a failure between the steps leaves
+// the folder without its folder file, or without its notes, as it is: the
+// first is doctor's missing-folder-file. made is false when something was
+// already at f, which only an outside change can do: a not-a-folder conflict
+// when it is not a folder, and otherwise left as it is.
 func (t *Tree) MakeFolder(f model.Folder, ff *model.FolderFile, notes string) (made bool, e *errs.Error) {
-	tmp := fsys.TempName(f.Parent().Rel())
-	if err := t.root.Mkdir(tmp, FolderMode); err != nil {
-		return false, errs.FromOS(t.Abs(tmp), err)
-	}
-	fail := func(rel string, err error) (bool, *errs.Error) {
-		t.root.RemoveAll(tmp)
-		return false, errs.FromOS(t.Abs(rel), err)
-	}
 	data, err := model.Encode(ff)
 	if err != nil {
-		t.root.RemoveAll(tmp)
 		return false, errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
 	}
-	if err := Publish(t.root, path.Join(tmp, FolderFileName), data, FileMode, false); err != nil {
-		return fail(path.Join(tmp, FolderFileName), err)
-	}
-	if err := Publish(t.root, path.Join(tmp, FolderNotesName), []byte(notes), FileMode, false); err != nil {
-		return fail(path.Join(tmp, FolderNotesName), err)
-	}
-	err = t.root.RenameNoReplace(tmp, f.Rel())
-	switch {
-	case err == nil:
-		t.root.SyncDir(f.Parent().Rel())
-		t.note(f.Rel())
-		return true, nil
-	case errs.IsErrno(err, syscall.EEXIST, syscall.ENOTEMPTY):
-		t.root.RemoveAll(tmp)
+	err = t.root.Mkdir(f.Rel(), FolderMode)
+	if errs.IsErrno(err, syscall.EEXIST) {
 		return false, t.mustBeFolder(f)
 	}
-	return fail(f.Rel(), err)
+	if err != nil {
+		return false, errs.FromOS(t.Abs(f.Rel()), err)
+	}
+	t.root.SyncDir(f.Parent().Rel())
+	t.note(f.Rel())
+	// The folder's own path covers its files in changed_paths.
+	if err := Publish(t.root, FolderFileRel(f), data, FileMode, false); err != nil {
+		return true, errs.FromOS(t.Abs(FolderFileRel(f)), err)
+	}
+	if err := Publish(t.root, FolderNotesRel(f), []byte(notes), FileMode, false); err != nil {
+		return true, errs.FromOS(t.Abs(FolderNotesRel(f)), err)
+	}
+	return true, nil
 }
 
 // WriteFolderFile writes folder f's folder file: a new one when create is
@@ -270,27 +262,59 @@ func (t *Tree) Remove(rel string) *errs.Error {
 	return nil
 }
 
-// Discard removes a folder in one step as far as the tree is concerned: it
-// is renamed aside, to a hidden temp name in the root, then removed with
-// everything under it. Once renamed it is gone from the tree; a removal that
-// fails or is interrupted leaves a hidden leftover, which walks ignore and
-// doctor reports.
+// Discard removes a folder with everything under it. A removal that fails or
+// is interrupted leaves the folder partly removed, which a second Discard
+// finishes; it is reported as changed either way.
 func (t *Tree) Discard(rel string) *errs.Error {
-	tmp := fsys.TempName(".")
-	if err := t.root.RenameNoReplace(rel, tmp); err != nil {
+	err := t.discard(rel)
+	t.note(rel)
+	if err != nil {
 		return errs.FromOS(t.Abs(rel), err)
 	}
-	t.note(rel)
-	t.root.SyncDir(path.Dir(rel))
-	t.root.RemoveAll(tmp)
 	return nil
 }
 
-// RemoveAll removes a leftover temp file or folder.
-func (t *Tree) RemoveAll(rel string) *errs.Error {
-	if err := t.root.RemoveAll(rel); err != nil {
-		return errs.FromOS(t.Abs(rel), err)
+// discard removes folder rel depth first, so that a removal cut short leaves
+// nothing repair would get wrong: in each folder, everything else goes
+// before the task files, so no notes are left without their task, and the
+// folder file goes last, so no folder is left without one, which repair would
+// give a new ID. A symlink is removed, never followed; an entry already gone
+// is not an error.
+func (t *Tree) discard(rel string) error {
+	ents, err := t.root.ReadDir(rel)
+	if err != nil {
+		return ignoreGone(err)
 	}
-	t.note(rel)
-	return nil
+	slices.SortStableFunc(ents, func(a, b fs.DirEntry) int { return cmp.Compare(discardRank(a), discardRank(b)) })
+	for _, e := range ents {
+		p := path.Join(rel, e.Name())
+		if e.IsDir() {
+			err = t.discard(p)
+		} else {
+			err = ignoreGone(t.root.Remove(p))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return ignoreGone(t.root.Remove(rel))
+}
+
+// discardRank orders a folder's entries for removal: the folder file last,
+// task files before it, and everything else first.
+func discardRank(e fs.DirEntry) int {
+	if e.Name() == FolderFileName {
+		return 2
+	}
+	if _, suffix, ok := model.TaskFilename(e.Name()); ok && suffix == model.TaskSuffix && !e.IsDir() {
+		return 1
+	}
+	return 0
+}
+
+func ignoreGone(err error) error {
+	if errs.IsErrno(err, syscall.ENOENT) {
+		return nil
+	}
+	return err
 }
