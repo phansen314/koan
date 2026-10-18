@@ -63,7 +63,7 @@ func (t *Tree) Walk(tolerant bool) (*Index, *errs.Error) {
 		id := slices.Min(slices.Collect(maps.Keys(x.Copies)))
 		e := errs.NewConflict(errs.RuleDuplicateID, "task %d has %d task files", id, len(x.Copies[id])).WithIDs(id)
 		for _, f := range x.Copies[id] {
-			e.WithPaths(t.Abs(TaskRel(f, id)))
+			e.WithPaths(t.Abs(model.TaskRel(f, id)))
 		}
 		return nil, e
 	}
@@ -95,10 +95,10 @@ func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 		}
 		id, suffix, isTask := model.TaskFilename(name)
 		folderName, isFolder := model.FolderName(name)
-		own := f == model.Root && name == MetaName ||
-			f != model.Root && (name == FolderFileName || name == FolderNotesName)
+		own := f == model.Root && name == model.MetaName ||
+			f != model.Root && (name == model.FolderFileName || name == model.FolderNotesName)
 		switch {
-		case own && name == FolderFileName:
+		case own && name == model.FolderFileName:
 			// Whatever is there, a folder file koan can't use is
 			// reported as that, by whoever reads it, never as missing.
 			x.Filed[f] = true
@@ -154,8 +154,8 @@ func (t *Tree) Load(f model.Folder, id model.ID) *Loaded {
 func (t *Tree) LoadAt(f model.Folder, id model.ID) *Loaded { return t.load(f, id) }
 
 func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
-	p := t.Abs(TaskRel(f, id))
-	data, err := t.root.ReadFile(TaskRel(f, id))
+	p := t.Abs(model.TaskRel(f, id))
+	data, err := t.root.ReadFile(model.TaskRel(f, id))
 	if errs.IsErrno(err, syscall.ENOENT) {
 		return &Loaded{Gone: true, Err: errs.New(errs.NotFound, "task %d does not exist", id).WithIDs(id)}
 	}
@@ -191,7 +191,7 @@ func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
 // there is none. There is one folder file format yet, so a file in another
 // is corrupt.
 func (t *Tree) LoadFolder(f model.Folder) (ff *model.FolderFile, gone bool, e *errs.Error) {
-	rel := FolderFileRel(f)
+	rel := model.FolderFileRel(f)
 	p := t.Abs(rel)
 	data, err := t.root.ReadFile(rel)
 	if errs.IsErrno(err, syscall.ENOENT) {
@@ -236,7 +236,7 @@ func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
 		}
 		_, _, isTask := model.TaskFilename(name)
 		_, isFolder := model.FolderName(name)
-		own := isTask || name == FolderFileName || name == FolderNotesName
+		own := isTask || name == model.FolderFileName || name == model.FolderNotesName
 		if !(isFolder && en.IsDir()) && !(own && en.Type().IsRegular()) {
 			material = append(material, path.Join(f.Rel(), name))
 		}

@@ -85,6 +85,13 @@ const (
 	NotesSuffix = ".md"
 )
 
+// Names of the root's metadata file and a folder's two files.
+const (
+	MetaName        = "@koan.json"
+	FolderFileName  = "@folder.json"
+	FolderNotesName = "@folder.md"
+)
+
 // TaskFilename splits a filename like @42.json or @42.md into its ID and
 // suffix; ok is false for any other name.
 func TaskFilename(name string) (id ID, suffix string, ok bool) {
@@ -140,6 +147,21 @@ func (f Folder) Rel() string {
 	}
 	return path.Join(segs...)
 }
+
+// TaskRel and NotesRel are the root-relative paths of a task's two files.
+func TaskRel(f Folder, id ID) string {
+	return path.Join(f.Rel(), Mark+ClaimKey(id)+TaskSuffix)
+}
+
+func NotesRel(f Folder, id ID) string {
+	return path.Join(f.Rel(), Mark+ClaimKey(id)+NotesSuffix)
+}
+
+// FolderFileRel and FolderNotesRel are the root-relative paths of a
+// folder's two files.
+func FolderFileRel(f Folder) string { return path.Join(f.Rel(), FolderFileName) }
+
+func FolderNotesRel(f Folder) string { return path.Join(f.Rel(), FolderNotesName) }
 
 // Parent is the folder holding f; the root is its own parent.
 func (f Folder) Parent() Folder { return Folder(path.Dir(string(f))) }

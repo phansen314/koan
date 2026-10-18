@@ -97,7 +97,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			usable[l.id] = loaded[i].File
 		}
 	}
-	abs := func(l loc) string { return t.Abs(store.TaskRel(l.f, l.id)) }
+	abs := func(l loc) string { return t.Abs(model.TaskRel(l.f, l.id)) }
 
 	// Folder files, by folder; a folder whose file can't be used has none
 	// here, and its error in folderErrs.
@@ -120,7 +120,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	for _, f := range x.Folders {
 		if ff := folderFiles[f]; ff != nil && ff.ID > t.State.LastID {
-			above, abovePaths = append(above, ff.ID), append(abovePaths, t.Abs(store.FolderFileRel(f)))
+			above, abovePaths = append(above, ff.ID), append(abovePaths, t.Abs(model.FolderFileRel(f)))
 		}
 	}
 	if len(above) > 0 {
@@ -190,11 +190,11 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	for _, l := range orphans {
 		fix, msg := orphanFix(t, x, l.f, l.id)
 		d.add(errs.FindingOrphanNotes, fmt.Sprintf("notes with no task file beside them: %s", msg),
-			[]model.ID{l.id}, []string{t.Abs(store.NotesRel(l.f, l.id))}, fix)
+			[]model.ID{l.id}, []string{t.Abs(model.NotesRel(l.f, l.id))}, fix)
 	}
 
 	for _, f := range x.Unfiled() {
-		d.add(errs.FindingMissingFolderFile, fmt.Sprintf("folder %s has no %s: `koan repair` writes one, with a new ID", f, store.FolderFileName),
+		d.add(errs.FindingMissingFolderFile, fmt.Sprintf("folder %s has no %s: `koan repair` writes one, with a new ID", f, model.FolderFileName),
 			nil, []string{t.Abs(f.Rel())}, func() (bool, *errs.Error) {
 				id := max(t.State.LastID, highest) + 1
 				t.State.LastID, highest = id, id
@@ -212,7 +212,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	for _, f := range x.Folders {
 		if ff := folderFiles[f]; ff != nil {
-			holders[ff.ID] = append(holders[ff.ID], t.Abs(store.FolderFileRel(f)))
+			holders[ff.ID] = append(holders[ff.ID], t.Abs(model.FolderFileRel(f)))
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(holders)) {
@@ -239,7 +239,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	for _, f := range x.Folders {
 		if e := folderErrs[f]; e != nil {
 			d.add(errs.FindingUnusableFile, e.Message+": fix the file by hand, or remove it and `koan repair` writes a new one",
-				nil, []string{t.Abs(store.FolderFileRel(f))}, nil)
+				nil, []string{t.Abs(model.FolderFileRel(f))}, nil)
 		}
 		for _, i := range byFolder[f] {
 			if l := files[i]; loaded[i].File == nil && loaded[i].OldFormat == 0 && !loaded[i].Gone {
@@ -270,7 +270,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 // it: remove it when it is empty, move it to its task when the task is
 // elsewhere without notes, and otherwise leave it.
 func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (fix, string) {
-	rel := store.NotesRel(f, id)
+	rel := model.NotesRel(f, id)
 	if fi, err := t.Stat(rel); err == nil && fi.Size() == 0 {
 		return func() (bool, *errs.Error) { return done(t.Remove(rel)) }, "they are empty, and `koan repair` removes them"
 	}
@@ -278,7 +278,7 @@ func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (fix,
 	if exists && len(x.Copies[id]) == 0 && !slices.Contains(x.Notes[id], home) {
 		return func() (bool, *errs.Error) {
 			// taken: another orphan of this task got there first.
-			taken, e := t.Move(rel, store.NotesRel(home, id))
+			taken, e := t.Move(rel, model.NotesRel(home, id))
 			return e == nil && !taken, e
 		}, fmt.Sprintf("`koan repair` moves them to their task in %s", home)
 	}

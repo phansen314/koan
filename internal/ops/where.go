@@ -6,7 +6,6 @@ import (
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/model"
-	"github.com/phansen314/koan/internal/store"
 )
 
 type whereResult struct {
@@ -115,7 +114,7 @@ func (c *call) placeTask(id model.ID) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	notes := c.t.Abs(store.NotesRel(f, id))
+	notes := c.t.Abs(model.NotesRel(f, id))
 	return whereResult{Ref: model.IDRef(id), Hint: tf.Title, Folder: r, Task: &id, File: &notes}, nil
 }
 
@@ -156,7 +155,7 @@ func (c *call) fromFile(p string) (target, *errs.Error) {
 		return target{at: folderRef{path: f}}, nil
 	case !strings.HasPrefix(segs[0], model.Mark):
 		return target{at: folderRef{path: f}, material: strings.Join(segs, "/")}, nil
-	case len(segs) == 1 && f != model.Root && (segs[0] == store.FolderFileName || segs[0] == store.FolderNotesName):
+	case len(segs) == 1 && f != model.Root && (segs[0] == model.FolderFileName || segs[0] == model.FolderNotesName):
 		return target{at: folderRef{path: f}}, nil
 	}
 	if id, _, isTask := model.TaskFilename(segs[0]); isTask && len(segs) == 1 {
