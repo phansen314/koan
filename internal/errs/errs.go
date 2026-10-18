@@ -134,15 +134,32 @@ type Warning struct {
 	Paths   []string `json:"paths"`
 }
 
-// Finding kinds, in the order doctor reports them.
+// Finding kinds.
+const (
+	FindingTempLeftover      = "temp-leftover"
+	FindingIDAboveCounter    = "id-above-counter"
+	FindingDanglingReference = "dangling-reference"
+	FindingStaleClaim        = "stale-claim"
+	FindingOrphanNotes       = "orphan-notes"
+	FindingMissingFolderFile = "missing-folder-file"
+	FindingDuplicateID       = "duplicate-id"
+	FindingCycle             = "cycle"
+	FindingUnusableFile      = "unusable-file"
+	FindingOldFormat         = "old-format"
+	FindingSkippedEntry      = "skipped-entry"
+)
+
+// FindingKinds are the finding kinds, in the order doctor reports them.
 var FindingKinds = []string{
-	"temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes",
-	"missing-folder-file", "duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry",
+	FindingTempLeftover, FindingIDAboveCounter, FindingDanglingReference, FindingStaleClaim, FindingOrphanNotes,
+	FindingMissingFolderFile, FindingDuplicateID, FindingCycle, FindingUnusableFile, FindingOldFormat, FindingSkippedEntry,
 }
 
-// RepairableKinds are the finding kinds repair can fix: the first of
-// FindingKinds.
-var RepairableKinds = FindingKinds[:6:6]
+// RepairableKinds are the finding kinds repair can fix, in the same order.
+var RepairableKinds = []string{
+	FindingTempLeftover, FindingIDAboveCounter, FindingDanglingReference, FindingStaleClaim, FindingOrphanNotes,
+	FindingMissingFolderFile,
+}
 
 // Finding is one thing doctor found wrong.
 type Finding struct {
