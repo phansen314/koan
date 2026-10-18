@@ -18,13 +18,13 @@ The notes' biggest effect is one they don't state: they reverse a basic rule in 
 
 - **`@` on every entry koan owns,** files included: `@name/`, `@41.json`, `@41.md`, `@folder.json`, `@folder.md`. Everything else is material. This replaces the notes' unprefixed `41.json` and `folder.json`, and removes the clash between material named `2026.md` and task notes, so `repair` keeps its `orphan-notes` fixes, which only ever touch `@N.md`. The disk name `@41.json` matches the reference `@41`. A task `@41.json` and a folder `@41/` can't clash, since folder names have no dots. In-folder links read `[research](@research/@folder.md)`.
 - **`folder.md` is always written**, empty when no notes are given, like an ordinary task's `.md`. Only gates skip an empty `.md`.
-- **`folder.json` has every key**, as task files do: `schema`, `number`, `title`, `start`, `done`, `extra`, with `title`, `start` and `done` as `null` when unset. Every koan folder has a number; the root has none and can't be gated.
+- **`folder.json` has every key**, as task files do: `schema`, `id`, `title`, `start`, `done`, `extra`, with `title`, `start` and `done` as `null` when unset. The field is `id`, not the notes' `number`: folders and tasks draw from one counter, so a folder's ID and a task's are the same kind of thing, and are called the same. Every koan folder has an ID; the root has none and can't be gated.
 - **Case: no check.** Names stay byte for byte, as koan decided before. The batch refuses exact duplicate paths only.
 
 ### References
 
-- **Outline numbers (`@41.4.2`): cut entirely,** for input and display. The `@41.<n>:x` form goes with them; material in a child folder is written with the child's own `@number:x`.
-- **A task is written `42` or `@42`.** A folder is `/path` or `@number`.
+- **Outline numbers (`@41.4.2`): cut entirely,** for input and display. The `@41.<n>:x` form goes with them; material in a child folder is written with the child's own `@id:x`.
+- **A task is written `42` or `@42`.** A folder is `/path` or `@id`.
 
 ### Gates
 
@@ -49,12 +49,12 @@ New invariants, each with a `doctor` finding when broken:
 - A folder's `start` and `done` are different tasks.
 - A task is a gate of at most one folder.
 - A folder's done gate is blocked by its start gate.
-- Numbers are unique across tasks and folders, and none is above `last_id`.
-- A `blocked_by` never names a folder's number (refused on input, too).
+- IDs are unique across tasks and folders, and none is above `last_id`.
+- A `blocked_by` never names a folder's ID (refused on input, too).
 
 Plus the notes' own finding: an `@` folder in a koan folder with no `@folder.json`.
 
-**Repairing dangling references becomes opt-in**, as the notes decided. `repair` fixes everything it fixes today except `dangling-reference`, which it fixes only when asked by name (for example `repair --kind dangling-reference`). Its message says to move a hand-moved folder back first.
+**Repairing dangling references becomes opt-in**, as the notes decided. `repair` fixes everything it fixes today except `dangling-reference`, which it fixes only when asked by name (for example `repair --kinds dangling-reference`). Its message says to move a hand-moved folder back first. A `stale-claim` on a task that is gone is handled the same way, for the same reason (decided in the unit 1 review); one on a done task is still fixed by default.
 
 ### Delete and forget
 
@@ -81,10 +81,10 @@ Plus the notes' own finding: an `@` folder in a koan folder with no `@folder.jso
 
 Not examined in the review; each is settled when its unit of work is specified. The first two come first, since other units build on them.
 
-1. **Migrating the live tree.** Format 2 renames every folder and task file to `@` names and writes a numbered `@folder.json` for every existing folder. That is a restructured tree, not only new file formats, so `migrate`'s file-by-file model needs extending to describe it.
-2. **Folder output.** What `show-folder` and `list --include-folders` return: number, path, dir, title, gate IDs, state, notes_path, extra. State's rule when the done gate is done but start isn't.
-3. **Worktree markers.** The `.koan/` marker's fields (number, path, dir in place of shingi's UUID); `bind`, `unbind`, `where`; whether `context` is still needed.
-4. **Batch input.** Whether task refs are global to the batch or per folder; whether a top-level task's `blocked_by` can name a folder's gate; `after`/`before` taking `@number` as well as `/path`.
+1. **Migrating the live tree.** Format 2 renames every folder and task file to `@` names and writes a `@folder.json`, with an ID from the counter, for every existing folder. That is a restructured tree, not only new file formats, so `migrate`'s file-by-file model needs extending to describe it.
+2. **Folder output.** What `show-folder` and `list --include-folders` return: id, path, dir, title, gate IDs, state, notes_path, extra. State's rule when the done gate is done but start isn't.
+3. **Worktree markers.** The `.koan/` marker's fields (id, path, dir, the folder's ID in place of shingi's UUID); `bind`, `unbind`, `where`; whether `context` is still needed.
+4. **Batch input.** Whether task refs are global to the batch or per folder; whether a top-level task's `blocked_by` can name a folder's gate; `after`/`before` taking `@id` as well as `/path`.
 5. **Ordering existing folders.** Whether `update-folder` takes `--after`/`--before`, rather than two `koan block`s on gate IDs.
 6. **Implicitly created folders.** `create --folder /a/b` makes missing folders ungated, so under a gated parent they warn `ungated-folder`. Probably right; to be stated.
 7. **Shell completion's lockless read.** Best-effort reads without the lock are an exception to "a read never sees part of a write" that the spec must name.
@@ -92,4 +92,4 @@ Not examined in the review; each is settled when its unit of work is specified. 
 
 ## Next
 
-Break the work down. Rough order: the format change and `@`, then folder metadata and numbers, references, gates, batch, delete and forget, then markers and completion.
+Break the work down. Rough order: the format change and `@`, then folder metadata and IDs, references, gates, batch, delete and forget, then markers and completion.

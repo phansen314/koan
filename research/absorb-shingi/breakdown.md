@@ -4,25 +4,26 @@
 
 ## One format bump (decided 2026-10-17)
 
-koan's rule is that every change to a file's fields is a new format, with a conversion in `migrate`. So that the live tree is migrated once, unit 2 introduces format 2 whole: the `@` names, and a `@folder.json` in every koan folder in its final shape (`schema`, `number`, `title`, `start`, `done`, `extra`, the last four `null` or `{}`), with an empty `@folder.md`. Commands that read or set those fields come in units 4 and 6. Unit 2 does part of a new feature's work early, by design. (The alternative, a format bump per feature, would have meant up to three migrations.)
+koan's rule is that every change to a file's fields is a new format, with a conversion in `migrate`. So that the live tree is migrated once, unit 2 introduces format 2 whole: the `@` names, and a `@folder.json` in every koan folder in its final shape (`schema`, `id`, `title`, `start`, `done`, `extra`, the last four `null` or `{}`), with an empty `@folder.md`. Commands that read or set those fields come in units 4 and 6. Unit 2 does part of a new feature's work early, by design. (The alternative, a format bump per feature, would have meant up to three migrations.)
 
 ## Changes to existing features
 
 ### 1. `repair`: dangling references by request only
 
-- `repair` fixes every repairable kind except `dangling-reference`, which it fixes only when asked by name: `repair --kind <kind>`, repeatable. With `--kind`, it fixes only the kinds named.
-- `doctor`'s `dangling-reference` message says to move a hand-moved folder back first, and `repairable` becomes "repairable on request".
+- `repair` fixes every repairable kind except `dangling-reference`, which it fixes only when asked by name: `repair --kinds <kind>,...`, repeatable. With `--kinds`, it fixes only the kinds named.
+- `doctor`'s `dangling-reference` message says to move a hand-moved folder back first. `repairable` stays a boolean: whether `repair` can fix it, by default or when asked by name.
+- A `stale-claim` on a task that is gone is handled the same way, for the same reason; one on a done task is still fixed by default.
 - Independent of everything else; can start now.
 
 ### 2. Format 2: `@` marks what koan owns
 
-- On disk: `@name/` folders, `@N.json` and `@N.md` tasks, and in every koan folder a `@folder.json` (final shape, `number` drawn from the counter) and an empty `@folder.md`. Typed paths are unchanged.
+- On disk: `@name/` folders, `@N.json` and `@N.md` tasks, and in every koan folder a `@folder.json` (final shape, `id` drawn from the counter) and an empty `@folder.md`. Typed paths are unchanged.
 - `create-folder`, and every command that makes folders as needed, writes the two folder files.
 - `move-folder` and `delete-folder` carry or remove them with the folder; `list --include-folders` is unchanged until unit 4.
 - Walks enter only `@` folders inside the root or a koan folder (the nesting rule). Every other entry is material and never read, `@` folders inside material included.
 - Folder names: `@` plus today's rule, 65 characters on disk.
-- `init` recovers `last_id` from `@` task names and folder numbers.
-- Numbers are unique across tasks and folders and within the counter (invariants, with `doctor` findings), since the counter is shared from this unit on.
+- `init` recovers `last_id` from `@` task names and folder IDs.
+- IDs are unique across tasks and folders and within the counter (invariants, with `doctor` findings), since the counter is shared from this unit on.
 - `orphan-notes` and the other findings now concern `@N.md` only. New finding: an `@` folder in a koan folder with no `@folder.json`.
 - `migrate` restructures the tree, not just converting files one by one. It has to finish a half-renamed tree when run again: in format 1 `@x` isn't a valid name, and in format 2 `x` is material. Settles review open item 1.
 - The live tree is migrated at the end of this unit.
@@ -38,13 +39,13 @@ koan's rule is that every change to a file's fields is a new format, with a conv
 
 - The files exist from unit 2; this unit makes `title`, `extra`, and the notes usable (`start` and `done` stay `null` until unit 6).
 - `show-folder` and `update-folder` (`--title`, `--extra-merge`, `--extra-remove`, `--extra-replace-all`), mirroring `show` and `update`. `create-folder` takes `--title`, `--extra`, `--notes`.
-- The folder output shape, used by `show-folder`, `list --include-folders`, and every result that names a folder: number, path, dir, title, extra, notes_path (gate fields join in unit 6). Settles review open item 2.
-- Invariant and finding: a `blocked_by` never names a folder's number.
+- The folder output shape, used by `show-folder`, `list --include-folders`, and every result that names a folder: id, path, dir, title, extra, notes_path (gate fields join in unit 6). Settles review open item 2.
+- Invariant and finding: a `blocked_by` never names a folder's ID.
 
 ### 5. References
 
-- `@number` for a folder anywhere a folder path is taken; `42` or `@42` for a task.
-- Material references: `/path:material` and `@number:material`, never entering a koan folder or leaving the folder with `..`.
+- `@id` for a folder anywhere a folder path is taken; `42` or `@42` for a task.
+- Material references: `/path:material` and `@id:material`, never entering a koan folder or leaving the folder with `..`.
 - `koan where`: resolves a reference to its disk path, and a disk path to its stable reference with its hint.
 - Every output that names a folder carries `path` and `dir`.
 
@@ -71,9 +72,9 @@ The largest unit; it can be split into 6a and 6b as two branches.
 ### 7. Folders in `create-batch`
 
 - Folder entries with `gates`, `title`, `extra`, `notes`, `after`, `before`, and inline tasks; checks before anything is written (duplicate paths, names, lineage, cycles through gates).
-- One counter block for folders and tasks; the result maps folders to numbers and refs to IDs.
+- One counter block for folders and tasks; the result maps folders and refs to their IDs.
 - A failure partway reports the existing task files rewritten, as well as what was created.
-- Settles review open item 4 (refs' scope, top-level tasks naming gates, `@number` in `after`).
+- Settles review open item 4 (refs' scope, top-level tasks naming gates, `@id` in `after`).
 
 ### 8. `forget-folder`
 
@@ -82,11 +83,11 @@ The largest unit; it can be split into 6a and 6b as two branches.
 
 ### 9. Worktree markers
 
-- `koan bind` and `unbind`, the self-ignoring `.koan/` marker keyed by folder number; `koan where` (and `context`, if still wanted) resolving from a bound worktree. Settles review open item 3.
+- `koan bind` and `unbind`, the self-ignoring `.koan/` marker keyed by folder ID; `koan where` (and `context`, if still wanted) resolving from a bound worktree. Settles review open item 3.
 
 ### 10. Shell completion
 
-- `koan completion <shell>` on cobra's scripts: paths folder by folder, `@` numbers and task IDs with their titles, material after `:`, the bash colon workaround. Best-effort lockless reads, named in the spec as an exception (review open item 7).
+- `koan completion <shell>` on cobra's scripts: paths folder by folder, `@` IDs of folders and tasks with their titles, material after `:`, the bash colon workaround. Best-effort lockless reads, named in the spec as an exception (review open item 7).
 
 ### 11. Skill and docs
 
