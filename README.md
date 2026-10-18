@@ -90,9 +90,7 @@ OpenCode also asks before its file tools touch anything outside the project, whi
 
 ## Folder names and tags
 
-Folder names can use upper and lower case letters, digits, and hyphens, up to 64 characters, and can't start or end with a hyphen: `/Work/API-v2` is fine. Case is kept and must match exactly, so `/work` does not find `/Work`.
-
-On Linux, `/Work` and `/work` are two folders. macOS filesystems usually treat them as one, so a tree that holds both can't be copied to a Mac intact. koan does not check for this: if a tree moves between the two, don't use names that differ only in case.
+Folder names can use letters, digits, and hyphens, up to 64 characters, and are case-sensitive: `/Work/API-v2` is fine, and `/work` does not find `/Work`. Avoid names that differ only in case if the tree may move to a Mac; see [Folders](spec/design.md#folders).
 
 Tags are lowercase only (`db`, `needs-review`), so matching a tag is always exact.
 
@@ -108,11 +106,7 @@ koan done 42                                               # ends the claim
 koan release 42                                            # or give it back unfinished
 ```
 
-A claim is a reservation and nothing more. It refuses other claims and hides the task from `frontier`; every other command works on a claimed task, for any caller. It never expires and it outlasts the process that made it, so a dead worker's claim stays until someone releases it. What a caller wants to record about a claim goes in `--extra`, which koan stores and returns and never reads.
-
-Claims are kept per machine, in the state file, not in the tree: they don't travel through git.
-
-[docs/coordination.md](docs/coordination.md) shows how a coordinator that starts its own workers builds safe edits on top of this, with a worked example for Claude Code subagents.
+A claim is a reservation and nothing more: it never expires, and every other command still works on a claimed task. See [Claims](spec/design.md#claims). [docs/coordination.md](docs/coordination.md) shows how a coordinator that starts its own workers builds safe edits on top of this, with a worked example for Claude Code subagents.
 
 ## Checking and repairing the tree
 
@@ -120,11 +114,11 @@ A crash, a git merge, or a hand edit can leave the tree damaged: a leftover temp
 
 ```sh
 koan doctor      # .result.healthy, and .result.findings: what is wrong, and whether repair can fix it
-koan repair      # remove leftovers and claims on done tasks, and raise the ID counter
+koan repair      # fix what is safe to fix: leftovers, a low ID counter, a missing @folder.json, ...
 koan repair --kinds dangling-reference,stale-claim   # remove blockers and claims on tasks that no longer exist
 ```
 
-`repair` never chooses between versions: duplicate IDs, dependency cycles, and unusable files are reported for you to resolve. It removes a blocker or a claim on a task that no longer exists only when asked by name, since the task may be in a folder moved by hand, and moving the folder back restores the link. See [Doctor and repair](spec/design.md#doctor-and-repair).
+`repair` never chooses between versions, and removes a link to a task that seems gone only when asked by name. [Doctor and repair](spec/design.md#doctor-and-repair) lists every kind and what `repair` does with it.
 
 ## Undoing a delete
 
@@ -152,7 +146,7 @@ GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest
 koan info | jq -r .result.state
 ```
 
-When a release changes the files a tree is made of, `state` is `needs-migration`, and every command but `doctor` and `migrate` refuses the tree until you run `koan migrate`. Commit the tree first if it is in git: that commit is the way back, since there are no migrations in reverse. `koan migrate --dry-run` reports what would change.
+When a release changes the files a tree is made of, `state` is `needs-migration`, and every command but `migrate`, `doctor`, `init`, `info`, and `version` refuses the tree until you run `koan migrate`. Commit the tree first if it is in git: that commit is the way back, since there are no migrations in reverse. `koan migrate --dry-run` reports what would change.
 
 ## Specs
 
@@ -162,7 +156,7 @@ When a release changes the files a tree is made of, `state` is `needs-migration`
 - [spec/implementation.md](spec/implementation.md): how it is built and tested.
 - [schemas/](schemas): the JSON Schemas of every file, input, and output.
 
-There is no interactive picker at the moment: [pick-spec.md](pick-spec.md) describes the one koan had, which is being redesigned.
+There is no interactive picker at the moment; it is being redesigned.
 
 ## Development
 

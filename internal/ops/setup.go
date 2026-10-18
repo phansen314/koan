@@ -73,24 +73,9 @@ func cmdInit(c *call) (any, *errs.Error) {
 			p := t.Abs(x.Unlistable[0])
 			return nil, errs.New(errs.IO, "%s can't be listed, so the highest ID in the tree is not known", p).WithPaths(p)
 		}
-		st := &model.State{Schema: model.FileFormat, Claims: map[string]model.Claim{}}
-		// Notes count too: a .md whose task is gone still holds its ID.
-		for id := range x.Tasks {
-			st.LastID = max(st.LastID, id)
-		}
-		for id := range x.Notes {
-			st.LastID = max(st.LastID, id)
-		}
-		// So do folders; a folder file that can't be read is doctor's.
-		for _, f := range x.Folders {
-			if !x.Filed[f] {
-				continue
-			}
-			if ff, _, e := t.LoadFolder(f); e == nil && ff != nil {
-				st.LastID = max(st.LastID, ff.ID)
-			}
-		}
-		t.State = st
+		// A folder file that can't be read is doctor's.
+		folders, _ := loadFolderFiles(t, x)
+		t.State = &model.State{Schema: model.FileFormat, LastID: highestID(x, folders), Claims: map[string]model.Claim{}}
 		if e := t.SaveState(); e != nil {
 			return nil, e
 		}

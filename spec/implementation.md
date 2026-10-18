@@ -13,16 +13,18 @@ How koan is built: the mechanisms behind what [design.md](design.md), [operation
 Everything but `main` is under `internal/`: koan's contract is the JSON its CLI prints, and a public Go API would be a second one.
 
 ```text
-cmd/koan         main: signals, run(), os.Exit
-internal/cli     cobra commands, command line to input, envelope to stdout, exit codes
-internal/ops     the commands, grouped by kind: decode and check input, do the work, build the result
-internal/store   root states, the lock wait, writing and moving files, the walk, the state file
-internal/graph   readiness, the cycle check, why: pure functions, no I/O
-internal/model   Task, the state file, names, IDs, timestamps, and their validation
-internal/errs    error, warning, and finding types
-internal/fsys    the only package that touches the disk; a real and a fault-injecting implementation
-schemas/         the JSON Schemas, written by hand
-e2e/             tests against the built binary
+cmd/koan            main: signals, run(), os.Exit
+internal/cli        cobra commands, command line to input, envelope to stdout, exit codes
+internal/ops        the commands, grouped by kind: decode and check input, do the work, build the result
+internal/store      root states, the lock wait, writing and moving files, the walk, the state file
+internal/graph      readiness, the cycle check, why: pure functions, no I/O
+internal/model      Task, the state file, names, IDs, timestamps, and their validation
+internal/errs       error, warning, and finding types
+internal/fsys       the only package that touches the disk; a real and a fault-injecting implementation
+internal/buildinfo  the version a build is stamped with
+internal/schematest test helper: validates inputs and envelopes against schemas/
+schemas/            the JSON Schemas, written by hand
+e2e/                tests against the built binary
 ```
 
 Imports go one way: `cli → ops → store → fsys`. `errs`, `model`, and `graph` are importable from anywhere: `errs` imports nothing of koan's, `model` only `errs`, and `graph` only `model`.
@@ -32,10 +34,10 @@ Imports go one way: `cli → ops → store → fsys`. `errs`, `model`, and `grap
 
 ## The filesystem layer
 
-Two layers, both carried over from the earlier code, where they were the part hardest to get right.
+Two layers:
 
-- **`internal/fsys`** is a thin interface over the system calls: open a root, list, read, create a temp file, link, rename, flush, take the lock once. It comes over with the calls that served the config file and the picker removed.
-- **`internal/store`** builds the sequences on it: waiting for the lock, publishing a file, moving, and removing a folder. Those functions (`Publish`, `Move`, `Discard`, and the lock wait) come over as they are; the rest of `store` is rewritten.
+- **`internal/fsys`** is a thin interface over the system calls: open a root, list, read, create a temp file, link, rename, flush, take the lock once.
+- **`internal/store`** builds the sequences on it: waiting for the lock, publishing a file, moving, and removing a folder.
 
 What the two provide together:
 

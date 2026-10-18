@@ -95,7 +95,7 @@ You are given one koan task: its ID, its title, and the path of its notes file.
 
 - Do the task. Write what you did and what you found to the notes file you were given.
 - In `~/koan-root`, that notes file is the only file you may change.
-- You may run `koan show`, `koan list`, `koan frontier`, and `koan why`. Run no other koan command.
+- You may run `koan show`, `koan list`, `koan frontier`, `koan why`, `koan show-folder`, and `koan where`. Run no other koan command.
 - When something else in the tree should change (a new task, a tag, a blocker, this task being done), say so in your final report. The coordinator makes the change.
 ```
 

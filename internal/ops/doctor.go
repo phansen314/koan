@@ -101,30 +101,10 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 
 	// Folder files, by folder; a folder whose file can't be used has none
 	// here, and its error in folderErrs.
-	folderFiles := map[model.Folder]*model.FolderFile{}
-	folderErrs := map[model.Folder]*errs.Error{}
-	for _, f := range x.Folders {
-		if !x.Filed[f] {
-			continue
-		}
-		if ff, _, e := t.LoadFolder(f); e != nil {
-			folderErrs[f] = e
-		} else if ff != nil {
-			folderFiles[f] = ff
-		}
-	}
+	folderFiles, folderErrs := loadFolderFiles(t, x)
 	// highest is the highest ID in the tree, or the counter if higher: what
 	// a new ID must be above.
-	highest := t.State.LastID
-	for _, l := range files {
-		highest = max(highest, l.id)
-	}
-	for _, ff := range folderFiles {
-		highest = max(highest, ff.ID)
-	}
-	for id := range x.Notes { // notes whose task is gone still hold its ID
-		highest = max(highest, id)
-	}
+	highest := max(t.State.LastID, highestID(x, folderFiles))
 
 	for _, rel := range x.Temps {
 		d.add("temp-leftover", "a temp file or folder koan left behind: `koan repair` removes it", nil,
