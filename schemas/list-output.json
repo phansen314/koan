@@ -12,7 +12,7 @@
     "truncated": { "type": "boolean" },
     "folders": {
       "type": "array",
-      "items": { "$ref": "folder-path" }
+      "items": { "$ref": "folder" }
     }
   },
   "additionalProperties": false

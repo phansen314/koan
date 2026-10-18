@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "where-output",
+  "type": "object",
+  "required": ["ref", "hint", "folder", "task", "material", "file"],
+  "properties": {
+    "ref": { "type": "string", "description": "The stable reference: @<id>, then :<material> for material; a folder's path when it has no ID." },
+    "hint": { "type": "string", "description": "The folder's path, then :<material> for material; a task's title for a task." },
+    "folder": { "$ref": "folder" },
+    "task": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }] },
+    "material": { "type": ["string", "null"], "description": "The path of the material from its folder." },
+    "file": { "type": ["string", "null"], "description": "The absolute path of the material, or of the task's @<id>.md; null for a folder." }
+  },
+  "additionalProperties": false
+}

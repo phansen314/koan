@@ -58,9 +58,14 @@ type expected struct {
 	lastID  int64
 }
 
+// addFolder records folder f and those above it: each one that is new
+// takes an ID.
 func (m *expected) addFolder(f string) {
 	for ; f != "/"; f = parent(f) {
-		m.folders[f] = true
+		if !m.folders[f] {
+			m.folders[f] = true
+			m.lastID++
+		}
 	}
 	m.folders["/"] = true
 }
@@ -307,6 +312,7 @@ func (r *random) step() {
 		want := cond(r.missing(blockers...), "not-found", "")
 		res := r.do("create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": blockers, "priority": pri}), want)
 		if res != nil {
+			m.addFolder(folder)
 			r.created(int64(task(res)["id"].(float64)), &mtask{folder: folder, open: true, blockers: blockers, priority: pri})
 		}
 	case n < 24: // create-batch: a chain of three in two folders
@@ -318,6 +324,8 @@ func (r *random) step() {
 		}}), "")
 		if res != nil {
 			got := ids(res["ids"])
+			m.addFolder(f1) // folders take their IDs before every task
+			m.addFolder(f2)
 			r.created(got[0], &mtask{folder: f1, open: true})
 			r.created(got[1], &mtask{folder: f2, open: true, blockers: []int64{got[0]}})
 			r.created(got[2], &mtask{folder: f1, open: true, blockers: []int64{got[0], got[1]}})
@@ -402,8 +410,9 @@ func (r *random) step() {
 			for _, f := range moved {
 				delete(m.folders, f)
 			}
+			m.addFolder(parent(to)) // only the folders made above it are new
 			for _, f := range moved {
-				m.addFolder(rename(f))
+				m.folders[rename(f)] = true
 			}
 			for _, t := range m.tasks {
 				if holds(from, t.folder) {
@@ -487,17 +496,17 @@ func (r *random) step() {
 	}
 }
 
-// created records a new task, and checks that its ID was never used before.
+// created records a new task, whose folders are recorded, and checks that
+// it took the next ID.
 func (r *random) created(id int64, t *mtask) {
-	if id <= r.m.lastID {
-		r.failf("ID %d was issued again: the highest so far was %d", id, r.m.lastID)
+	if id != r.m.lastID+1 {
+		r.failf("task %d created, want ID %d: the next after the folders made", id, r.m.lastID+1)
 	}
 	r.m.lastID = id
 	if t.tags == nil {
 		t.tags = []string{}
 	}
 	r.m.tasks[id] = t
-	r.m.addFolder(t.folder)
 }
 
 // compare checks everything koan reports about the tree against the model.
@@ -517,7 +526,7 @@ func (r *random) compare() {
 	})
 	got := []string{}
 	for _, f := range res["folders"].([]any) {
-		got = append(got, f.(string))
+		got = append(got, f.(map[string]any)["path"].(string))
 	}
 	if !slices.Equal(got, want) {
 		r.failf("folders %v, want %v", got, want)

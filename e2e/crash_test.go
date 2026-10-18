@@ -20,8 +20,10 @@ var crashCases = []struct {
 }{
 	{freshInit, []string{"init"}},
 	{"create", []string{"create", "new", "--folder", "/fresh/deep", "--blocked-by", "1", "--notes", "n"}},
+	{"create blocks", []string{"create", "new", "--folder", "/fresh", "--blocks", "1,2,3"}},
 	{"create-batch", []string{"create-batch", "-i", "-"}},
-	{"create-folder", []string{"create-folder", "/x/y/z"}},
+	{"create-folder", []string{"create-folder", "/x/y/z", "--title", "Z", "--notes", "n"}},
+	{"update-folder", []string{"update-folder", "/proj", "--title", "P", "--extra-merge", `{"k":1}`}},
 	{"move-folder", []string{"move-folder", "/proj", "--to", "/moved/proj"}},
 	{"delete-folder", []string{"delete-folder", "/proj", "--recursive"}},
 	{"update", []string{"update", "2", "--title", "renamed", "--tags-add", "t"}},
@@ -35,16 +37,21 @@ var crashCases = []struct {
 	{"claim-next", []string{"claim-next"}},
 	{"release", []string{"release", "3"}},
 	{"repair", []string{"repair"}},
+	{"repair by name", []string{"repair", "--kinds", "dangling-reference,stale-claim"}},
 }
 
-const batchInput = `{"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
+const batchInput = `{"folders":[{"path":"/b1","title":"B1","extra":{"k":1},"notes":"fn"},{"path":"/b3/deep"}],"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
 
 // freshInit marks the case that runs on a HOME where nothing exists yet.
 const freshInit = "init on a new home"
 
 // setup makes a tree with something for every command to act on: task 1 in
 // the root; 2 and 3 in /proj, 2 waiting on 1 and 3 claimed with notes; and
-// 4, done, in /proj/sub.
+// 4, done, in /proj/sub. The tasks are made in the root and moved, so that
+// they keep the IDs 1 to 4, and the folders take 5 and 6. For repair, there
+// is also a folder made by hand, with no folder file. For repair, 1 is claimed and its task file is gone,
+// leaving a dangling reference, a claim on a task that is gone, and notes
+// without their task.
 func setup(t *testing.T, name string) string {
 	t.Helper()
 	if name == freshInit {
@@ -54,19 +61,45 @@ func setup(t *testing.T, name string) string {
 	}
 	home := newHome(t)
 	ok(t, home, "create", "one")
-	ok(t, home, "create", "two", "--folder", "/proj", "--blocked-by", "1")
-	ok(t, home, "create", "three", "--folder", "/proj", "--notes", "notes")
-	ok(t, home, "create", "four", "--folder", "/proj/sub")
+	ok(t, home, "create", "two", "--blocked-by", "1")
+	ok(t, home, "create", "three", "--notes", "notes")
+	ok(t, home, "create", "four")
+	ok(t, home, "move", "2", "--to", "/proj")
+	ok(t, home, "move", "3", "--to", "/proj")
+	ok(t, home, "move", "4", "--to", "/proj/sub")
 	ok(t, home, "done", "4")
 	ok(t, home, "claim", "3")
+	if strings.HasPrefix(name, "repair") {
+		ok(t, home, "claim", "1")
+		os.Remove(filepath.Join(home, "koan-root", "@1.json"))
+		os.Mkdir(filepath.Join(home, "koan-root", "@hand"), 0o755)
+	}
 	return home
 }
 
 // leftovers are the findings a killed or failed command may leave, as
 // spec/design.md lists them: a temp file, a reference to a deleted task, a
 // claim on a task that is done or gone, and notes without their task. Every
-// one is something repair fixes. An ID used with no task is not a finding.
+// one is something repair fixes, the reference, and a claim on a task that is
+// gone, only when asked for by name. An ID used with no task is not a
+// finding. A folder with no folder file is not one either: folders are made
+// whole. Only repair's setup has one, @hand, which a repair killed before it
+// writes the file leaves as it is.
 var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
+
+// handOnly reports whether a finding is the missing folder file of repair's
+// setup folder @hand, and of nothing else.
+func handOnly(f map[string]any) bool {
+	if f["kind"] != "missing-folder-file" {
+		return false
+	}
+	for _, p := range f["paths"].([]any) {
+		if !strings.HasSuffix(p.(string), "/@hand") {
+			return false
+		}
+	}
+	return true
+}
 
 // checkAfter requires what the design promises after a crash or a failure:
 // the next write succeeds, doctor reports nothing but the expected kinds,
@@ -84,11 +117,16 @@ func checkAfter(t *testing.T, home, what string) {
 	}
 	for _, f := range ok(t, home, "doctor")["findings"].([]any) {
 		f := f.(map[string]any)
-		if !slices.Contains(leftovers, f["kind"].(string)) {
+		if !slices.Contains(leftovers, f["kind"].(string)) && !handOnly(f) {
 			t.Errorf("%s: doctor found %v", what, f)
 		}
 	}
-	if left := ok(t, home, "repair")["findings"].([]any); len(left) != 0 {
+	for _, f := range ok(t, home, "repair")["findings"].([]any) {
+		if f := f.(map[string]any); f["kind"] != "dangling-reference" && f["kind"] != "stale-claim" {
+			t.Errorf("%s: repair left %v", what, f)
+		}
+	}
+	if left := ok(t, home, "repair", "--kinds", "dangling-reference,stale-claim")["findings"].([]any); len(left) != 0 {
 		t.Errorf("%s: repair left %v", what, left)
 	}
 	if got := ok(t, home, "doctor"); got["healthy"] != true {
@@ -144,7 +182,7 @@ func TestCrashes(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			n := changes(t, c.name, c.args)
-			if n == 0 && c.name != "repair" {
+			if n == 0 {
 				t.Fatal("the command changed nothing on disk")
 			}
 			for k := 1; k <= n; k++ {

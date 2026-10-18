@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
@@ -15,7 +16,8 @@ import (
 // newTask is the input for one task to create.
 type newTask struct {
 	title    string
-	folder   model.Folder
+	at       folderRef    // the folder, as the input names it
+	folder   model.Folder // the folder, once resolved
 	priority *int64
 	tags     []string
 	blockers []model.ID // existing tasks
@@ -26,10 +28,10 @@ type newTask struct {
 }
 
 // readNewTask reads the fields create and create-batch share.
-func readNewTask(f fields, defFolder model.Folder) newTask {
+func readNewTask(f fields, defFolder folderRef) newTask {
 	var n newTask
 	n.title, _ = f.title("title", true)
-	n.folder = f.folder("folder", false, defFolder)
+	n.at = f.folderRef("folder", false, defFolder)
 	n.priority, _ = f.priority("priority")
 	n.tags, _ = f.tags("tags")
 	n.extra, _ = f.object("extra")
@@ -39,7 +41,7 @@ func readNewTask(f fields, defFolder model.Folder) newTask {
 
 func (n newTask) file(id model.ID, now string, blockers []model.ID) *model.TaskFile {
 	return &model.TaskFile{
-		Schema: model.Format, ID: id, Title: n.title, Priority: n.priority,
+		Schema: model.FileFormat, ID: id, Title: n.title, Priority: n.priority,
 		CreatedAt: now, UpdatedAt: now, BlockedBy: blockers, Tags: n.tags, Extra: n.extra,
 	}
 }
@@ -60,7 +62,7 @@ func (c *call) mustExist(ids []model.ID) *errs.Error {
 		}
 	}
 	if len(gone) > 0 {
-		return notFoundTask(gone...)
+		return c.notFoundTasks(gone...)
 	}
 	return nil
 }
@@ -75,46 +77,95 @@ func (c *call) issue(n int) (model.ID, *errs.Error) {
 	return first, c.t.SaveState()
 }
 
-// writeNew writes one new task: its folder, its task file, then its notes.
-// created is true once the task file exists.
-func (c *call) writeNew(n newTask, tf *model.TaskFile) (folders []model.Folder, created bool, e *errs.Error) {
-	if folders, e = c.t.EnsureFolder(n.folder); e != nil {
-		return folders, false, e
-	}
+// writeNew writes one new task, whose folder is there: its task file, then
+// its notes. created is true once the task file exists.
+func (c *call) writeNew(n newTask, tf *model.TaskFile) (created bool, e *errs.Error) {
 	if e = c.t.WriteTask(n.folder, tf, true); e != nil {
-		return folders, false, e
+		return false, e
 	}
-	return folders, true, c.t.WriteNotes(n.folder, tf.ID, n.notes)
+	return true, c.t.WriteNotes(n.folder, tf.ID, n.notes)
 }
 
 type createResult struct {
 	Task           model.Task     `json:"task"`
 	FoldersCreated []model.Folder `json:"folders_created"`
+	Dependents     []model.ID     `json:"dependents"`
 }
 
 func cmdCreate(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	n := readNewTask(in, model.Root)
+	n := readNewTask(in, folderRef{path: model.Root})
 	n.blockers = in.ids("blocked_by", false)
+	blocks := slices.Sorted(slices.Values(in.ids("blocks", false)))
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
-	if e := c.mustExist(n.blockers); e != nil {
+	var e *errs.Error
+	if n.folder, e = c.resolve(n.at); e != nil {
 		return nil, e
 	}
-	if _, e := c.t.FolderExists(n.folder); e != nil {
+	if e := c.mustExist(append(slices.Clone(n.blockers), blocks...)); e != nil {
 		return nil, e
 	}
-	id, e := c.issue(1)
+	if e := c.noCycleThroughNew(n.blockers, blocks); e != nil {
+		return nil, e
+	}
+	// Every task in blocks is rewritten, so each must be usable: found out
+	// now, before an ID is used.
+	type dependent struct {
+		f  model.Folder
+		tf *model.TaskFile
+	}
+	var deps []dependent
+	for _, b := range blocks {
+		f, btf, e := c.find(b)
+		if e != nil {
+			return nil, e
+		}
+		deps = append(deps, dependent{f, btf})
+	}
+	missing, e := c.plan(n.folder)
 	if e != nil {
 		return nil, e
+	}
+	first, e := c.issue(len(missing) + 1)
+	if e != nil {
+		return nil, e
+	}
+	folders, e := c.makeFolders(missing, first)
+	if e != nil {
+		return nil, e
+	}
+	id := first + model.ID(len(missing))
+	// The tasks in blocks are made to wait on the new one before it exists:
+	// a kill between leaves them waiting on an ID with no task, a dangling
+	// reference doctor finds, as delete leaves one. The other order would
+	// leave the new task with its dependents still free, and nothing to
+	// show for it.
+	dependents := []model.ID{}
+	for _, d := range deps {
+		d.tf.BlockedBy = append(d.tf.BlockedBy, id)
+		d.tf.UpdatedAt = c.now
+		if e := c.t.WriteTask(d.f, d.tf, false); e != nil {
+			if len(dependents) > 0 {
+				e.Message = fmt.Sprintf("task %d was not created, but %v were made to wait on it before task %d could not be: %s", id, dependents, d.tf.ID, e.Message)
+			}
+			return nil, e.WithIDs(dependents...)
+		}
+		dependents = append(dependents, d.tf.ID)
 	}
 	tf := n.file(id, c.now, n.blockers)
-	folders, created, e := c.writeNew(n, tf)
-	if e != nil {
-		if created {
-			e.WithIDs(id)
-		}
+	created, e := c.writeNew(n, tf)
+	switch {
+	case e == nil:
+	case created:
+		// Its dependents wait on a task that exists: only the notes are
+		// missing.
+		return nil, e.WithIDs(id)
+	case len(dependents) > 0:
+		e.Message = fmt.Sprintf("task %d was not created, but %v were made to wait on it: %s", id, dependents, e.Message)
+		return nil, e.WithIDs(dependents...)
+	default:
 		return nil, e
 	}
 	// A task with no blockers needs no walk to describe: it is ready.
@@ -122,26 +173,99 @@ func cmdCreate(c *call) (any, *errs.Error) {
 		c.x = &store.Index{Tasks: map[model.ID]model.Folder{}}
 	}
 	c.x.Tasks[id] = n.folder
-	return createResult{Task: c.task(n.folder, tf), FoldersCreated: folders}, nil
+	return createResult{Task: c.task(n.folder, tf), FoldersCreated: folders, Dependents: dependents}, nil
+}
+
+// noCycleThroughNew refuses a new task that would close a cycle: one
+// blocked by the tasks in blockers and blocking those in blocks closes one
+// when a task in blocks is reachable from one in blockers along blocked_by.
+// A cycle through a task file that can't be read can't be ruled out, so
+// meeting one refuses the task with that file's error.
+func (c *call) noCycleThroughNew(blockers, blocks []model.ID) *errs.Error {
+	if len(blockers) == 0 || len(blocks) == 0 {
+		return nil
+	}
+	var unreadable *errs.Error
+	look := func(n model.ID) (graph.Node, bool) {
+		if f, ok := c.x.Tasks[n]; ok && unreadable == nil {
+			if l := c.t.Load(f, n); l.Err != nil && !l.Gone {
+				unreadable = l.Err
+			}
+		}
+		return c.look(n)
+	}
+	for _, b := range blocks {
+		for _, x := range blockers {
+			if x == b {
+				return errs.NewConflict(errs.RuleCycle, "task %d is in both blocked_by and blocks, so the new task would wait on itself", b).WithIDs(b)
+			}
+			if path := graph.Path(x, b, look); path != nil {
+				return errs.NewConflict(errs.RuleCycle, "task %d waits on task %d, so a new task blocked by %d and blocking %d would make a cycle", x, b, x, b).
+					WithIDs(path...)
+			}
+		}
+	}
+	return unreadable
 }
 
 type batchResult struct {
-	IDs            []model.ID          `json:"ids"`
-	Refs           map[string]model.ID `json:"refs"`
-	FoldersCreated []model.Folder      `json:"folders_created"`
+	IDs            []model.ID                `json:"ids"`
+	Refs           map[string]model.ID       `json:"refs"`
+	Folders        map[model.Folder]model.ID `json:"folders"`
+	FoldersCreated []model.Folder            `json:"folders_created"`
 }
 
-// MaxBatch is the most tasks one create-batch takes.
+// MaxBatch is the most folders and tasks one create-batch takes.
 const MaxBatch = 1000
+
+// readFolderEntries reads create-batch's folder entries, and says how many
+// were given.
+func readFolderEntries(c *call) ([]newFolder, int) {
+	var raws []json.RawMessage
+	c.in.top().get("folders", false, &raws, "a list of folders")
+	var entries []newFolder
+	for i, raw := range raws {
+		at := fmt.Sprintf("/folders/%d", i)
+		m, err := model.Keys(raw)
+		if err != nil {
+			c.in.bad(at, "must be a JSON object")
+			continue
+		}
+		f := fields{in: c.in, m: m, at: at}
+		n := newFolder{folder: f.folder("path", true, "")}
+		n.title, _ = f.optTitle("title")
+		n.extra, _ = f.object("extra")
+		n.notes, _ = f.text("notes")
+		for k := range m {
+			if !slices.Contains([]string{"path", "title", "extra", "notes"}, k) {
+				c.in.bad(at+"/"+k, "is not a field of a folder")
+			}
+		}
+		switch {
+		case n.folder == model.Root:
+			c.in.bad(at+"/path", "may not be the root")
+		case n.folder == "":
+		case slices.ContainsFunc(entries, func(e newFolder) bool { return e.folder == n.folder }):
+			c.in.bad(at+"/path", "is used by an earlier folder")
+		default:
+			entries = append(entries, n)
+		}
+	}
+	return entries, len(raws)
+}
 
 func cmdCreateBatch(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	folder := in.folder("folder", false, model.Root)
+	entries, nFolders := readFolderEntries(c)
+	folder := in.folderRef("folder", false, folderRef{path: model.Root})
 	var raws []json.RawMessage
-	in.get("tasks", true, &raws, "a list of tasks")
-	if c.in.has("tasks") && (len(raws) < 1 || len(raws) > MaxBatch) {
-		c.in.bad("/tasks", "must hold 1 to %d tasks", MaxBatch)
-		raws = nil
+	in.get("tasks", false, &raws, "a list of tasks")
+	if n := len(raws) + nFolders; n < 1 || n > MaxBatch {
+		if c.in.has("tasks") {
+			c.in.bad("/tasks", "must hold 1 to %d entries between it and folders", MaxBatch)
+		} else {
+			c.in.bad("/folders", "must hold 1 to %d entries between it and tasks", MaxBatch)
+		}
 	}
 	tasks := make([]newTask, len(raws))
 	refAt := map[string]int{}
@@ -166,15 +290,16 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		f.get("blocked_by", false, &blockers, "a list of task IDs and refs")
 		for j, b := range blockers {
 			bat := fmt.Sprintf("%s/blocked_by/%d", at, j)
-			var id model.ID
 			var ref string
-			switch {
-			case model.Decode(b, &id) == nil && model.ValidID(id):
+			isRef := model.Decode(b, &ref) == nil && string(b) != "null" && !strings.HasPrefix(ref, model.Mark)
+			// A string without @ is a ref; anything else, an ID.
+			switch id, isID := idOf(b); {
+			case !isRef && isID:
 				if slices.Contains(n.blockers, id) {
-					c.in.bad(bat, "is repeated")
+					c.in.bad(bat, "names the same task as an earlier one")
 				}
 				n.blockers = append(n.blockers, id)
-			case model.Decode(b, &ref) == nil && string(b) != "null":
+			case isRef:
 				if _, ok := refAt[ref]; !ok {
 					c.in.bad(bat, "must be the ref of an earlier task in the batch")
 				} else if slices.Contains(n.refs, ref) {
@@ -199,32 +324,83 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
+	// A folder entry means one to make: every one already there is named.
+	var there []string
+	for _, n := range entries {
+		if _, err := c.t.Stat(n.folder.Rel()); err == nil {
+			there = append(there, string(n.folder))
+		}
+	}
+	if len(there) > 0 {
+		e := errs.NewConflict(errs.RuleDestinationExists, "%s already exists: a folder entry is a folder to make; to put tasks in one, name it in their folder, and to change its fields, use update-folder", strings.Join(there, ", ")).
+			WithFolders(there...)
+		for _, f := range there {
+			e.WithPaths(c.t.Abs(model.Folder(f).Rel()))
+		}
+		return nil, e
+	}
 	if e := c.mustExist(existing); e != nil {
 		return nil, e
 	}
-	for _, n := range tasks {
-		if _, e := c.t.FolderExists(n.folder); e != nil {
+	// The batch's folder is checked even when no task falls back to it,
+	// and made only when one does.
+	if f, e := c.resolve(folder); e != nil {
+		return nil, e
+	} else if _, e := c.t.Missing(f); e != nil {
+		return nil, e
+	}
+	var targets []model.Folder
+	for _, n := range entries {
+		targets = append(targets, n.folder)
+	}
+	for i := range tasks {
+		f, e := c.resolve(tasks[i].at)
+		if e != nil {
 			return nil, e
 		}
+		tasks[i].folder = f
+		targets = append(targets, f)
 	}
-	first, e := c.issue(len(tasks))
+	missing, e := c.plan(targets...)
 	if e != nil {
 		return nil, e
 	}
-	res := batchResult{IDs: []model.ID{}, Refs: map[string]model.ID{}, FoldersCreated: []model.Folder{}}
+	first, e := c.issue(len(missing) + len(tasks))
+	if e != nil {
+		return nil, e
+	}
+	res := batchResult{IDs: []model.ID{}, Refs: map[string]model.ID{}, Folders: map[model.Folder]model.ID{}}
+	res.FoldersCreated, e = c.makeFolders(missing, first, entries...)
+	for i, f := range missing {
+		if slices.Contains(res.FoldersCreated, f) {
+			res.Folders[f] = first + model.ID(i)
+		}
+	}
+	// A failure from here on names what was made: the error's folders are
+	// the folders made, and its ids the tasks.
+	made := func(e *errs.Error) *errs.Error {
+		e.Folders = []string{}
+		for _, f := range res.FoldersCreated {
+			e.Folders = append(e.Folders, string(f))
+		}
+		return e.WithIDs(res.IDs...)
+	}
+	if e != nil {
+		return nil, made(e)
+	}
+	base := first + model.ID(len(missing))
 	for i, n := range tasks {
-		id := first + model.ID(i)
+		id := base + model.ID(i)
 		blockers := slices.Clone(n.blockers)
 		for _, ref := range n.refs {
-			blockers = append(blockers, first+model.ID(refAt[ref]))
+			blockers = append(blockers, base+model.ID(refAt[ref]))
 		}
-		folders, created, e := c.writeNew(n, n.file(id, c.now, blockers))
-		res.FoldersCreated = append(res.FoldersCreated, folders...)
+		created, e := c.writeNew(n, n.file(id, c.now, blockers))
 		if created {
 			res.IDs = append(res.IDs, id)
 		}
 		if e != nil {
-			return nil, e.WithIDs(res.IDs...)
+			return nil, made(e)
 		}
 		if n.ref != "" {
 			res.Refs[n.ref] = id
@@ -301,9 +477,7 @@ func cmdUpdate(c *call) (any, *errs.Error) {
 	add, _ := in.tags("tags_add")
 	remove, _ := in.tags("tags_remove")
 	replace, hasReplace := in.tags("tags_replace_all")
-	merge, _ := in.object("extra_merge")
-	drop, _ := in.strs("extra_remove")
-	all, hasAll := in.object("extra_replace_all")
+	edit := readExtraEdit(c, in)
 
 	if len(c.in.m) < 2 && c.in.has("id") {
 		c.in.bad("", "gives nothing to change")
@@ -314,14 +488,6 @@ func cmdUpdate(c *call) (any, *errs.Error) {
 	for i, t := range add {
 		if slices.Contains(remove, t) {
 			c.in.bad(fmt.Sprintf("/tags_add/%d", i), "is also in tags_remove")
-		}
-	}
-	if hasAll && (c.in.has("extra_merge") || c.in.has("extra_remove")) {
-		c.in.bad("/extra_replace_all", "may not be given with extra_merge or extra_remove")
-	}
-	for i, k := range drop {
-		if _, both := merge[k]; both {
-			c.in.bad(fmt.Sprintf("/extra_remove/%d", i), "is also in extra_merge")
 		}
 	}
 	if e := c.begin(true); e != nil {
@@ -343,15 +509,7 @@ func cmdUpdate(c *call) (any, *errs.Error) {
 				tf.Tags = append(tf.Tags, t)
 			}
 		}
-		if hasAll {
-			tf.Extra = all
-		}
-		for k, v := range merge {
-			tf.Extra[k] = v
-		}
-		for _, k := range drop {
-			delete(tf.Extra, k)
-		}
+		tf.Extra = edit.apply(tf.Extra)
 		return nil
 	}, nil)
 }
@@ -461,8 +619,12 @@ func cmdUnblock(c *call) (any, *errs.Error) {
 func cmdMove(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	id := in.id("id", true)
-	to := in.folder("to", true, "")
+	ref := in.folderRef("to", true, folderRef{})
 	if e := c.begin(true); e != nil {
+		return nil, e
+	}
+	to, e := c.resolve(ref)
+	if e != nil {
 		return nil, e
 	}
 	from, tf, e := c.find(id)
@@ -471,7 +633,7 @@ func cmdMove(c *call) (any, *errs.Error) {
 	}
 	res := moveResult{FoldersCreated: []model.Folder{}, Changed: from != to}
 	if res.Changed {
-		if res.FoldersCreated, e = c.t.EnsureFolder(to); e != nil {
+		if res.FoldersCreated, e = c.ensure(to); e != nil {
 			return nil, e
 		}
 		exists := errs.NewConflict(errs.RuleDestinationExists, "%s already holds files of task %d", to, id).
@@ -521,7 +683,7 @@ func cmdDelete(c *call) (any, *errs.Error) {
 	}
 	f, ok := x.Tasks[id]
 	if !ok {
-		return nil, notFoundTask(id)
+		return nil, c.notFoundTasks(id)
 	}
 	// The task goes before its dependents are rewritten: a kill after that
 	// leaves references to a task that is gone, which doctor finds. The other

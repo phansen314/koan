@@ -65,10 +65,21 @@ func TestBuildInput(t *testing.T) {
 	}{
 		{[]string{"show", "42"}, `{"id":42}`},
 		{[]string{"show", "abc"}, `{"id":"abc"}`},
+		{[]string{"show", "@42"}, `{"id":"@42"}`},
+		{[]string{"block", "@1", "--blockers", "2,@3"}, `{"blockers":[2,"@3"],"id":"@1"}`},
+		{[]string{"list", "--folder", "41"}, `{"folder":"41"}`},
+		{[]string{"where", "@41:docs/plan.md"}, `{"ref":"@41:docs/plan.md"}`},
+		{[]string{"where", "--file", "/a/../b"}, `{"file":"/b"}`},
+		{[]string{"where"}, `{}`},
+		{[]string{"where", "a", "b"}, ""},
 		{[]string{"create", "Book flights", "--priority", "2", "--tags", "a,b", "--tags", "c"}, `{"priority":2,"tags":["a","b","c"],"title":"Book flights"}`},
 		{[]string{"update", "1", "--priority", "null", "--extra-remove", "a,b", "--extra-remove", "c"}, `{"extra_remove":["a,b","c"],"id":1,"priority":null}`},
 		{[]string{"update", "1", "--extra-merge", `{"n":1.50}`}, `{"extra_merge":{"n":1.50},"id":1}`},
 		{[]string{"block", "1", "--blockers", "2,x"}, `{"blockers":[2,"x"],"id":1}`},
+		{[]string{"repair", "--kinds", "temp-leftover,stale-claim", "--kinds", "orphan-notes"}, `{"kinds":["temp-leftover","stale-claim","orphan-notes"]}`},
+		{[]string{"create", "a", "--blocks", "1,2"}, `{"blocks":[1,2],"title":"a"}`},
+		{[]string{"update-folder", "/p", "--title", "null"}, `{"folder":"/p","title":null}`},
+		{[]string{"create-folder", "/p", "--title", "P", "--extra", `{"k":1}`}, `{"extra":{"k":1},"folder":"/p","title":"P"}`},
 		{[]string{"list", "--recursive=false", "--claimed", "--limit", "5"}, `{"claimed":true,"limit":5,"recursive":false}`},
 		{[]string{"create", "--priority", "-3", "--", "-x"}, `{"priority":-3,"title":"-x"}`},
 		{[]string{"create", "a", "b"}, ""},
@@ -78,6 +89,12 @@ func TestBuildInput(t *testing.T) {
 		{[]string{"update", "1", "--extra-merge", "{"}, ""},
 		{[]string{"list", "--tag", "x"}, ""},
 	}
+	// A relative --file is taken from the working directory.
+	wd, _ := os.Getwd()
+	cases = append(cases, struct {
+		args []string
+		want string
+	}{[]string{"where", "--file", "docs/plan.md"}, `{"file":"` + wd + `/docs/plan.md"}`})
 	for _, c := range cases {
 		var got []byte
 		var failed error

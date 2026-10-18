@@ -44,16 +44,17 @@ Two `conflict` rules are shared, and are not repeated below. Any command that wa
 ### Warnings
 
 ```json
-{ "kind": "dangling-reference", "message": "task 42 is blocked by 17, which does not exist", "ids": [42, 17], "paths": ["/home/paul/koan-root/proj/42.json"] }
+{ "kind": "dangling-reference", "message": "task 42 is blocked by 17, which does not exist", "ids": [42, 17], "paths": ["/home/paul/koan-root/@proj/@42.json"] }
 ```
 
 There are two kinds, `unusable-file` and `dangling-reference`, both defined in [design.md](design.md#walking). A command reports each at most once per file.
 
 ### Rules for every command
 
-- **A usable root.** Every command but `init`, `version`, and `info` fails unless the root is usable ([Root states](design.md#root-states)). `doctor` and `migrate` also run on a root that needs migration.
+- **A usable root.** Every command but `init`, `version`, and `info` fails unless the root is usable ([Root states](design.md#root-states)). `doctor` and `migrate` also run on a root that needs migration, when the binary has a conversion from its format.
 - **Reads and writes.** A write holds the tree's lock alone; a read shares it with other reads, and changes nothing. So a read never sees part of a write. Either fails with `busy` if it can't get the lock in 5 seconds. `info` and `version` take no lock.
 - **Folders are made as needed.** A command that puts something into a folder creates that folder, and any above it, when it is missing: `create`, `create-batch`, `move`, `move-folder`, and `create-folder`. Their results list what was created in `folders_created`. A command that only reads a folder, or removes one, fails with `not-found` when it is missing.
+- **Each folder made takes an ID.** The counter is raised once for every folder and task a command makes, before any is made; folders take their IDs first, parents before children, and tasks after them. Each folder is made whole, with its folder file and empty notes ([Concurrency](design.md#concurrency)). A command that fails partway leaves the folders made so far, each whole, and the IDs set aside for the rest unused.
 - **Asking for what already holds is not an error.** `done` on a done task, `block` with a blocker already there, `move` to the folder the task is in: the command succeeds, writes nothing, and returns `changed: false`.
 - **`updated_at`** is set to the command's time whenever a command changes a field of a task file, and only then.
 - **One time per command.** Every timestamp a command writes is the same instant.
@@ -65,10 +66,35 @@ Every command that returns a task returns it in one shape (`schemas/task.json`):
 | Field | Holds |
 |---|---|
 | `folder` | The folder path of the folder holding the task. |
-| `notes_path` | The absolute filesystem path of its `.md`, for an editor. Notes are never returned inline. |
+| `notes_path` | The absolute filesystem path of its `@<id>.md`, for an editor. Notes are never returned inline. |
 | `readiness` | `ready`, `blocked`, or `done`. |
 | `blocking` | The IDs in `blocked_by` that block it now: open, missing, or unusable. Ascending; empty unless `readiness` is `blocked`. |
 | `claim` | `{claimed_at, extra}`, or `null` when the task is unclaimed or done. |
+
+### Folder
+
+Every command that returns a folder's record returns it in one shape (`schemas/folder.json`): the folder file's fields, and where it is.
+
+| Field | Holds |
+|---|---|
+| `id` | The folder's ID; `null` for the root, and for a folder with no folder file or one koan can't use. |
+| `path` | The folder path. |
+| `dir` | The absolute filesystem path of its directory, `@`s and all. |
+| `title` | Its title, or `null`. |
+| `extra` | Its `extra`; `{}` for the root. |
+| `notes_path` | The absolute filesystem path of its `@folder.md`, for an editor; `null` for the root, which has none. |
+
+Only the folder commands, `where`, and `list` with `include_folders`, return folder records. Every other result names a folder by its path: a task's `folder`, and `folders_created`.
+
+### References
+
+Inputs take [references](design.md#references) wherever they name a task or a folder that exists:
+
+- **A task**, in every `id`, `blocked_by`, `blocks`, and `blockers`: an integer, or a string `"42"` or `"@42"`. The one exception is `create-batch`'s `blocked_by`, where a string names a batch `ref` unless it has the `@`: `"42"` is the task with ref `42`, `"@42"` and `42` the existing task.
+- **A folder**, in every `folder` and in `move`'s `to`: a path, or an ID as an integer or a string `"41"` or `"@41"`. A folder given by ID must exist, `not-found` otherwise, and is never made as needed; one given by path is made as needed where the command says so.
+- **Paths only** where the folder is new: `create-folder`'s `folder`, and `move-folder`'s `to`.
+
+JSON results use the plain forms: an ID is an integer, a folder a path. Only `where`'s `ref` writes a reference, `@` and all. A `not-found` for an ID lists it in `ids`, and its message says when the ID is the other kind's. Giving a folder by ID can also fail with `duplicate-id`, and warns `unusable-file` for each folder file koan can't use, since any of them might have held the ID.
 
 ### Orders
 
@@ -102,8 +128,10 @@ Their results always carry `total`, the number of tasks before `limit`, and `tru
 | [`create-folder`](#create-folder) | write | Create a folder. |
 | [`move-folder`](#move-folder) | write | Move or rename a folder. |
 | [`delete-folder`](#delete-folder) | write | Remove a folder and everything in it. |
+| [`show-folder`](#show-folder) | read | Return one folder. |
+| [`update-folder`](#update-folder) | write | Change a folder's title or `extra`. |
 | [`create`](#create) | write | Create a task. |
-| [`create-batch`](#create-batch) | write | Create several tasks that may wait on each other. |
+| [`create-batch`](#create-batch) | write | Create folders, and tasks that may wait on each other, in one write. |
 | [`show`](#show) | read | Return one task. |
 | [`update`](#update) | write | Change a task's title, priority, tags, or `extra`. |
 | [`done`](#done) | write | Mark a task done. |
@@ -115,6 +143,7 @@ Their results always carry `total`, the number of tasks before `limit`, and `tru
 | [`frontier`](#frontier) | read | Return the ready, unclaimed tasks, in work order. |
 | [`list`](#list) | read | Return the tasks, and optionally folders, in scope. |
 | [`why`](#why) | read | Say what a task is waiting on. |
+| [`where`](#where) | read | Turn a reference into disk paths, or a disk path into a reference. |
 | [`claim`](#claim) | write | Claim a task. |
 | [`claim-next`](#claim-next) | write | Claim the first ready, unclaimed task. |
 | [`release`](#release) | write | End a claim. |
@@ -125,20 +154,20 @@ For each command below: **Input** lists its fields (required ones marked), **Res
 
 ### init
 
-Create whatever is missing of `~/koan-root`, its `koan.json`, and the state file. What is already there is left alone, so running it again changes nothing.
+Create whatever is missing of `~/koan-root`, its `@koan.json`, and the state file. What is already there is left alone, so running it again changes nothing.
 
 - **Input:** none.
-- A state file created beside an existing tree starts `last_id` at the highest ID in the name of any task file or notes file; otherwise at `0`.
+- A state file created beside an existing tree starts `last_id` at the highest ID in the name of any task file or notes file, or in any folder file it can read; otherwise at `0`. A folder file it can't read is skipped, and `doctor` reports it.
 - `init` makes the folder when it is missing, then holds the lock alone for everything else, so the highest ID is read from a tree at rest and two `init`s cannot overlap. It needs the whole tree for that: a folder it can't list fails it with `io`.
-- A folder without a `koan.json` is adopted as it is: `init` writes the `koan.json` and leaves everything else in the folder alone.
-- A tree that needs migration, or is too new, is not an error here: its `koan.json` is left alone, and a missing state file is still created.
+- A folder without a `@koan.json` is adopted as it is: `init` writes the `@koan.json` and leaves everything else in the folder alone. What it holds that is not named with `@` is material.
+- A tree that needs migration, or is too new, is not an error here: its `@koan.json` is left alone, and a missing state file is still created.
 - **Result:** `root` and `state_path` (the two paths), and `created`: which of `root`, `metadata`, `state` it made.
 - On failure, `changed_paths` lists what it made.
-- **Refuses:** `not-a-folder` when `~/koan-root` is a file or leads nowhere, and `busy` when it can't get the lock. An existing `koan.json` or state file that is unusable fails with `corrupt` or `io`, and is never replaced.
+- **Refuses:** `not-a-folder` when `~/koan-root` is a file or leads nowhere, and `busy` when it can't get the lock. An existing `@koan.json` or state file that is unusable fails with `corrupt` or `io`, and is never replaced.
 
 ### version
 
-Report the binary: `version`, `commit`, `commit_time`, `dirty` (built with uncommitted changes), `go`, `platform`, and `format`, the one [format](design.md#formats) it reads and writes. It reads no file and cannot fail.
+Report the binary: `version`, `commit`, `commit_time`, `dirty` (built with uncommitted changes), `go`, `platform`, and `format`, the one tree [format](design.md#formats) it reads and writes. It reads no file and cannot fail.
 
 ### info
 
@@ -160,7 +189,7 @@ Report the root's state without failing on it.
 
 ### doctor
 
-Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lock alone while it looks, as a write does, and changes nothing. It runs on a root that needs migration.
+Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lock alone while it looks, as a write does, and changes nothing. It runs on a root that needs migration, when this binary has a conversion from the tree's format.
 
 - **Input:** none.
 - **Result:** `healthy` (no findings), and `findings`, each:
@@ -170,56 +199,84 @@ Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lo
 | `kind` | A finding kind. |
 | `message` | What is wrong and what to do about it. |
 | `paths`, `ids` | The files and tasks involved. |
-| `repairable` | Whether `repair` would fix it. |
+| `repairable` | Whether `repair` can fix it: by default, or, for `dangling-reference` and a `stale-claim` on a task that is gone, when asked for by name. |
 
 - For `cycle`, `ids` is one cycle, each task blocked by the next and the last by the first. For `unusable-file`, `message` says why the file can't be used.
 - **Order:** by kind, in the order [design.md](design.md#doctor-and-repair) lists them, then tree order.
+- **Refuses:** `no-conversion`, on a tree in a format this binary has no conversion from.
 
 ### repair
 
-Fix every repairable finding, as the table in [design.md](design.md#doctor-and-repair) says, then report what is left.
+Fix repairable findings, as the table in [design.md](design.md#doctor-and-repair) says, then report what is left.
 
-- **Input:** none.
+- **Input:** `kinds`: the finding kinds to fix, one or more of `temp-leftover`, `id-above-counter`, `dangling-reference`, `stale-claim`, `orphan-notes`, and `missing-folder-file`. Without it, every one of them, but not `dangling-reference`, nor a `stale-claim` on a task that is gone.
+- Findings of other kinds are left alone, and reported in `findings`.
 - **Result:** `repaired` and `findings`, both lists of findings as `doctor` returns them.
 - Running it again is always safe.
 
 ### migrate
 
-Convert every file in an earlier format to this binary's, then record the format in `koan.json` ([Formats](design.md#formats)). koan never runs it on its own.
+Convert every file in an earlier format to this binary's, then record the format in `@koan.json` ([Formats](design.md#formats)). koan never runs it on its own.
 
 - **Input:** `dry_run` (default `false`): report what would change and write nothing.
 - **Result:** `from` and `to` (the tree's format before and after), `converted` (how many task files), and `unconverted` (paths of task files it could not read or convert, which are left as they are).
 - A tree already current is not an error: `converted` is `0`.
-- Fails with `unsupported-format` on a tree in a later format, and converts nothing.
+- Fails with `unsupported-format` on a tree in a later format, and with `conflict` (`no-conversion`) on one in a format this binary has no conversion from ([Formats](design.md#formats)). Either way it converts nothing.
+- **Refuses:** `no-conversion`.
 
 ## Folders
 
 ### create-folder
 
-Create a folder, with any missing folders above it.
+Create a folder, with any missing folders above it, each with its folder file and notes: empty but for the folder asked for, which gets `notes`.
+
+- **Input:** `folder` (required, a path), and, for the folder itself, `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`): its folder file's fields and its notes. The folders above it get none of them.
+- A folder already there is not an error, and is left as it is, when none of `title`, `extra`, and `notes` is given.
+- **Result:** `folder` (its record), and `folders_created`, empty when it already existed.
+- **Refuses:** `destination-exists`, when the folder is already there and `title`, `extra`, or `notes` is given, even one that appeared while it was being made: they are set with `update-folder`, and notes edited in the `@folder.md`.
+
+### show-folder
+
+Return one folder.
 
 - **Input:** `folder` (required).
-- **Result:** `folder`, and `folders_created`, empty when it already existed.
+- **Result:** `folder`, its record.
+- A folder file koan can't use fails it with `corrupt`. A folder with no folder file is returned with `id` `null`.
+
+### update-folder
+
+Change a folder's title or `extra`. Fields not given are left alone, and notes are edited in the `@folder.md`.
+
+- **Input:** `folder` (required, not `/`: the root has no folder file), and at least one of:
+
+| Field | Effect |
+|---|---|
+| `title` | Replaces the title, trimmed; `null` clears it. |
+| `extra_merge`, `extra_remove`, `extra_replace_all` | As `update`'s. |
+
+- A folder with no folder file, or one koan can't use, fails it: `not-found` for the first (`koan repair` writes one), `corrupt` for the second.
+- **Result:** `folder` (its record), `changed`.
 
 ### move-folder
 
 Move a folder, with everything under it, to a new path. Renaming is moving to a sibling path.
 
-- **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into.
-- Neither may be `/`, and `to` may not be under `folder`: `invalid-input`.
-- No task file is rewritten: a task's folder is where its file is.
-- **Result:** `folder` (the new path), `folders_created`, `changed`.
+- **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into, so a path only.
+- Neither may be `/`, and `to` may not be under `folder`: `invalid-input`. For a `folder` given by ID, the second is known only once the tree is read, so it is reported after the root's state and `busy`.
+- No file is rewritten: a task's folder is where its file is, and the folder's own files move with it, its ID included.
+- **Result:** `folder` (its record, at the new path), `folders_created`, `changed`.
 - **Refuses:** `destination-exists` when anything is at `to`.
 
 ### delete-folder
 
 Remove a folder and everything under it, for good. koan keeps no trash; undo is git's.
 
-- **Input:** `folder` (required, not `/`), and `recursive` (default `false`).
-- Without `recursive`, the folder must hold nothing but hidden entries.
+- **Input:** `folder` (required, not `/`), `recursive` (default `false`), and `force` (default `false`).
+- Without `recursive`, the folder must hold nothing but its folder file, empty notes, and hidden entries.
+- With `recursive`, everything under it is removed. **Material blocks it unless `force` is given**: koan never deletes what it didn't write without being told to. Material here is every entry in the folder or in a folder under it that is not koan's and not hidden, an entry named with `@` that is not one of koan's included. Hidden entries (`.gitignore`, `.obsidian`) don't block, and are removed with the folder. Finding material takes a listing of each folder, never a look inside the material.
 - Every task outside the folder loses the removed tasks' IDs from its `blocked_by`, and the removed tasks' claims end. The folder is removed first, as [`delete`](#delete) removes its task first.
 - **Result:** `folder`, `deleted` (IDs of the tasks removed), and `dependents` (IDs of the tasks whose `blocked_by` changed).
-- **Refuses:** `not-empty`, without `recursive`.
+- **Refuses:** `not-empty`, without `recursive`; `has-material`, with `recursive` and without `force`, listing in `paths` each material entry found, not what is inside it.
 
 ## Tasks
 
@@ -236,31 +293,38 @@ Create an open task.
 | `priority` | `null` | |
 | `tags` | `[]` | |
 | `blocked_by` | `[]` | IDs of existing tasks, open or done. |
+| `blocks` | `[]` | IDs of existing tasks, open or done, that wait on the new task: it is added to each one's `blocked_by`. |
 | `extra` | `{}` | |
-| `notes` | `""` | The initial content of the `.md`. |
+| `notes` | `""` | The initial content of the `@<id>.md`. |
 
-- The new ID is `last_id` + 1. The counter is written first, then the task file, then the notes. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
+- The new ID is the counter's next one, after the IDs of any folders made for it. The counter is written first, then any folders, then each task in `blocks`, in ascending order, then the task file, then the notes. The tasks in `blocks` go before the task they wait on, so that a kill between leaves them waiting on an ID with no task, a dangling reference `doctor` finds, as [`delete`](#delete) leaves one. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
 - The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
-- A new task can't close a cycle, since nothing waits on it yet.
-- **Result:** `task`, `folders_created`.
+- A new task closes a cycle only through `blocks`: when a task in `blocks` is in `blocked_by` too, or one in `blocked_by` already waits on one in `blocks`, directly or through other tasks. That is refused, as `block` refuses a cycle, before an ID is used.
+- Every task in `blocks` is read before an ID is used, so one that can't be used refuses the command with its error, and changes nothing. Only an I/O error after one is rewritten can leave tasks waiting on the new one when it was not created: the error's `ids` then lists the tasks rewritten, its `message` names them, and its `changed_paths` what was written. Rewritten tasks that wait on a task never created are a dangling reference: create it again and point them at it with `block`, or remove the reference with `unblock`.
+- **Result:** `task`, `folders_created`, and `dependents`: the IDs of the tasks in `blocks`, ascending.
+- **Refuses:** `cycle`; `ids` is the existing tasks of one such cycle, from a task in `blocked_by` along `blocked_by` to the task in `blocks` it reaches (the new task, which closes it, has no ID yet). As for `block`, a cycle through a task file that can't be read can't be ruled out, and fails with that file's error.
 
 ### create-batch
 
-Create several open tasks in one write, where later ones may wait on earlier ones. Everything is checked before anything is written.
+Create folders, and open tasks in them, in one write, where later tasks may wait on earlier ones: a piece of work laid out whole. Everything is checked before anything is written.
 
-- **Input:** `folder` (default `/`), the folder of every task that names none; and `tasks` (required, 1–1000), each with `create`'s fields plus:
+- **Input:** `folders` (default `[]`), the folders to make; `folder` (default `/`), the folder of every task that names none; and `tasks` (default `[]`), each with `create`'s fields but `blocks`. The two lists hold 1–1000 entries between them.
+- **A folder entry** has `create-folder`'s fields: `path` (required, a path, not `/`), `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`). No two entries have one path. A task goes into a folder of the batch by naming its path in `folder`, as into any other.
+- **A task entry** has, besides `create`'s fields:
 
 | Field | Holds |
 |---|---|
 | `ref` | A name for this task within the batch, following the tag rule. Unique in the batch. Never stored. |
-| `blocked_by` | A mix of integers, the IDs of existing tasks, and strings, the `ref`s of **earlier** tasks in the batch. |
+| `blocked_by` | A mix of existing tasks' IDs, as integers or as strings with `@` (`"@42"`), and the `ref`s of **earlier** tasks in the batch, as strings without (`"42"` is a ref). |
 
-- Refs may only point backwards, so a batch cannot contain a cycle.
-- Every folder's path is checked too, before an ID is used.
-- IDs are consecutive, in input order, and every task gets the same `created_at`.
-- The counter is raised once, by the size of the batch. Then the tasks are written in input order, each as `create` writes one.
-- So a failure partway leaves the first tasks of the batch created and the rest not: the error's `ids` lists the created ones, in input order. To finish, drop those tasks from the input, replace each `ref` to one of them with its ID, and run the rest. The IDs set aside for the tasks not created are not reused.
-- **Result:** `ids` (in input order), `refs` (each `ref` and the ID it got), `folders_created`.
+- Refs are global to the batch, and may only point backwards, so a batch cannot contain a cycle.
+- Every folder is checked before an ID is used: each folder entry, that nothing is at its path; each task's folder given by path, that it can be made; one given by ID, that it exists; and the batch's `folder`, the same way, even when no task falls back to it.
+- A folder entry's missing parents, and a task's missing folder, are made as needed, with no title, as by any command.
+- **IDs**: the folders the batch makes take theirs first, in tree order, parents before children, entries and folders made as needed alike; then the tasks, consecutively, in input order. Every task gets the same `created_at`.
+- The counter is raised once, by the number of folders and tasks the batch makes. Then the folders are made, parents first, each whole, an entry with its fields and notes; then the tasks are written in input order, each as `create` writes one.
+- So a failure partway leaves the folders made so far, and the first tasks of the batch, and not the rest: the error's `folders` lists the folders made, in tree order, its `ids` the tasks created, in input order, and `changed_paths` everything written. To finish, drop the folders and tasks made from the input, replace each `ref` to a task made with its ID, and run the rest. The IDs set aside for what was not made are not reused.
+- **Result:** `ids` (the tasks', in input order), `refs` (each `ref` and the ID it got), `folders` (each folder the batch made, by path, and the ID it got), and `folders_created` (their paths, in tree order).
+- **Refuses:** `destination-exists`, when something is at a folder entry's path, listing every such path in `folders` and `paths`: a folder entry means one to make. To put tasks into a folder already there, name it in their `folder`; to set its fields, use `update-folder`. A folder entry that appears while the batch runs, only by an outside change, is refused the same way, after the folders before it are made: then it is named in the message and `paths`, and `folders` lists those made, as for any failure partway.
 
 ### show
 
@@ -271,7 +335,7 @@ Return one task.
 
 ### update
 
-Change a task's title, priority, tags, or `extra`. Fields not given are left alone. Other fields have their own commands, and notes are edited in the `.md`.
+Change a task's title, priority, tags, or `extra`. Fields not given are left alone. Other fields have their own commands, and notes are edited in the `@<id>.md`.
 
 - **Input:** `id` (required), and at least one of:
 
@@ -326,7 +390,7 @@ Move a task, with its notes, to another folder. Nothing in the task file changes
 - **Input:** `id` (required), and `to` (required): the folder to move it into.
 - The task file moves first, then the notes.
 - **Result:** `task`, `folders_created`, `changed`.
-- **Refuses:** `destination-exists`, when `to` already holds a non-empty `.md` with the task's name. An empty one is replaced.
+- **Refuses:** `destination-exists`, when `to` already holds a non-empty `@<id>.md` with the task's name. An empty one is replaced.
 
 ### delete
 
@@ -356,7 +420,7 @@ Return the tasks in scope, whatever their readiness.
 | Field | Default | Effect |
 |---|---|---|
 | `readiness` | `["ready", "blocked"]` | Which tasks to return. Done tasks pile up for ever, so they are left out unless asked for. |
-| `include_folders` | `false` | Also return `folders`: `folder` itself and the folders under it, empty ones included. Never narrowed. |
+| `include_folders` | `false` | Also return `folders`: the records of `folder` itself and the folders under it, empty ones included, in tree order. Never narrowed. A folder file koan can't use gives its folder `id` `null` and `title` `null`, and an `unusable-file` warning. |
 
 - **Result:** `tasks`, `total`, `truncated`, and `folders` when asked for.
 - **Order:** tree order.
@@ -375,6 +439,28 @@ Say what a task is waiting on, by following its blockers, and theirs, through op
 | `stuck` | The IDs no work will clear, ascending: blockers that are missing or unusable, and tasks that block each other. |
 
 - A done task has both lists empty. An open task has at least one of them non-empty.
+
+### where
+
+Turn a [reference](design.md#references) into where it is on disk, or a path on disk into its reference: the two forms for the key-plus-hint convention, and the absolute paths to open.
+
+- **Input:** exactly one of `ref`, a reference given as a string (`@42`, `/proj`, `/proj:docs/plan.md`, `@41:docs/plan.md`, each ID with or without the `@`), and `file`, an absolute path on disk.
+- An ID in `ref` names whichever task or folder has it; with material after it, a folder. Either way it reads every folder file, as a folder given by ID does: two holders is `duplicate-id`, and each folder file koan can't use is an `unusable-file` warning.
+- **From `file`:** the path is made clean without touching the disk (`a/../b` is `b`), and must be the tree's directory or under it, as `~/koan-root` or as the directory it links to. A path that is neither is tried again with the symlinks in its longest existing prefix resolved, so one reaching the tree through a link of its own (`~/k` for `~/koan-root`) is found; this reads only the path's own directories. Anywhere else is `not-found`. Its leading `@` folder names lead through folders, each of which must exist. What follows names the folder itself (nothing, `@folder.json`, or `@folder.md`); a task (`@42.json` or `@42.md`, the task file existing); or material, the rest of the path, whose first entry is not named with `@`. Any other `@` entry there, a folder name on something that is not a folder included, is not one of koan's and has no reference: `not-found`.
+- The folders must exist, and a task must; material need not, and is never looked at. An ID given for material that is a task's is `not-found`, saying so.
+- **Result:**
+
+| Field | Holds |
+|---|---|
+| `ref` | The stable reference: `@<id>`, followed by `:` and the material for material. A folder with no ID (the root, or one with no folder file) is given by its path instead. |
+| `hint` | The readable form: the folder's path, followed by `:` and the material for material; a task's title for a task. |
+| `folder` | The record of the folder named, the folder holding the material, or the task's folder. |
+| `task` | The task's ID, or `null`. |
+| `material` | The material part, or `null`. |
+| `file` | The absolute path of the material, or of the task's `@<id>.md`; `null` for a folder, whose record has `dir`. |
+
+- A folder file koan can't use fails it with `corrupt`, as for `show-folder`.
+- Kept text writes `<ref> (<hint>)`: `koan where @41:docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'`.
 
 ## Claims
 

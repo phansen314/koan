@@ -2,7 +2,9 @@ package ops
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -19,9 +21,10 @@ import (
 func TestTreeOrderPutsChildrenBeforeLaterSiblings(t *testing.T) {
 	w := ready(t)
 	w.ok("create-batch", `{"tasks":[{"title":"a","folder":"/proj-b"},{"title":"b","folder":"/proj/travel"},{"title":"c","folder":"/proj"},{"title":"d","folder":"/Zed"}]}`)
-	wantIDs(t, "list", w.ok("list", `{}`)["tasks"], 4, 3, 2, 1)
-	folders, _ := json.Marshal(w.ok("list", `{"include_folders":true}`)["folders"])
-	if string(folders) != `["/","/Zed","/proj","/proj/travel","/proj-b"]` {
+	// The four folders take 1 to 4; the tasks, in input order, 5 to 8.
+	wantIDs(t, "list", w.ok("list", `{}`)["tasks"], 8, 7, 6, 5)
+	folders := paths(w.ok("list", `{"include_folders":true}`)["folders"])
+	if folders != `["/","/Zed","/proj","/proj/travel","/proj-b"]` {
 		t.Errorf("folders %s", folders)
 	}
 }
@@ -215,25 +218,69 @@ func TestFilesInOtherShapes(t *testing.T) {
 	w.fail("show", `{"id":1}]`, errs.InvalidInput, "")
 	w.fail("show", `{"id":1} {"id":1}`, errs.InvalidInput, "")
 
-	// A koan.json from a newer koan is that, whatever else it holds.
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 2, "name": "x"}`), 0o644)
+	// A @koan.json from a newer koan is that, whatever else it holds.
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3, "name": "x"}`), 0o644)
 	w.fail("show", `{"id":1}`, errs.UnsupportedFormat, "")
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 1, "name": "x"}`), 0o644)
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 2, "name": "x"}`), 0o644)
 	w.fail("show", `{"id":1}`, errs.Corrupt, "")
 }
 
 func TestRepairReportsOnlyWhatItRepaired(t *testing.T) {
 	w := ready(t)
-	w.ok("create", `{"title":"a","folder":"/home"}`)
-	os.Remove(w.root("home/1.md"))
+	w.ok("create", `{"title":"a","folder":"/home"}`) // task 2, in /home, 1
+	os.Remove(w.root("home/2.md"))
 	for _, dir := range []string{"x", "y"} {
-		os.Mkdir(w.root(dir), 0o755)
-		os.WriteFile(w.root(dir, "1.md"), []byte(dir), 0o644)
+		w.ok("create-folder", `{"folder":"/`+dir+`"}`)
+		os.WriteFile(w.root(dir, "2.md"), []byte(dir), 0o644)
 	}
 	got := w.ok("repair", `{}`)
 	if len(got["repaired"].([]any)) != 1 || len(got["findings"].([]any)) != 1 {
 		t.Errorf("repaired %v, left %v: want one of each", got["repaired"], got["findings"])
 	}
+}
+
+// repair fixes only the kinds it is given. Without them, it fixes every kind
+// but leaves what removes the ID of a task that is gone. It refuses a kind
+// it can't fix.
+func TestRepairFixesOnlyTheKindsAsked(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","notes":"keep"},{"title":"b","blocked_by":["a"]},{"title":"c"}]}`)
+	w.ok("claim", `{"id":1}`)
+	w.ok("claim", `{"id":3}`)
+	state, _ := os.ReadFile(w.env.StatePath())
+	w.ok("done", `{"id":3}`)
+	os.WriteFile(w.env.StatePath(), state, 0o644) // a claim on 3, which is done
+	os.Remove(w.root("1.json"))                   // dangling reference in 2, claim on 1, which is gone, and orphan notes
+	os.WriteFile(w.root(".koan-tmp-abc"), nil, 0o644)
+
+	kinds := func(fs any) (ks []string) {
+		for _, f := range fs.([]any) {
+			f := f.(map[string]any)
+			ks = append(ks, fmt.Sprintf("%s %v", f["kind"], f["ids"]))
+		}
+		return ks
+	}
+	check := func(input string, repaired, left []string) {
+		t.Helper()
+		got := w.ok("repair", input)
+		if r := kinds(got["repaired"]); !slices.Equal(r, repaired) {
+			t.Errorf("repair %s: repaired %v, want %v", input, r, repaired)
+		}
+		if f := kinds(got["findings"]); !slices.Equal(f, left) {
+			t.Errorf("repair %s: left %v, want %v", input, f, left)
+		}
+	}
+	check(`{}`, []string{"temp-leftover []", "stale-claim [3]"},
+		[]string{"dangling-reference [2 1]", "stale-claim [1]", "orphan-notes [1]"})
+	check(`{"kinds":["stale-claim"]}`, []string{"stale-claim [1]"},
+		[]string{"dangling-reference [2 1]", "orphan-notes [1]"})
+	check(`{"kinds":["temp-leftover","dangling-reference"]}`, []string{"dangling-reference [2 1]"},
+		[]string{"orphan-notes [1]"})
+
+	w.fail("repair", `{"kinds":["cycle"]}`, errs.InvalidInput, "")
+	w.fail("repair", `{"kinds":["old-format"]}`, errs.InvalidInput, "")
+	w.fail("repair", `{"kinds":[]}`, errs.InvalidInput, "")
+	w.fail("repair", `{"kinds":["stale-claim","stale-claim"]}`, errs.InvalidInput, "")
 }
 
 func TestStaleClaimsInIDOrder(t *testing.T) {
@@ -268,11 +315,12 @@ func TestBlockReportsEveryProblem(t *testing.T) {
 func TestDeleteFolderRemovesTheFolderFirst(t *testing.T) {
 	w := ready(t)
 	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/gone"},{"title":"b","blocked_by":["a"]}]}`)
-	// The rewrite of task 2 starts with a temp file; fail it.
+	// /gone is 1, a 2, b 3. The rewrite of task 3 starts with a temp
+	// file; fail it.
 	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 1, syscall.ENOSPC)}
 	w.fail("delete-folder", `{"folder":"/gone","recursive":true}`, errs.IO, "")
 	w.env.FS = fsys.OS{}
-	if tk := task(w.ok("show", `{"id":2}`)); tk["readiness"] != "blocked" {
+	if tk := task(w.ok("show", `{"id":3}`)); tk["readiness"] != "blocked" {
 		t.Errorf("the dependent was freed though delete-folder failed: %v", tk)
 	}
 	fs := w.ok("doctor", `{}`)["findings"].([]any)
@@ -286,9 +334,9 @@ func TestSuccessLeavesTheTreeHealthy(t *testing.T) {
 	w := ready(t)
 	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/p/q","notes":"n"},{"title":"b","folder":"/p","blocked_by":["a"]},{"title":"c"}]}`)
 	for _, step := range [][2]string{
-		{"claim", `{"id":1}`}, {"update", `{"id":2,"tags_add":["x"]}`}, {"move", `{"id":1,"to":"/r"}`},
-		{"move-folder", `{"folder":"/p","to":"/s/p"}`}, {"done", `{"id":1}`}, {"reopen", `{"id":1}`},
-		{"claim-next", `{}`}, {"delete", `{"id":3}`}, {"delete-folder", `{"folder":"/s","recursive":true}`},
+		{"claim", `{"id":3}`}, {"update", `{"id":4,"tags_add":["x"]}`}, {"move", `{"id":3,"to":"/r"}`},
+		{"move-folder", `{"folder":"/p","to":"/s/p"}`}, {"done", `{"id":3}`}, {"reopen", `{"id":3}`},
+		{"claim-next", `{}`}, {"delete", `{"id":5}`}, {"delete-folder", `{"folder":"/s","recursive":true}`},
 		{"delete-folder", `{"folder":"/r","recursive":true}`},
 	} {
 		w.ok(step[0], step[1])
@@ -392,5 +440,589 @@ func TestDeleteLeavesWhatIsNotNotes(t *testing.T) {
 	w.ok("delete", `{"id":1}`)
 	if fi, err := os.Stat(w.root("1.md")); err != nil || !fi.IsDir() {
 		t.Errorf("delete removed a directory named like the notes: %v", err)
+	}
+}
+
+// findings lists doctor's findings as "kind paths", the paths relative to
+// the root.
+func (w *world) findings() []string {
+	var fs []string
+	for _, f := range w.ok("doctor", `{}`)["findings"].([]any) {
+		f := f.(map[string]any)
+		var paths []string
+		for _, p := range f["paths"].([]any) {
+			paths = append(paths, strings.TrimPrefix(p.(string), w.disk()+"/"))
+		}
+		fs = append(fs, f["kind"].(string)+" "+strings.Join(paths, ","))
+	}
+	return fs
+}
+
+// Only what is named with @ is koan's: everything else is material, never
+// walked into, whatever its name, @ folders inside it included.
+func TestMaterialIsNeverRead(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/p"}`) // /p is 1, the task 2
+	for _, dir := range []string{"@p/docs/@inner", "docs", "@p/node_modules/@types"} {
+		os.MkdirAll(w.disk(dir), 0o755)
+	}
+	for _, f := range []string{"@p/docs/@3.json", "@p/docs/@inner/@folder.json", "@p/2026.md", "@p/7.json", "notes.md", ".hidden"} {
+		os.WriteFile(w.disk(f), []byte("material"), 0o644)
+	}
+	if fs := w.findings(); len(fs) != 0 {
+		t.Errorf("doctor found %v in material", fs)
+	}
+	got := w.ok("list", `{"include_folders":true}`)
+	if folders := paths(got["folders"]); folders != `["/","/p"]` {
+		t.Errorf("folders %s", folders)
+	}
+	wantIDs(t, "tasks", got["tasks"], 2)
+	// A non-recursive delete-folder refuses visible material, and notes.
+	w.fail("delete-folder", `{"folder":"/p"}`, errs.Conflict, errs.RuleNotEmpty)
+	w.ok("create-folder", `{"folder":"/q"}`)
+	os.WriteFile(w.root("q/folder.md"), []byte("notes"), 0o644)
+	w.fail("delete-folder", `{"folder":"/q"}`, errs.Conflict, errs.RuleNotEmpty)
+	os.WriteFile(w.root("q/folder.md"), nil, 0o644)
+	os.WriteFile(w.disk("@q/.gitignore"), nil, 0o644)
+	w.ok("delete-folder", `{"folder":"/q"}`)
+}
+
+// An entry named with @ that is none of koan's is reported, and skipped.
+func TestStrayAtNamesAreSkipped(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p"}`)
+	os.WriteFile(w.disk("@p/@notes.txt"), nil, 0o644)
+	os.WriteFile(w.disk("@folder.json"), nil, 0o644) // the root has no folder file
+	os.Mkdir(w.disk("@p/@5.json"), 0o755)
+	os.Symlink("nowhere", w.disk("@p/@link"))
+	want := []string{"skipped-entry @folder.json", "skipped-entry @p/@5.json", "skipped-entry @p/@link", "skipped-entry @p/@notes.txt"}
+	if fs := w.findings(); !slices.Equal(fs, want) {
+		t.Errorf("findings %v, want %v", fs, want)
+	}
+}
+
+// A folder made by hand, without a folder file, is still a folder; repair
+// gives it a new ID, above every ID in the tree.
+func TestRepairGivesAFolderItsFile(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`)
+	os.Mkdir(w.root("hand"), 0o755)
+	data, _ := os.ReadFile(w.root("1.json"))
+	os.WriteFile(w.root("hand/9.json"), []byte(strings.Replace(string(data), `"id": 1`, `"id": 9`, 1)), 0o644)
+	if fs := w.findings(); !slices.Equal(fs, []string{"id-above-counter @hand/@9.json", "missing-folder-file @hand"}) {
+		t.Errorf("findings %v", fs)
+	}
+	wantIDs(t, "tasks", w.ok("list", `{}`)["tasks"], 1, 9)
+	got := w.ok("repair", `{"kinds":["missing-folder-file"]}`)
+	if len(got["repaired"].([]any)) != 1 {
+		t.Errorf("repaired %v", got["repaired"])
+	}
+	if data, _ := os.ReadFile(w.root("hand/folder.json")); !strings.Contains(string(data), `"id": 10`) {
+		t.Errorf("folder file %s, want ID 10", data)
+	}
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(10) {
+		t.Errorf("last_id %v, want 10", n)
+	}
+}
+
+// Folders and tasks share one counter, so an ID in two of their files is a
+// duplicate; a folder file koan can't use is reported, and init passes it.
+func TestFolderFilesAndIDs(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/p"}`) // /p is 1, the task 2
+	w.ok("create-folder", `{"folder":"/q"}`)      // 3
+	w.ok("create-folder", `{"folder":"/r"}`)      // 4
+	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":1,"id":2,"title":null,"extra":{}}`), 0o644)
+	os.WriteFile(w.root("r/folder.json"), []byte(`{"schema":1,"id":4}`), 0o644)
+	want := []string{"duplicate-id @p/@2.json,@q/@folder.json", "unusable-file @r/@folder.json"}
+	if fs := w.findings(); !slices.Equal(fs, want) {
+		t.Errorf("findings %v, want %v", fs, want)
+	}
+	os.Remove(w.env.StatePath())
+	w.ok("init", `{}`)
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(2) {
+		t.Errorf("last_id %v, want 2: /r's file can't be read", n)
+	}
+}
+
+// A tree from before the @ names has no @koan.json: koan finds it not set
+// up, and init adopts it with everything in it as material.
+func TestATreeInFormatOneIsMaterial(t *testing.T) {
+	w := newWorld(t)
+	os.MkdirAll(w.disk("proj"), 0o755)
+	os.WriteFile(w.disk("koan.json"), []byte(`{"schema": 1}`), 0o644)
+	os.WriteFile(w.disk("proj", "1.json"), []byte("{}"), 0o644)
+	if got := w.ok("info", `{}`); got["state"] != "not-initialized" {
+		t.Errorf("info: %v", got)
+	}
+	w.ok("init", `{}`)
+	if fs := w.findings(); len(fs) != 0 {
+		t.Errorf("findings %v", fs)
+	}
+	if got := w.ok("list", `{}`); got["total"] != float64(0) {
+		t.Errorf("list: %v", got)
+	}
+}
+
+// A failed command's changed_paths name only what it changed: never the
+// temp folder a new folder is built in.
+func TestChangedPathsLeaveOutTempFolders(t *testing.T) {
+	w := ready(t)
+	// The state file, the folder file, the folder's notes, then the task
+	// file: fail the fourth.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 4, syscall.ENOSPC)}
+	e := w.fail("create", `{"title":"a","folder":"/new"}`, errs.IO, "")
+	w.env.FS = fsys.OS{}
+	if !slices.Contains(e.ChangedPaths, w.root("new")) {
+		t.Errorf("changed_paths %v lack the folder made", e.ChangedPaths)
+	}
+	for _, p := range e.ChangedPaths {
+		if strings.Contains(p, fsys.TempPrefix) {
+			t.Errorf("changed_paths %v name a temp folder", e.ChangedPaths)
+		}
+	}
+	if fs := w.findings(); len(fs) != 0 {
+		t.Errorf("findings %v", fs)
+	}
+}
+
+// init takes the counter from folder IDs too, with no task to give one.
+func TestInitCountsFolderIDs(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/a/b/c"}`)
+	os.Remove(w.env.StatePath())
+	w.ok("init", `{}`)
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(3) {
+		t.Errorf("last_id %v, want 3", n)
+	}
+}
+
+// A folder file koan can't use is reported as that, never as missing: a
+// symlink, or one in another format. repair leaves it, and the counter.
+func TestUnusableFolderFiles(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p"}`)
+	w.ok("create-folder", `{"folder":"/q"}`)
+	os.Remove(w.root("p/folder.json"))
+	os.Symlink("nowhere", w.root("p/folder.json"))
+	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":2,"id":2}`), 0o644)
+	want := []string{"unusable-file @p/@folder.json", "unusable-file @q/@folder.json"}
+	if fs := w.findings(); !slices.Equal(fs, want) {
+		t.Errorf("findings %v, want %v", fs, want)
+	}
+	if got := w.ok("repair", `{}`); len(got["repaired"].([]any)) != 0 {
+		t.Errorf("repaired %v", got["repaired"])
+	}
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(2) {
+		t.Errorf("last_id %v, want 2", n)
+	}
+	// Nor is a directory in the folder file's place the folder's own.
+	w.ok("create-folder", `{"folder":"/r"}`)
+	os.Remove(w.root("r/folder.json"))
+	os.Mkdir(w.root("r/folder.json"), 0o755)
+	w.fail("delete-folder", `{"folder":"/r"}`, errs.Conflict, errs.RuleNotEmpty)
+}
+
+// repair's new folder ID is above an ID that notes alone still hold.
+func TestRepairSkipsIDsHeldByNotes(t *testing.T) {
+	w := ready(t)
+	os.Mkdir(w.root("hand"), 0o755)
+	os.WriteFile(w.root("hand/6.md"), []byte("kept"), 0o644)
+	w.ok("repair", `{}`)
+	if data, _ := os.ReadFile(w.root("hand/folder.json")); !strings.Contains(string(data), `"id": 7`) {
+		t.Errorf("folder file %s, want ID 7", data)
+	}
+}
+
+// A recursive delete-folder removes material only when forced: it lists
+// what it found, at any depth but never inside it. Hidden entries don't
+// count.
+func TestDeleteFolderRefusesMaterial(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/p/q","notes":"n"}`)
+	os.WriteFile(w.disk("@p/.gitignore"), nil, 0o644)
+	os.MkdirAll(w.disk("@p/.obsidian"), 0o755)
+	w.ok("delete-folder", `{"folder":"/p","recursive":true}`) // only koan's and hidden entries
+
+	w.ok("create", `{"title":"b","folder":"/p/q"}`)
+	os.MkdirAll(w.disk("@p/@q/docs/deep"), 0o755)
+	os.WriteFile(w.disk("@p/@q/docs/deep/plan.md"), nil, 0o644)
+	os.WriteFile(w.disk("@p/@stray.txt"), nil, 0o644)
+	e := w.fail("delete-folder", `{"folder":"/p","recursive":true}`, errs.Conflict, errs.RuleHasMaterial)
+	want := []string{w.disk("@p/@stray.txt"), w.disk("@p/@q/docs")}
+	if !slices.Equal(e.Paths, want) {
+		t.Errorf("paths %v, want %v", e.Paths, want)
+	}
+	if len(e.ChangedPaths) != 0 {
+		t.Errorf("changed %v", e.ChangedPaths)
+	}
+	got := w.ok("delete-folder", `{"folder":"/p","recursive":true,"force":true}`)
+	wantIDs(t, "deleted", got["deleted"], 6)
+	if _, err := os.Stat(w.disk("@p")); !os.IsNotExist(err) {
+		t.Errorf("the folder is still there: %v", err)
+	}
+}
+
+// record is the folder record in a result, as JSON with its keys sorted
+// and the root's path cut to ~, for comparing.
+func (w *world) record(res map[string]any) string {
+	data, _ := json.Marshal(res["folder"])
+	return strings.ReplaceAll(string(data), w.disk(), "~")
+}
+
+// A folder's title, extra, and notes are set by create-folder, changed by
+// update-folder, and shown by show-folder and list.
+func TestFolderMetadata(t *testing.T) {
+	w := ready(t)
+	got := w.ok("create-folder", `{"folder":"/p/q","title":" Research ","extra":{"kind":"phase"},"notes":"n"}`)
+	want := `{"dir":"~/@p/@q","extra":{"kind":"phase"},"id":2,"notes_path":"~/@p/@q/@folder.md","path":"/p/q","title":"Research"}`
+	if r := w.record(got); r != want {
+		t.Errorf("create-folder: %s, want %s", r, want)
+	}
+	if n, _ := os.ReadFile(w.root("p/q/folder.md")); string(n) != "n" {
+		t.Errorf("notes %q", n)
+	}
+	// The folders above it get none of it.
+	if r := w.record(w.ok("show-folder", `{"folder":"/p"}`)); r != `{"dir":"~/@p","extra":{},"id":1,"notes_path":"~/@p/@folder.md","path":"/p","title":null}` {
+		t.Errorf("show-folder /p: %s", r)
+	}
+	if r := w.record(w.ok("show-folder", `{"folder":"/"}`)); r != `{"dir":"~","extra":{},"id":null,"notes_path":null,"path":"/","title":null}` {
+		t.Errorf("show-folder /: %s", r)
+	}
+	w.fail("show-folder", `{"folder":"/nope"}`, errs.NotFound, "")
+	// Fields for a folder already there are refused; without them, it is fine.
+	w.fail("create-folder", `{"folder":"/p/q","title":"x"}`, errs.Conflict, errs.RuleDestinationExists)
+	if got := w.ok("create-folder", `{"folder":"/p/q"}`); len(got["folders_created"].([]any)) != 0 {
+		t.Errorf("create-folder again: %v", got)
+	}
+
+	w.fail("create-folder", `{"folder":"/p/q","notes":""}`, errs.Conflict, errs.RuleDestinationExists)
+
+	got = w.ok("update-folder", `{"folder":"/p/q","title":null,"extra_merge":{"n":1}}`)
+	if r := w.record(got); got["changed"] != true || !strings.Contains(r, `"extra":{"kind":"phase","n":1}`) || !strings.Contains(r, `"title":null`) {
+		t.Errorf("update-folder: %s %v", r, got["changed"])
+	}
+	before, _ := os.Stat(w.root("p/q/folder.json"))
+	if got := w.ok("update-folder", `{"folder":"/p/q","extra_merge":{"n":1}}`); got["changed"] != false {
+		t.Errorf("an update that changes nothing changed %v", got)
+	}
+	if after, _ := os.Stat(w.root("p/q/folder.json")); !after.ModTime().Equal(before.ModTime()) {
+		t.Error("an update that changes nothing wrote the folder file")
+	}
+	if r := w.record(w.ok("update-folder", `{"folder":"/p/q","extra_remove":["n"]}`)); !strings.Contains(r, `"extra":{"kind":"phase"}`) {
+		t.Errorf("extra_remove: %s", r)
+	}
+	if r := w.record(w.ok("update-folder", `{"folder":"/p/q","extra_replace_all":{"z":true}}`)); !strings.Contains(r, `"extra":{"z":true}`) {
+		t.Errorf("extra_replace_all: %s", r)
+	}
+	w.fail("update-folder", `{"folder":"/"}`, errs.InvalidInput, "")
+	w.fail("update-folder", `{"folder":"/p"}`, errs.InvalidInput, "")
+	w.fail("update-folder", `{"folder":"/p","extra_merge":{},"extra_replace_all":{}}`, errs.InvalidInput, "")
+	w.fail("update-folder", `{"folder":"/p","title":"   "}`, errs.InvalidInput, "")
+
+	// A moved folder keeps its fields.
+	got = w.ok("move-folder", `{"folder":"/p","to":"/r"}`)
+	if r := w.record(got); r != `{"dir":"~/@r","extra":{},"id":1,"notes_path":"~/@r/@folder.md","path":"/r","title":null}` {
+		t.Errorf("move-folder: %s", r)
+	}
+
+	// A folder with no folder file, and one koan can't use.
+	os.Mkdir(w.root("hand"), 0o755)
+	w.fail("update-folder", `{"folder":"/hand","title":"x"}`, errs.NotFound, "")
+	if r := w.record(w.ok("show-folder", `{"folder":"/hand"}`)); !strings.Contains(r, `"id":null`) {
+		t.Errorf("show-folder /hand: %s", r)
+	}
+	os.WriteFile(w.root("r/q/folder.json"), []byte("{"), 0o644)
+	w.fail("show-folder", `{"folder":"/r/q"}`, errs.Corrupt, "")
+	w.fail("update-folder", `{"folder":"/r/q","title":"x"}`, errs.Corrupt, "")
+	// list shows each folder's fields; the folder with no folder file has
+	// no ID, and no warning (doctor reports it); the unusable one, a warning.
+	env := w.run("list", `{"include_folders":true}`)
+	if len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
+		t.Errorf("warnings %+v", env.Warnings)
+	}
+	w.ok("update-folder", `{"folder":"/r","title":"R"}`)
+	ids := map[string]any{}
+	titles := map[string]any{}
+	for _, r := range w.ok("list", `{"include_folders":true}`)["folders"].([]any) {
+		r := r.(map[string]any)
+		ids[r["path"].(string)], titles[r["path"].(string)] = r["id"], r["title"]
+	}
+	if ids["/hand"] != nil || ids["/r/q"] != nil || ids["/r"] != float64(1) || titles["/r"] != "R" {
+		t.Errorf("ids %v titles %v", ids, titles)
+	}
+}
+
+// create's blocks: the tasks named wait on the new one. A cycle through it
+// is refused before an ID is used.
+func TestCreateBlocks(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]}]}`)
+	got := w.ok("create", `{"title":"c","blocks":[2,1]}`)
+	wantIDs(t, "dependents", got["dependents"], 1, 2)
+	if tk := task(w.ok("show", `{"id":1}`)); tk["readiness"] != "blocked" {
+		t.Errorf("task 1 does not wait on 3: %v", tk)
+	}
+	// 2 waits on 1: a task blocked by 2 that blocks 1 closes a cycle.
+	e := w.fail("create", `{"title":"d","blocked_by":[2],"blocks":[1]}`, errs.Conflict, errs.RuleCycle)
+	if !slices.Equal(e.IDs, []int64{2, 1}) {
+		t.Errorf("cycle %v, want [2 1]", e.IDs)
+	}
+	w.fail("create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle)
+	w.fail("create", `{"title":"d","blocks":[9]}`, errs.NotFound, "")
+	w.fail("create", `{"title":"d","blocks":[1,1]}`, errs.InvalidInput, "")
+	if id := task(w.ok("create", `{"title":"e"}`))["id"]; id != float64(4) {
+		t.Errorf("a refused create used an ID: next is %v", id)
+	}
+	// A folder's ID is not a task's, and the error says so, naming every ID.
+	w.ok("create-folder", `{"folder":"/f"}`) // 5
+	if e := w.fail("create", `{"title":"g","blocks":[5,99]}`, errs.NotFound, ""); e.Message != "tasks [5 99] do not exist: 5 is the ID of folder /f" {
+		t.Errorf("message %q", e.Message)
+	}
+	if e := w.fail("show", `{"id":5}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /f") {
+		t.Errorf("show: message %q", e.Message)
+	}
+	if e := w.fail("create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle); !strings.Contains(e.Message, "both") {
+		t.Errorf("message %q", e.Message)
+	}
+
+	// A done task can be blocked, as block allows.
+	w.ok("done", `{"id":4}`)
+	wantIDs(t, "dependents", w.ok("create", `{"title":"h","blocks":[4]}`)["dependents"], 4)
+}
+
+// Every task in blocks is read before anything is written: one that can't
+// be used refuses the command, and changes nothing. So does one the cycle
+// search meets.
+func TestCreateBlocksReadsFirst(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]},{"title":"c"}]}`)
+	good := w.file("3.json")
+	os.WriteFile(w.root("3.json"), []byte("{"), 0o644)
+	e := w.fail("create", `{"title":"d","blocks":[2,3]}`, errs.Corrupt, "")
+	if len(e.ChangedPaths) != 0 {
+		t.Errorf("changed %v", e.ChangedPaths)
+	}
+	if tk := task(w.ok("show", `{"id":2}`)); tk["readiness"] != "blocked" || len(tk["blocked_by"].([]any)) != 1 {
+		t.Errorf("task 2 was rewritten: %v", tk)
+	}
+	os.WriteFile(w.root("3.json"), []byte(good), 0o644)
+	os.WriteFile(w.root("1.json"), []byte("{"), 0o644)
+	// From 2 the search reaches 1, which it can't read: a cycle through it
+	// can't be ruled out.
+	w.fail("create", `{"title":"d","blocked_by":[2],"blocks":[3]}`, errs.Corrupt, "")
+	os.Remove(w.root("1.json"))
+	if id := task(w.ok("create", `{"title":"e"}`))["id"]; id != float64(4) {
+		t.Errorf("a refused create used an ID: next is %v", id)
+	}
+}
+
+// create-batch makes folders with their fields, and tasks in them, in one
+// write: folders take IDs first, in tree order, then the tasks.
+func TestBatchFolders(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/work"}`) // 1
+	got := w.ok("create-batch", `{"folders":[
+		{"path":"/work/s/research","title":"Research"},
+		{"path":"/work/s","title":"Story","extra":{"jira":"H-1"},"notes":"context"}],
+	 "tasks":[
+		{"ref":"a","title":"Read","folder":"/work/s/research"},
+		{"title":"Write","folder":"/work/s/research","blocked_by":["a"]},
+		{"title":"Elsewhere","folder":"/other"}]}`)
+	// /other (2) sorts before /work/s (3) and /work/s/research (4).
+	if data, _ := json.Marshal(got["folders"]); string(data) != `{"/other":2,"/work/s":3,"/work/s/research":4}` {
+		t.Errorf("folders %s", data)
+	}
+	if data, _ := json.Marshal(got["folders_created"]); string(data) != `["/other","/work/s","/work/s/research"]` {
+		t.Errorf("folders_created %s", data)
+	}
+	wantIDs(t, "ids", got["ids"], 5, 6, 7)
+	if r := w.record(w.ok("show-folder", `{"folder":"/work/s"}`)); r != `{"dir":"~/@work/@s","extra":{"jira":"H-1"},"id":3,"notes_path":"~/@work/@s/@folder.md","path":"/work/s","title":"Story"}` {
+		t.Errorf("show-folder: %s", r)
+	}
+	if n, _ := os.ReadFile(w.root("work/s/folder.md")); string(n) != "context" {
+		t.Errorf("notes %q", n)
+	}
+	if r := w.record(w.ok("show-folder", `{"folder":4}`)); !strings.Contains(r, `"title":"Research"`) {
+		t.Errorf("research: %s", r)
+	}
+	// Folders only.
+	got = w.ok("create-batch", `{"folders":[{"path":"/x"}]}`)
+	if data, _ := json.Marshal(got["folders"]); string(data) != `{"/x":8}` || len(got["ids"].([]any)) != 0 {
+		t.Errorf("folders only: %v", got)
+	}
+	if got := w.ok("doctor", `{}`); got["healthy"] != true {
+		t.Errorf("doctor: %v", got)
+	}
+}
+
+// A folder entry means a folder to make: every one already there is
+// refused, before anything is written; bad entries are invalid-input.
+func TestBatchFolderEntriesRefused(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p/q"}`) // 1, 2
+	e := w.fail("create-batch", `{"folders":[{"path":"/p"},{"path":"/n"},{"path":"/p/q"}],"tasks":[{"title":"a"}]}`, errs.Conflict, errs.RuleDestinationExists)
+	if !slices.Equal(e.Folders, []string{"/p", "/p/q"}) || len(e.Paths) != 2 || len(e.ChangedPaths) != 0 {
+		t.Errorf("folders %v, paths %v, changed %v", e.Folders, e.Paths, e.ChangedPaths)
+	}
+	// A task may still go into a folder already there.
+	w.ok("create-batch", `{"folders":[{"path":"/n"}],"tasks":[{"title":"a","folder":"/p"}]}`)
+	for _, in := range []string{
+		`{}`, `{"folders":[],"tasks":[]}`,
+		`{"folders":[{"path":"/"}]}`,
+		`{"folders":[{"path":"/m"},{"path":"/m"}]}`,
+		`{"folders":[{"path":"@1"}]}`,
+		`{"folders":[{"path":"/m","gates":true}]}`,
+		`{"folders":[{"title":"x"}]}`,
+		`{"folders":[{"path":"/m","title":"  "}]}`,
+		`{"folders":[{"path":"/m","extra":[]}]}`,
+		`{"folders":"/m"}`,
+	} {
+		w.fail("create-batch", in, errs.InvalidInput, "")
+	}
+	var many []string
+	for i := range 600 {
+		many = append(many, fmt.Sprintf(`{"path":"/f%d"}`, i))
+	}
+	tasks := strings.Repeat(`{"title":"t"},`, 400) + `{"title":"t"}`
+	w.fail("create-batch", `{"folders":[`+strings.Join(many, ",")+`],"tasks":[`+tasks+`]}`, errs.InvalidInput, "")
+	if id := task(w.ok("create", `{"title":"z"}`))["id"]; id != float64(5) {
+		t.Errorf("a refused batch used an ID: next is %v", id)
+	}
+}
+
+// A batch cut short leaves the folders made so far, each whole, and says
+// what it made.
+func TestBatchFoldersFailPartway(t *testing.T) {
+	w := ready(t)
+	// Each folder's two files are linked into place: the third link is /b's
+	// first, so /a is made whole and /b not at all.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 3, 28 /* ENOSPC */)}
+	env := w.run("create-batch", `{"folders":[{"path":"/a","title":"A"},{"path":"/b"}],"tasks":[{"title":"t","folder":"/b"}]}`)
+	w.env.FS = fsys.OS{}
+	if env.OK || env.Error.Kind != errs.IO || len(env.Error.IDs) != 0 {
+		t.Fatalf("got %+v", env)
+	}
+	if r := w.record(w.ok("show-folder", `{"folder":"/a"}`)); !strings.Contains(r, `"title":"A"`) || !strings.Contains(r, `"id":1`) {
+		t.Errorf("/a: %s", r)
+	}
+	w.fail("show-folder", `{"folder":"/b"}`, errs.NotFound, "")
+	if id := task(w.ok("create", `{"title":"d"}`))["id"]; id != float64(4) {
+		t.Errorf("next ID %v: the batch's IDs must not be reused", id)
+	}
+	if got := w.ok("doctor", `{}`); got["healthy"] != true {
+		t.Errorf("doctor after a failed batch: %v", got)
+	}
+}
+
+// raceAt makes the folder dir, as an outside change, just before koan
+// renames a new folder into place there.
+func raceAt(dir string) fsys.Hook {
+	return func(op fsys.Op) error {
+		if op.Name == fsys.OpRenameNR && strings.HasSuffix(dir, "/"+op.NewPath) {
+			os.Mkdir(dir, 0o755)
+		}
+		return nil
+	}
+}
+
+// A folder entry that appears while the batch runs stops it there: the
+// folders before it stay made, and the error names them.
+func TestBatchFolderEntryRaced(t *testing.T) {
+	w := ready(t)
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("b"))}
+	e := w.fail("create-batch", `{"folders":[{"path":"/a"},{"path":"/b","title":"B"}],"tasks":[{"title":"t","folder":"/b"}]}`, errs.Conflict, errs.RuleDestinationExists)
+	if !slices.Equal(e.Folders, []string{"/a"}) || len(e.IDs) != 0 || !slices.Equal(e.Paths, []string{w.root("b")}) || !strings.Contains(e.Message, "/b") {
+		t.Errorf("folders %v, ids %v, paths %v, message %q", e.Folders, e.IDs, e.Paths, e.Message)
+	}
+	// create-folder, given fields, is stopped the same way; without them, a
+	// folder that appeared is fine.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("c"))}
+	w.fail("create-folder", `{"folder":"/c","title":"C"}`, errs.Conflict, errs.RuleDestinationExists)
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("d"))}
+	if got := w.ok("create-folder", `{"folder":"/d"}`); len(got["folders_created"].([]any)) != 0 {
+		t.Errorf("create-folder /d: %v", got)
+	}
+}
+
+// A failure in writing the tasks names the folders made, the tasks
+// created, and every file written.
+func TestBatchTasksFailAfterFolders(t *testing.T) {
+	w := ready(t)
+	// Two links make each folder, and two each task: the seventh is task
+	// 4's file, after folders 1 and 2 and task 3 are made whole.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 7, 28 /* ENOSPC */)}
+	env := w.run("create-batch", `{"folders":[{"path":"/a/b","title":"B"}],"tasks":[{"title":"t","folder":"/a/b"},{"title":"u","folder":"/a/b"},{"title":"v"}]}`)
+	w.env.FS = fsys.OS{}
+	if env.OK {
+		t.Fatal("succeeded")
+	}
+	e := env.Error
+	if !slices.Equal(e.Folders, []string{"/a", "/a/b"}) || !slices.Equal(e.IDs, []int64{3}) {
+		t.Errorf("folders %v, ids %v", e.Folders, e.IDs)
+	}
+	for _, p := range []string{w.root("a"), w.root("a/b"), w.root("a/b/3.json")} {
+		if !slices.Contains(e.ChangedPaths, p) {
+			t.Errorf("changed_paths %v lacks %s", e.ChangedPaths, p)
+		}
+	}
+	// The batch's folder is checked even when no task uses it.
+	w.fail("create-batch", `{"folder":"@99","folders":[{"path":"/x"}]}`, errs.NotFound, "")
+	os.WriteFile(w.root("file"), nil, 0o644)
+	w.fail("create-batch", `{"folder":"/file/y","folders":[{"path":"/x"}]}`, errs.Conflict, errs.RuleNotAFolder)
+	if got := w.ok("create-batch", `{"folder":"/unused","folders":[{"path":"/x"}]}`); len(got["folders_created"].([]any)) != 1 {
+		t.Errorf("an unused batch folder was made: %v", got)
+	}
+}
+
+// create's blocks are rewritten before the new task is written: a failure
+// between leaves them waiting on an ID with no task, which doctor reports,
+// never the new task with its dependents still free.
+func TestCreateBlocksWritesDependentsFirst(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`) // 1
+	w.ok("create", `{"title":"b"}`) // 2
+	// Rewriting task 2 fails, after task 1 is rewritten.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: func(op fsys.Op) error {
+		if op.Name == fsys.OpRename && op.NewPath == "@2.json" {
+			return syscall.ENOSPC
+		}
+		return nil
+	}}
+	env := w.run("create", `{"title":"c","blocks":[1,2]}`)
+	w.env.FS = fsys.OS{}
+	if env.OK || !slices.Equal(env.Error.IDs, []int64{1}) || !strings.Contains(env.Error.Message, "task 3 was not created") {
+		t.Fatalf("got %+v", env.Error)
+	}
+	w.fail("show", `{"id":3}`, errs.NotFound, "")
+	if tk := task(w.ok("show", `{"id":1}`)); tk["readiness"] != "blocked" {
+		t.Errorf("task 1 is %v", tk["readiness"])
+	}
+	if f := w.findings(); !slices.Equal(f, []string{"dangling-reference @1.json"}) {
+		t.Errorf("findings %v", f)
+	}
+}
+
+// A failure writing the new task's notes, after its dependents and its task
+// file, names only the new task: its dependents wait on a task that exists.
+func TestCreateBlocksNotesFail(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`) // 1
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: func(op fsys.Op) error {
+		if op.Name == fsys.OpLink && op.NewPath == "@2.md" {
+			return syscall.ENOSPC
+		}
+		return nil
+	}}
+	env := w.run("create", `{"title":"b","blocks":[1]}`)
+	w.env.FS = fsys.OS{}
+	if env.OK || !slices.Equal(env.Error.IDs, []int64{2}) {
+		t.Fatalf("got %+v", env.Error)
+	}
+	if tk := task(w.ok("show", `{"id":1}`)); tk["readiness"] != "blocked" {
+		t.Errorf("task 1 is %v", tk["readiness"])
+	}
+	if f := w.findings(); len(f) != 0 {
+		t.Errorf("findings %v", f)
 	}
 }

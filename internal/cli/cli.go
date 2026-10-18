@@ -1,6 +1,7 @@
 // Package cli maps the koan command line onto the commands in ops: it
 // builds one command's input from the arguments, runs it, and prints its
-// envelope (spec/cli.md). It adds no behavior of its own.
+// envelope (spec/cli.md). It adds no behavior of its own, but for making
+// where's --file absolute.
 package cli
 
 import (
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +64,8 @@ const (
 	keys                 // one string per occurrence
 	object               // one JSON value
 	priority             // an integer, or null
+	nullText             // a string, or null
+	diskPath             // a path on disk, made absolute from the working directory
 )
 
 type option struct {
@@ -76,6 +80,7 @@ type command struct {
 	short   string
 	subject string // the input field the one positional argument sets; "" for none
 	subjKin kind
+	subjOpt bool // the subject may be left out, for an option that stands in for it
 	options []option
 }
 
@@ -96,23 +101,36 @@ var commands = []command{
 	{name: "version", short: "Report the binary's version and format"},
 	{name: "info", short: "Report the root's state"},
 	{name: "doctor", short: "Report everything wrong with the tree"},
-	{name: "repair", short: "Fix what can be fixed safely"},
+	{name: "repair", short: "Fix what can be fixed safely", options: []option{
+		{"kinds", names, "only these finding kinds, and every fix of them (default: all, but not dangling-reference, nor a stale-claim on a task that is gone)", ""}}},
 	{name: "migrate", short: "Convert the tree to this binary's format", options: []option{
 		{"dry-run", boolean, "report what would change and write nothing", ""}}},
-	{name: "create-folder", short: "Create a folder", subject: "folder"},
+	{name: "create-folder", short: "Create a folder", subject: "folder", options: []option{
+		{"title", nullText, "the folder's title", ""},
+		{"extra", object, "a JSON object stored with the folder", ""},
+		{"notes", text, "the initial notes", ""},
+		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
+	{name: "show-folder", short: "Return one folder", subject: "folder"},
+	{name: "update-folder", short: "Change a folder's title or extra", subject: "folder", options: []option{
+		{"title", nullText, "the new title, or null to clear it", ""},
+		{"extra-merge", object, "a JSON object of keys to set", ""},
+		{"extra-remove", keys, "a key to delete (repeatable)", ""},
+		{"extra-replace-all", object, "the whole new extra object", ""}}},
 	{name: "move-folder", short: "Move or rename a folder", subject: "folder", options: []option{
 		{"to", text, "the folder's new path (required)", ""}}},
 	{name: "delete-folder", short: "Remove a folder and everything in it", subject: "folder", options: []option{
-		{name: "recursive", short: "r", kind: boolean, usage: "remove a folder that is not empty"}}},
+		{name: "recursive", short: "r", kind: boolean, usage: "remove a folder that is not empty"},
+		{"force", boolean, "with --recursive, remove material too: files and folders koan did not make", ""}}},
 	{name: "create", short: "Create a task", subject: "title", options: []option{
 		{"folder", text, "where the task goes (default /)", ""},
 		{"priority", priority, "an integer; higher is more important", ""},
 		{"tags", names, "tags", ""},
 		{"blocked-by", ids, "IDs of the tasks it waits on", ""},
+		{"blocks", ids, "IDs of the tasks that wait on it", ""},
 		{"extra", object, "a JSON object stored with the task", ""},
 		{"notes", text, "the initial notes", ""},
 		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
-	{name: "create-batch", short: "Create several tasks that may wait on each other (input only)"},
+	{name: "create-batch", short: "Create folders, and tasks that may wait on each other, in one write (input only)"},
 	{name: "show", short: "Return one task", subject: "id", subjKin: integer},
 	{name: "update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
 		{"title", text, "the new title", ""},
@@ -138,6 +156,8 @@ var commands = []command{
 		option{"readiness", names, "which of ready, blocked, done to return (default ready,blocked)", ""},
 		option{"include-folders", boolean, "also return the folders in scope", ""})},
 	{name: "why", short: "Say what a task is waiting on", subject: "id", subjKin: integer},
+	{name: "where", short: "Turn a reference into disk paths, or a disk path into a reference", subject: "ref", subjOpt: true, options: []option{
+		{"file", diskPath, "a path on disk to give the reference of, in place of <ref>", ""}}},
 	{name: "claim", short: "Claim a task", subject: "id", subjKin: integer, options: []option{
 		{"extra", object, "a JSON object stored with the claim", ""}}},
 	{name: "claim-next", short: "Claim the first ready, unclaimed task", options: append(append([]option{}, scopeOptions...),
@@ -258,7 +278,10 @@ func newRoot(env Env, result **ops.Envelope) *cobra.Command {
 
 func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
 	use := c.name
-	if c.subject != "" {
+	switch {
+	case c.subjOpt:
+		use += " [<" + c.subject + ">]"
+	case c.subject != "":
 		use += " <" + c.subject + ">"
 	}
 	cmd := &cobra.Command{
@@ -310,11 +333,11 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 	switch {
 	case c.subject == "" && len(args) > 0:
 		return nil, usagef("%s takes no argument, got %q", c.name, args[0])
-	case c.subject != "" && len(args) == 0:
+	case c.subject != "" && len(args) == 0 && !c.subjOpt:
 		return nil, usagef("%s needs a <%s>", c.name, c.subject)
 	case len(args) > 1:
 		return nil, usagef("%s takes one <%s>, got %d arguments: quote a value with spaces", c.name, c.subject, len(args))
-	case c.subject != "":
+	case len(args) == 1:
 		in[c.subject] = scalar(c.subjKin, args[0])
 	}
 	if fs.Changed("notes") && fs.Changed("notes-file") {
@@ -358,6 +381,13 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 				in["notes"] = string(data)
 				continue
 			}
+			if o.kind == diskPath && s != "" {
+				abs, err := filepath.Abs(s)
+				if err != nil {
+					return nil, usagef("--%s: %v", o.name, err)
+				}
+				s = abs
+			}
 			in[field] = scalar(o.kind, s)
 		}
 	}
@@ -373,6 +403,11 @@ func scalar(k kind, s string) any {
 		if b, err := strconv.ParseBool(s); err == nil && (s == "true" || s == "false") {
 			return b
 		}
+	case nullText:
+		if s == "null" {
+			return nil
+		}
+		return s
 	case priority:
 		if s == "null" {
 			return nil

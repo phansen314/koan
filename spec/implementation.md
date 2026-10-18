@@ -73,6 +73,7 @@ Every file koan writes goes through a temp file named `.koan-tmp-<random>` in th
 ### Moving and removing
 
 - **Moves never replace.** `move` and `move-folder` rename with `renameat2(RENAME_NOREPLACE)` on Linux and `renameatx_np(RENAME_EXCL)` on macOS. Plain `rename(2)` silently replaces an empty directory, so a check made beforehand would be the only guard.
+- **A folder is made by building it aside**: a directory `.koan-tmp-<random>` in its parent, with its folder file and empty notes written in it as any file is, flushed, then renamed to its `@` name with `RENAME_NOREPLACE`. A kill before the rename leaves a hidden folder that walks ignore and `doctor` reports as a temp leftover; a folder that appears under the name meanwhile wins, the temp is removed, and the command does not list it in `folders_created`. The temp folder is never in `changed_paths`: it is gone by the time the command reports.
 - **A folder is removed by renaming it aside** to `.koan-tmp-<random>` in the root, then removing that. The rename is the single step that takes the folder out of the tree; a failure during the removal leaves a hidden folder that walks ignore and `doctor` reports.
 
 ### Fault injection
@@ -89,9 +90,10 @@ Every command reads the state file after taking the lock, never before.
 
 There is no index on disk; a command that needs one builds it.
 
-- **By name only.** The walk lists folders depth-first, each folder's entries sorted, and classifies every entry by its name and type without opening any file. It returns each task ID with its path, and the list of folders. Two paths for one ID is the `duplicate-id` error.
+- **By name only.** The walk lists folders depth-first, each folder's entries sorted, and classifies every entry by its name and type without opening any file. It enters only `@` folders, and never looks inside material. It returns each task ID with its path, and the list of folders. Two paths for one task ID is the `duplicate-id` error.
+- **Folder files are read only when a command needs them:** `init` and `doctor`, for folder IDs; the folder commands, `where`, and `list` with `include_folders`, for records; a folder given by ID, and any ID given to `where`, to find it; and a `not-found` for a task, to say when the ID is a folder's. A folder ID that repeats another folder's or a task's is found by `doctor`, not by the walk, except by a command asked for a folder by that ID, or `where`: a task found by ID is one walk and one read, and `show 3` succeeds though a folder file holds 3 too.
 - **Task files are loaded when needed**, and each at most once per command. Finding a task by ID, or proving it absent, costs one walk and one file read. Only commands that need every task's fields load them all: `frontier`, `list`, `claim-next`, `delete` and `delete-folder` (to find references), `doctor`, and `migrate`.
-- **Commands that need no walk don't make one:** `create` without `blocked_by`, `create-folder`, `release`, `version`, `info`. `init` walks, by name only, when it has to make a state file for a tree that is already there.
+- **Commands that need no walk don't make one:** `create` without `blocked_by` or `blocks`, and with its folder by path, `create-folder`, `release`, `version`, `info`. `init` walks, and reads the folder files, when it has to make a state file for a tree that is already there.
 - **A file that vanishes** between the walk and its load can only be an outside change, since the command holds the lock. It is skipped; if it was the task the command was asked for, that is `not-found`.
 
 ## The graph
@@ -100,6 +102,7 @@ There is no index on disk; a command that needs one builds it.
 
 - **Readiness** of an open task is computed from all its blockers, not stopping at the first that blocks, so `blocking` is complete.
 - **The cycle check** for `block`: adding "A is blocked by B" closes a cycle exactly when A is reachable from B along `blocked_by`. A breadth-first search from each new blocker, through open and done tasks alike, loads only the files it reaches. The path it finds is the cycle reported; no particular one is promised.
+- **The cycle check for `create` with `blocks`**: every new edge ends at the new task, so a cycle runs through it, and exists exactly when a task in `blocks` is reachable from one in `blocked_by`. The same search runs from each task in `blocked_by` to each in `blocks`.
 - **`doctor`'s cycles** are the strongly connected components of the whole graph with more than one task.
 
 ## Errors
@@ -128,5 +131,5 @@ The files in `schemas/` are written by hand and are the contract. The binary con
 - **Unit tests** per package. `ops` tests run against a real temp directory, with `HOME` pointed at it and the clock fixed.
 - **End-to-end tests** in `e2e/` run the built binary, with `HOME` set per test.
 - **The lock**, in `e2e/` on both platforms: a second write, and a read, get `busy` while a write is held; every `list` run while tasks and folders are moved returns every task; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `block`s racing never both succeed.
-- **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair` followed by `doctor` must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect.
+- **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair`, then `repair` of the kinds it fixes only when asked by name, followed by `doctor`, must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect.
 - **CI** runs on Linux amd64 and macOS arm64: `gofmt`, `go vet`, `go test ./...`, a race-detector run over everything but `e2e/`, and `govulncheck`.

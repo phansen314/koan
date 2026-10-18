@@ -53,10 +53,12 @@ type fix func() (fixed bool, e *errs.Error)
 func done(e *errs.Error) (bool, *errs.Error) { return e == nil, e }
 
 // diagnosis is doctor's findings, each with the fix repair would make: nil
-// for one a person has to resolve.
+// for one a person has to resolve. byName marks a fix repair makes only when
+// its kind is asked for by name.
 type diagnosis struct {
 	findings []errs.Finding
 	fixes    []fix
+	byName   []bool
 }
 
 func (d *diagnosis) add(kind, msg string, ids []model.ID, paths []string, fix fix) {
@@ -68,7 +70,13 @@ func (d *diagnosis) add(kind, msg string, ids []model.ID, paths []string, fix fi
 	}
 	d.findings = append(d.findings, errs.Finding{Kind: kind, Message: msg, IDs: ids, Paths: paths, Repairable: fix != nil})
 	d.fixes = append(d.fixes, fix)
+	d.byName = append(d.byName, false)
 }
+
+// onlyByName marks the last finding's fix as one repair makes only when its
+// kind is asked for by name: one that removes a task's ID, since a task that
+// seems gone may be in a folder moved by hand.
+func (d *diagnosis) onlyByName() { d.byName[len(d.byName)-1] = true }
 
 // diagnose finds everything wrong with the tree (spec/design.md, Doctor and
 // repair). Findings come out by kind, in the order the design lists them,
@@ -91,8 +99,35 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	abs := func(l loc) string { return t.Abs(store.TaskRel(l.f, l.id)) }
 
+	// Folder files, by folder; a folder whose file can't be used has none
+	// here, and its error in folderErrs.
+	folderFiles := map[model.Folder]*model.FolderFile{}
+	folderErrs := map[model.Folder]*errs.Error{}
+	for _, f := range x.Folders {
+		if !x.Filed[f] {
+			continue
+		}
+		if ff, _, e := t.LoadFolder(f); e != nil {
+			folderErrs[f] = e
+		} else if ff != nil {
+			folderFiles[f] = ff
+		}
+	}
+	// highest is the highest ID in the tree, or the counter if higher: what
+	// a new ID must be above.
+	highest := t.State.LastID
+	for _, l := range files {
+		highest = max(highest, l.id)
+	}
+	for _, ff := range folderFiles {
+		highest = max(highest, ff.ID)
+	}
+	for id := range x.Notes { // notes whose task is gone still hold its ID
+		highest = max(highest, id)
+	}
+
 	for _, rel := range x.Temps {
-		d.add("temp-leftover", "a temp file koan left behind: `koan repair` removes it", nil,
+		d.add("temp-leftover", "a temp file or folder koan left behind: `koan repair` removes it", nil,
 			[]string{t.Abs(rel)}, func() (bool, *errs.Error) { return done(t.RemoveAll(rel)) })
 	}
 
@@ -103,9 +138,14 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			above, abovePaths = append(above, l.id), append(abovePaths, abs(l))
 		}
 	}
+	for _, f := range x.Folders {
+		if ff := folderFiles[f]; ff != nil && ff.ID > t.State.LastID {
+			above, abovePaths = append(above, ff.ID), append(abovePaths, t.Abs(store.FolderFileRel(f)))
+		}
+	}
 	if len(above) > 0 {
 		top := slices.Max(above)
-		d.add("id-above-counter", fmt.Sprintf("task IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
+		d.add("id-above-counter", fmt.Sprintf("IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
 			above, abovePaths, func() (bool, *errs.Error) {
 				t.State.LastID = top
 				return done(t.SaveState())
@@ -126,12 +166,13 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		if len(gone) == 0 {
 			continue
 		}
-		d.add("dangling-reference", fmt.Sprintf("task %d is blocked by %v, which do not exist: `koan repair` removes them from its blocked_by", l.id, gone),
+		d.add("dangling-reference", fmt.Sprintf("task %d is blocked by %v, which do not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds dangling-reference` removes them from its blocked_by", l.id, gone),
 			append([]model.ID{l.id}, gone...), []string{abs(l)}, func() (bool, *errs.Error) {
 				tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
 				tf.UpdatedAt = c.now
 				return done(t.WriteTask(l.f, tf, false))
 			})
+		d.onlyByName()
 	}
 
 	var claimed []model.ID
@@ -142,12 +183,18 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	slices.Sort(claimed)
 	for _, id := range claimed {
 		_, exists := x.Tasks[id]
-		if tf := usable[id]; !exists || (tf != nil && !tf.Open()) {
-			d.add("stale-claim", fmt.Sprintf("a claim on task %d, which is done or gone: `koan repair` removes it", id),
-				[]model.ID{id}, []string{t.Env().StatePath()}, func() (bool, *errs.Error) {
-					delete(t.State.Claims, model.ClaimKey(id))
-					return done(t.SaveState())
-				})
+		msg := fmt.Sprintf("a claim on task %d, which is done: `koan repair` removes it", id)
+		if !exists {
+			msg = fmt.Sprintf("a claim on task %d, which does not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds stale-claim` removes it", id)
+		} else if tf := usable[id]; tf == nil || tf.Open() {
+			continue
+		}
+		d.add("stale-claim", msg, []model.ID{id}, []string{t.Env().StatePath()}, func() (bool, *errs.Error) {
+			delete(t.State.Claims, model.ClaimKey(id))
+			return done(t.SaveState())
+		})
+		if !exists {
+			d.onlyByName()
 		}
 	}
 
@@ -166,13 +213,33 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			[]model.ID{l.id}, []string{t.Abs(store.NotesRel(l.f, l.id))}, fix)
 	}
 
-	for _, id := range slices.Sorted(maps.Keys(x.Copies)) {
-		var paths []string
-		for _, f := range x.Copies[id] {
-			paths = append(paths, t.Abs(store.TaskRel(f, id)))
+	for _, f := range x.Unfiled() {
+		d.add("missing-folder-file", fmt.Sprintf("folder %s has no %s: `koan repair` writes one, with a new ID", f, store.FolderFileName),
+			nil, []string{t.Abs(f.Rel())}, func() (bool, *errs.Error) {
+				id := max(t.State.LastID, highest) + 1
+				t.State.LastID, highest = id, id
+				if e := t.SaveState(); e != nil {
+					return false, e
+				}
+				return done(t.WriteFolderFile(f, model.NewFolderFile(id), true))
+			})
+	}
+
+	// Every file holding each ID: task files, every copy, and folder files.
+	holders := map[model.ID][]string{}
+	for _, l := range files {
+		holders[l.id] = append(holders[l.id], abs(l))
+	}
+	for _, f := range x.Folders {
+		if ff := folderFiles[f]; ff != nil {
+			holders[ff.ID] = append(holders[ff.ID], t.Abs(store.FolderFileRel(f)))
 		}
-		d.add("duplicate-id", fmt.Sprintf("task %d has %d task files: keep one, and delete or renumber the others by hand", id, len(paths)),
-			[]model.ID{id}, paths, nil)
+	}
+	for _, id := range slices.Sorted(maps.Keys(holders)) {
+		if paths := holders[id]; len(paths) > 1 {
+			d.add("duplicate-id", fmt.Sprintf("ID %d is in %d files: keep one, and delete or renumber the others by hand", id, len(paths)),
+				[]model.ID{id}, paths, nil)
+		}
 	}
 
 	edges := map[model.ID][]model.ID{}
@@ -183,10 +250,22 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		d.add("cycle", fmt.Sprintf("tasks %v block each other, each waiting on the next: `koan unblock` one of them", cycle), cycle, nil, nil)
 	}
 
+	// Unusable files come in tree order: a folder's own file before its
+	// tasks'.
+	byFolder := map[model.Folder][]int{}
 	for i, l := range files {
-		if loaded[i].File == nil && loaded[i].OldFormat == 0 && !loaded[i].Gone {
-			d.add("unusable-file", loaded[i].Err.Message+": fix the file by hand, or `koan delete` the task",
-				[]model.ID{l.id}, []string{abs(l)}, nil)
+		byFolder[l.f] = append(byFolder[l.f], i)
+	}
+	for _, f := range x.Folders {
+		if e := folderErrs[f]; e != nil {
+			d.add("unusable-file", e.Message+": fix the file by hand, or remove it and `koan repair` writes a new one",
+				nil, []string{t.Abs(store.FolderFileRel(f))}, nil)
+		}
+		for _, i := range byFolder[f] {
+			if l := files[i]; loaded[i].File == nil && loaded[i].OldFormat == 0 && !loaded[i].Gone {
+				d.add("unusable-file", loaded[i].Err.Message+": fix the file by hand, or `koan delete` the task",
+					[]model.ID{l.id}, []string{abs(l)}, nil)
+			}
 		}
 	}
 	for i, l := range files {
@@ -196,7 +275,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		}
 	}
 	for _, rel := range x.Skipped {
-		d.add("skipped-entry", "a symlink, or an entry of the wrong type: koan ignores it", nil, []string{t.Abs(rel)}, nil)
+		d.add("skipped-entry", "an entry named with @ that is not one of koan's, a symlink, or of the wrong type: koan ignores it; rename it without the @ to keep it as material", nil, []string{t.Abs(rel)}, nil)
 	}
 	for _, rel := range x.Unlistable {
 		d.add("skipped-entry", "a folder that can't be listed: every command but doctor fails on it", nil, []string{t.Abs(rel)}, nil)

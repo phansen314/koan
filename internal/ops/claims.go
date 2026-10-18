@@ -55,7 +55,7 @@ func cmdClaimNext(c *call) (any, *errs.Error) {
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
-	tasks, e := c.tasks(s, available)
+	tasks, e := c.tasks(&s, available)
 	if e != nil {
 		return nil, e
 	}

@@ -5,15 +5,20 @@
   "required": ["title"],
   "properties": {
     "title": { "type": "string", "description": "Trimmed, then checked against the title rule." },
-    "folder": { "$ref": "folder-path", "default": "/" },
+    "folder": { "$ref": "folder-ref", "default": "/" },
     "priority": { "$ref": "task-file#/properties/priority", "default": null },
     "tags": {
       "$ref": "task-file#/properties/tags",
       "default": []
     },
     "blocked_by": {
-      "$ref": "task-file#/properties/blocked_by",
+      "type": "array", "items": { "$ref": "task-ref" }, "uniqueItems": true,
       "default": []
+    },
+    "blocks": {
+      "type": "array", "items": { "$ref": "task-ref" }, "uniqueItems": true,
+      "default": [],
+      "description": "IDs of existing tasks that wait on the new one."
     },
     "extra": {
       "$ref": "task-file#/properties/extra",

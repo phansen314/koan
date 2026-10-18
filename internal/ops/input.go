@@ -89,33 +89,79 @@ func (f fields) get(k string, required bool, v any, what string) bool {
 
 func (f fields) has(k string) bool { _, ok := f.m[k]; return ok }
 
-func (f fields) id(k string, required bool) model.ID {
+// idOf reads an ID as an input may give it: an integer, or a string with or
+// without its `@`.
+func idOf(raw json.RawMessage) (model.ID, bool) {
 	var n model.ID
-	if f.get(k, required, &n, "a task ID") && !model.ValidID(n) {
-		f.in.bad(f.at+"/"+k, "must be a task ID")
+	if model.Decode(raw, &n) == nil {
+		return n, model.ValidID(n)
+	}
+	var s string
+	if model.Decode(raw, &s) == nil {
+		return model.ParseIDRef(s)
+	}
+	return 0, false
+}
+
+func (f fields) id(k string, required bool) model.ID {
+	var raw json.RawMessage
+	if !f.get(k, required, &raw, "a task ID") {
+		return 0
+	}
+	n, ok := idOf(raw)
+	if !ok {
+		f.in.bad(f.at+"/"+k, "must be a task ID, like 42 or @42")
 	}
 	return n
 }
 
 // ids reads a list of distinct task IDs.
 func (f fields) ids(k string, required bool) []model.ID {
-	var ns []model.ID
-	if !f.get(k, required, &ns, "a list of task IDs") {
+	var raws []json.RawMessage
+	if !f.get(k, required, &raws, "a list of task IDs") {
 		return nil
 	}
-	seen := map[model.ID]bool{}
-	for i, n := range ns {
+	ns := []model.ID{}
+	for i, raw := range raws {
+		n, ok := idOf(raw)
 		switch {
-		case !model.ValidID(n):
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be a task ID")
-		case seen[n]:
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "is repeated")
+		case !ok:
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be a task ID, like 42 or @42")
+		case slices.Contains(ns, n):
+			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "names the same task as an earlier one")
+		default:
+			ns = append(ns, n)
 		}
-		seen[n] = true
 	}
 	return ns
 }
 
+// folderRef is a folder as an input names it: by path, or by ID.
+type folderRef struct {
+	path model.Folder
+	id   model.ID // when not 0, the folder is the one with this ID
+}
+
+// folderRef reads a folder given by path, or by ID with or without its `@`.
+func (f fields) folderRef(k string, required bool, def folderRef) folderRef {
+	var raw json.RawMessage
+	if !f.get(k, required, &raw, "a folder path or ID") {
+		return def
+	}
+	var s string
+	if model.Decode(raw, &s) == nil && strings.HasPrefix(s, "/") {
+		if folder, ok := model.ParseFolder(s); ok {
+			return folderRef{path: folder}
+		}
+	} else if id, ok := idOf(raw); ok {
+		return folderRef{id: id}
+	}
+	f.in.bad(f.at+"/"+k, "must be a folder path like /proj/travel, or a folder's ID like 41 or @41")
+	return def
+}
+
+// folder reads a folder path: for a folder that may not exist yet, which
+// has no ID to give.
 func (f fields) folder(k string, required bool, def model.Folder) model.Folder {
 	var s string
 	if !f.get(k, required, &s, "a folder path") {
@@ -153,6 +199,26 @@ func (f fields) title(k string, required bool) (string, bool) {
 		return "", false
 	}
 	return title, true
+}
+
+// optTitle reads a title, trimmed, or null. set is false when the field is
+// absent, or is wrong, which it records.
+func (f fields) optTitle(k string) (title *string, set bool) {
+	raw, ok := f.m[k]
+	if f.at == "" {
+		f.in.used[k] = true
+	}
+	if !ok {
+		return nil, false
+	}
+	if string(bytes.TrimSpace(raw)) == "null" {
+		return nil, true
+	}
+	t, ok := f.title(k, false)
+	if !ok {
+		return nil, false
+	}
+	return &t, true
 }
 
 // priority reads an integer or null. set is false when the field is absent.

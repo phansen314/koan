@@ -2,6 +2,7 @@ package ops
 
 import (
 	"runtime"
+	"slices"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/buildinfo"
@@ -16,7 +17,7 @@ type initResult struct {
 	Created   []string `json:"created"`
 }
 
-// cmdInit creates whatever is missing of the root, its koan.json, and the
+// cmdInit creates whatever is missing of the root, its @koan.json, and the
 // state file, and changes nothing that is there.
 func cmdInit(c *call) (any, *errs.Error) {
 	if e := c.checked(); e != nil {
@@ -72,13 +73,22 @@ func cmdInit(c *call) (any, *errs.Error) {
 			p := t.Abs(x.Unlistable[0])
 			return nil, errs.New(errs.IO, "%s can't be listed, so the highest ID in the tree is not known", p).WithPaths(p)
 		}
-		st := &model.State{Schema: model.Format, Claims: map[string]model.Claim{}}
+		st := &model.State{Schema: model.FileFormat, Claims: map[string]model.Claim{}}
 		// Notes count too: a .md whose task is gone still holds its ID.
 		for id := range x.Tasks {
 			st.LastID = max(st.LastID, id)
 		}
 		for id := range x.Notes {
 			st.LastID = max(st.LastID, id)
+		}
+		// So do folders; a folder file that can't be read is doctor's.
+		for _, f := range x.Folders {
+			if !x.Filed[f] {
+				continue
+			}
+			if ff, _, e := t.LoadFolder(f); e == nil && ff != nil {
+				st.LastID = max(st.LastID, ff.ID)
+			}
 		}
 		t.State = st
 		if e := t.SaveState(); e != nil {
@@ -156,6 +166,9 @@ func cmdDoctor(c *call) (any, *errs.Error) {
 	if e := c.beginNeed(store.NeedInitialized, true); e != nil {
 		return nil, e
 	}
+	if e := c.convertible(); e != nil {
+		return nil, e
+	}
 	d, e := diagnose(c)
 	if e != nil {
 		return nil, e
@@ -168,8 +181,16 @@ type repairResult struct {
 	Findings []errs.Finding `json:"findings"`
 }
 
-// cmdRepair fixes every repairable finding, then reports what is left.
+// cmdRepair fixes the repairable findings of the kinds asked for, then
+// reports what is left. Without kinds it fixes every kind, but not the fixes
+// that need their kind asked for by name.
 func cmdRepair(c *call) (any, *errs.Error) {
+	kinds, named := c.in.top().oneOf("kinds", errs.RepairableKinds)
+	if !named {
+		kinds = errs.RepairableKinds
+	} else if len(kinds) == 0 {
+		c.in.bad("/kinds", "must hold at least one finding kind")
+	}
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
@@ -179,7 +200,7 @@ func cmdRepair(c *call) (any, *errs.Error) {
 	}
 	res := repairResult{Repaired: []errs.Finding{}}
 	for i, f := range d.findings {
-		if d.fixes[i] == nil {
+		if d.fixes[i] == nil || !slices.Contains(kinds, f.Kind) || (d.byName[i] && !named) {
 			continue
 		}
 		fixed, e := d.fixes[i]()
@@ -202,6 +223,20 @@ func cmdRepair(c *call) (any, *errs.Error) {
 // task file from it to the next. There is no earlier format yet.
 var conversions = map[int64]func([]byte) ([]byte, error){}
 
+// treeConversions holds the tree formats this binary converts from. Format
+// 1 has none: format 2 came before the first release, without one.
+var treeConversions = map[int64]bool{}
+
+// convertible refuses a tree in a format this binary has no conversion
+// from: doctor and migrate would misread it.
+func (c *call) convertible() *errs.Error {
+	if s := c.t.Meta.Schema; s < model.Format && !treeConversions[s] {
+		return errs.NewConflict(errs.RuleNoConversion,
+			"the tree is in format %d, which this koan can't convert to %d: move it aside and start a new one with `koan init`", s, model.Format)
+	}
+	return nil
+}
+
 type migrateResult struct {
 	From        int64    `json:"from"`
 	To          int64    `json:"to"`
@@ -210,10 +245,13 @@ type migrateResult struct {
 }
 
 // cmdMigrate converts every task file in an earlier format to this binary's,
-// each by its own schema, and writes koan.json last.
+// each by its own schema, and writes @koan.json last.
 func cmdMigrate(c *call) (any, *errs.Error) {
 	dry := c.in.top().boolean("dry_run", false)
 	if e := c.beginNeed(store.NeedInitialized, true); e != nil {
+		return nil, e
+	}
+	if e := c.convertible(); e != nil {
 		return nil, e
 	}
 	x, e := c.t.Walk(true)
@@ -253,7 +291,7 @@ func convert(t *store.Tree, rel string, from int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for v := from; v < model.Format; v++ {
+	for v := from; v < model.FileFormat; v++ {
 		step, ok := conversions[v]
 		if !ok {
 			return nil, errs.New(errs.Internal, "no conversion from format %d", v)

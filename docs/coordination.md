@@ -13,7 +13,7 @@ koan guarantees that its own commands are safe to run at the same time:
 It leaves two things open:
 
 - **A claim is advisory.** It refuses other claims and hides the task from `frontier`, and nothing else: `update`, `done`, `move`, and `delete` work on a claimed task for any caller. koan cannot tell callers apart, so it cannot do more ([design](../spec/design.md#claims)).
-- **Notes are plain files.** A task's `.md` is edited with any editor, and nothing stops two editors from overwriting each other.
+- **Notes are plain files.** A task's `@<id>.md` is edited with any editor, and nothing stops two editors from overwriting each other.
 
 The coordinator closes both, by deciding who may do what.
 
@@ -23,11 +23,11 @@ The coordinator closes both, by deciding who may do what.
 
 | Action | Coordinator | Worker |
 |---|---|---|
-| Read: `show`, `list`, `frontier`, `why` | yes | yes |
+| Read: `show`, `list`, `frontier`, `why`, `show-folder`, `where` | yes | yes |
 | `claim-next`, `claim`, `release` | yes | no |
 | `create`, `create-batch`, `update`, `done`, `reopen` | yes | no |
 | `block`, `unblock`, `move`, `delete`, folder commands | yes | no |
-| Edit the `.md` of its own task | no | yes |
+| Edit the `@<id>.md` of its own task | no | yes |
 | Edit any other file in the tree | no | no |
 
 With one party making every claim, a claim is no longer a request that others might ignore. It is the coordinator's own record of what it has handed out.
@@ -119,7 +119,7 @@ Bash)
     esac
     for sub in $(printf '%s' "$cmd" | grep -Eo '(^|[^[:alnum:]_-])koan +[a-z-]+' | awk '{print $NF}'); do
         case "$sub" in
-        show|list|frontier|why) ;;
+        show|list|frontier|why|show-folder|where) ;;
         *) deny "workers may not run 'koan $sub': report it to the coordinator" ;;
         esac
     done
@@ -132,10 +132,11 @@ Edit|Write)
     *) exit 0 ;;
     esac
     case "$rel" in
-    *.md) ;;
+    */@[0-9]*.md) ;;
     *) deny "only a task's notes may be edited in the tree" ;;
     esac
     id=$(basename "$rel" .md)
+    id=${id#@}
     koan show "$id" 2>/dev/null |
         jq -e --arg a "$root$rel" --arg b "$real$rel" \
             '.result.task | .claim != null and (.notes_path == $a or .notes_path == $b)' >/dev/null ||
@@ -145,13 +146,13 @@ esac
 exit 0
 ```
 
-It lets a worker do anything outside the tree. Inside it, it allows an edit only to the notes of a task that is claimed right now, and it allows only koan's four read commands.
+It lets a worker do anything outside the tree. Inside it, it allows an edit only to the notes of a task that is claimed right now, and it allows only koan's read commands that look at tasks and folders.
 
 **The coordinator** follows [the loop](#the-loop) and starts one worker per claimed task, with a prompt like:
 
 ```text
 Use the koan-worker agent for task 42, "Book flights".
-Its notes file is /home/paul/koan-root/proj/travel/42.md.
+Its notes file is /home/paul/koan-root/@proj/@travel/@42.md.
 ```
 
 Two limits to know about:

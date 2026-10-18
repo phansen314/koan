@@ -4,8 +4,8 @@
   "type": "object",
   "required": ["id", "to"],
   "properties": {
-    "id": { "$ref": "task-file#/properties/id" },
-    "to": { "$ref": "folder-path" }
+    "id": { "$ref": "task-ref" },
+    "to": { "$ref": "folder-ref" }
   },
   "additionalProperties": false
 }

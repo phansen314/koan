@@ -35,6 +35,8 @@ const (
 	RuleCycle             = "cycle"
 	RuleTaskDone          = "task-done"
 	RuleClaimed           = "claimed"
+	RuleNoConversion      = "no-conversion"
+	RuleHasMaterial       = "has-material"
 )
 
 // Problem is one thing wrong with an input or a file.
@@ -135,8 +137,12 @@ type Warning struct {
 // Finding kinds, in the order doctor reports them.
 var FindingKinds = []string{
 	"temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes",
-	"duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry",
+	"missing-folder-file", "duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry",
 }
+
+// RepairableKinds are the finding kinds repair can fix: the first of
+// FindingKinds.
+var RepairableKinds = FindingKinds[:6:6]
 
 // Finding is one thing doctor found wrong.
 type Finding struct {

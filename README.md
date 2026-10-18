@@ -22,17 +22,17 @@ The tree is always at `~/koan-root`, and koan's own state (the ID counter and th
 ## A taste
 
 ```sh
-koan create 'Design schema' --folder /work/api --priority 2 --tags db   # folders are made as needed
-koan create 'Write migrations' --folder /work/api --blocked-by 1
+koan create 'Design schema' --folder /work/api --priority 2 --tags db   # folders are made as needed: /work is 1, /work/api 2, the task 3
+koan create 'Write migrations' --folder /work/api --blocked-by 3
 koan frontier --limit 10 --fields id,title                       # what can be taken now, in work order
-koan why 2                                                       # why 2 isn't ready: .result.ready would move it
-koan done 1
+koan why 4                                                       # why 4 isn't ready: .result.ready would move it
+koan done 3
 jq -n '{folder: "/work/api", tasks: [                             # a plan in one call: refs name earlier tasks
   {ref: "endpoints", title: "Add endpoints"},
   {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan create-batch -i -
 ```
 
-A task's notes are a plain file, edited with any editor: `koan show 2 | jq -r .result.task.notes_path` says where.
+A task's notes are a plain file, edited with any editor: `koan show 4 | jq -r .result.task.notes_path` says where.
 
 ## Use it from Claude Code and OpenCode
 
@@ -119,11 +119,12 @@ Claims are kept per machine, in the state file, not in the tree: they don't trav
 A crash, a git merge, or a hand edit can leave the tree damaged: a leftover temp file, a blocker that no longer exists, two tasks with one ID. Other commands report damage as warnings, or refuse to act on it; `doctor` finds all of it, and `repair` fixes what is safe to fix:
 
 ```sh
-koan doctor      # .result.healthy, and .result.findings: what is wrong, and whether repair would fix it
-koan repair      # remove leftovers, dangling blockers, and stale claims, and raise the ID counter
+koan doctor      # .result.healthy, and .result.findings: what is wrong, and whether repair can fix it
+koan repair      # remove leftovers and claims on done tasks, and raise the ID counter
+koan repair --kinds dangling-reference,stale-claim   # remove blockers and claims on tasks that no longer exist
 ```
 
-`repair` never chooses between versions: duplicate IDs, dependency cycles, and unusable files are reported for you to resolve. See [Doctor and repair](spec/design.md#doctor-and-repair).
+`repair` never chooses between versions: duplicate IDs, dependency cycles, and unusable files are reported for you to resolve. It removes a blocker or a claim on a task that no longer exists only when asked by name, since the task may be in a folder moved by hand, and moving the folder back restores the link. See [Doctor and repair](spec/design.md#doctor-and-repair).
 
 ## Undoing a delete
 
@@ -131,9 +132,9 @@ koan repair      # remove leftovers, dangling blockers, and stale claims, and ra
 
 ```sh
 cd ~/koan-root
-git log --diff-filter=D --oneline -- '*/42.json' '42.json'     # the commit that removed task 42, if committed
-git restore -- proj/42.json proj/42.md                          # not yet committed: from the last commit
-git restore --source=<commit>^ -- proj/42.json proj/42.md       # committed: from the commit before
+git log --diff-filter=D --oneline -- '*/@42.json' '@42.json'     # the commit that removed task 42, if committed
+git restore -- @proj/@42.json @proj/@42.md                        # not yet committed: from the last commit
+git restore --source=<commit>^ -- @proj/@42.json @proj/@42.md     # committed: from the commit before
 ```
 
 Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Every file in the tree is safe to commit and restore, with no `.gitignore` needed, because the ID counter is kept outside it. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `block` again after restoring. Then run `koan doctor`: a restored task may name blockers deleted since.

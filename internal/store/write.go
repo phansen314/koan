@@ -94,7 +94,7 @@ func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error
 	return errs.FromOS(t.Abs(rel), err)
 }
 
-// WriteMeta writes koan.json with the given format.
+// WriteMeta writes @koan.json with the given format.
 func (t *Tree) WriteMeta(schema int64, create bool) *errs.Error {
 	data, err := model.Encode(model.Meta{Schema: schema})
 	if err != nil {
@@ -151,31 +151,80 @@ func (t *Tree) SaveState() *errs.Error {
 	return nil
 }
 
-// EnsureFolder creates folder f and any missing folders above it, and
-// returns the ones it created, outermost first. Something on the path that
-// is not a folder is a not-a-folder conflict.
-func (t *Tree) EnsureFolder(f model.Folder) ([]model.Folder, *errs.Error) {
-	created := []model.Folder{}
+// Missing lists the folders on the path to f, f included, that are not
+// there, outermost first. Something on the path that is not a folder is a
+// not-a-folder conflict.
+func (t *Tree) Missing(f model.Folder) ([]model.Folder, *errs.Error) {
+	var missing []model.Folder
 	cur := model.Root
 	for _, seg := range f.Segments() {
 		cur = cur.Join(seg)
-		err := t.root.Mkdir(cur.Rel(), FolderMode)
+		if len(missing) > 0 {
+			missing = append(missing, cur)
+			continue
+		}
+		fi, err := t.root.Lstat(cur.Rel())
 		switch {
-		case err == nil:
-			t.root.SyncDir(cur.Parent().Rel())
-			t.note(cur.Rel())
-			created = append(created, cur)
-		case errs.IsErrno(err, syscall.EEXIST):
-			if e := t.mustBeFolder(cur); e != nil {
-				return created, e
-			}
-		case errs.IsErrno(err, syscall.ENOTDIR):
-			return created, notAFolder(t, cur.Parent())
-		default:
-			return created, errs.FromOS(t.Abs(cur.Rel()), err)
+		case errs.IsErrno(err, syscall.ENOENT):
+			missing = append(missing, cur)
+		case err != nil:
+			return nil, errs.FromOS(t.Abs(cur.Rel()), err)
+		case !fi.IsDir():
+			return nil, notAFolder(t, cur)
 		}
 	}
-	return created, nil
+	return missing, nil
+}
+
+// MakeFolder creates folder f, whose parent is there, whole: a hidden temp
+// folder in the parent gets the folder file ff and the notes,
+// and is then renamed into place, so the folder never appears without its
+// folder file. made is false when something was already at f, which only an
+// outside change can do: a not-a-folder conflict when it is not a folder,
+// and otherwise left as it is. The temp folder is removed either way, so it
+// is not a change; one a kill leaves behind is doctor's.
+func (t *Tree) MakeFolder(f model.Folder, ff *model.FolderFile, notes string) (made bool, e *errs.Error) {
+	tmp := fsys.TempName(f.Parent().Rel())
+	if err := t.root.Mkdir(tmp, FolderMode); err != nil {
+		return false, errs.FromOS(t.Abs(tmp), err)
+	}
+	fail := func(rel string, err error) (bool, *errs.Error) {
+		t.root.RemoveAll(tmp)
+		return false, errs.FromOS(t.Abs(rel), err)
+	}
+	data, err := model.Encode(ff)
+	if err != nil {
+		t.root.RemoveAll(tmp)
+		return false, errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
+	}
+	if err := Publish(t.root, path.Join(tmp, FolderFileName), data, FileMode, false); err != nil {
+		return fail(path.Join(tmp, FolderFileName), err)
+	}
+	if err := Publish(t.root, path.Join(tmp, FolderNotesName), []byte(notes), FileMode, false); err != nil {
+		return fail(path.Join(tmp, FolderNotesName), err)
+	}
+	err = t.root.RenameNoReplace(tmp, f.Rel())
+	switch {
+	case err == nil:
+		t.root.SyncDir(f.Parent().Rel())
+		t.note(f.Rel())
+		return true, nil
+	case errs.IsErrno(err, syscall.EEXIST, syscall.ENOTEMPTY):
+		t.root.RemoveAll(tmp)
+		return false, t.mustBeFolder(f)
+	}
+	return fail(f.Rel(), err)
+}
+
+// WriteFolderFile writes folder f's folder file: a new one when create is
+// set, which fails if a file is already there (repair's way to give a folder
+// an ID), otherwise over the old one.
+func (t *Tree) WriteFolderFile(f model.Folder, ff *model.FolderFile, create bool) *errs.Error {
+	data, err := model.Encode(ff)
+	if err != nil {
+		return errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
+	}
+	return t.put(FolderFileRel(f), data, !create)
 }
 
 func notAFolder(t *Tree, f model.Folder) *errs.Error {

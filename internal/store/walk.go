@@ -19,9 +19,22 @@ type Index struct {
 	Tasks      map[model.ID]model.Folder   // each task's folder; for a duplicated ID, its first
 	Copies     map[model.ID][]model.Folder // every ID with more than one task file
 	Notes      map[model.ID][]model.Folder // every notes file
+	Filed      map[model.Folder]bool       // every folder with a folder file
 	Temps      []string                    // temp files and folders koan left, root-relative
-	Skipped    []string                    // symlinks and wrong-typed entries
+	Skipped    []string                    // entries named with @ that are not koan's
 	Unlistable []string                    // folders that can not be listed
+}
+
+// Unfiled lists the folders, the root aside, with no folder file, in tree
+// order.
+func (x *Index) Unfiled() []model.Folder {
+	var fs []model.Folder
+	for _, f := range x.Folders {
+		if f != model.Root && !x.Filed[f] {
+			fs = append(fs, f)
+		}
+	}
+	return fs
 }
 
 // IDs returns every task ID, ascending.
@@ -41,6 +54,7 @@ func (t *Tree) Walk(tolerant bool) (*Index, *errs.Error) {
 		Tasks:  map[model.ID]model.Folder{},
 		Copies: map[model.ID][]model.Folder{},
 		Notes:  map[model.ID][]model.Folder{},
+		Filed:  map[model.Folder]bool{},
 	}
 	if e := t.walk(x, model.Root, tolerant); e != nil {
 		return nil, e
@@ -71,19 +85,26 @@ func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 	for _, e := range entries {
 		name := e.Name()
 		rel := path.Join(f.Rel(), name)
-		if strings.HasPrefix(name, ".") {
-			if fsys.IsTemp(name) {
-				x.Temps = append(x.Temps, rel)
-			}
+		if fsys.IsTemp(name) {
+			x.Temps = append(x.Temps, rel)
 			continue
 		}
-		if f == model.Root && name == MetaName {
+		// Everything not named with @ is material, never looked at.
+		if !strings.HasPrefix(name, model.Mark) {
 			continue
 		}
 		id, suffix, isTask := model.TaskFilename(name)
+		folderName, isFolder := model.FolderName(name)
+		own := f == model.Root && name == MetaName ||
+			f != model.Root && (name == FolderFileName || name == FolderNotesName)
 		switch {
-		case isTask && !e.Type().IsRegular():
+		case own && name == FolderFileName:
+			// Whatever is there, a folder file koan can't use is
+			// reported as that, by whoever reads it, never as missing.
+			x.Filed[f] = true
+		case (isTask || own) && !e.Type().IsRegular():
 			x.Skipped = append(x.Skipped, rel)
+		case own:
 		case isTask && suffix == model.NotesSuffix:
 			x.Notes[id] = append(x.Notes[id], f)
 		case isTask:
@@ -95,9 +116,9 @@ func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 			} else {
 				x.Tasks[id] = f
 			}
-		case model.ValidFolderName(name) && e.IsDir():
-			sub = append(sub, f.Join(name))
-		case model.ValidFolderName(name):
+		case isFolder && e.IsDir():
+			sub = append(sub, f.Join(folderName))
+		default:
 			x.Skipped = append(x.Skipped, rel)
 		}
 	}
@@ -148,12 +169,12 @@ func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
 			return &Loaded{Err: corrupt(p, nil, kerr).WithIDs(id)}
 		}
 		return &Loaded{Err: corrupt(p, []model.Problem{{Field: "/schema", Reason: err.Error()}}, nil).WithIDs(id)}
-	case schema < model.Format:
+	case schema < model.FileFormat:
 		return &Loaded{OldFormat: schema, Err: errs.New(errs.MigrationPending,
-			"%s is in format %d and this koan uses %d: run `koan migrate`", p, schema, model.Format).WithIDs(id).WithPaths(p)}
-	case schema > model.Format:
+			"%s is in format %d and this koan uses %d: run `koan migrate`", p, schema, model.FileFormat).WithIDs(id).WithPaths(p)}
+	case schema > model.FileFormat:
 		return &Loaded{Err: errs.New(errs.UnsupportedFormat,
-			"%s is in format %d, newer than this koan's %d", p, schema, model.Format).WithIDs(id).WithPaths(p)}
+			"%s is in format %d, newer than this koan's %d", p, schema, model.FileFormat).WithIDs(id).WithPaths(p)}
 	}
 	tf, problems, err := model.DecodeTaskFile(data)
 	if err == nil && len(problems) == 0 && tf.ID != id {
@@ -166,6 +187,30 @@ func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
 	return &Loaded{File: tf}
 }
 
+// LoadFolder reads and checks folder f's folder file. gone is true when
+// there is none. There is one folder file format yet, so a file in another
+// is corrupt.
+func (t *Tree) LoadFolder(f model.Folder) (ff *model.FolderFile, gone bool, e *errs.Error) {
+	rel := FolderFileRel(f)
+	p := t.Abs(rel)
+	data, err := t.root.ReadFile(rel)
+	if errs.IsErrno(err, syscall.ENOENT) {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, false, unreadable(p, err)
+	}
+	if schema, err := model.SchemaOf(data); err == nil && schema != model.FileFormat {
+		return nil, false, errs.New(errs.Corrupt, "%s is in format %d, and this koan reads only %d", p, schema, model.FileFormat).
+			WithPaths(p).WithFolders(string(f))
+	}
+	ff, problems, err := model.DecodeFolderFile(data)
+	if e := corrupt(p, problems, err); e != nil {
+		return nil, false, e.WithFolders(string(f))
+	}
+	return ff, false, nil
+}
+
 // ReadRaw reads a task file as it is, for migrate.
 func (t *Tree) ReadRaw(rel string) ([]byte, error) { return t.root.ReadFile(rel) }
 
@@ -174,6 +219,30 @@ func (t *Tree) PutRaw(rel string, data []byte) *errs.Error { return t.put(rel, d
 
 // Stat reports on an entry without following a symlink.
 func (t *Tree) Stat(rel string) (fs.FileInfo, error) { return t.root.Lstat(rel) }
+
+// Material lists the entries of folder f, not the root, that are not
+// koan's, hidden ones aside: what delete-folder removes only when told to.
+// It looks at names and types alone, never inside an entry.
+func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
+	entries, e := t.List(f)
+	if e != nil {
+		return nil, e
+	}
+	var material []string
+	for _, en := range entries {
+		name := en.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		_, _, isTask := model.TaskFilename(name)
+		_, isFolder := model.FolderName(name)
+		own := isTask || name == FolderFileName || name == FolderNotesName
+		if !(isFolder && en.IsDir()) && !(own && en.Type().IsRegular()) {
+			material = append(material, path.Join(f.Rel(), name))
+		}
+	}
+	return material, nil
+}
 
 // List lists a folder's entry names, hidden ones included.
 func (t *Tree) List(f model.Folder) ([]fs.DirEntry, *errs.Error) {
