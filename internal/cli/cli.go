@@ -104,7 +104,8 @@ var commands = []command{
 	{name: "move-folder", short: "Move or rename a folder", subject: "folder", options: []option{
 		{"to", text, "the folder's new path (required)", ""}}},
 	{name: "delete-folder", short: "Remove a folder and everything in it", subject: "folder", options: []option{
-		{name: "recursive", short: "r", kind: boolean, usage: "remove a folder that is not empty"}}},
+		{name: "recursive", short: "r", kind: boolean, usage: "remove a folder that is not empty"},
+		{"force", boolean, "with --recursive, remove material too: files and folders koan did not make", ""}}},
 	{name: "create", short: "Create a task", subject: "title", options: []option{
 		{"folder", text, "where the task goes (default /)", ""},
 		{"priority", priority, "an integer; higher is more important", ""},

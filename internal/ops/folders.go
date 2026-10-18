@@ -83,6 +83,7 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	f := in.folder("folder", true, "")
 	recursive := in.boolean("recursive", false)
+	force := in.boolean("force", false)
 	if f == model.Root {
 		c.in.bad("/folder", "may not be the root")
 	}
@@ -117,6 +118,25 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 	x, e := c.index()
 	if e != nil {
 		return nil, e
+	}
+	if recursive && !force {
+		var material []string
+		for _, g := range x.Folders {
+			if !f.Holds(g) {
+				continue
+			}
+			m, e := c.t.Material(g)
+			if e != nil {
+				return nil, e
+			}
+			for _, rel := range m {
+				material = append(material, c.t.Abs(rel))
+			}
+		}
+		if len(material) > 0 {
+			return nil, errs.NewConflict(errs.RuleHasMaterial, "%s holds %d files or folders koan did not make: pass force to remove them too", f, len(material)).
+				WithFolders(string(f)).WithPaths(material...)
+		}
 	}
 	res := deleteFolderResult{Folder: f, Deleted: []model.ID{}}
 	for _, id := range x.IDs() {

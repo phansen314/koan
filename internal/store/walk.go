@@ -220,6 +220,30 @@ func (t *Tree) PutRaw(rel string, data []byte) *errs.Error { return t.put(rel, d
 // Stat reports on an entry without following a symlink.
 func (t *Tree) Stat(rel string) (fs.FileInfo, error) { return t.root.Lstat(rel) }
 
+// Material lists the entries of folder f, not the root, that are not
+// koan's, hidden ones aside: what delete-folder removes only when told to.
+// It looks at names and types alone, never inside an entry.
+func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
+	entries, e := t.List(f)
+	if e != nil {
+		return nil, e
+	}
+	var material []string
+	for _, en := range entries {
+		name := en.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		_, _, isTask := model.TaskFilename(name)
+		_, isFolder := model.FolderName(name)
+		own := isTask || name == FolderFileName || name == FolderNotesName
+		if !(isFolder && en.IsDir()) && !(own && en.Type().IsRegular()) {
+			material = append(material, path.Join(f.Rel(), name))
+		}
+	}
+	return material, nil
+}
+
 // List lists a folder's entry names, hidden ones included.
 func (t *Tree) List(f model.Folder) ([]fs.DirEntry, *errs.Error) {
 	entries, err := t.root.ReadDir(f.Rel())

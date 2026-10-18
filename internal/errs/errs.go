@@ -36,6 +36,7 @@ const (
 	RuleTaskDone          = "task-done"
 	RuleClaimed           = "claimed"
 	RuleNoConversion      = "no-conversion"
+	RuleHasMaterial       = "has-material"
 )
 
 // Problem is one thing wrong with an input or a file.

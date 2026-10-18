@@ -219,11 +219,12 @@ Move a folder, with everything under it, to a new path. Renaming is moving to a 
 
 Remove a folder and everything under it, for good. koan keeps no trash; undo is git's.
 
-- **Input:** `folder` (required, not `/`), and `recursive` (default `false`).
-- Without `recursive`, the folder must hold nothing but its folder file, empty notes, and hidden entries. With `recursive`, everything under it is removed, material included.
+- **Input:** `folder` (required, not `/`), `recursive` (default `false`), and `force` (default `false`).
+- Without `recursive`, the folder must hold nothing but its folder file, empty notes, and hidden entries.
+- With `recursive`, everything under it is removed. **Material blocks it unless `force` is given**: koan never deletes what it didn't write without being told to. Material here is every entry in the folder or in a folder under it that is not koan's and not hidden, an entry named with `@` that is not one of koan's included. Hidden entries (`.gitignore`, `.obsidian`) don't block, and are removed with the folder. Finding material takes a listing of each folder, never a look inside the material.
 - Every task outside the folder loses the removed tasks' IDs from its `blocked_by`, and the removed tasks' claims end. The folder is removed first, as [`delete`](#delete) removes its task first.
 - **Result:** `folder`, `deleted` (IDs of the tasks removed), and `dependents` (IDs of the tasks whose `blocked_by` changed).
-- **Refuses:** `not-empty`, without `recursive`.
+- **Refuses:** `not-empty`, without `recursive`; `has-material`, with `recursive` and without `force`, listing in `paths` each material entry found, not what is inside it.
 
 ## Tasks
 

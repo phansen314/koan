@@ -55,7 +55,7 @@ A command line the CLI can't turn into an input is a `usage` error: an unknown c
 | `koan migrate` | `--dry-run` |
 | `koan create-folder <folder>` | |
 | `koan move-folder <folder> --to <folder>` | |
-| `koan delete-folder <folder>` | `-r, --recursive` |
+| `koan delete-folder <folder>` | `-r, --recursive`, `--force` |
 | `koan create <title>` | `--folder`, `--priority`, `--tags`, `--blocked-by`, `--extra`, `--notes`, `--notes-file` |
 | `koan create-batch -i <file>` | |
 | `koan show <id>` | |

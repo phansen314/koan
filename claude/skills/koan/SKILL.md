@@ -49,6 +49,7 @@ Error kinds worth handling:
 - `conflict` — `.error.rule` says which rule refused it:
   - `cycle` — the block would make a cycle; `.error.ids` shows it. (A `corrupt` from `block` means the check met a task file it can't read: report it, as below.)
   - `not-empty` — `delete-folder` without `--recursive` on a folder that holds anything. Don't add `--recursive` on your own: ask the user.
+  - `has-material` — `delete-folder --recursive` on a folder holding the user's own files (material); `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good.
   - `destination-exists` — `move-folder`'s `--to` already exists (folders are never merged), or `move` would overwrite a `@<id>.md` with text in the target folder; show it to the user.
   - `not-a-folder` — something on a folder path is a file or a symlink.
   - `claimed` — someone has claimed the task; `.error.message` says since when and with what `extra`. See Claims.

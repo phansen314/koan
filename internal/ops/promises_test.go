@@ -633,3 +633,32 @@ func TestRepairSkipsIDsHeldByNotes(t *testing.T) {
 		t.Errorf("folder file %s, want ID 7", data)
 	}
 }
+
+// A recursive delete-folder removes material only when forced: it lists
+// what it found, at any depth but never inside it. Hidden entries don't
+// count.
+func TestDeleteFolderRefusesMaterial(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a","folder":"/p/q","notes":"n"}`)
+	os.WriteFile(w.disk("@p/.gitignore"), nil, 0o644)
+	os.MkdirAll(w.disk("@p/.obsidian"), 0o755)
+	w.ok("delete-folder", `{"folder":"/p","recursive":true}`) // only koan's and hidden entries
+
+	w.ok("create", `{"title":"b","folder":"/p/q"}`)
+	os.MkdirAll(w.disk("@p/@q/docs/deep"), 0o755)
+	os.WriteFile(w.disk("@p/@q/docs/deep/plan.md"), nil, 0o644)
+	os.WriteFile(w.disk("@p/@stray.txt"), nil, 0o644)
+	e := w.fail("delete-folder", `{"folder":"/p","recursive":true}`, errs.Conflict, errs.RuleHasMaterial)
+	want := []string{w.disk("@p/@stray.txt"), w.disk("@p/@q/docs")}
+	if !slices.Equal(e.Paths, want) {
+		t.Errorf("paths %v, want %v", e.Paths, want)
+	}
+	if len(e.ChangedPaths) != 0 {
+		t.Errorf("changed %v", e.ChangedPaths)
+	}
+	got := w.ok("delete-folder", `{"folder":"/p","recursive":true,"force":true}`)
+	wantIDs(t, "deleted", got["deleted"], 6)
+	if _, err := os.Stat(w.disk("@p")); !os.IsNotExist(err) {
+		t.Errorf("the folder is still there: %v", err)
+	}
+}

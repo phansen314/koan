@@ -5,7 +5,8 @@
   "required": ["folder"],
   "properties": {
     "folder": { "$ref": "folder-path" },
-    "recursive": { "type": "boolean", "default": false }
+    "recursive": { "type": "boolean", "default": false },
+    "force": { "type": "boolean", "default": false, "description": "With recursive, remove material too: every visible entry that is not koan's." }
   },
   "additionalProperties": false
 }

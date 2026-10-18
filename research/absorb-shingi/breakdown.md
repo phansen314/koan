@@ -31,7 +31,8 @@ koan's rule is that every change to a file's fields is a new format, with a conv
 ### 3. `delete-folder`: refuse material unless forced
 
 - Recursive `delete-folder` refuses when the subtree holds visible material, unless `--force`. Hidden entries don't count and are removed with the folder.
-- The error lists the material it found. Finding it needs only a listing of each koan folder, never a walk into material.
+- The error (`conflict`, `has-material`) lists the material it found. Finding it needs only a listing of each koan folder, never a walk into material.
+- An entry named with `@` that is not one of koan's counts as material: koan didn't write it either (decided 2026-10-18).
 
 ## New features
 
