@@ -69,6 +69,7 @@ func TestBuildInput(t *testing.T) {
 		{[]string{"update", "1", "--priority", "null", "--extra-remove", "a,b", "--extra-remove", "c"}, `{"extra_remove":["a,b","c"],"id":1,"priority":null}`},
 		{[]string{"update", "1", "--extra-merge", `{"n":1.50}`}, `{"extra_merge":{"n":1.50},"id":1}`},
 		{[]string{"block", "1", "--blockers", "2,x"}, `{"blockers":[2,"x"],"id":1}`},
+		{[]string{"repair", "--kinds", "temp-leftover,stale-claim", "--kinds", "orphan-notes"}, `{"kinds":["temp-leftover","stale-claim","orphan-notes"]}`},
 		{[]string{"list", "--recursive=false", "--claimed", "--limit", "5"}, `{"claimed":true,"limit":5,"recursive":false}`},
 		{[]string{"create", "--priority", "-3", "--", "-x"}, `{"priority":-3,"title":"-x"}`},
 		{[]string{"create", "a", "b"}, ""},

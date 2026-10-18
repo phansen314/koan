@@ -469,7 +469,11 @@ func TestDoctorAndRepair(t *testing.T) {
 
 	found := map[string]int{}
 	for _, f := range w.ok("doctor", `{}`)["findings"].([]any) {
-		found[f.(map[string]any)["kind"].(string)]++
+		f := f.(map[string]any)
+		found[f["kind"].(string)]++
+		if f["repairable"] == true && !slices.Contains(errs.RepairableKinds, f["kind"].(string)) {
+			t.Errorf("repairable, but not a kind repair takes: %v", f)
+		}
 	}
 	want := map[string]int{"temp-leftover": 1, "id-above-counter": 1, "dangling-reference": 1, "stale-claim": 1,
 		"orphan-notes": 3, "duplicate-id": 1, "unusable-file": 1, "skipped-entry": 1}
@@ -479,25 +483,27 @@ func TestDoctorAndRepair(t *testing.T) {
 		}
 	}
 
-	// A plain repair leaves the dangling reference, which only it names.
+	// A plain repair leaves the dangling reference and the claim on the task
+	// that is gone, which only repair by name fixes.
+	byName := []string{"dangling-reference", "stale-claim"}
 	left := func(got map[string]any) map[string]int {
 		n := map[string]int{}
 		for _, f := range got["findings"].([]any) {
 			f := f.(map[string]any)
 			n[f["kind"].(string)]++
-			if f["repairable"] == true && f["kind"] != "dangling-reference" {
+			if f["repairable"] == true && !slices.Contains(byName, f["kind"].(string)) {
 				t.Errorf("repair left a repairable finding: %v", f)
 			}
 		}
 		return n
 	}
 	got := left(w.ok("repair", `{}`))
-	if got["duplicate-id"] != 1 || got["unusable-file"] != 1 || got["skipped-entry"] != 1 || got["orphan-notes"] != 1 || got["dangling-reference"] != 1 || len(got) != 5 {
+	if got["duplicate-id"] != 1 || got["unusable-file"] != 1 || got["skipped-entry"] != 1 || got["orphan-notes"] != 1 || got["dangling-reference"] != 1 || got["stale-claim"] != 1 || len(got) != 6 {
 		t.Errorf("after repair: %v", got)
 	}
-	got = left(w.ok("repair", `{"kinds":["dangling-reference"]}`))
-	if got["dangling-reference"] != 0 || len(got) != 4 {
-		t.Errorf("after repair of dangling-reference: %v", got)
+	got = left(w.ok("repair", `{"kinds":["dangling-reference","stale-claim"]}`))
+	if got["dangling-reference"] != 0 || got["stale-claim"] != 0 || len(got) != 4 {
+		t.Errorf("after repair by name: %v", got)
 	}
 	if n, _ := os.ReadFile(w.root("3.md")); string(n) != "keep" {
 		t.Errorf("repair did not move the notes to their task: %q", n)
@@ -507,6 +513,25 @@ func TestDoctorAndRepair(t *testing.T) {
 	}
 	if again := w.ok("repair", `{}`); len(again["repaired"].([]any)) != 0 {
 		t.Errorf("a second repair repaired %v", again["repaired"])
+	}
+}
+
+// The kinds repair takes are the ones its input schema lists.
+func TestRepairKindsMatchTheSchema(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(schematest.Dir(), "repair-input.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		Properties struct {
+			Kinds struct{ Items struct{ Enum []string } }
+		}
+	}
+	if err := json.Unmarshal(data, &s); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Properties.Kinds.Items.Enum; !slices.Equal(got, errs.RepairableKinds) {
+		t.Errorf("schema lists %v, repair takes %v", got, errs.RepairableKinds)
 	}
 }
 

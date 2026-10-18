@@ -138,6 +138,10 @@ var FindingKinds = []string{
 	"duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry",
 }
 
+// RepairableKinds are the finding kinds repair can fix: the first of
+// FindingKinds.
+var RepairableKinds = FindingKinds[:5:5]
+
 // Finding is one thing doctor found wrong.
 type Finding struct {
 	Kind       string   `json:"kind"`

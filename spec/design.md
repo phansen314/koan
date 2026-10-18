@@ -200,18 +200,18 @@ A **claim** reserves a task: once it is claimed, no other `claim` of it succeeds
 - A claim carries a `claimed_at` and an `extra` object, which koan returns and never interprets. Who holds a claim, and whether they are still alive, is the caller's business.
 - Claims are this machine's: they do not travel with the tree.
 
-`done` and `delete` change the task first and the state file second. An entry left behind by a crash between the two names a task that is done or gone; commands ignore such an entry, and `repair` removes it.
+`done` and `delete` change the task first and the state file second. An entry left behind by a crash between the two names a task that is done or gone; commands ignore such an entry, and `repair` removes it (an entry for a task that is gone, when asked for it by name).
 
 ## Doctor and repair
 
-`doctor` walks the whole tree and reports what it finds, each finding with a kind, the paths and IDs involved, and a sentence saying what to do. `repair` fixes the kinds that can be fixed without losing anything or choosing between versions, and leaves the rest to a person. One kind, `dangling-reference`, it fixes only when asked for it by name: a task that seems gone may only be out of koan's sight, in a folder moved by hand, and removing its ID would lose the link for good, where moving the folder back would restore it.
+`doctor` walks the whole tree and reports what it finds, each finding with a kind, the paths and IDs involved, and a sentence saying what to do. `repair` fixes the kinds that can be fixed without losing anything or choosing between versions, and leaves the rest to a person. A reference or a claim to a task that seems gone it removes only when asked for its kind by name: the task may only be out of koan's sight, in a folder moved by hand, and removing its ID would lose the link for good, where moving the folder back would restore it.
 
 | Finding | `repair` |
 |---|---|
 | `temp-leftover`: a temp file koan left behind | Removes it. |
 | `id-above-counter`: a task ID above `last_id` | Raises `last_id`. |
 | `dangling-reference`: a `blocked_by` ID with no task | Removes the ID, when asked for by name. |
-| `stale-claim`: a claim on a task that is done or gone | Removes the claim. |
+| `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name. |
 | `orphan-notes`: a `.md` with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes. Otherwise leaves it. |
 | `duplicate-id`: several task files with one ID | — |
 | `cycle`: tasks that block each other | — |

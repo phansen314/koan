@@ -119,12 +119,12 @@ Claims are kept per machine, in the state file, not in the tree: they don't trav
 A crash, a git merge, or a hand edit can leave the tree damaged: a leftover temp file, a blocker that no longer exists, two tasks with one ID. Other commands report damage as warnings, or refuse to act on it; `doctor` finds all of it, and `repair` fixes what is safe to fix:
 
 ```sh
-koan doctor      # .result.healthy, and .result.findings: what is wrong, and whether repair would fix it
-koan repair      # remove leftovers and stale claims, and raise the ID counter
-koan repair --kinds dangling-reference   # remove blockers that no longer exist
+koan doctor      # .result.healthy, and .result.findings: what is wrong, and whether repair can fix it
+koan repair      # remove leftovers and claims on done tasks, and raise the ID counter
+koan repair --kinds dangling-reference,stale-claim   # remove blockers and claims on tasks that no longer exist
 ```
 
-`repair` never chooses between versions: duplicate IDs, dependency cycles, and unusable files are reported for you to resolve. It removes a blocker that no longer exists only when asked by name, since the task may be in a folder moved by hand, and moving the folder back restores the link. See [Doctor and repair](spec/design.md#doctor-and-repair).
+`repair` never chooses between versions: duplicate IDs, dependency cycles, and unusable files are reported for you to resolve. It removes a blocker or a claim on a task that no longer exists only when asked by name, since the task may be in a folder moved by hand, and moving the folder back restores the link. See [Doctor and repair](spec/design.md#doctor-and-repair).
 
 ## Undoing a delete
 

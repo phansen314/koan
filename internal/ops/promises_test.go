@@ -2,7 +2,9 @@ package ops
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -236,19 +238,46 @@ func TestRepairReportsOnlyWhatItRepaired(t *testing.T) {
 	}
 }
 
-// repair fixes only the kinds it is given, and refuses a kind it can't fix.
+// repair fixes only the kinds it is given. Without them, it fixes every kind
+// but leaves what removes the ID of a task that is gone. It refuses a kind
+// it can't fix.
 func TestRepairFixesOnlyTheKindsAsked(t *testing.T) {
 	w := ready(t)
-	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]}]}`)
-	os.Remove(w.root("1.json")) // dangling reference in 2, and orphan notes (empty)
-	got := w.ok("repair", `{"kinds":["temp-leftover","dangling-reference"]}`)
-	if r := got["repaired"].([]any); len(r) != 1 || r[0].(map[string]any)["kind"] != "dangling-reference" {
-		t.Errorf("repaired %v, want the dangling reference", r)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","notes":"keep"},{"title":"b","blocked_by":["a"]},{"title":"c"}]}`)
+	w.ok("claim", `{"id":1}`)
+	w.ok("claim", `{"id":3}`)
+	state, _ := os.ReadFile(w.env.StatePath())
+	w.ok("done", `{"id":3}`)
+	os.WriteFile(w.env.StatePath(), state, 0o644) // a claim on 3, which is done
+	os.Remove(w.root("1.json"))                   // dangling reference in 2, claim on 1, which is gone, and orphan notes
+	os.WriteFile(w.root(".koan-tmp-abc"), nil, 0o644)
+
+	kinds := func(fs any) (ks []string) {
+		for _, f := range fs.([]any) {
+			f := f.(map[string]any)
+			ks = append(ks, fmt.Sprintf("%s %v", f["kind"], f["ids"]))
+		}
+		return ks
 	}
-	if f := got["findings"].([]any); len(f) != 1 || f[0].(map[string]any)["kind"] != "orphan-notes" {
-		t.Errorf("left %v, want the orphan notes", f)
+	check := func(input string, repaired, left []string) {
+		t.Helper()
+		got := w.ok("repair", input)
+		if r := kinds(got["repaired"]); !slices.Equal(r, repaired) {
+			t.Errorf("repair %s: repaired %v, want %v", input, r, repaired)
+		}
+		if f := kinds(got["findings"]); !slices.Equal(f, left) {
+			t.Errorf("repair %s: left %v, want %v", input, f, left)
+		}
 	}
+	check(`{}`, []string{"temp-leftover []", "stale-claim [3]"},
+		[]string{"dangling-reference [2 1]", "stale-claim [1]", "orphan-notes [1]"})
+	check(`{"kinds":["stale-claim"]}`, []string{"stale-claim [1]"},
+		[]string{"dangling-reference [2 1]", "orphan-notes [1]"})
+	check(`{"kinds":["temp-leftover","dangling-reference"]}`, []string{"dangling-reference [2 1]"},
+		[]string{"orphan-notes [1]"})
+
 	w.fail("repair", `{"kinds":["cycle"]}`, errs.InvalidInput, "")
+	w.fail("repair", `{"kinds":["old-format"]}`, errs.InvalidInput, "")
 	w.fail("repair", `{"kinds":[]}`, errs.InvalidInput, "")
 	w.fail("repair", `{"kinds":["stale-claim","stale-claim"]}`, errs.InvalidInput, "")
 }

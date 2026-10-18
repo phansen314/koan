@@ -35,6 +35,7 @@ var crashCases = []struct {
 	{"claim-next", []string{"claim-next"}},
 	{"release", []string{"release", "3"}},
 	{"repair", []string{"repair"}},
+	{"repair by name", []string{"repair", "--kinds", "dangling-reference,stale-claim"}},
 }
 
 const batchInput = `{"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
@@ -44,7 +45,9 @@ const freshInit = "init on a new home"
 
 // setup makes a tree with something for every command to act on: task 1 in
 // the root; 2 and 3 in /proj, 2 waiting on 1 and 3 claimed with notes; and
-// 4, done, in /proj/sub.
+// 4, done, in /proj/sub. For repair, 1 is claimed and its task file is gone,
+// leaving a dangling reference, a claim on a task that is gone, and notes
+// without their task.
 func setup(t *testing.T, name string) string {
 	t.Helper()
 	if name == freshInit {
@@ -59,13 +62,18 @@ func setup(t *testing.T, name string) string {
 	ok(t, home, "create", "four", "--folder", "/proj/sub")
 	ok(t, home, "done", "4")
 	ok(t, home, "claim", "3")
+	if strings.HasPrefix(name, "repair") {
+		ok(t, home, "claim", "1")
+		os.Remove(filepath.Join(home, "koan-root", "1.json"))
+	}
 	return home
 }
 
 // leftovers are the findings a killed or failed command may leave, as
 // spec/design.md lists them: a temp file, a reference to a deleted task, a
 // claim on a task that is done or gone, and notes without their task. Every
-// one is something repair fixes, the reference only when asked for by name.
+// one is something repair fixes, the reference, and a claim on a task that is
+// gone, only when asked for by name.
 // An ID used with no task is not a finding.
 var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
 
@@ -90,11 +98,11 @@ func checkAfter(t *testing.T, home, what string) {
 		}
 	}
 	for _, f := range ok(t, home, "repair")["findings"].([]any) {
-		if f := f.(map[string]any); f["kind"] != "dangling-reference" {
+		if f := f.(map[string]any); f["kind"] != "dangling-reference" && f["kind"] != "stale-claim" {
 			t.Errorf("%s: repair left %v", what, f)
 		}
 	}
-	if left := ok(t, home, "repair", "--kinds", "dangling-reference")["findings"].([]any); len(left) != 0 {
+	if left := ok(t, home, "repair", "--kinds", "dangling-reference,stale-claim")["findings"].([]any); len(left) != 0 {
 		t.Errorf("%s: repair left %v", what, left)
 	}
 	if got := ok(t, home, "doctor"); got["healthy"] != true {
@@ -150,7 +158,7 @@ func TestCrashes(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			n := changes(t, c.name, c.args)
-			if n == 0 && c.name != "repair" {
+			if n == 0 {
 				t.Fatal("the command changed nothing on disk")
 			}
 			for k := 1; k <= n; k++ {

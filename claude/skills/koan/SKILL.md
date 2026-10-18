@@ -61,8 +61,8 @@ Error kinds worth handling:
 
 After a `duplicate-id` or `corrupt` error, or any warning, run `koan doctor` — once per session, not after every command — and summarize `.result.findings` for the user: each finding's `kind`, its `paths` and `ids`, and its `message`, which says what to do. `doctor` changes nothing, and takes the write lock while it runs, so other writes wait for it.
 
-- Findings with `repairable: true` are what `koan repair` would fix: leftover temp files, claims on tasks that are done or gone, notes that lost their task, an ID counter that is too low. **Never run `repair` unasked**: offer it, saying what it would change. It asks for permission anyway.
-- `dangling-reference` findings (blockers that no longer exist) are left by a plain `repair`. Ask the user first whether a folder was moved or renamed by hand: if so, moving it back restores the links. Otherwise offer `koan repair --kinds dangling-reference`.
+- Findings with `repairable: true` are what `koan repair` can fix. A plain `koan repair` fixes leftover temp files, claims on tasks that are done, notes that lost their task, an ID counter that is too low; it leaves the two below. **Never run `repair` unasked**: offer it, saying what it would change. It asks for permission anyway.
+- `dangling-reference` findings (blockers that no longer exist) and `stale-claim` findings on tasks that no longer exist are left by a plain `repair`. Ask the user first whether a folder was moved or renamed by hand: if so, moving it back restores the links. Otherwise offer `koan repair --kinds dangling-reference` or `--kinds stale-claim`.
 - Findings with `repairable: false` (duplicate IDs, cycles, unusable files, notes with text and no task) are the user's to resolve. Pass on `message`; don't edit files to fix them yourself.
 - `old-format` findings are fixed by `koan migrate`, never by `repair`.
 

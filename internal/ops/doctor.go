@@ -45,10 +45,6 @@ func sortLocs(x *store.Index, ls []loc) {
 	})
 }
 
-// repairableKinds are the finding kinds repair can fix, in the order the
-// design lists them.
-var repairableKinds = []string{"temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes"}
-
 // fix makes one repair. fixed is false when it found it could not after
 // all: the finding stays, and is not reported as repaired.
 type fix func() (fixed bool, e *errs.Error)
@@ -57,10 +53,12 @@ type fix func() (fixed bool, e *errs.Error)
 func done(e *errs.Error) (bool, *errs.Error) { return e == nil, e }
 
 // diagnosis is doctor's findings, each with the fix repair would make: nil
-// for one a person has to resolve.
+// for one a person has to resolve. byName marks a fix repair makes only when
+// its kind is asked for by name.
 type diagnosis struct {
 	findings []errs.Finding
 	fixes    []fix
+	byName   []bool
 }
 
 func (d *diagnosis) add(kind, msg string, ids []model.ID, paths []string, fix fix) {
@@ -72,7 +70,13 @@ func (d *diagnosis) add(kind, msg string, ids []model.ID, paths []string, fix fi
 	}
 	d.findings = append(d.findings, errs.Finding{Kind: kind, Message: msg, IDs: ids, Paths: paths, Repairable: fix != nil})
 	d.fixes = append(d.fixes, fix)
+	d.byName = append(d.byName, false)
 }
+
+// onlyByName marks the last finding's fix as one repair makes only when its
+// kind is asked for by name: one that removes a task's ID, since a task that
+// seems gone may be in a folder moved by hand.
+func (d *diagnosis) onlyByName() { d.byName[len(d.byName)-1] = true }
 
 // diagnose finds everything wrong with the tree (spec/design.md, Doctor and
 // repair). Findings come out by kind, in the order the design lists them,
@@ -136,6 +140,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 				tf.UpdatedAt = c.now
 				return done(t.WriteTask(l.f, tf, false))
 			})
+		d.onlyByName()
 	}
 
 	var claimed []model.ID
@@ -146,12 +151,18 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	slices.Sort(claimed)
 	for _, id := range claimed {
 		_, exists := x.Tasks[id]
-		if tf := usable[id]; !exists || (tf != nil && !tf.Open()) {
-			d.add("stale-claim", fmt.Sprintf("a claim on task %d, which is done or gone: `koan repair` removes it", id),
-				[]model.ID{id}, []string{t.Env().StatePath()}, func() (bool, *errs.Error) {
-					delete(t.State.Claims, model.ClaimKey(id))
-					return done(t.SaveState())
-				})
+		msg := fmt.Sprintf("a claim on task %d, which is done: `koan repair` removes it", id)
+		if !exists {
+			msg = fmt.Sprintf("a claim on task %d, which does not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds stale-claim` removes it", id)
+		} else if tf := usable[id]; tf == nil || tf.Open() {
+			continue
+		}
+		d.add("stale-claim", msg, []model.ID{id}, []string{t.Env().StatePath()}, func() (bool, *errs.Error) {
+			delete(t.State.Claims, model.ClaimKey(id))
+			return done(t.SaveState())
+		})
+		if !exists {
+			d.onlyByName()
 		}
 	}
 

@@ -97,7 +97,7 @@ var commands = []command{
 	{name: "info", short: "Report the root's state"},
 	{name: "doctor", short: "Report everything wrong with the tree"},
 	{name: "repair", short: "Fix what can be fixed safely", options: []option{
-		{"kinds", names, "only these finding kinds (default: all but dangling-reference)", ""}}},
+		{"kinds", names, "only these finding kinds, and every fix of them (default: all, but not dangling-reference, nor a stale-claim on a task that is gone)", ""}}},
 	{name: "migrate", short: "Convert the tree to this binary's format", options: []option{
 		{"dry-run", boolean, "report what would change and write nothing", ""}}},
 	{name: "create-folder", short: "Create a folder", subject: "folder"},

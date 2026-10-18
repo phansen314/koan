@@ -16,7 +16,7 @@
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" }
     },
-    "repairable": { "type": "boolean", "description": "Whether repair can fix it: by default, or, for dangling-reference, when asked for by name." }
+    "repairable": { "type": "boolean", "description": "Whether repair can fix it: by default, or, for dangling-reference and a stale-claim on a task that is gone, when asked for by name." }
   },
   "additionalProperties": false
 }
