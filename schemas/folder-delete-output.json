@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-delete-output",
+  "type": "object",
+  "required": ["folder", "deleted", "dependents"],
+  "properties": {
+    "folder": { "$ref": "folder", "description": "Its record, as it was." },
+    "deleted": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true
+    },
+    "dependents": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "description": "The tasks whose blocked_by changed."
+    }
+  },
+  "additionalProperties": false
+}

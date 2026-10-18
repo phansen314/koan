@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-list-input",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "folder": { "$ref": "folder-ref", "default": "/" },
+    "recursive": { "type": "boolean", "default": true },
+    "tags_any": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "tags_all": {
+      "type": "array",
+      "items": { "$ref": "task-file#/$defs/name" },
+      "uniqueItems": true
+    },
+    "limit": { "type": "integer", "minimum": 1 },
+    "fields": {
+      "type": "array",
+      "items": { "$ref": "task#/$defs/field" },
+      "uniqueItems": true
+    },
+    "claimed": { "type": "boolean" },
+    "readiness": {
+      "type": "array",
+      "items": { "enum": ["ready", "blocked", "done"] },
+      "uniqueItems": true,
+      "minItems": 1,
+      "default": ["ready", "blocked"]
+    }
+  },
+  "additionalProperties": false
+}

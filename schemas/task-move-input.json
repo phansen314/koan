@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-move-input",
+  "type": "object",
+  "required": ["id", "to"],
+  "properties": {
+    "id": { "$ref": "task-ref" },
+    "to": { "$ref": "folder-ref" }
+  },
+  "additionalProperties": false
+}

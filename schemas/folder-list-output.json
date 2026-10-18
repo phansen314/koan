@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-list-output",
+  "type": "object",
+  "required": ["folders", "total", "truncated"],
+  "properties": {
+    "folders": {
+      "type": "array",
+      "items": { "$ref": "folder#/$defs/partial" }
+    },
+    "total": { "type": "integer", "minimum": 0 },
+    "truncated": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

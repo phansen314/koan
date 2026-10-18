@@ -19,7 +19,7 @@ One tree per user, written from one machine. Separate bodies of work are folders
 
 - **koan is the only writer of the tree and the state file.** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds.
 - **Notes are the exception.** A task's `@<id>.md` and a folder's `@folder.md` are edited with any editor. koan never reads meaning into them.
-- **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`delete-folder`](operations.md#delete-folder) with `force`). Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
+- **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
 
 ## Data model
 
@@ -57,7 +57,7 @@ Every key is required and no other key is allowed.
 | `title` | `null`, or a title by the task rule. |
 | `extra` | Any JSON object. koan stores it and never interprets it. |
 
-`create-folder`, `update-folder`, and a `create-batch` folder entry set `title` and `extra`; a folder made as needed by another command gets `null` and `{}`.
+`folder create`, `folder update`, and a `batch` folder entry set `title` and `extra`; a folder made as needed by another command gets `null` and `{}`.
 
 A folder exists when its directory does. A missing `@folder.md` reads as empty notes. A folder with no folder file is still a folder, whose tasks and folders count as usual; it has no ID until one is written, and `doctor` reports it.
 
@@ -243,23 +243,23 @@ Several processes may use one tree at once, with no coordinator between them.
 
 ### Crashes and failures
 
-A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `delete-folder` cut short shows up as some of these, in what is left of it: run `delete-folder` again to finish.
+A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `folder delete` cut short shows up as some of these, in what is left of it: run `folder delete` again to finish.
 
-koan keeps no journal and takes no idempotency keys. After an unclear outcome, look (`show`, `list`, `doctor`), then decide. Commands that set a state (`done`, `reopen`, `block`, `unblock`, `update`, `release`) are safe to run again; `create` and `claim-next` make a new task or claim each time.
+koan keeps no journal and takes no idempotency keys. After an unclear outcome, look (`task show`, `task list`, `doctor`), then decide. The task commands that set a state (`done`, `reopen`, `block`, `unblock`, `update`, `release`) are safe to run again; `task create` and `batch` make new tasks each time, and `task claim-next` a new claim.
 
 ## Claims
 
-A **claim** reserves a task: once it is claimed, no other `claim` of it succeeds until the claim ends. It is how two agents taking work from one tree are not handed the same task, which reading the list of ready tasks cannot give.
+A **claim** reserves a task: once it is claimed, no other `task claim` of it succeeds until the claim ends. It is how two agents taking work from one tree are not handed the same task, which reading the list of ready tasks cannot give.
 
-- `claim` takes an open task that has no claim, and fails at once (`conflict`, `claimed`) on one that has. `claim-next` claims the first ready, unclaimed task in scope.
+- `task claim` takes an open task that has no claim, and fails at once (`conflict`, `claimed`) on one that has. `task claim-next` claims the first ready, unclaimed task in scope.
 - A claim is an entry in the state file. It outlasts the process that made it and never expires.
-- A claim ends with `release`, or when its task is marked done or deleted. A reopened task starts unclaimed.
-- **A claim refuses other claims and takes the task off the frontier, and nothing else.** Every command that changes a task treats a claimed one like any other, and `release` works whoever made the claim.
+- A claim ends with `task release`, or when its task is marked done or deleted. A reopened task starts unclaimed.
+- **A claim refuses other claims and takes the task off the frontier, and nothing else.** Every command that changes a task treats a claimed one like any other, and `task release` works whoever made the claim.
 - **A claim does not lock the notes.** Nothing stops two editors from overwriting each other's changes to a `@<id>.md`. The convention is that whoever holds the claim is the one who edits the task's notes.
 - A claim carries a `claimed_at` and an `extra` object, which koan returns and never interprets. Who holds a claim, and whether they are still alive, is the caller's business.
 - Claims are this machine's: they do not travel with the tree.
 
-`done` and `delete` change the task first and the state file second. An entry left behind by a crash between the two names a task that is done or gone; commands ignore such an entry, and `repair` removes it (an entry for a task that is gone, when asked for it by name).
+`task done` and `task delete` change the task first and the state file second. An entry left behind by a crash between the two names a task that is done or gone; commands ignore such an entry, and `repair` removes it (an entry for a task that is gone, when asked for it by name).
 
 ## Doctor and repair
 

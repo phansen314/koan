@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-create-output",
+  "type": "object",
+  "required": ["id", "changed", "folders_created", "dependents"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id" },
+    "changed": { "const": true },
+    "folders_created": {
+      "type": "array",
+      "items": { "$ref": "folder-path" }
+    },
+    "dependents": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "description": "The tasks in blocks, which now wait on the new one. Ascending."
+    }
+  },
+  "additionalProperties": false
+}

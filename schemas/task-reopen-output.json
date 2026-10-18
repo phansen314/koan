@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-reopen-output",
+  "type": "object",
+  "required": ["id", "changed"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id" },
+    "changed": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

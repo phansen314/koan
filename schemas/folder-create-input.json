@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-create-input",
+  "type": "object",
+  "required": ["folder"],
+  "properties": {
+    "folder": { "$ref": "folder-path" },
+    "title": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null },
+    "extra": { "type": "object", "default": {} },
+    "notes": { "type": "string", "default": "" }
+  },
+  "additionalProperties": false
+}

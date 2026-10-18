@@ -75,17 +75,17 @@ Every file koan writes goes through a temp file named `.koan-tmp-<random>` in th
 
 ### Moving and removing
 
-- **Moves never replace.** `move` and `move-folder` rename with `renameat2(RENAME_NOREPLACE)` on Linux and `renameatx_np(RENAME_EXCL)` on macOS. Plain `rename(2)` silently replaces an empty directory, so a check made beforehand would be the only guard.
+- **Moves never replace.** `task move` and `folder move` rename with `renameat2(RENAME_NOREPLACE)` on Linux and `renameatx_np(RENAME_EXCL)` on macOS. Plain `rename(2)` silently replaces an empty directory, so a check made beforehand would be the only guard.
 - **A folder is made with `mkdir`**, then its folder file and notes are written in it as any file is. A kill or failure between leaves a folder without its folder file, `doctor`'s `missing-folder-file`. A folder that appears under the name first, by an outside change, wins: the command does not list it in `folders_created`. `changed_paths` lists the folder, not its files.
-- **A folder is removed depth first, one entry at a time**, in an order that leaves nothing `repair` would get wrong if cut short: in each folder, notes and everything else first, then task files, so no notes are left without their task, then `@folder.json`, so no folder is left without its folder file, which `repair` would give a new ID. A symlink is removed, never followed. The folder is in `changed_paths` even when the removal fails, since it may have removed part of it; running `delete-folder` again removes the rest.
+- **A folder is removed depth first, one entry at a time**, in an order that leaves nothing `repair` would get wrong if cut short: in each folder, notes and everything else first, then task files, so no notes are left without their task, then `@folder.json`, so no folder is left without its folder file, which `repair` would give a new ID. A symlink is removed, never followed. The folder is in `changed_paths` even when the removal fails, since it may have removed part of it; running `folder delete` again removes the rest.
 
 ### The order of a command's writes
 
 A command that changes several files orders its writes so that a kill between any two leaves something `doctor` finds, and never a change that looks finished.
 
-- **`create`**: the counter first, then any folders, then each task in `blocks`, in ascending order, then the task file, then the notes. The tasks in `blocks` go before the task they wait on, so that a kill between leaves them waiting on an ID with no task, a dangling reference, as `delete` leaves one. The other order would leave the new task with its dependents still free, and nothing to show for it.
-- **`create-batch`**: the counter is raised once, by the number of folders and tasks the batch makes. Then the folders are made, parents first, each with its folder file and notes; then the tasks are written in input order, each as `create` writes one.
-- **`delete`**: the notes first, then the task file, then the other tasks are rewritten, then its claim ends. A kill after the notes leaves the task, and `delete` can be run again. A kill after the task file leaves references to a task that is gone; the other order would free its dependents with nothing to show for it.
+- **`task create`**: the counter first, then any folders, then each task in `blocks`, in ascending order, then the task file, then the notes. The tasks in `blocks` go before the task they wait on, so that a kill between leaves them waiting on an ID with no task, a dangling reference, as `task delete` leaves one. The other order would leave the new task with its dependents still free, and nothing to show for it.
+- **`batch`**: the counter is raised once, by the number of folders and tasks the batch makes. Then the folders are made, parents first, each with its folder file and notes; then the tasks are written in input order, each as `task create` writes one.
+- **`task delete`**: the notes first, then the task file, then the other tasks are rewritten, then its claim ends. A kill after the notes leaves the task, and `task delete` can be run again. A kill after the task file leaves references to a task that is gone; the other order would free its dependents with nothing to show for it.
 
 ### Fault injection
 
@@ -102,18 +102,18 @@ Every command reads the state file after taking the lock, never before.
 There is no index on disk; a command that needs one builds it.
 
 - **By name only.** The walk lists folders depth-first, each folder's entries sorted, and classifies every entry by its name and type without opening any file. It enters only `@` folders, and never looks inside material. It returns each task ID with its path, and the list of folders. Two paths for one task ID is the `duplicate-id` error.
-- **Folder files are read only when a command needs them:** `init` and `doctor`, for folder IDs; the folder commands, `where`, and `list` with `include_folders`, for records; a folder given by ID, and any ID given to `where`, to find it; and a `not-found` for a task, to say when the ID is a folder's. A folder ID that repeats another folder's or a task's is found by `doctor`, not by the walk, except by a command asked for a folder by that ID, or `where`: a task found by ID is one walk and one read, and `show 3` succeeds though a folder file holds 3 too.
-- **Task files are loaded when needed**, and each at most once per command. Finding a task by ID, or proving it absent, costs one walk and one file read. Only commands that need every task's fields load them all: `frontier`, `list`, `claim-next`, `delete` and `delete-folder` (to find references), `doctor`, and `migrate`.
-- **Commands that need no walk don't make one:** `create` without `blocked_by` or `blocks`, and with its folder by path, `create-folder`, `release`, `version`, `info`. `init` walks, and reads the folder files, when it has to make a state file for a tree that is already there.
+- **Folder files are read only when a command needs them:** `init` and `doctor`, for folder IDs; the folder commands and `where`, for the IDs and records they return; a folder given by ID, and any ID given to `where`, to find it; and a `not-found` for a task, to say when the ID is a folder's. A folder ID that repeats another folder's or a task's is found by `doctor`, not by the walk, except by a command asked for a folder by that ID, or `where`: a task found by ID is one walk and one read, and `task show 3` succeeds though a folder file holds 3 too.
+- **Task files are loaded when needed**, and each at most once per command. Finding a task by ID, or proving it absent, costs one walk and one file read. Only commands that need every task's fields load them all: `task frontier`, `task list`, `task claim-next`, `task delete` and `folder delete` (to find references), `doctor`, and `migrate`.
+- **Commands that need no walk don't make one:** `task create` without `blocked_by` or `blocks`, and with its folder by path, `folder create`, `task release`, `version`, `info`. `init` walks, and reads the folder files, when it has to make a state file for a tree that is already there.
 - **A file that vanishes** between the walk and its load can only be an outside change, since the command holds the lock. It is skipped; if it was the task the command was asked for, that is `not-found`.
 
 ## The graph
 
 `internal/graph` works on tasks already loaded.
 
-- **Readiness** of an open task is computed from all its blockers, not stopping at the first that blocks, so `blocking` is complete.
-- **The cycle check** for `block`: adding "A is blocked by B" closes a cycle exactly when A is reachable from B along `blocked_by`. A breadth-first search from each new blocker, through open and done tasks alike, loads only the files it reaches. The path it finds is the cycle reported; no particular one is promised.
-- **The cycle check for `create` with `blocks`**: every new edge ends at the new task, so a cycle runs through it, and exists exactly when a task in `blocks` is reachable from one in `blocked_by`. The same search runs from each task in `blocked_by` to each in `blocks`.
+- **Readiness** of an open task is computed from all its blockers, not stopping at the first that blocks, so `open_blockers` is complete.
+- **The cycle check** for `task block`: adding "A is blocked by B" closes a cycle exactly when A is reachable from B along `blocked_by`. A breadth-first search from each new blocker, through open and done tasks alike, loads only the files it reaches. The path it finds is the cycle reported; no particular one is promised.
+- **The cycle check for `task create` with `blocks`**: every new edge ends at the new task, so a cycle runs through it, and exists exactly when a task in `blocks` is reachable from one in `blocked_by`. The same search runs from each task in `blocked_by` to each in `blocks`.
 - **`doctor`'s cycles** are the strongly connected components of the whole graph with more than one task.
 
 ## Errors
@@ -135,12 +135,12 @@ The files in `schemas/` are written by hand and are the contract. The binary con
 
 - every envelope any test produces is validated against its command's output schema;
 - every input any test sends a command is also checked against that command's input schema, and the two must agree on whether it is valid. Rules between fields (two options that can't be combined) and the title rule are exempt: the schemas don't state them.
-- the command table of the CLI, the commands in `ops`, and the input schemas must name the same commands and fields.
+- the command table of the CLI, the commands in `ops`, and the input schemas must name the same commands and fields, but for the [CLI conveniences](cli.md#cli-conveniences).
 
 ## Testing
 
 - **Unit tests** per package. `ops` tests run against a real temp directory, with `HOME` pointed at it and the clock fixed.
 - **End-to-end tests** in `e2e/` run the built binary, with `HOME` set per test.
-- **The lock**, in `e2e/` on both platforms: a second write, and a read, get `busy` while a write is held; every `list` run while tasks and folders are moved returns every task; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `block`s racing never both succeed.
+- **The lock**, in `e2e/` on both platforms: a second write, and a read, get `busy` while a write is held; every `task list` run while tasks and folders are moved returns every task; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `task block`s racing never both succeed.
 - **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair`, then `repair` of the kinds it fixes only when asked by name, followed by `doctor`, must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect. A kill or failure between making a folder and writing its folder file leaves `missing-folder-file`, which `repair` fixes.
 - **CI** runs on Linux amd64 and macOS arm64: `gofmt`, `go vet`, `go test ./...`, a race-detector run over everything but `e2e/`, and `govulncheck`.
