@@ -11,7 +11,7 @@ import (
 
 func TestLockContention(t *testing.T) {
 	r1, dir := newRoot(t, nil)
-	r2, err := OS{}.OpenRoot(dir)
+	r2, err := FS{}.OpenRoot(dir)
 	must(t, err)
 	defer r2.Close()
 
@@ -36,7 +36,7 @@ func TestLockThroughSymlinkedRoot(t *testing.T) {
 	r1, dir := newRoot(t, nil)
 	link := filepath.Join(t.TempDir(), "root")
 	must(t, os.Symlink(dir, link))
-	r2, err := OS{}.OpenRoot(link)
+	r2, err := FS{}.OpenRoot(link)
 	must(t, err)
 	defer r2.Close()
 
@@ -53,7 +53,7 @@ func TestLockThroughSymlinkedRoot(t *testing.T) {
 // that lets them run.
 func TestLockSurvivesGC(t *testing.T) {
 	r1, dir := newRoot(t, nil)
-	r2, err := OS{}.OpenRoot(dir)
+	r2, err := FS{}.OpenRoot(dir)
 	must(t, err)
 	defer r2.Close()
 

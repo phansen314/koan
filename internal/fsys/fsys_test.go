@@ -14,13 +14,13 @@ import (
 )
 
 // newRoot creates a temp directory, runs setup in it, and opens it as a Root.
-func newRoot(t *testing.T, setup func(dir string)) (Root, string) {
+func newRoot(t *testing.T, setup func(dir string)) (*Root, string) {
 	t.Helper()
 	dir := t.TempDir()
 	if setup != nil {
 		setup(dir)
 	}
-	r, err := OS{}.OpenRoot(dir)
+	r, err := FS{}.OpenRoot(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,17 +385,17 @@ func TestRenameReplaces(t *testing.T) {
 
 func TestOpenRootErrors(t *testing.T) {
 	dir := t.TempDir()
-	_, err := OS{}.OpenRoot(filepath.Join(dir, "missing"))
+	_, err := FS{}.OpenRoot(filepath.Join(dir, "missing"))
 	wantErrno(t, err, syscall.ENOENT)
 	file := filepath.Join(dir, "file")
 	must(t, os.WriteFile(file, nil, 0o644))
-	_, err = OS{}.OpenRoot(file)
+	_, err = FS{}.OpenRoot(file)
 	wantErrno(t, err, syscall.ENOTDIR)
 	var pe *os.PathError
 	if !errors.As(err, &pe) || pe.Path != file {
 		t.Errorf("got %v, want a *os.PathError on %q", err, file)
 	}
-	_, err = OS{}.OpenRoot("")
+	_, err = FS{}.OpenRoot("")
 	wantErrno(t, err, syscall.ENOENT)
 }
 
@@ -415,7 +415,7 @@ func TestOpenRootFollowsSymlink(t *testing.T) {
 	must(t, os.WriteFile(filepath.Join(dir, "real", "x"), []byte("x"), 0o644))
 	link := filepath.Join(dir, "link")
 	must(t, os.Symlink("real", link))
-	r, err := OS{}.OpenRoot(link)
+	r, err := FS{}.OpenRoot(link)
 	must(t, err)
 	defer r.Close()
 	got, err := r.ReadFile("x")
@@ -431,7 +431,7 @@ func TestOpenRootFIFO(t *testing.T) {
 	must(t, syscall.Mkfifo(fifo, 0o644))
 	done := make(chan error, 1)
 	go func() {
-		_, err := OS{}.OpenRoot(fifo)
+		_, err := FS{}.OpenRoot(fifo)
 		done <- err
 	}()
 	select {

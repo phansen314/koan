@@ -20,7 +20,7 @@ internal/store      root states, the lock wait, writing and moving files, the wa
 internal/graph      readiness, the cycle check, why: pure functions, no I/O
 internal/model      Task, the state file, names, IDs, timestamps, and their validation
 internal/errs       error, warning, and finding types
-internal/fsys       the only package that touches the disk; a real and a fault-injecting implementation
+internal/fsys       the only package that touches the disk, with a hook before each call for injecting faults
 internal/buildinfo  the version a build is stamped with
 internal/schematest test helper: validates inputs and envelopes against schemas/
 schemas/            the JSON Schemas, written by hand
@@ -36,7 +36,7 @@ Imports go one way: `cli → ops → store → fsys`. `errs`, `model`, and `grap
 
 Two layers:
 
-- **`internal/fsys`** is a thin interface over the system calls: open a root, list, read, create a temp file, link, rename, flush, take the lock once.
+- **`internal/fsys`** is a thin layer over the system calls: open a root, list, read, create a temp file, link, rename, flush, take the lock once.
 - **`internal/store`** builds the sequences on it: waiting for the lock, publishing a file, moving, and removing a folder.
 
 What the two provide together:
@@ -80,7 +80,7 @@ Every file koan writes goes through a temp file named `.koan-tmp-<random>` in th
 
 ### Fault injection
 
-The second `fsys` implementation wraps the real one and, at a chosen call, returns a chosen errno or kills the process. It is the one seam for testing failures and crashes. Unit tests use it directly; the hook that puts it into the binary, for the end-to-end crash tests, is behind the build tag `e2e_hooks`, so a released binary cannot inject faults.
+`fsys` has one implementation, the real one, with an optional hook that every call runs first. The hook is told the call, its paths, and whether it changes the disk; it can fail the call with an errno, or kill the process. It is the one seam for testing failures and crashes: the injections that count calls (fail or kill at the n-th change to the disk, or the n-th call of a kind) are one counter with an action. Unit tests set the hook directly; the code that sets it in the binary, for the end-to-end crash tests, is behind the build tag `e2e_hooks`, so a released binary cannot inject faults.
 
 ## The state file
 

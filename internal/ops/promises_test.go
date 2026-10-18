@@ -158,9 +158,9 @@ func TestDeleteRemovesTheTaskFirst(t *testing.T) {
 	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]}]}`)
 	// delete's changes to the disk, in order: remove 1.json, remove 1.md,
 	// then the rewrite of 2.json, which starts with a temp file.
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 1, syscall.ENOSPC)}
+	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 1, syscall.ENOSPC)}
 	e := w.fail("delete", `{"id":1}`, errs.IO, "")
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if len(e.ChangedPaths) != 2 {
 		t.Errorf("changed_paths %v, want the task's two files", e.ChangedPaths)
 	}
@@ -177,7 +177,7 @@ func TestInitReportsWhatItCreated(t *testing.T) {
 	for k, want := range map[int]int{1: 1, 5: 2} { // the 1st and 5th changes after the root is made
 		w := newWorld(t)
 		seen := 0
-		w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: func(op fsys.Op) error {
+		w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
 			if op.Mutating && op.Name != fsys.OpMkdir {
 				if seen++; seen == k {
 					return syscall.ENOSPC
@@ -317,9 +317,9 @@ func TestDeleteFolderRemovesTheFolderFirst(t *testing.T) {
 	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/gone"},{"title":"b","blocked_by":["a"]}]}`)
 	// /gone is 1, a 2, b 3. The rewrite of task 3 starts with a temp
 	// file; fail it.
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 1, syscall.ENOSPC)}
+	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 1, syscall.ENOSPC)}
 	w.fail("delete-folder", `{"folder":"/gone","recursive":true}`, errs.IO, "")
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if tk := task(w.ok("show", `{"id":3}`)); tk["readiness"] != "blocked" {
 		t.Errorf("the dependent was freed though delete-folder failed: %v", tk)
 	}
@@ -570,9 +570,9 @@ func TestChangedPathsLeaveOutTempFolders(t *testing.T) {
 	w := ready(t)
 	// The state file, the folder file, the folder's notes, then the task
 	// file: fail the fourth.
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 4, syscall.ENOSPC)}
+	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 4, syscall.ENOSPC)}
 	e := w.fail("create", `{"title":"a","folder":"/new"}`, errs.IO, "")
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if !slices.Contains(e.ChangedPaths, w.root("new")) {
 		t.Errorf("changed_paths %v lack the folder made", e.ChangedPaths)
 	}
@@ -897,9 +897,9 @@ func TestBatchFoldersFailPartway(t *testing.T) {
 	w := ready(t)
 	// Each folder's two files are linked into place: the third link is /b's
 	// first, so /a is made whole and /b not at all.
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 3, 28 /* ENOSPC */)}
+	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpLink, "", 3, 28 /* ENOSPC */)}
 	env := w.run("create-batch", `{"folders":[{"path":"/a","title":"A"},{"path":"/b"}],"tasks":[{"title":"t","folder":"/b"}]}`)
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if env.OK || env.Error.Kind != errs.IO || len(env.Error.IDs) != 0 {
 		t.Fatalf("got %+v", env)
 	}
@@ -930,16 +930,16 @@ func raceAt(dir string) fsys.Hook {
 // folders before it stay made, and the error names them.
 func TestBatchFolderEntryRaced(t *testing.T) {
 	w := ready(t)
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("b"))}
+	w.env.FS = fsys.FS{Hook: raceAt(w.root("b"))}
 	e := w.fail("create-batch", `{"folders":[{"path":"/a"},{"path":"/b","title":"B"}],"tasks":[{"title":"t","folder":"/b"}]}`, errs.Conflict, errs.RuleDestinationExists)
 	if !slices.Equal(e.Folders, []string{"/a"}) || len(e.IDs) != 0 || !slices.Equal(e.Paths, []string{w.root("b")}) || !strings.Contains(e.Message, "/b") {
 		t.Errorf("folders %v, ids %v, paths %v, message %q", e.Folders, e.IDs, e.Paths, e.Message)
 	}
 	// create-folder, given fields, is stopped the same way; without them, a
 	// folder that appeared is fine.
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("c"))}
+	w.env.FS = fsys.FS{Hook: raceAt(w.root("c"))}
 	w.fail("create-folder", `{"folder":"/c","title":"C"}`, errs.Conflict, errs.RuleDestinationExists)
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("d"))}
+	w.env.FS = fsys.FS{Hook: raceAt(w.root("d"))}
 	if got := w.ok("create-folder", `{"folder":"/d"}`); len(got["folders_created"].([]any)) != 0 {
 		t.Errorf("create-folder /d: %v", got)
 	}
@@ -951,9 +951,9 @@ func TestBatchTasksFailAfterFolders(t *testing.T) {
 	w := ready(t)
 	// Two links make each folder, and two each task: the seventh is task
 	// 4's file, after folders 1 and 2 and task 3 are made whole.
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 7, 28 /* ENOSPC */)}
+	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpLink, "", 7, 28 /* ENOSPC */)}
 	env := w.run("create-batch", `{"folders":[{"path":"/a/b","title":"B"}],"tasks":[{"title":"t","folder":"/a/b"},{"title":"u","folder":"/a/b"},{"title":"v"}]}`)
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if env.OK {
 		t.Fatal("succeeded")
 	}
@@ -983,14 +983,14 @@ func TestCreateBlocksWritesDependentsFirst(t *testing.T) {
 	w.ok("create", `{"title":"a"}`) // 1
 	w.ok("create", `{"title":"b"}`) // 2
 	// Rewriting task 2 fails, after task 1 is rewritten.
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: func(op fsys.Op) error {
+	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
 		if op.Name == fsys.OpRename && op.NewPath == "@2.json" {
 			return syscall.ENOSPC
 		}
 		return nil
 	}}
 	env := w.run("create", `{"title":"c","blocks":[1,2]}`)
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if env.OK || !slices.Equal(env.Error.IDs, []int64{1}) || !strings.Contains(env.Error.Message, "task 3 was not created") {
 		t.Fatalf("got %+v", env.Error)
 	}
@@ -1008,14 +1008,14 @@ func TestCreateBlocksWritesDependentsFirst(t *testing.T) {
 func TestCreateBlocksNotesFail(t *testing.T) {
 	w := ready(t)
 	w.ok("create", `{"title":"a"}`) // 1
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: func(op fsys.Op) error {
+	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
 		if op.Name == fsys.OpLink && op.NewPath == "@2.md" {
 			return syscall.ENOSPC
 		}
 		return nil
 	}}
 	env := w.run("create", `{"title":"b","blocks":[1]}`)
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if env.OK || !slices.Equal(env.Error.IDs, []int64{2}) {
 		t.Fatalf("got %+v", env.Error)
 	}

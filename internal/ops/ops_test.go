@@ -26,7 +26,7 @@ type world struct {
 func newWorld(t *testing.T) *world {
 	t.Helper()
 	w := &world{t: t, now: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
-	w.env = store.Env{Home: t.TempDir(), Now: func() time.Time { return w.now }, FS: fsys.OS{}, LockWait: 200 * time.Millisecond}
+	w.env = store.Env{Home: t.TempDir(), Now: func() time.Time { return w.now }, FS: fsys.FS{}, LockWait: 200 * time.Millisecond}
 	return w
 }
 
@@ -652,7 +652,7 @@ func TestBusy(t *testing.T) {
 // error says which.
 func TestBatchFailsPartway(t *testing.T) {
 	w := ready(t)
-	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 5, 28 /* ENOSPC */)}
+	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpLink, "", 5, 28 /* ENOSPC */)}
 	env := w.run("create-batch", `{"tasks":[{"title":"a"},{"title":"b"},{"title":"c"}]}`)
 	if env.OK || env.Error.Kind != errs.IO {
 		t.Fatalf("got %+v", env)
@@ -660,7 +660,7 @@ func TestBatchFailsPartway(t *testing.T) {
 	if !slices.Equal(env.Error.IDs, []int64{1, 2}) || len(env.Error.ChangedPaths) == 0 {
 		t.Errorf("ids %v, changed %v", env.Error.IDs, env.Error.ChangedPaths)
 	}
-	w.env.FS = fsys.OS{}
+	w.env.FS = fsys.FS{}
 	if id := task(w.ok("create", `{"title":"d"}`))["id"]; id != float64(4) {
 		t.Errorf("next ID %v: the batch's IDs must not be reused", id)
 	}

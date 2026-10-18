@@ -19,7 +19,7 @@ import (
 // the directory or to remove the temp file is not an error: the file is
 // already published (doctor finds leftovers). Any other failure returns the
 // OS error, with nothing published.
-func Publish(r fsys.Root, rel string, data []byte, perm fs.FileMode, replace bool) error {
+func Publish(r *fsys.Root, rel string, data []byte, perm fs.FileMode, replace bool) error {
 	f, tmp, err := r.CreateTemp(path.Dir(rel), perm)
 	if err != nil {
 		return err

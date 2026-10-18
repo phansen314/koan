@@ -25,21 +25,13 @@ func init() {
 	envHook = func(env *cli.Env) {
 		var hooks []fsys.Hook
 		if k := number("KOAN_E2E_CRASH_BEFORE"); k > 0 {
-			hooks = append(hooks, fsys.CrashBefore(k))
+			hooks = append(hooks, fsys.Nth(k, fsys.Mutating, fsys.Crash))
 		}
 		if k := number("KOAN_E2E_ERRNO_BEFORE"); k > 0 {
-			hooks = append(hooks, fsys.ErrnoAtMutating(k, syscall.ENOSPC))
+			hooks = append(hooks, fsys.Nth(k, fsys.Mutating, fsys.Fail(syscall.ENOSPC)))
 		}
 		if k := number("KOAN_E2E_PAUSE_BEFORE"); k > 0 {
-			seen := 0
-			hooks = append(hooks, func(op fsys.Op) error {
-				if op.Mutating {
-					if seen++; seen == k {
-						select {}
-					}
-				}
-				return nil
-			})
+			hooks = append(hooks, fsys.Nth(k, fsys.Mutating, func(fsys.Op) error { select {} }))
 		}
 		if p := os.Getenv("KOAN_E2E_COUNT_FILE"); p != "" {
 			hooks = append(hooks, func(op fsys.Op) error {
@@ -53,7 +45,7 @@ func init() {
 			})
 		}
 		if len(hooks) > 0 {
-			env.Ops.FS = fsys.Fault{FS: env.Ops.FS, Hook: fsys.Hooks(hooks...)}
+			env.Ops.FS.Hook = fsys.Hooks(hooks...)
 		}
 		if n := number("KOAN_E2E_LOCK_WAIT_MS"); n > 0 {
 			env.Ops.LockWait = time.Duration(n) * time.Millisecond

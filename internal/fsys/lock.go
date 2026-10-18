@@ -8,7 +8,14 @@ import (
 // flock is syscall.Flock; a test replaces it to inject EINTR.
 var flock = syscall.Flock
 
-func (r *osRoot) Lock(shared bool) (Lock, error) {
+// Lock takes the tree's lock, a flock on the root directory itself, without
+// waiting: exclusive (LOCK_EX) for a write, or shared (LOCK_SH) for a read,
+// which other readers may hold with it. A lock that is held the other way
+// fails with EAGAIN; EINTR is retried.
+func (r *Root) Lock(shared bool) (*Lock, error) {
+	if err := r.before(Op{Name: OpLock, Path: "."}); err != nil {
+		return nil, err
+	}
 	how := syscall.LOCK_EX
 	if shared {
 		how = syscall.LOCK_SH
@@ -38,13 +45,23 @@ func (r *osRoot) Lock(shared bool) (Lock, error) {
 		f.Close()
 		return nil, &os.PathError{Op: "flock", Path: ".", Err: ferr}
 	}
-	return &osLock{f: f}, nil
+	return &Lock{f: f, r: r}, nil
 }
 
-// osLock holds the locked directory's *os.File. While it is referenced, no
-// finalizer can close the descriptor and silently release the lock.
-type osLock struct {
+// Lock is a held lock. It keeps the locked directory's *os.File referenced
+// until Unlock: while it is, no finalizer can close the descriptor and
+// silently release the lock.
+type Lock struct {
 	f *os.File
+	r *Root
 }
 
-func (l *osLock) Unlock() error { return l.f.Close() }
+// Unlock closes the locked descriptor, which releases the lock, even when a
+// hook fails it.
+func (l *Lock) Unlock() error {
+	err := l.r.before(Op{Name: OpUnlock, Path: "."})
+	if cerr := l.f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
