@@ -186,14 +186,7 @@ func (c *call) noCycleThroughNew(blockers, blocks []model.ID) *errs.Error {
 		return nil
 	}
 	var unreadable *errs.Error
-	look := func(n model.ID) (graph.Node, bool) {
-		if f, ok := c.x.Tasks[n]; ok && unreadable == nil {
-			if l := c.t.Load(f, n); l.Err != nil && !l.Gone {
-				unreadable = l.Err
-			}
-		}
-		return c.look(n)
-	}
+	look := c.cycleLook(&unreadable)
 	for _, b := range blocks {
 		for _, x := range blockers {
 			if x == b {
@@ -206,6 +199,20 @@ func (c *call) noCycleThroughNew(blockers, blocks []model.ID) *errs.Error {
 		}
 	}
 	return unreadable
+}
+
+// cycleLook is c.look for a search for a cycle, which follows blocked_by
+// and can't read it from an unusable file: the first one met has its error
+// kept in *unreadable.
+func (c *call) cycleLook(unreadable **errs.Error) func(model.ID) (graph.Node, bool) {
+	return func(n model.ID) (graph.Node, bool) {
+		if f, ok := c.x.Tasks[n]; ok && *unreadable == nil {
+			if l := c.t.Load(f, n); l.Err != nil && !l.Gone {
+				*unreadable = l.Err
+			}
+		}
+		return c.look(n)
+	}
 }
 
 type batchResult struct {
@@ -325,19 +332,14 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	// A folder entry means one to make: every one already there is named.
-	var there []string
+	var there []model.Folder
 	for _, n := range entries {
 		if _, err := c.t.Stat(n.folder.Rel()); err == nil {
-			there = append(there, string(n.folder))
+			there = append(there, n.folder)
 		}
 	}
 	if len(there) > 0 {
-		e := errs.NewConflict(errs.RuleDestinationExists, "%s already exists: a folder entry is a folder to make; to put tasks in one, name it in their folder, and to change its fields, use update-folder", strings.Join(there, ", ")).
-			WithFolders(there...)
-		for _, f := range there {
-			e.WithPaths(c.t.Abs(model.Folder(f).Rel()))
-		}
-		return nil, e
+		return nil, c.destinationExists("already exists: a folder entry is a folder to make; to put tasks in one, name it in their folder, and to change its fields, use update-folder", there...)
 	}
 	if e := c.mustExist(existing); e != nil {
 		return nil, e
@@ -575,14 +577,7 @@ func cmdBlock(c *call) (any, *errs.Error) {
 		// from an unusable file: meeting one, the block is refused, since a
 		// cycle through that file can't be ruled out.
 		var unreadable *errs.Error
-		look := func(n model.ID) (graph.Node, bool) {
-			if f, ok := c.x.Tasks[n]; ok && unreadable == nil {
-				if l := c.t.Load(f, n); l.Err != nil && !l.Gone {
-					unreadable = l.Err
-				}
-			}
-			return c.look(n)
-		}
+		look := c.cycleLook(&unreadable)
 		for _, b := range bs {
 			if slices.Contains(tf.BlockedBy, b) {
 				continue

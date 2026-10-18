@@ -35,20 +35,6 @@ func Dir() string {
 	return filepath.Join(filepath.Dir(file), "..", "..", "schemas")
 }
 
-// IDs returns the $id of every schema.
-func IDs(t testing.TB) []string {
-	t.Helper()
-	files, err := filepath.Glob(filepath.Join(Dir(), "*.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ids := make([]string, len(files))
-	for i, f := range files {
-		ids[i] = strings.TrimSuffix(filepath.Base(f), ".json")
-	}
-	return ids
-}
-
 func load() {
 	compiler = jsonschema.NewCompiler()
 	compiler.UseRegexpEngine(goRegexp)

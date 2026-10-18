@@ -69,9 +69,7 @@ func cmdCreateFolder(c *call) (any, *errs.Error) {
 	res := folderResult{FoldersCreated: []model.Folder{}}
 	if len(missing) == 0 {
 		if hasTitle || hasExtra || hasNotes {
-			return nil, errs.NewConflict(errs.RuleDestinationExists,
-				"%s already exists: set its title and extra with update-folder, and edit its notes in its @folder.md", f).
-				WithFolders(string(f)).WithPaths(c.t.Abs(f.Rel()))
+			return nil, c.destinationExists("already exists: set its title and extra with update-folder, and edit its notes in its @folder.md", f)
 		}
 		res.Folder = c.passFolder(f)
 		return res, nil
@@ -231,12 +229,8 @@ func cmdMoveFolder(c *call) (any, *errs.Error) {
 		res.Folder = c.passFolder(to)
 		return res, nil
 	}
-	exists := func() *errs.Error {
-		return errs.NewConflict(errs.RuleDestinationExists, "%s already exists", to).
-			WithFolders(string(to)).WithPaths(c.t.Abs(to.Rel()))
-	}
 	if _, err := c.t.Stat(to.Rel()); err == nil {
-		return nil, exists()
+		return nil, c.destinationExists("already exists", to)
 	}
 	created, e := c.ensure(to.Parent())
 	res.FoldersCreated = created
@@ -248,7 +242,7 @@ func cmdMoveFolder(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	if taken {
-		return nil, exists()
+		return nil, c.destinationExists("already exists", to)
 	}
 	res.Folder = c.passFolder(to)
 	return res, nil

@@ -5,6 +5,7 @@ package store
 
 import (
 	"path"
+	"slices"
 	"syscall"
 	"time"
 
@@ -299,14 +300,13 @@ func (t *Tree) Touched(rel string) { t.note(rel) }
 // Changed lists what the command has created, rewritten, or removed so far.
 func (t *Tree) Changed() []string { return t.changed }
 
-func (t *Tree) note(rel string) {
-	p := t.Abs(rel)
-	for _, c := range t.changed {
-		if c == p {
-			return
-		}
+func (t *Tree) note(rel string) { t.noteAbs(t.Abs(rel)) }
+
+// noteAbs records a change to path p, which may be outside the tree.
+func (t *Tree) noteAbs(p string) {
+	if !slices.Contains(t.changed, p) {
+		t.changed = append(t.changed, p)
 	}
-	t.changed = append(t.changed, p)
 }
 
 // Abs is the filesystem path of a path relative to the root.

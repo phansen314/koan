@@ -3,7 +3,6 @@ package store
 import (
 	"io/fs"
 	"path"
-	"slices"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
@@ -36,20 +35,18 @@ func Publish(r fsys.Root, rel string, data []byte, perm fs.FileMode, replace boo
 		r.Remove(tmp)
 		return err
 	}
+	publish := r.Link
 	if replace {
-		if err := r.Rename(tmp, rel); err != nil {
-			r.Remove(tmp)
-			return err
-		}
-		r.SyncDir(path.Dir(rel))
-		return nil
+		publish = r.Rename
 	}
-	if err := r.Link(tmp, rel); err != nil {
+	if err := publish(tmp, rel); err != nil {
 		r.Remove(tmp)
 		return err
 	}
 	r.SyncDir(path.Dir(rel))
-	r.Remove(tmp)
+	if !replace {
+		r.Remove(tmp)
+	}
 	return nil
 }
 
@@ -120,17 +117,12 @@ func (t *Tree) SaveState() *errs.Error {
 	if err != nil {
 		return errs.New(errs.Internal, "encode the state file: %v", err)
 	}
-	record := func(p string) {
-		if !slices.Contains(t.changed, p) {
-			t.changed = append(t.changed, p)
-		}
-	}
 	dir, err := env.FS.OpenRoot(env.StateDir())
 	if errs.IsErrno(err, syscall.ENOENT) {
 		if err := env.FS.MkdirAll(env.StateDir(), 0o700); err != nil {
 			return errs.FromOS(env.StateDir(), err)
 		}
-		record(env.StateDir())
+		t.noteAbs(env.StateDir())
 		dir, err = env.FS.OpenRoot(env.StateDir())
 	}
 	if err != nil {
@@ -147,7 +139,7 @@ func (t *Tree) SaveState() *errs.Error {
 	if err := Publish(dir, StateName, data, StateMode, true); err != nil {
 		return errs.FromOS(env.StatePath(), err)
 	}
-	record(env.StatePath())
+	t.noteAbs(env.StatePath())
 	return nil
 }
 
@@ -246,20 +238,8 @@ func (t *Tree) mustBeFolder(f model.Folder) *errs.Error {
 // FolderExists reports whether f is a folder. A missing one is not an
 // error; a file or symlink on the path is a not-a-folder conflict.
 func (t *Tree) FolderExists(f model.Folder) (bool, *errs.Error) {
-	cur := model.Root
-	for _, seg := range f.Segments() {
-		cur = cur.Join(seg)
-		fi, err := t.root.Lstat(cur.Rel())
-		switch {
-		case errs.IsErrno(err, syscall.ENOENT):
-			return false, nil
-		case err != nil:
-			return false, errs.FromOS(t.Abs(cur.Rel()), err)
-		case !fi.IsDir():
-			return false, notAFolder(t, cur)
-		}
-	}
-	return true, nil
+	missing, e := t.Missing(f)
+	return e == nil && len(missing) == 0, e
 }
 
 // Move renames a file or folder to a name that must be free. exists is true
