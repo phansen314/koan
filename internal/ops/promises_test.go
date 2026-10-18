@@ -914,3 +914,59 @@ func TestBatchFoldersFailPartway(t *testing.T) {
 		t.Errorf("doctor after a failed batch: %v", got)
 	}
 }
+
+// raceAt makes the folder dir, as an outside change, just before koan
+// renames a new folder into place there.
+func raceAt(dir string) fsys.Hook {
+	return func(op fsys.Op) error {
+		if op.Name == fsys.OpRenameNR && strings.HasSuffix(dir, "/"+op.NewPath) {
+			os.Mkdir(dir, 0o755)
+		}
+		return nil
+	}
+}
+
+// A folder entry that appears while the batch runs stops it there: the
+// folders before it stay made, and the error names them.
+func TestBatchFolderEntryRaced(t *testing.T) {
+	w := ready(t)
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("b"))}
+	e := w.fail("create-batch", `{"folders":[{"path":"/a"},{"path":"/b","title":"B"}],"tasks":[{"title":"t","folder":"/b"}]}`, errs.Conflict, errs.RuleDestinationExists)
+	if !slices.Equal(e.Folders, []string{"/a"}) || len(e.IDs) != 0 || !slices.Equal(e.Paths, []string{w.root("b")}) || !strings.Contains(e.Message, "/b") {
+		t.Errorf("folders %v, ids %v, paths %v, message %q", e.Folders, e.IDs, e.Paths, e.Message)
+	}
+	// create-folder, given fields, is stopped the same way; without them, a
+	// folder that appeared is fine.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("c"))}
+	w.fail("create-folder", `{"folder":"/c","title":"C"}`, errs.Conflict, errs.RuleDestinationExists)
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: raceAt(w.root("d"))}
+	if got := w.ok("create-folder", `{"folder":"/d"}`); len(got["folders_created"].([]any)) != 0 {
+		t.Errorf("create-folder /d: %v", got)
+	}
+}
+
+// A failure in writing the tasks names the folders made, the tasks
+// created, and every file written.
+func TestBatchTasksFailAfterFolders(t *testing.T) {
+	w := ready(t)
+	// Two links make each folder, and two each task: the seventh is task
+	// 4's file, after folders 1 and 2 and task 3 are made whole.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpLink, "", 7, 28 /* ENOSPC */)}
+	env := w.run("create-batch", `{"folders":[{"path":"/a/b","title":"B"}],"tasks":[{"title":"t","folder":"/a/b"},{"title":"u","folder":"/a/b"},{"title":"v"}]}`)
+	w.env.FS = fsys.OS{}
+	if env.OK {
+		t.Fatal("succeeded")
+	}
+	e := env.Error
+	if !slices.Equal(e.Folders, []string{"/a", "/a/b"}) || !slices.Equal(e.IDs, []int64{3}) {
+		t.Errorf("folders %v, ids %v", e.Folders, e.IDs)
+	}
+	for _, p := range []string{w.root("a"), w.root("a/b"), w.root("a/b/3.json")} {
+		if !slices.Contains(e.ChangedPaths, p) {
+			t.Errorf("changed_paths %v lacks %s", e.ChangedPaths, p)
+		}
+	}
+	// The batch's folder is checked even when no task uses it.
+	w.fail("create-batch", `{"folder":"@99","folders":[{"path":"/x"}]}`, errs.NotFound, "")
+	w.fail("show-folder", `{"folder":"/x"}`, errs.NotFound, "")
+}

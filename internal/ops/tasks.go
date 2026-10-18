@@ -248,7 +248,11 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	var raws []json.RawMessage
 	in.get("tasks", false, &raws, "a list of tasks")
 	if n := len(raws) + nFolders; n < 1 || n > MaxBatch {
-		c.in.bad("/tasks", "must hold 1 to %d entries between it and folders", MaxBatch)
+		if c.in.has("tasks") {
+			c.in.bad("/tasks", "must hold 1 to %d entries between it and folders", MaxBatch)
+		} else {
+			c.in.bad("/folders", "must hold 1 to %d entries between it and tasks", MaxBatch)
+		}
 	}
 	tasks := make([]newTask, len(raws))
 	refAt := map[string]int{}
@@ -315,7 +319,7 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		}
 	}
 	if len(there) > 0 {
-		e := errs.NewConflict(errs.RuleDestinationExists, "%s already there: put tasks into a folder that is by naming it in their folder", strings.Join(there, ", ")).
+		e := errs.NewConflict(errs.RuleDestinationExists, "%s already exists: a folder entry is a folder to make; to put tasks in one, name it in their folder, and to change its fields, use update-folder", strings.Join(there, ", ")).
 			WithFolders(there...)
 		for _, f := range there {
 			e.WithPaths(c.t.Abs(model.Folder(f).Rel()))
@@ -323,6 +327,10 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	if e := c.mustExist(existing); e != nil {
+		return nil, e
+	}
+	// The batch's folder is checked even when no task falls back to it.
+	if _, e := c.resolve(folder); e != nil {
 		return nil, e
 	}
 	var targets []model.Folder
@@ -352,8 +360,17 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 			res.Folders[f] = first + model.ID(i)
 		}
 	}
+	// A failure from here on names what was made: the error's folders are
+	// the folders made, and its ids the tasks.
+	made := func(e *errs.Error) *errs.Error {
+		e.Folders = []string{}
+		for _, f := range res.FoldersCreated {
+			e.Folders = append(e.Folders, string(f))
+		}
+		return e.WithIDs(res.IDs...)
+	}
 	if e != nil {
-		return nil, e
+		return nil, made(e)
 	}
 	base := first + model.ID(len(missing))
 	for i, n := range tasks {
@@ -367,7 +384,7 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 			res.IDs = append(res.IDs, id)
 		}
 		if e != nil {
-			return nil, e.WithIDs(res.IDs...)
+			return nil, made(e)
 		}
 		if n.ref != "" {
 			res.Refs[n.ref] = id

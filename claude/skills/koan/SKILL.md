@@ -219,7 +219,7 @@ EOF
 - The result is small: `ids` (in input order), `refs` (ref → ID), `folders` (path → ID, for each folder made), and `folders_created`.
 - Everything is checked before anything is written: an `invalid-input` names every bad field as `/tasks/<i>/…`, and a `not-found` every missing ID. Fix and rerun.
 - To make an existing task wait on the plan, `block` it afterwards: `koan block 40 --blockers <ids>`.
-- A `create-batch` error with `.error.changed_paths` stopped partway through: the folders in it were made, whole, and the first `len(.error.ids)` tasks of the input were created, in order; the rest weren't. Don't rerun the whole batch (it would duplicate the tasks, and refuse the folders). Rerun only the rest, without the folders made and with each ref to a created task replaced by its ID, and tell the user what happened.
+- A `create-batch` error with `.error.changed_paths` stopped partway through: the folders in `.error.folders` were made, whole, and the first `len(.error.ids)` tasks of the input were created, in order; the rest weren't. Don't rerun the whole batch (it would duplicate the tasks, and refuse the folders). Rerun only the rest, without the folders made and with each ref to a created task replaced by its ID, and tell the user what happened.
 
 Rules the commands enforce:
 
