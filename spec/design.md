@@ -44,8 +44,6 @@ The folder file holds the folder's fields:
   "schema": 1,
   "id": 57,
   "title": null,
-  "start": null,
-  "done": null,
   "extra": {}
 }
 ```
@@ -57,10 +55,9 @@ Every key is required and no other key is allowed.
 | `schema` | The format this file is in (see [Formats](#formats)). |
 | `id` | The folder's identity, from the same counter as task IDs (see [IDs](#ids)). Never changes: moving or renaming the folder keeps it. |
 | `title` | `null`, or a title by the task rule. |
-| `start`, `done` | `null`, or a task ID. |
 | `extra` | Any JSON object. koan stores it and never interprets it. |
 
-`title`, `start`, `done`, and `extra` are for folder metadata and gates. No command sets them yet: koan writes `null`, `null`, `null`, and `{}`, and keeps any valid values a file holds.
+No command sets `title` or `extra` yet: koan writes `null` and `{}`, and keeps any valid values a file holds.
 
 A folder exists when its directory does. A missing `@folder.md` reads as empty notes. A folder with no folder file is still a folder, whose tasks and folders count as usual; it has no ID until one is written, and `doctor` reports it.
 

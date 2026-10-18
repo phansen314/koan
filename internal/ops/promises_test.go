@@ -532,7 +532,7 @@ func TestFolderFilesAndIDs(t *testing.T) {
 	w.ok("create", `{"title":"a","folder":"/p"}`) // /p is 1, the task 2
 	w.ok("create-folder", `{"folder":"/q"}`)      // 3
 	w.ok("create-folder", `{"folder":"/r"}`)      // 4
-	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":1,"id":2,"title":null,"start":null,"done":null,"extra":{}}`), 0o644)
+	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":1,"id":2,"title":null,"extra":{}}`), 0o644)
 	os.WriteFile(w.root("r/folder.json"), []byte(`{"schema":1,"id":4}`), 0o644)
 	want := []string{"duplicate-id @p/@2.json,@q/@folder.json", "unusable-file @r/@folder.json"}
 	if fs := w.findings(); !slices.Equal(fs, want) {

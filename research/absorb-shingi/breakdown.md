@@ -2,9 +2,17 @@
 
 2026-10-17. Units of work for [review.md](review.md)'s decisions, with changes to existing features first and new features last. Each unit is one branch: its spec changes (`spec/`, `schemas/`) first, then the code and tests, merged before the next one starts unless it says otherwise.
 
+## Gates deferred (decided 2026-10-18)
+
+Gates are not implemented in this work. The user is still deciding how they should work; the best idea so far is a `--blocks` option on `create` (the new task blocks the tasks named), then seeing in real use whether gates are needed at all. So:
+
+- `@folder.json` has no `start` or `done`: its fields are `schema`, `id`, `title`, `extra`.
+- Unit 6 (gates) is dropped, and every gate part of the other units with it: gate links in `create-batch` (`after`, `before`, wiring inline tasks), and removing gates in `forget-folder`.
+- Everything else goes ahead.
+
 ## One format bump (decided 2026-10-17)
 
-koan's rule is that every change to a file's fields is a new format, with a conversion in `migrate`. So that the live tree is migrated once, unit 2 introduces format 2 whole: the `@` names, and a `@folder.json` in every koan folder in its final shape (`schema`, `id`, `title`, `start`, `done`, `extra`, the last four `null` or `{}`), with an empty `@folder.md`. Commands that read or set those fields come in units 4 and 6. Unit 2 does part of a new feature's work early, by design. (The alternative, a format bump per feature, would have meant up to three migrations.)
+koan's rule is that every change to a file's fields is a new format, with a conversion in `migrate`. So that the live tree is migrated once, unit 2 introduces format 2 whole: the `@` names, and a `@folder.json` in every koan folder in its final shape (`schema`, `id`, `title`, `extra`, the last two `null` and `{}`; `start` and `done` were dropped with gates), with an empty `@folder.md`. Commands that read or set those fields come in units 4 and 6. Unit 2 does part of a new feature's work early, by design. (The alternative, a format bump per feature, would have meant up to three migrations.)
 
 ## Changes to existing features
 
@@ -38,9 +46,9 @@ koan's rule is that every change to a file's fields is a new format, with a conv
 
 ### 4. Folder metadata
 
-- The files exist from unit 2; this unit makes `title`, `extra`, and the notes usable (`start` and `done` stay `null` until unit 6).
+- The files exist from unit 2; this unit makes `title`, `extra`, and the notes usable.
 - `show-folder` and `update-folder` (`--title`, `--extra-merge`, `--extra-remove`, `--extra-replace-all`), mirroring `show` and `update`. `create-folder` takes `--title`, `--extra`, `--notes`.
-- The folder output shape, used by `show-folder`, `list --include-folders`, and every result that names a folder: id, path, dir, title, extra, notes_path (gate fields join in unit 6). Settles review open item 2.
+- The folder output shape, used by `show-folder`, `list --include-folders`, and every result that names a folder: id, path, dir, title, extra, notes_path. Settles review open item 2.
 - Invariant and finding: a `blocked_by` never names a folder's ID.
 
 ### 5. References

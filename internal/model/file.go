@@ -56,8 +56,6 @@ type FolderFile struct {
 	Schema int64          `json:"schema"`
 	ID     ID             `json:"id"`
 	Title  *string        `json:"title"`
-	Start  *ID            `json:"start"`
-	Done   *ID            `json:"done"`
 	Extra  map[string]any `json:"extra"`
 }
 
@@ -66,7 +64,7 @@ func NewFolderFile(id ID) *FolderFile {
 	return &FolderFile{Schema: FileFormat, ID: id, Extra: map[string]any{}}
 }
 
-var folderKeys = []string{"schema", "id", "title", "start", "done", "extra"}
+var folderKeys = []string{"schema", "id", "title", "extra"}
 
 // DecodeFolderFile reads a folder file in this binary's format and checks
 // every rule. A nil error and no problems means the file is usable.
@@ -75,7 +73,7 @@ func DecodeFolderFile(data []byte) (*FolderFile, []Problem, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if ps := missing(m, folderKeys, "title", "start", "done"); ps != nil {
+	if ps := missing(m, folderKeys, "title"); ps != nil {
 		return nil, ps, nil
 	}
 	var f FolderFile
@@ -101,12 +99,6 @@ func (f *FolderFile) Check() []Problem {
 		} else if title != *f.Title {
 			bad("/title", "has leading or trailing whitespace")
 		}
-	}
-	if f.Start != nil && !ValidID(*f.Start) {
-		bad("/start", "is not a task ID")
-	}
-	if f.Done != nil && !ValidID(*f.Done) {
-		bad("/done", "is not a task ID")
 	}
 	return ps
 }

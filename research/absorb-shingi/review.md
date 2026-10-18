@@ -12,13 +12,17 @@ The main argument holds. shingi already says the working tree decides and koan f
 
 The notes' biggest effect is one they don't state: they reverse a basic rule in `spec/design.md`, "A folder is a directory. It has no fields and no identity." Folders now have identity, a metadata file and pointers into tasks, and the invariants, `doctor`, `repair` and the per-command rules all need to account for it.
 
+## Gates deferred (2026-10-18)
+
+Gates are not implemented in this work; the Gates section below, and every gate rule elsewhere, is parked. See breakdown.md.
+
 ## Decisions (2026-10-17)
 
 ### Ownership on disk
 
 - **`@` on every entry koan owns,** files included: `@name/`, `@41.json`, `@41.md`, `@folder.json`, `@folder.md`. Everything else is material. This replaces the notes' unprefixed `41.json` and `folder.json`, and removes the clash between material named `2026.md` and task notes, so `repair` keeps its `orphan-notes` fixes, which only ever touch `@N.md`. The disk name `@41.json` matches the reference `@41`. A task `@41.json` and a folder `@41/` can't clash, since folder names have no dots. In-folder links read `[research](@research/@folder.md)`.
 - **`folder.md` is always written**, empty when no notes are given, like an ordinary task's `.md`. Only gates skip an empty `.md`.
-- **`folder.json` has every key**, as task files do: `schema`, `id`, `title`, `start`, `done`, `extra`, with `title`, `start` and `done` as `null` when unset. The field is `id`, not the notes' `number`: folders and tasks draw from one counter, so a folder's ID and a task's are the same kind of thing, and are called the same. Every koan folder has an ID; the root has none and can't be gated.
+- **`folder.json` has every key**, as task files do: `schema`, `id`, `title`, `extra`, with `title` `null` when unset (`start` and `done` were dropped with gates, 2026-10-18). The field is `id`, not the notes' `number`: folders and tasks draw from one counter, so a folder's ID and a task's are the same kind of thing, and are called the same. Every koan folder has an ID; the root has none and can't be gated.
 - **Case: no check.** Names stay byte for byte, as koan decided before. The batch refuses exact duplicate paths only.
 
 ### References
