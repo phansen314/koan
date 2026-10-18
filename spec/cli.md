@@ -14,7 +14,8 @@ The interactive picker is not part of this document.
 | `0` | Success (`ok: true`), with or without warnings. |
 | `1` | The operation failed. The envelope's `error.kind` says how. |
 | `2` | The command line could not be understood: `error.kind` is `usage`. |
-| other | koan was killed, or could not write to stdout. The outcome is unknown: look before running it again ([Crashes and failures](design.md#crashes-and-failures)). |
+| `3` | koan could not write the envelope to stdout. The outcome is unknown: look before running it again ([Crashes and failures](design.md#crashes-and-failures)). |
+| other | koan was killed. The outcome is unknown, as for `3`. |
 
 Callers branch on `error.kind`, not on the exit code.
 

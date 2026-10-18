@@ -79,6 +79,14 @@ Every file koan writes goes through a temp file named `.koan-tmp-<random>` in th
 - **A folder is made with `mkdir`**, then its folder file and notes are written in it as any file is. A kill or failure between leaves a folder without its folder file, `doctor`'s `missing-folder-file`. A folder that appears under the name first, by an outside change, wins: the command does not list it in `folders_created`. `changed_paths` lists the folder, not its files.
 - **A folder is removed depth first, one entry at a time**, in an order that leaves nothing `repair` would get wrong if cut short: in each folder, notes and everything else first, then task files, so no notes are left without their task, then `@folder.json`, so no folder is left without its folder file, which `repair` would give a new ID. A symlink is removed, never followed. The folder is in `changed_paths` even when the removal fails, since it may have removed part of it; running `delete-folder` again removes the rest.
 
+### The order of a command's writes
+
+A command that changes several files orders its writes so that a kill between any two leaves something `doctor` finds, and never a change that looks finished.
+
+- **`create`**: the counter first, then any folders, then each task in `blocks`, in ascending order, then the task file, then the notes. The tasks in `blocks` go before the task they wait on, so that a kill between leaves them waiting on an ID with no task, a dangling reference, as `delete` leaves one. The other order would leave the new task with its dependents still free, and nothing to show for it.
+- **`create-batch`**: the counter is raised once, by the number of folders and tasks the batch makes. Then the folders are made, parents first, each with its folder file and notes; then the tasks are written in input order, each as `create` writes one.
+- **`delete`**: the notes first, then the task file, then the other tasks are rewritten, then its claim ends. A kill after the notes leaves the task, and `delete` can be run again. A kill after the task file leaves references to a task that is gone; the other order would free its dependents with nothing to show for it.
+
 ### Fault injection
 
 `fsys` has one implementation, the real one, with an optional hook that every call runs first. The hook is told the call, its paths, and whether it changes the disk; it can fail the call with an errno, or kill the process. It is the one seam for testing failures and crashes: the injections that count calls (fail or kill at the n-th change to the disk, or the n-th call of a kind) are one counter with an action. Unit tests set the hook directly; the code that sets it in the binary, for the end-to-end crash tests, is behind the build tag `e2e_hooks`, so a released binary cannot inject faults.
@@ -117,7 +125,7 @@ There is no index on disk; a command that needs one builds it.
 
 - **One exit point.** `main` calls `run()`, which returns the exit code; nothing else calls `os.Exit`, so deferred cleanup always runs.
 - **The envelope is written with one `Write`**, and stdout's `Close` is checked. Only then does koan exit `0`, `1`, or `2`, and only then is the stderr line written.
-- **SIGPIPE is caught**, so a write to a closed pipe returns `EPIPE` and takes the same "could not write" path as a full disk, with a non-zero exit above `2`.
+- **SIGPIPE is caught**, so a write to a closed pipe returns `EPIPE` and takes the same "could not write" path as a full disk, with exit `3`.
 - **`debug.SetTraceback("crash")` is set at startup.** Go's default exit status for a panic is `2`, which is koan's code for a usage error, where nothing ran. With it, a panic ends by `SIGABRT`, exit 134: outcome unknown, as it should be.
 - No handler is installed for `SIGINT` or `SIGTERM`: an interrupted koan dies by the signal, like any crash.
 

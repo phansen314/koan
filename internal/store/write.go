@@ -69,7 +69,7 @@ func (t *Tree) WriteTask(f model.Folder, tf *model.TaskFile, create bool) *errs.
 	if err != nil {
 		return errs.New(errs.Internal, "encode task %d: %v", tf.ID, err)
 	}
-	if e := t.put(TaskRel(f, tf.ID), data, !create); e != nil {
+	if e := t.put(model.TaskRel(f, tf.ID), data, !create); e != nil {
 		return e
 	}
 	t.files[tf.ID] = &Loaded{File: tf}
@@ -80,7 +80,7 @@ func (t *Tree) WriteTask(f model.Folder, tf *model.TaskFile, create bool) *errs.
 // is published by link, so a .md already there is never overwritten: the
 // task then has that file as its notes, and the error says so.
 func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error {
-	rel := NotesRel(f, id)
+	rel := model.NotesRel(f, id)
 	err := Publish(t.root, rel, []byte(notes), FileMode, false)
 	switch {
 	case err == nil:
@@ -97,9 +97,9 @@ func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error
 func (t *Tree) WriteMeta(schema int64, create bool) *errs.Error {
 	data, err := model.Encode(model.Meta{Schema: schema})
 	if err != nil {
-		return errs.New(errs.Internal, "encode %s: %v", MetaName, err)
+		return errs.New(errs.Internal, "encode %s: %v", model.MetaName, err)
 	}
-	if e := t.put(MetaName, data, !create); e != nil {
+	if e := t.put(model.MetaName, data, !create); e != nil {
 		return e
 	}
 	t.Meta = &model.Meta{Schema: schema}
@@ -191,11 +191,11 @@ func (t *Tree) MakeFolder(f model.Folder, ff *model.FolderFile, notes string) (m
 	t.root.SyncDir(f.Parent().Rel())
 	t.note(f.Rel())
 	// The folder's own path covers its files in changed_paths.
-	if err := Publish(t.root, FolderFileRel(f), data, FileMode, false); err != nil {
-		return true, errs.FromOS(t.Abs(FolderFileRel(f)), err)
+	if err := Publish(t.root, model.FolderFileRel(f), data, FileMode, false); err != nil {
+		return true, errs.FromOS(t.Abs(model.FolderFileRel(f)), err)
 	}
-	if err := Publish(t.root, FolderNotesRel(f), []byte(notes), FileMode, false); err != nil {
-		return true, errs.FromOS(t.Abs(FolderNotesRel(f)), err)
+	if err := Publish(t.root, model.FolderNotesRel(f), []byte(notes), FileMode, false); err != nil {
+		return true, errs.FromOS(t.Abs(model.FolderNotesRel(f)), err)
 	}
 	return true, nil
 }
@@ -208,7 +208,7 @@ func (t *Tree) WriteFolderFile(f model.Folder, ff *model.FolderFile, create bool
 	if err != nil {
 		return errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
 	}
-	return t.put(FolderFileRel(f), data, !create)
+	return t.put(model.FolderFileRel(f), data, !create)
 }
 
 func notAFolder(t *Tree, f model.Folder) *errs.Error {
@@ -303,7 +303,7 @@ func (t *Tree) discard(rel string) error {
 // discardRank orders a folder's entries for removal: the folder file last,
 // task files before it, and everything else first.
 func discardRank(e fs.DirEntry) int {
-	if e.Name() == FolderFileName {
+	if e.Name() == model.FolderFileName {
 		return 2
 	}
 	if _, suffix, ok := model.TaskFilename(e.Name()); ok && suffix == model.TaskSuffix && !e.IsDir() {

@@ -224,7 +224,7 @@ func (c *call) pass(id model.ID) *model.TaskFile {
 	l := c.t.Load(f, id)
 	if l.Err != nil {
 		if !l.Gone {
-			c.warn(errs.WarnUnusableFile, l.Err.Message, []model.ID{id}, c.t.Abs(store.TaskRel(f, id)))
+			c.warn(errs.WarnUnusableFile, l.Err.Message, []model.ID{id}, c.t.Abs(model.TaskRel(f, id)))
 		}
 		return nil
 	}
@@ -247,7 +247,7 @@ func (c *call) look(id model.ID) (graph.Node, bool) {
 	if len(gone) > 0 {
 		c.warn(errs.WarnDanglingReference,
 			fmt.Sprintf("task %d is blocked by %v, which do not exist", id, gone),
-			append([]model.ID{id}, gone...), c.t.Abs(store.TaskRel(c.x.Tasks[id], id)))
+			append([]model.ID{id}, gone...), c.t.Abs(model.TaskRel(c.x.Tasks[id], id)))
 	}
 	return graph.Node{Open: tf.Open(), Priority: tf.Priority, BlockedBy: tf.BlockedBy}, true
 }
@@ -259,7 +259,7 @@ func (c *call) task(f model.Folder, tf *model.TaskFile) model.Task {
 	t := model.Task{
 		TaskFile:  *tf,
 		Folder:    f,
-		NotesPath: c.t.Abs(store.NotesRel(f, tf.ID)),
+		NotesPath: c.t.Abs(model.NotesRel(f, tf.ID)),
 		Readiness: readiness,
 		Blocking:  blocking,
 	}
@@ -267,215 +267,6 @@ func (c *call) task(f model.Folder, tf *model.TaskFile) model.Task {
 		t.Claim = c.t.Claim(tf.ID)
 	}
 	return t
-}
-
-// folderIDs maps each folder ID to the folders that have it, reading every
-// folder file once per command. A folder file koan can't use is a warning:
-// it may have held the ID asked for.
-func (c *call) folderIDs() (map[model.ID][]model.Folder, *errs.Error) {
-	if c.byID != nil {
-		return c.byID, nil
-	}
-	x, e := c.index()
-	if e != nil {
-		return nil, e
-	}
-	c.byID = map[model.ID][]model.Folder{}
-	eachFolderFile(c.t, x, func(f model.Folder, ff *model.FolderFile, e *errs.Error) {
-		if e != nil {
-			c.warn(errs.WarnUnusableFile, e.Message, []model.ID{}, c.t.Abs(store.FolderFileRel(f)))
-			return
-		}
-		c.byID[ff.ID] = append(c.byID[ff.ID], f)
-	})
-	return c.byID, nil
-}
-
-// eachFolderFile reads the folder file of every folder in x that has one,
-// in tree order, and calls fn with it, or with the error that makes it
-// unusable. A file that is gone by the time it is read is skipped.
-func eachFolderFile(t *store.Tree, x *store.Index, fn func(f model.Folder, ff *model.FolderFile, e *errs.Error)) {
-	for _, f := range x.Folders {
-		if !x.Filed[f] {
-			continue
-		}
-		if ff, _, e := t.LoadFolder(f); ff != nil || e != nil {
-			fn(f, ff, e)
-		}
-	}
-}
-
-// loadFolderFiles reads every folder file in x: the usable ones by folder,
-// and the error of each that can't be used.
-func loadFolderFiles(t *store.Tree, x *store.Index) (map[model.Folder]*model.FolderFile, map[model.Folder]*errs.Error) {
-	files, bad := map[model.Folder]*model.FolderFile{}, map[model.Folder]*errs.Error{}
-	eachFolderFile(t, x, func(f model.Folder, ff *model.FolderFile, e *errs.Error) {
-		if e != nil {
-			bad[f] = e
-		} else {
-			files[f] = ff
-		}
-	})
-	return files, bad
-}
-
-// highestID is the highest ID in the tree: of a task, of a folder whose file
-// is in folders, or of notes, which hold their ID when their task is gone.
-func highestID(x *store.Index, folders map[model.Folder]*model.FolderFile) model.ID {
-	var highest model.ID
-	for id := range x.Tasks {
-		highest = max(highest, id)
-	}
-	for id := range x.Notes {
-		highest = max(highest, id)
-	}
-	for _, ff := range folders {
-		highest = max(highest, ff.ID)
-	}
-	return highest
-}
-
-// holder finds what has ID id: a task, in folder f, or folder f itself.
-// Nothing is not-found; more than one is duplicate-id.
-func (c *call) holder(id model.ID) (f model.Folder, isTask bool, e *errs.Error) {
-	byID, e := c.folderIDs()
-	if e != nil {
-		return "", false, e
-	}
-	tf, isTask := c.x.Tasks[id]
-	folders := byID[id]
-	switch {
-	case isTask && len(folders) == 0:
-		return tf, true, nil
-	case !isTask && len(folders) == 1:
-		return folders[0], false, nil
-	case !isTask && len(folders) == 0:
-		return "", false, errs.New(errs.NotFound, "no task or folder has ID %d", id).WithIDs(id)
-	}
-	e = errs.NewConflict(errs.RuleDuplicateID, "ID %d is held by more than one task or folder", id).WithIDs(id)
-	if isTask {
-		e.WithPaths(c.t.Abs(store.TaskRel(tf, id)))
-	}
-	for _, f := range folders {
-		e.WithPaths(c.t.Abs(store.FolderFileRel(f)))
-	}
-	return "", false, e
-}
-
-// resolve is the folder r names. One named by ID must exist.
-func (c *call) resolve(r folderRef) (model.Folder, *errs.Error) {
-	if r.id == 0 {
-		return r.path, nil
-	}
-	f, isTask, e := c.holder(r.id)
-	if e != nil {
-		if e.Kind == errs.NotFound {
-			e.Message = fmt.Sprintf("no folder has ID %d", r.id)
-		}
-		return "", e
-	}
-	if isTask {
-		return "", errs.New(errs.NotFound, "%d is the ID of a task, in %s, not of a folder", r.id, f).WithIDs(r.id)
-	}
-	return f, nil
-}
-
-// folderOrNotFound checks that folder f exists.
-func (c *call) folderOrNotFound(f model.Folder) *errs.Error {
-	ok, e := c.t.FolderExists(f)
-	if e != nil {
-		return e
-	}
-	if !ok {
-		return errs.New(errs.NotFound, "folder %s does not exist", f).WithFolders(string(f))
-	}
-	return nil
-}
-
-// plan lists the folders missing on the paths to the folders fs, each
-// once, in tree order: the order they are made in, and take IDs in.
-func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
-	var missing []model.Folder
-	for _, f := range fs {
-		m, e := c.t.Missing(f)
-		if e != nil {
-			return nil, e
-		}
-		for _, g := range m {
-			if !slices.Contains(missing, g) {
-				missing = append(missing, g)
-			}
-		}
-	}
-	slices.SortFunc(missing, model.TreeOrder)
-	return missing, nil
-}
-
-// newFolder is a folder asked for by create-folder or a create-batch
-// folder entry, with what it is made with.
-type newFolder struct {
-	folder model.Folder
-	title  *string
-	extra  map[string]any
-	notes  string
-}
-
-// makeFolders makes the planned folders, parents first, the first taking
-// the ID first and each the next. Each folder asked for gets its title,
-// extra, and notes; one that is already there, which only an outside change
-// can have put there, stops it with destination-exists. It returns the
-// folders it made.
-func (c *call) makeFolders(missing []model.Folder, first model.ID, asked ...newFolder) ([]model.Folder, *errs.Error) {
-	made := []model.Folder{}
-	for i, f := range missing {
-		ff, notes := model.NewFolderFile(first+model.ID(i)), ""
-		j := slices.IndexFunc(asked, func(n newFolder) bool { return n.folder == f })
-		if j >= 0 {
-			ff.Title, notes = asked[j].title, asked[j].notes
-			if asked[j].extra != nil {
-				ff.Extra = asked[j].extra
-			}
-		}
-		ok, e := c.t.MakeFolder(f, ff, notes)
-		if ok {
-			made = append(made, f)
-		}
-		if e != nil {
-			return made, e
-		}
-		if !ok && j >= 0 {
-			return made, c.destinationExists("appeared while it was being made: its title, extra, and notes were not set", f)
-		}
-	}
-	return made, nil
-}
-
-// destinationExists is the conflict over folders fs, which are already
-// there: msg follows their names.
-func (c *call) destinationExists(msg string, fs ...model.Folder) *errs.Error {
-	names := make([]string, len(fs))
-	for i, f := range fs {
-		names[i] = string(f)
-	}
-	e := errs.NewConflict(errs.RuleDestinationExists, "%s %s", strings.Join(names, ", "), msg).WithFolders(names...)
-	for _, f := range fs {
-		e.WithPaths(c.t.Abs(f.Rel()))
-	}
-	return e
-}
-
-// ensure makes folder f and any missing folders above it, each with an ID
-// of its own, and returns the folders it made.
-func (c *call) ensure(f model.Folder) ([]model.Folder, *errs.Error) {
-	missing, e := c.plan(f)
-	if e != nil || len(missing) == 0 {
-		return []model.Folder{}, e
-	}
-	first, e := c.issue(len(missing))
-	if e != nil {
-		return []model.Folder{}, e
-	}
-	return c.makeFolders(missing, first)
 }
 
 // dropClaim ends a task's claim, if it has one, and saves the state file.

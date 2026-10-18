@@ -23,6 +23,22 @@ func TestBatchRefsPointBackwards(t *testing.T) {
 	}
 }
 
+// A field no entry has is reported at its own pointer, as the top level's
+// are.
+func TestBatchUnknownFields(t *testing.T) {
+	w := ready(t)
+	e := w.fail("create-batch", `{"folders":[{"path":"/f","zz":1,"aa":2}],"tasks":[{"title":"a","bogus":1}],"top":1}`, errs.InvalidInput, "")
+	want := []errs.Problem{
+		{Field: "/folders/0/aa", Reason: "is not a field of a folder"},
+		{Field: "/folders/0/zz", Reason: "is not a field of a folder"},
+		{Field: "/tasks/0/bogus", Reason: "is not a field of a task"},
+		{Field: "/top", Reason: "is not a field of this command"},
+	}
+	if !slices.Equal(e.Problems, want) {
+		t.Errorf("problems %v, want %v", e.Problems, want)
+	}
+}
+
 // Everything in a batch is checked before anything is written, a folder
 // path that runs through a file included.
 func TestBatchChecksFoldersFirst(t *testing.T) {

@@ -285,6 +285,7 @@ Every failure has one **kind**:
 
 | Kind | Meaning |
 |---|---|
+| `usage` | The command line could not be turned into an input (see [cli.md](cli.md#command-line)). |
 | `invalid-input` | The input breaks a rule in this document or the command's schema. |
 | `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The root is not usable (see [Root states](#root-states)); or, for `corrupt` and `unsupported-format`, a task file the command needs is not. |
 | `busy` | The lock was held against the command for 5 seconds. |

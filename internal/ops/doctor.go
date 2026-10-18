@@ -97,7 +97,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			usable[l.id] = loaded[i].File
 		}
 	}
-	abs := func(l loc) string { return t.Abs(store.TaskRel(l.f, l.id)) }
+	abs := func(l loc) string { return t.Abs(model.TaskRel(l.f, l.id)) }
 
 	// Folder files, by folder; a folder whose file can't be used has none
 	// here, and its error in folderErrs.
@@ -107,7 +107,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	highest := max(t.State.LastID, highestID(x, folderFiles))
 
 	for _, rel := range x.Temps {
-		d.add("temp-leftover", "a temp file koan left behind: `koan repair` removes it", nil,
+		d.add(errs.FindingTempLeftover, "a temp file koan left behind: `koan repair` removes it", nil,
 			[]string{t.Abs(rel)}, func() (bool, *errs.Error) { return done(t.Remove(rel)) })
 	}
 
@@ -120,12 +120,12 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	for _, f := range x.Folders {
 		if ff := folderFiles[f]; ff != nil && ff.ID > t.State.LastID {
-			above, abovePaths = append(above, ff.ID), append(abovePaths, t.Abs(store.FolderFileRel(f)))
+			above, abovePaths = append(above, ff.ID), append(abovePaths, t.Abs(model.FolderFileRel(f)))
 		}
 	}
 	if len(above) > 0 {
 		top := slices.Max(above)
-		d.add("id-above-counter", fmt.Sprintf("IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
+		d.add(errs.FindingIDAboveCounter, fmt.Sprintf("IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
 			above, abovePaths, func() (bool, *errs.Error) {
 				t.State.LastID = top
 				return done(t.SaveState())
@@ -146,7 +146,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		if len(gone) == 0 {
 			continue
 		}
-		d.add("dangling-reference", fmt.Sprintf("task %d is blocked by %v, which do not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds dangling-reference` removes them from its blocked_by", l.id, gone),
+		d.add(errs.FindingDanglingReference, fmt.Sprintf("task %d is blocked by %v, which do not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds dangling-reference` removes them from its blocked_by", l.id, gone),
 			append([]model.ID{l.id}, gone...), []string{abs(l)}, func() (bool, *errs.Error) {
 				tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
 				tf.UpdatedAt = c.now
@@ -169,7 +169,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		} else if tf := usable[id]; tf == nil || tf.Open() {
 			continue
 		}
-		d.add("stale-claim", msg, []model.ID{id}, []string{t.Env().StatePath()}, func() (bool, *errs.Error) {
+		d.add(errs.FindingStaleClaim, msg, []model.ID{id}, []string{t.Env().StatePath()}, func() (bool, *errs.Error) {
 			delete(t.State.Claims, model.ClaimKey(id))
 			return done(t.SaveState())
 		})
@@ -189,12 +189,12 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	sortLocs(x, orphans)
 	for _, l := range orphans {
 		fix, msg := orphanFix(t, x, l.f, l.id)
-		d.add("orphan-notes", fmt.Sprintf("notes with no task file beside them: %s", msg),
-			[]model.ID{l.id}, []string{t.Abs(store.NotesRel(l.f, l.id))}, fix)
+		d.add(errs.FindingOrphanNotes, fmt.Sprintf("notes with no task file beside them: %s", msg),
+			[]model.ID{l.id}, []string{t.Abs(model.NotesRel(l.f, l.id))}, fix)
 	}
 
 	for _, f := range x.Unfiled() {
-		d.add("missing-folder-file", fmt.Sprintf("folder %s has no %s: `koan repair` writes one, with a new ID", f, store.FolderFileName),
+		d.add(errs.FindingMissingFolderFile, fmt.Sprintf("folder %s has no %s: `koan repair` writes one, with a new ID", f, model.FolderFileName),
 			nil, []string{t.Abs(f.Rel())}, func() (bool, *errs.Error) {
 				id := max(t.State.LastID, highest) + 1
 				t.State.LastID, highest = id, id
@@ -212,12 +212,12 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	for _, f := range x.Folders {
 		if ff := folderFiles[f]; ff != nil {
-			holders[ff.ID] = append(holders[ff.ID], t.Abs(store.FolderFileRel(f)))
+			holders[ff.ID] = append(holders[ff.ID], t.Abs(model.FolderFileRel(f)))
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(holders)) {
 		if paths := holders[id]; len(paths) > 1 {
-			d.add("duplicate-id", fmt.Sprintf("ID %d is in %d files: keep one, and delete or renumber the others by hand", id, len(paths)),
+			d.add(errs.FindingDuplicateID, fmt.Sprintf("ID %d is in %d files: keep one, and delete or renumber the others by hand", id, len(paths)),
 				[]model.ID{id}, paths, nil)
 		}
 	}
@@ -227,7 +227,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		edges[id] = tf.BlockedBy
 	}
 	for _, cycle := range graph.Cycles(edges) {
-		d.add("cycle", fmt.Sprintf("tasks %v block each other, each waiting on the next: `koan unblock` one of them", cycle), cycle, nil, nil)
+		d.add(errs.FindingCycle, fmt.Sprintf("tasks %v block each other, each waiting on the next: `koan unblock` one of them", cycle), cycle, nil, nil)
 	}
 
 	// Unusable files come in tree order: a folder's own file before its
@@ -238,27 +238,27 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	for _, f := range x.Folders {
 		if e := folderErrs[f]; e != nil {
-			d.add("unusable-file", e.Message+": fix the file by hand, or remove it and `koan repair` writes a new one",
-				nil, []string{t.Abs(store.FolderFileRel(f))}, nil)
+			d.add(errs.FindingUnusableFile, e.Message+": fix the file by hand, or remove it and `koan repair` writes a new one",
+				nil, []string{t.Abs(model.FolderFileRel(f))}, nil)
 		}
 		for _, i := range byFolder[f] {
 			if l := files[i]; loaded[i].File == nil && loaded[i].OldFormat == 0 && !loaded[i].Gone {
-				d.add("unusable-file", loaded[i].Err.Message+": fix the file by hand, or `koan delete` the task",
+				d.add(errs.FindingUnusableFile, loaded[i].Err.Message+": fix the file by hand, or `koan delete` the task",
 					[]model.ID{l.id}, []string{abs(l)}, nil)
 			}
 		}
 	}
 	for i, l := range files {
 		if loaded[i].OldFormat != 0 {
-			d.add("old-format", fmt.Sprintf("a task file in format %d: `koan migrate` converts it", loaded[i].OldFormat),
+			d.add(errs.FindingOldFormat, fmt.Sprintf("a task file in format %d: `koan migrate` converts it", loaded[i].OldFormat),
 				[]model.ID{l.id}, []string{abs(l)}, nil)
 		}
 	}
 	for _, rel := range x.Skipped {
-		d.add("skipped-entry", "an entry named with @ that is not one of koan's, a symlink, or of the wrong type: koan ignores it; rename it without the @ to keep it as material", nil, []string{t.Abs(rel)}, nil)
+		d.add(errs.FindingSkippedEntry, "an entry named with @ that is not one of koan's, a symlink, or of the wrong type: koan ignores it; rename it without the @ to keep it as material", nil, []string{t.Abs(rel)}, nil)
 	}
 	for _, rel := range x.Unlistable {
-		d.add("skipped-entry", "a folder that can't be listed: every command but doctor fails on it", nil, []string{t.Abs(rel)}, nil)
+		d.add(errs.FindingSkippedEntry, "a folder that can't be listed: every command but doctor fails on it", nil, []string{t.Abs(rel)}, nil)
 	}
 	if d.findings == nil {
 		d.findings = []errs.Finding{}
@@ -270,7 +270,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 // it: remove it when it is empty, move it to its task when the task is
 // elsewhere without notes, and otherwise leave it.
 func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (fix, string) {
-	rel := store.NotesRel(f, id)
+	rel := model.NotesRel(f, id)
 	if fi, err := t.Stat(rel); err == nil && fi.Size() == 0 {
 		return func() (bool, *errs.Error) { return done(t.Remove(rel)) }, "they are empty, and `koan repair` removes them"
 	}
@@ -278,7 +278,7 @@ func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (fix,
 	if exists && len(x.Copies[id]) == 0 && !slices.Contains(x.Notes[id], home) {
 		return func() (bool, *errs.Error) {
 			// taken: another orphan of this task got there first.
-			taken, e := t.Move(rel, store.NotesRel(home, id))
+			taken, e := t.Move(rel, model.NotesRel(home, id))
 			return e == nil && !taken, e
 		}, fmt.Sprintf("`koan repair` moves them to their task in %s", home)
 	}

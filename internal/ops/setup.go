@@ -249,7 +249,7 @@ func cmdMigrate(c *call) (any, *errs.Error) {
 		if old == 0 {
 			continue
 		}
-		rel := store.TaskRel(l.f, l.id)
+		rel := model.TaskRel(l.f, l.id)
 		data, err := convert(c.t, rel, old)
 		if err != nil {
 			res.Unconverted = append(res.Unconverted, c.t.Abs(rel))
