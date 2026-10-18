@@ -68,10 +68,6 @@ Decided 2026-10-18. Today the same mistake can be `usage` (exit 2) in one comman
 - `--notes-file` exists only on the command line (through `-i`, `notes_file` is refused), and `where --file` is made absolute only by the CLI (through `-i`, a relative path is `invalid-input`). Either state these as CLI conveniences in `cli.md`, or accept both through `-i`.
 - Task output carries the file's `schema` field, which means nothing to a caller. Leave it out of results.
 
-## Cycles without Tarjan
-
-`graph.Cycles` finds cycles with a hand-written Tarjan's strongly connected components (`components`, about 65 lines). Trees are small, so a task is in a cycle exactly when `Path` leads from one of its blockers back to it, and the cycles can be built from that with the `Path` already there. Do it with the graph tests as the check: `doctor`'s `cycle` findings, their order, and their `ids` must not change.
-
 ## `forget-folder` and `forget-task`
 
 Turn a koan folder or task back into plain files, leaving the work itself in place. Designed together, since what happens to a forgotten task's koan data and notes is `forget-folder`'s core question.
@@ -96,3 +92,7 @@ The rest of the shingi absorption is done and koan's skill covers it. The plugin
 ## Gates
 
 Not designed yet. A gate would be a start or done task per folder, letting folders be ordered against each other. Before designing them, try `create --blocks` (the new task blocks the tasks named) in real use, and see whether gates are needed at all. Until then, `@folder.json` stays `schema`, `id`, `title`, `extra`, with no `start` or `done`.
+
+## Cycles without Tarjan
+
+`graph.components` finds the groups of tasks that block each other with a hand-written Tarjan's strongly connected components (about 65 lines). `Cycles` (for `doctor`) and `Why` (for `stuck`) both use it. Trees are small, so the groups can come from the `Path` already there instead: a task is in a cycle exactly when `Path` leads from one of its blockers back to it, and two such tasks share a group when each reaches the other. That costs a search per task, against Tarjan's single pass, which is nothing at koan's sizes. Do it with the tests as the check: `doctor`'s `cycle` findings, their order and their `ids`, and `why`'s `stuck`, must not change.
