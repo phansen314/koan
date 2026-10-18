@@ -50,6 +50,9 @@ func TestNames(t *testing.T) {
 	if !ValidTag("a-1") || ValidTag("A") || ValidTag("") || ValidTag("a b") {
 		t.Error("ValidTag")
 	}
+	if !ValidRef("a-1") || !ValidRef("1a") || ValidRef("42") || ValidRef("4-2") || ValidRef("A") {
+		t.Error("ValidRef")
+	}
 	for name, want := range map[string]ID{"@42.json": 42, "@42.md": 42, "@999999999999999.json": 999999999999999} {
 		if id, _, ok := TaskFilename(name); !ok || id != want {
 			t.Errorf("%s: %d %v", name, id, ok)

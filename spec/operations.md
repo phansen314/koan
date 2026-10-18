@@ -103,7 +103,7 @@ Only `folder show`, `folder list`, `folder delete`, and `where` return folder re
 
 Inputs take [references](design.md#references) wherever they name a task or a folder that exists:
 
-- **A task**, in every `id`, `blocked_by`, and `blocks`: an integer, or a string `"42"` or `"@42"`. The one exception is `batch`'s `blocked_by`, where a string names a batch `ref` unless it has the `@`: `"42"` is the task with ref `42`, `"@42"` and `42` the existing task.
+- **A task**, in every `id`, `blocked_by`, and `blocks`: an integer, or a string `"42"` or `"@42"`.
 - **A folder**, in every `folder` and in `task move`'s `to`: a path, or an ID as an integer or a string `"41"` or `"@41"`. A folder given by ID must exist, `not-found` otherwise, and is never made as needed; one given by path is made as needed where the command says so.
 - **Paths only** where the folder is new: `folder create`'s `folder`, a `batch` folder entry's `folder`, and `folder move`'s `to`.
 
@@ -339,8 +339,8 @@ Create folders, and open tasks in them, in one write, where later tasks may wait
 
 | Field | Holds |
 |---|---|
-| `ref` | A name for this task within the batch, following the tag rule. Unique in the batch. Never stored. |
-| `blocked_by` | A mix of existing tasks' IDs, as integers or as strings with `@` (`"@42"`), and the `ref`s of **earlier** tasks in the batch, as strings without (`"42"` is a ref). |
+| `ref` | A name for this task within the batch, following the tag rule, with at least one letter, so that no ref reads as an ID. Unique in the batch. Never stored. |
+| `blocked_by` | A mix of existing tasks' IDs, in any form (`42`, `"42"`, `"@42"`), and the `ref`s of **earlier** tasks in the batch. |
 
 - Refs are global to the batch, and may only point backwards, so a batch cannot contain a cycle.
 - Every folder is checked before an ID is used: each folder entry, that nothing is at its `folder`; each task's folder given by path, that it can be made; one given by ID, that it exists; and the batch's `folder`, the same way, even when no task falls back to it.

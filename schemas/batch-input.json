@@ -15,10 +15,13 @@
       "type": "array",
       "default": [],
       "maxItems": 1000,
-      "items": { "type": "object", "required": ["title"], "properties": { "ref": { "$ref": "task-file#/$defs/name", "description": "A name for this task within the batch. Never stored." }, "title": { "type": "string", "description": "Trimmed, then checked against the title rule." }, "folder": { "$ref": "folder-ref", "description": "Defaults to the batch's folder." }, "priority": { "$ref": "task-file#/properties/priority", "default": null }, "tags": { "$ref": "task-file#/properties/tags", "default": [] }, "blocked_by": { "type": "array", "uniqueItems": true, "default": [], "items": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "string", "pattern": "^@[1-9][0-9]{0,14}$" }, { "$ref": "task-file#/$defs/name" }] }, "description": "IDs of existing tasks (an integer, or a string with @), and refs of earlier tasks in the batch (a string without)." }, "extra": { "$ref": "task-file#/properties/extra", "default": {} }, "notes": { "type": "string", "default": "", "description": "The initial content of the .md." } }, "additionalProperties": false }
+      "items": { "type": "object", "required": ["title"], "properties": { "ref": { "$ref": "#/$defs/ref", "description": "A name for this task within the batch. Never stored." }, "title": { "type": "string", "description": "Trimmed, then checked against the title rule." }, "folder": { "$ref": "folder-ref", "description": "Defaults to the batch's folder." }, "priority": { "$ref": "task-file#/properties/priority", "default": null }, "tags": { "$ref": "task-file#/properties/tags", "default": [] }, "blocked_by": { "type": "array", "uniqueItems": true, "default": [], "items": { "anyOf": [{ "$ref": "task-ref" }, { "$ref": "#/$defs/ref" }] }, "description": "IDs of existing tasks, in any form, and refs of earlier tasks in the batch." }, "extra": { "$ref": "task-file#/properties/extra", "default": {} }, "notes": { "type": "string", "default": "", "description": "The initial content of the .md." } }, "additionalProperties": false }
     }
   },
   "additionalProperties": false,
+  "$defs": {
+    "ref": { "allOf": [{ "$ref": "task-file#/$defs/name" }, { "pattern": "[a-z]" }], "description": "A tag with a letter in it, so that it never reads as a task ID." }
+  },
   "anyOf": [{ "required": ["folders"], "properties": { "folders": { "minItems": 1 } } }, { "required": ["tasks"], "properties": { "tasks": { "minItems": 1 } } }],
   "description": "folders and tasks hold 1 to 1000 entries between them."
 }
