@@ -84,7 +84,7 @@ Every command that returns a folder's record returns it in one shape (`schemas/f
 | `extra` | Its `extra`; `{}` for the root. |
 | `notes_path` | The absolute filesystem path of its `@folder.md`, for an editor; `null` for the root, which has none. |
 
-Only the folder commands, and `list` with `include_folders`, return folder records. Every other result names a folder by its path: a task's `folder`, and `folders_created`.
+Only the folder commands, `where`, and `list` with `include_folders`, return folder records. Every other result names a folder by its path: a task's `folder`, and `folders_created`.
 
 ### References
 
@@ -167,7 +167,7 @@ Create whatever is missing of `~/koan-root`, its `@koan.json`, and the state fil
 
 ### version
 
-Report the binary: `version`, `commit`, `commit_time`, `dirty` (built with uncommitted changes), `go`, `platform`, and `format`, the one [format](design.md#formats) it reads and writes. It reads no file and cannot fail.
+Report the binary: `version`, `commit`, `commit_time`, `dirty` (built with uncommitted changes), `go`, `platform`, and `format`, the one tree [format](design.md#formats) it reads and writes. It reads no file and cannot fail.
 
 ### info
 
@@ -297,10 +297,10 @@ Create an open task.
 | `extra` | `{}` | |
 | `notes` | `""` | The initial content of the `@<id>.md`. |
 
-- The new ID is the counter's next one, after the IDs of any folders made for it. The counter is written first, then any folders, then the task file, then the notes, then each task in `blocks`, in ascending order. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
+- The new ID is the counter's next one, after the IDs of any folders made for it. The counter is written first, then any folders, then each task in `blocks`, in ascending order, then the task file, then the notes. The tasks in `blocks` go before the task they wait on, so that a kill between leaves them waiting on an ID with no task, a dangling reference `doctor` finds, as [`delete`](#delete) leaves one. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
 - The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
 - A new task closes a cycle only through `blocks`: when a task in `blocks` is in `blocked_by` too, or one in `blocked_by` already waits on one in `blocks`, directly or through other tasks. That is refused, as `block` refuses a cycle, before an ID is used.
-- Every task in `blocks` is read before an ID is used, so one that can't be used refuses the command with its error, and changes nothing. Only an I/O error rewriting one can leave the new task created, and the tasks before it rewritten: the error's `ids` is then the new task, its `message` names the tasks rewritten, and its `changed_paths` what was written.
+- Every task in `blocks` is read before an ID is used, so one that can't be used refuses the command with its error, and changes nothing. Only an I/O error after one is rewritten can leave tasks waiting on the new one when it was not created: the error's `ids` then lists the tasks rewritten, its `message` names them, and its `changed_paths` what was written. Rewritten tasks that wait on a task never created are a dangling reference: create it again and point them at it with `block`, or remove the reference with `unblock`.
 - **Result:** `task`, `folders_created`, and `dependents`: the IDs of the tasks in `blocks`, ascending.
 - **Refuses:** `cycle`; `ids` is the existing tasks of one such cycle, from a task in `blocked_by` along `blocked_by` to the task in `blocks` it reaches (the new task, which closes it, has no ID yet). As for `block`, a cycle through a task file that can't be read can't be ruled out, and fails with that file's error.
 

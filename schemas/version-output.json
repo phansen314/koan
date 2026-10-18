@@ -10,7 +10,7 @@
     "dirty": { "type": "boolean", "description": "Built with uncommitted changes." },
     "go": { "type": "string" },
     "platform": { "type": "string" },
-    "format": { "type": "integer", "description": "The one format this binary reads and writes." }
+    "format": { "type": "integer", "description": "The one tree format this binary reads and writes." }
   },
   "additionalProperties": false
 }

@@ -23,7 +23,7 @@ The coordinator closes both, by deciding who may do what.
 
 | Action | Coordinator | Worker |
 |---|---|---|
-| Read: `show`, `list`, `frontier`, `why` | yes | yes |
+| Read: `show`, `list`, `frontier`, `why`, `show-folder`, `where` | yes | yes |
 | `claim-next`, `claim`, `release` | yes | no |
 | `create`, `create-batch`, `update`, `done`, `reopen` | yes | no |
 | `block`, `unblock`, `move`, `delete`, folder commands | yes | no |
@@ -119,7 +119,7 @@ Bash)
     esac
     for sub in $(printf '%s' "$cmd" | grep -Eo '(^|[^[:alnum:]_-])koan +[a-z-]+' | awk '{print $NF}'); do
         case "$sub" in
-        show|list|frontier|why) ;;
+        show|list|frontier|why|show-folder|where) ;;
         *) deny "workers may not run 'koan $sub': report it to the coordinator" ;;
         esac
     done
@@ -146,7 +146,7 @@ esac
 exit 0
 ```
 
-It lets a worker do anything outside the tree. Inside it, it allows an edit only to the notes of a task that is claimed right now, and it allows only koan's four read commands.
+It lets a worker do anything outside the tree. Inside it, it allows an edit only to the notes of a task that is claimed right now, and it allows only koan's read commands that look at tasks and folders.
 
 **The coordinator** follows [the loop](#the-loop) and starts one worker per claimed task, with a prompt like:
 

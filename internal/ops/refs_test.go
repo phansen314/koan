@@ -211,6 +211,9 @@ func TestIDsOfTheOtherKind(t *testing.T) {
 			t.Errorf("%s: message %q", c[0], e.Message)
 		}
 	}
+	if e := w.fail("delete", `{"id":1}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
+		t.Errorf("delete: message %q", e.Message)
+	}
 	if e := w.fail("create-batch", `{"tasks":[{"title":"b","blocked_by":["@1"]}]}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
 		t.Errorf("create-batch: message %q", e.Message)
 	}

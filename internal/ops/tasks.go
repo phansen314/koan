@@ -137,12 +137,35 @@ func cmdCreate(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	id := first + model.ID(len(missing))
+	// The tasks in blocks are made to wait on the new one before it exists:
+	// a kill between leaves them waiting on an ID with no task, a dangling
+	// reference doctor finds, as delete leaves one. The other order would
+	// leave the new task with its dependents still free, and nothing to
+	// show for it.
+	dependents := []model.ID{}
+	for _, d := range deps {
+		d.tf.BlockedBy = append(d.tf.BlockedBy, id)
+		d.tf.UpdatedAt = c.now
+		if e := c.t.WriteTask(d.f, d.tf, false); e != nil {
+			if len(dependents) > 0 {
+				e.Message = fmt.Sprintf("task %d was not created, but %v were made to wait on it before task %d could not be: %s", id, dependents, d.tf.ID, e.Message)
+			}
+			return nil, e.WithIDs(dependents...)
+		}
+		dependents = append(dependents, d.tf.ID)
+	}
 	tf := n.file(id, c.now, n.blockers)
 	created, e := c.writeNew(n, tf)
-	if e != nil {
-		if created {
-			e.WithIDs(id)
-		}
+	switch {
+	case e == nil:
+	case created:
+		// Its dependents wait on a task that exists: only the notes are
+		// missing.
+		return nil, e.WithIDs(id)
+	case len(dependents) > 0:
+		e.Message = fmt.Sprintf("task %d was not created, but %v were made to wait on it: %s", id, dependents, e.Message)
+		return nil, e.WithIDs(dependents...)
+	default:
 		return nil, e
 	}
 	// A task with no blockers needs no walk to describe: it is ready.
@@ -150,17 +173,7 @@ func cmdCreate(c *call) (any, *errs.Error) {
 		c.x = &store.Index{Tasks: map[model.ID]model.Folder{}}
 	}
 	c.x.Tasks[id] = n.folder
-	res := createResult{Task: c.task(n.folder, tf), FoldersCreated: folders, Dependents: []model.ID{}}
-	for _, d := range deps {
-		d.tf.BlockedBy = append(d.tf.BlockedBy, id)
-		d.tf.UpdatedAt = c.now
-		if e := c.t.WriteTask(d.f, d.tf, false); e != nil {
-			e.Message = fmt.Sprintf("task %d was created, and %v made to wait on it, but task %d was not: %s", id, res.Dependents, d.tf.ID, e.Message)
-			return nil, e.WithIDs(id)
-		}
-		res.Dependents = append(res.Dependents, d.tf.ID)
-	}
-	return res, nil
+	return createResult{Task: c.task(n.folder, tf), FoldersCreated: folders, Dependents: dependents}, nil
 }
 
 // noCycleThroughNew refuses a new task that would close a cycle: one
@@ -329,8 +342,11 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	if e := c.mustExist(existing); e != nil {
 		return nil, e
 	}
-	// The batch's folder is checked even when no task falls back to it.
-	if _, e := c.resolve(folder); e != nil {
+	// The batch's folder is checked even when no task falls back to it,
+	// and made only when one does.
+	if f, e := c.resolve(folder); e != nil {
+		return nil, e
+	} else if _, e := c.t.Missing(f); e != nil {
 		return nil, e
 	}
 	var targets []model.Folder
@@ -667,7 +683,7 @@ func cmdDelete(c *call) (any, *errs.Error) {
 	}
 	f, ok := x.Tasks[id]
 	if !ok {
-		return nil, notFoundTask(id)
+		return nil, c.notFoundTasks(id)
 	}
 	// The task goes before its dependents are rewritten: a kill after that
 	// leaves references to a task that is gone, which doctor finds. The other

@@ -37,7 +37,7 @@ Branch on `.error.kind`, not the exit code. **Always tell the user about any `wa
 | 0 | Success | — |
 | 1 | The command failed; see `.error.kind` | See below |
 | 2 | Usage error (bad command line) | Fix the command; check `koan <cmd> --help` |
-| other | Outcome unknown (killed, stdout lost) | Look before running it again: `show`, `list`, or `doctor`. `create` and `create-batch` make new tasks each time, and `claim-next` a new claim, so check with `list` (or `list --claimed`) first. Every other write is safe to rerun. |
+| other | Outcome unknown (killed, stdout lost) | Look before running it again: `show`, `list`, or `doctor`. `create` and `create-batch` make new tasks each time, and `claim-next` a new claim, so check with `list` (or `list --claimed`) first; after a `create` with `--blocks`, run `doctor` too: a `dangling-reference` on those tasks means it stopped before the new task was written, and `unblock` clears it. Every other write is safe to rerun. |
 
 A failed command may still have changed something: **`.error.changed_paths` lists what it created, rewrote, or removed before it failed**. Empty means nothing changed. When it isn't empty, tell the user what was left half done.
 
@@ -54,7 +54,7 @@ Error kinds worth handling:
   - `not-a-folder` — something on a folder path is a file or a symlink.
   - `claimed` — someone has claimed the task; `.error.message` says since when and with what `extra`. See Claims.
   - `task-done` — `claim` on a done task; `reopen` it first if the user wants it worked on again.
-  - `duplicate-id` — two task files, or a task and a folder, have one ID; `.error.paths` lists them. The tree is damaged: check it (below), don't work around it.
+  - `duplicate-id` — two task files, two folder files, or a task and a folder, have one ID; `.error.paths` lists them. The tree is damaged: check it (below), don't work around it.
 - `migration-pending` — koan was upgraded and the tree is in an older format. Stop and tell the user to run `koan migrate`, committing the tree first if it's a git repository. **Never run `migrate` unasked**: it rewrites task files and holds the write lock while it runs.
 - `not-initialized`, `corrupt`, `unsupported-format`, `io`, `internal` — stop and report to the user, quoting `.error.message`; don't try to fix files by hand.
 
@@ -117,7 +117,7 @@ koan release 42                                        # you won't do it after a
 
 ### If a coordinator started you with one task
 
-When you were started by another agent and handed a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's read commands (`show`, `list`, `frontier`, `why`), and put everything else you want changed (follow-up tasks, tags, the task being done) in your final report. The coordinator makes those changes.
+When you were started by another agent and handed a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's read commands (`show`, `list`, `frontier`, `why`, `show-folder`, `where`), and put everything else you want changed (follow-up tasks, tags, the task being done) in your final report. The coordinator makes those changes.
 
 ### Reading tasks
 
@@ -168,7 +168,7 @@ A folder has an ID (from the same counter as tasks), an optional title, an `extr
 koan create-folder /work/HOME-12345 --title 'Payment retries' --extra '{"jira":"HOME-12345"}' --notes 'Context …'
 koan show-folder /work/HOME-12345           # .result.folder: id, path, dir, title, extra, notes_path
 koan update-folder /work/HOME-12345 --title null --extra-merge '{"status":"review"}'
-koan list --folder /work --include-folders --limit 1 --fields id | jq '.result.folders[] | {id, path, title}'
+koan list --folder /work --include-folders --limit 1 --fields id | jq -c 'if .ok then .result |= (.folders | map({id, path, title})) else . end'
 ```
 
 `create-folder` sets a title, `extra`, or notes only on a folder it makes: on one already there it refuses with `destination-exists`, and `update-folder` is the way. Edit a folder's notes in its `@folder.md`, as a task's in its `@<id>.md`. The root, `/`, has no ID, title, or notes.

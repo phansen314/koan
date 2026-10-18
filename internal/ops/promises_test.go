@@ -968,5 +968,61 @@ func TestBatchTasksFailAfterFolders(t *testing.T) {
 	}
 	// The batch's folder is checked even when no task uses it.
 	w.fail("create-batch", `{"folder":"@99","folders":[{"path":"/x"}]}`, errs.NotFound, "")
-	w.fail("show-folder", `{"folder":"/x"}`, errs.NotFound, "")
+	os.WriteFile(w.root("file"), nil, 0o644)
+	w.fail("create-batch", `{"folder":"/file/y","folders":[{"path":"/x"}]}`, errs.Conflict, errs.RuleNotAFolder)
+	if got := w.ok("create-batch", `{"folder":"/unused","folders":[{"path":"/x"}]}`); len(got["folders_created"].([]any)) != 1 {
+		t.Errorf("an unused batch folder was made: %v", got)
+	}
+}
+
+// create's blocks are rewritten before the new task is written: a failure
+// between leaves them waiting on an ID with no task, which doctor reports,
+// never the new task with its dependents still free.
+func TestCreateBlocksWritesDependentsFirst(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`) // 1
+	w.ok("create", `{"title":"b"}`) // 2
+	// Rewriting task 2 fails, after task 1 is rewritten.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: func(op fsys.Op) error {
+		if op.Name == fsys.OpRename && op.NewPath == "@2.json" {
+			return syscall.ENOSPC
+		}
+		return nil
+	}}
+	env := w.run("create", `{"title":"c","blocks":[1,2]}`)
+	w.env.FS = fsys.OS{}
+	if env.OK || !slices.Equal(env.Error.IDs, []int64{1}) || !strings.Contains(env.Error.Message, "task 3 was not created") {
+		t.Fatalf("got %+v", env.Error)
+	}
+	w.fail("show", `{"id":3}`, errs.NotFound, "")
+	if tk := task(w.ok("show", `{"id":1}`)); tk["readiness"] != "blocked" {
+		t.Errorf("task 1 is %v", tk["readiness"])
+	}
+	if f := w.findings(); !slices.Equal(f, []string{"dangling-reference @1.json"}) {
+		t.Errorf("findings %v", f)
+	}
+}
+
+// A failure writing the new task's notes, after its dependents and its task
+// file, names only the new task: its dependents wait on a task that exists.
+func TestCreateBlocksNotesFail(t *testing.T) {
+	w := ready(t)
+	w.ok("create", `{"title":"a"}`) // 1
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: func(op fsys.Op) error {
+		if op.Name == fsys.OpLink && op.NewPath == "@2.md" {
+			return syscall.ENOSPC
+		}
+		return nil
+	}}
+	env := w.run("create", `{"title":"b","blocks":[1]}`)
+	w.env.FS = fsys.OS{}
+	if env.OK || !slices.Equal(env.Error.IDs, []int64{2}) {
+		t.Fatalf("got %+v", env.Error)
+	}
+	if tk := task(w.ok("show", `{"id":1}`)); tk["readiness"] != "blocked" {
+		t.Errorf("task 1 is %v", tk["readiness"])
+	}
+	if f := w.findings(); len(f) != 0 {
+		t.Errorf("findings %v", f)
+	}
 }

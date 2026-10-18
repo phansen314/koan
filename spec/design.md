@@ -57,7 +57,7 @@ Every key is required and no other key is allowed.
 | `title` | `null`, or a title by the task rule. |
 | `extra` | Any JSON object. koan stores it and never interprets it. |
 
-`create-folder` and `update-folder` set `title` and `extra`; a folder made as needed by another command gets `null` and `{}`.
+`create-folder`, `update-folder`, and a `create-batch` folder entry set `title` and `extra`; a folder made as needed by another command gets `null` and `{}`.
 
 A folder exists when its directory does. A missing `@folder.md` reads as empty notes. A folder with no folder file is still a folder, whose tasks and folders count as usual; it has no ID until one is written, and `doctor` reports it.
 
@@ -223,7 +223,7 @@ There is no index: a command that looks a task up by ID walks the tree.
 
 - A walk enters only folders: directories named `@` and a folder name, in the root or in a folder it entered. Within a folder, an entry named with `@` is a task file `@<id>.json`, notes `@<id>.md`, the folder file `@folder.json` or notes `@folder.md` (not in the root), or a folder. Every other entry is material, and is skipped without a look.
 - An entry named with `@` that is none of these, a symlink, or of the wrong type (a directory named `@42.json`) is skipped too, and `doctor` reports it.
-- A walk lists entries by name only. Folder files are read only by the commands that need folder IDs or records, and by any command given a folder by ID, or `where` given any ID.
+- A walk lists entries by name only. Folder files are read only by the commands that need folder IDs or records, by any command given a folder by ID, or `where` given any ID, and by a `not-found` for a task ID, to say when it is a folder's.
 - A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
 - **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`). koan never picks a copy. `doctor` lists the copies, for a person to resolve.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.
@@ -244,7 +244,7 @@ Several processes may use one tree at once, with no coordinator between them.
 
 ### Crashes and failures
 
-A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a deleted task, a temp file or folder. None of these stops later commands, and `doctor` finds all of them.
+A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file or folder. None of these stops later commands, and `doctor` finds all of them.
 
 koan keeps no journal and takes no idempotency keys. After an unclear outcome, look (`show`, `list`, `doctor`), then decide. Commands that set a state (`done`, `reopen`, `block`, `unblock`, `update`, `release`) are safe to run again; `create` and `claim-next` make a new task or claim each time.
 

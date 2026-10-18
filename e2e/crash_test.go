@@ -20,8 +20,10 @@ var crashCases = []struct {
 }{
 	{freshInit, []string{"init"}},
 	{"create", []string{"create", "new", "--folder", "/fresh/deep", "--blocked-by", "1", "--notes", "n"}},
+	{"create blocks", []string{"create", "new", "--folder", "/fresh", "--blocks", "1,2,3"}},
 	{"create-batch", []string{"create-batch", "-i", "-"}},
-	{"create-folder", []string{"create-folder", "/x/y/z"}},
+	{"create-folder", []string{"create-folder", "/x/y/z", "--title", "Z", "--notes", "n"}},
+	{"update-folder", []string{"update-folder", "/proj", "--title", "P", "--extra-merge", `{"k":1}`}},
 	{"move-folder", []string{"move-folder", "/proj", "--to", "/moved/proj"}},
 	{"delete-folder", []string{"delete-folder", "/proj", "--recursive"}},
 	{"update", []string{"update", "2", "--title", "renamed", "--tags-add", "t"}},
@@ -80,9 +82,24 @@ func setup(t *testing.T, name string) string {
 // claim on a task that is done or gone, and notes without their task. Every
 // one is something repair fixes, the reference, and a claim on a task that is
 // gone, only when asked for by name. An ID used with no task is not a
-// finding. The folder with no folder file is repair's setup, left as it is
-// by a repair killed before it writes one.
-var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes", "missing-folder-file"}
+// finding. A folder with no folder file is not one either: folders are made
+// whole. Only repair's setup has one, @hand, which a repair killed before it
+// writes the file leaves as it is.
+var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
+
+// handOnly reports whether a finding is the missing folder file of repair's
+// setup folder @hand, and of nothing else.
+func handOnly(f map[string]any) bool {
+	if f["kind"] != "missing-folder-file" {
+		return false
+	}
+	for _, p := range f["paths"].([]any) {
+		if !strings.HasSuffix(p.(string), "/@hand") {
+			return false
+		}
+	}
+	return true
+}
 
 // checkAfter requires what the design promises after a crash or a failure:
 // the next write succeeds, doctor reports nothing but the expected kinds,
@@ -100,7 +117,7 @@ func checkAfter(t *testing.T, home, what string) {
 	}
 	for _, f := range ok(t, home, "doctor")["findings"].([]any) {
 		f := f.(map[string]any)
-		if !slices.Contains(leftovers, f["kind"].(string)) {
+		if !slices.Contains(leftovers, f["kind"].(string)) && !handOnly(f) {
 			t.Errorf("%s: doctor found %v", what, f)
 		}
 	}
