@@ -1,8 +1,10 @@
 package store
 
 import (
+	"cmp"
 	"io/fs"
 	"path"
+	"slices"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
@@ -272,32 +274,42 @@ func (t *Tree) Discard(rel string) *errs.Error {
 	return nil
 }
 
-// discard removes folder rel depth first, each folder's folder file last of
-// its entries, so a removal cut short never leaves a folder without its
-// folder file, which repair would give a new one. A symlink is removed, never
-// followed; an entry already gone is not an error.
+// discard removes folder rel depth first, so that a removal cut short leaves
+// nothing repair would get wrong: in each folder, everything else goes
+// before the task files, so no notes are left without their task, and the
+// folder file goes last, so no folder is left without one, which repair would
+// give a new ID. A symlink is removed, never followed; an entry already gone
+// is not an error.
 func (t *Tree) discard(rel string) error {
 	ents, err := t.root.ReadDir(rel)
 	if err != nil {
 		return ignoreGone(err)
 	}
+	slices.SortStableFunc(ents, func(a, b fs.DirEntry) int { return cmp.Compare(discardRank(a), discardRank(b)) })
 	for _, e := range ents {
 		p := path.Join(rel, e.Name())
-		switch {
-		case e.Name() == FolderFileName:
-		case e.IsDir():
+		if e.IsDir() {
 			err = t.discard(p)
-		default:
+		} else {
 			err = ignoreGone(t.root.Remove(p))
 		}
 		if err != nil {
 			return err
 		}
 	}
-	if err := ignoreGone(t.root.Remove(path.Join(rel, FolderFileName))); err != nil {
-		return err
-	}
 	return ignoreGone(t.root.Remove(rel))
+}
+
+// discardRank orders a folder's entries for removal: the folder file last,
+// task files before it, and everything else first.
+func discardRank(e fs.DirEntry) int {
+	if e.Name() == FolderFileName {
+		return 2
+	}
+	if _, suffix, ok := model.TaskFilename(e.Name()); ok && suffix == model.TaskSuffix && !e.IsDir() {
+		return 1
+	}
+	return 0
 }
 
 func ignoreGone(err error) error {
