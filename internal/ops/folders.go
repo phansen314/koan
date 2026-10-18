@@ -99,8 +99,12 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 		}
 		for _, entry := range entries {
 			name := entry.Name()
-			own := name == store.FolderFileName
-			if name == store.FolderNotesName {
+			own := false
+			switch name {
+			case store.FolderFileName:
+				fi, err := c.t.Stat(store.FolderFileRel(f))
+				own = err == nil && fi.Mode().IsRegular()
+			case store.FolderNotesName:
 				fi, err := c.t.Stat(store.FolderNotesRel(f))
 				own = err == nil && fi.Mode().IsRegular() && fi.Size() == 0
 			}

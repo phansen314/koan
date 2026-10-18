@@ -168,7 +168,7 @@ The root holds one metadata file, which marks the directory as a tree and record
 
 ### Formats
 
-`schema` in `@koan.json` is the tree's format, which covers its layout (what is named how) as well as its files; `schema` in a task file or a folder file is that file's. A binary reads and writes exactly one format, N.
+`schema` in `@koan.json` is the **tree format**: the tree's layout, what is named how. `schema` in a task file or a folder file is that **file's format**. The two are numbered apart, and change apart: format 2 of the tree holds task files and folder files in format 1. A binary reads and writes exactly one tree format, N, and one format of each kind of file; the table is about the tree format.
 
 | `@koan.json` says | Then |
 |---|---|
@@ -177,7 +177,7 @@ The root holds one metadata file, which marks the directory as a tree and record
 | More than N | Every command but `init`, `info`, and `version` fails with `unsupported-format`: a newer koan wrote this tree. |
 
 - **Every change to a file's fields is a new format**, and ships with a conversion from the one before.
-- **`migrate` converts each file by its own `schema`**, under the lock, and writes `@koan.json` last. A file already at N is not touched, so a run cut short is finished by running it again, and old files a merge brings in later are converted by the next run.
+- **`migrate` converts each file by its own `schema`**, to its kind's current format, under the lock, and writes `@koan.json` last. A file already in its current format is not touched, so a run cut short is finished by running it again, and old files a merge brings in later are converted by the next run.
 - **A migration is not an edit**: it changes no field a task had, `updated_at` included.
 - **Forward only.** Undoing a migration is git's job: commit the tree first.
 - The state file is not in the tree, so `migrate` does not cover it: a binary reads every earlier format of it, and writes the current one.
@@ -240,7 +240,7 @@ A **claim** reserves a task: once it is claimed, no other `claim` of it succeeds
 - A claim is an entry in the state file. It outlasts the process that made it and never expires.
 - A claim ends with `release`, or when its task is marked done or deleted. A reopened task starts unclaimed.
 - **A claim refuses other claims and takes the task off the frontier, and nothing else.** Every command that changes a task treats a claimed one like any other, and `release` works whoever made the claim.
-- **A claim does not lock the notes.** Nothing stops two editors from overwriting each other's changes to a `.md`. The convention is that whoever holds the claim is the one who edits the task's notes.
+- **A claim does not lock the notes.** Nothing stops two editors from overwriting each other's changes to a `@<id>.md`. The convention is that whoever holds the claim is the one who edits the task's notes.
 - A claim carries a `claimed_at` and an `extra` object, which koan returns and never interprets. Who holds a claim, and whether they are still alive, is the caller's business.
 - Claims are this machine's: they do not travel with the tree.
 
@@ -260,9 +260,9 @@ A **claim** reserves a task: once it is claimed, no other `claim` of it succeeds
 | `missing-folder-file`: a folder with no `@folder.json` | Writes one, with a new ID. |
 | `duplicate-id`: several task files or folder files with one ID | — |
 | `cycle`: tasks that block each other | — |
-| `unusable-file`: a task file or folder file that can't be used, with the reason | — |
-| `old-format`: a task file or folder file in an earlier format | — (`migrate` converts it) |
-| `skipped-entry`: an entry named with `@` that is not one of koan's, a symlink or wrong-typed entry so named, or a folder that can't be listed | — |
+| `unusable-file`: a task file or folder file that can't be used, with the reason, a folder file in another format included (there is one folder file format yet) | — |
+| `old-format`: a task file in an earlier format | — (`migrate` converts it) |
+| `skipped-entry`: an entry named with `@` that is not one of koan's, a symlink or wrong-typed entry so named (a folder file is `unusable-file` instead), or a folder that can't be listed | — |
 
 ## Errors
 

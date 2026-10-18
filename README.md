@@ -22,17 +22,17 @@ The tree is always at `~/koan-root`, and koan's own state (the ID counter and th
 ## A taste
 
 ```sh
-koan create 'Design schema' --folder /work/api --priority 2 --tags db   # folders are made as needed
-koan create 'Write migrations' --folder /work/api --blocked-by 1
+koan create 'Design schema' --folder /work/api --priority 2 --tags db   # folders are made as needed: /work is 1, /work/api 2, the task 3
+koan create 'Write migrations' --folder /work/api --blocked-by 3
 koan frontier --limit 10 --fields id,title                       # what can be taken now, in work order
-koan why 2                                                       # why 2 isn't ready: .result.ready would move it
-koan done 1
+koan why 4                                                       # why 4 isn't ready: .result.ready would move it
+koan done 3
 jq -n '{folder: "/work/api", tasks: [                             # a plan in one call: refs name earlier tasks
   {ref: "endpoints", title: "Add endpoints"},
   {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan create-batch -i -
 ```
 
-A task's notes are a plain file, edited with any editor: `koan show 2 | jq -r .result.task.notes_path` says where.
+A task's notes are a plain file, edited with any editor: `koan show 4 | jq -r .result.task.notes_path` says where.
 
 ## Use it from Claude Code and OpenCode
 

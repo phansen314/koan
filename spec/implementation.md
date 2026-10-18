@@ -73,7 +73,7 @@ Every file koan writes goes through a temp file named `.koan-tmp-<random>` in th
 ### Moving and removing
 
 - **Moves never replace.** `move` and `move-folder` rename with `renameat2(RENAME_NOREPLACE)` on Linux and `renameatx_np(RENAME_EXCL)` on macOS. Plain `rename(2)` silently replaces an empty directory, so a check made beforehand would be the only guard.
-- **A folder is made by building it aside**: a directory `.koan-tmp-<random>` in its parent, with its folder file and empty notes written in it as any file is, flushed, then renamed to its `@` name with `RENAME_NOREPLACE`. A kill before the rename leaves a hidden folder that walks ignore and `doctor` reports as a temp leftover; a folder that appears under the name meanwhile wins, and the temp is removed.
+- **A folder is made by building it aside**: a directory `.koan-tmp-<random>` in its parent, with its folder file and empty notes written in it as any file is, flushed, then renamed to its `@` name with `RENAME_NOREPLACE`. A kill before the rename leaves a hidden folder that walks ignore and `doctor` reports as a temp leftover; a folder that appears under the name meanwhile wins, the temp is removed, and the command does not list it in `folders_created`. The temp folder is never in `changed_paths`: it is gone by the time the command reports.
 - **A folder is removed by renaming it aside** to `.koan-tmp-<random>` in the root, then removing that. The rename is the single step that takes the folder out of the tree; a failure during the removal leaves a hidden folder that walks ignore and `doctor` reports.
 
 ### Fault injection
@@ -93,7 +93,7 @@ There is no index on disk; a command that needs one builds it.
 - **By name only.** The walk lists folders depth-first, each folder's entries sorted, and classifies every entry by its name and type without opening any file. It enters only `@` folders, and never looks inside material. It returns each task ID with its path, and the list of folders. Two paths for one task ID is the `duplicate-id` error.
 - **Folder files are read only when folder IDs are needed**, by `init` and `doctor`. A folder ID that repeats another folder's or a task's is found by `doctor`, not by the walk.
 - **Task files are loaded when needed**, and each at most once per command. Finding a task by ID, or proving it absent, costs one walk and one file read. Only commands that need every task's fields load them all: `frontier`, `list`, `claim-next`, `delete` and `delete-folder` (to find references), `doctor`, and `migrate`.
-- **Commands that need no walk don't make one:** `create` without `blocked_by`, `create-folder`, `release`, `version`, `info`. `init` walks, by name only, when it has to make a state file for a tree that is already there.
+- **Commands that need no walk don't make one:** `create` without `blocked_by`, `create-folder`, `release`, `version`, `info`. `init` walks, and reads the folder files, when it has to make a state file for a tree that is already there.
 - **A file that vanishes** between the walk and its load can only be an outside change, since the command holds the lock. It is skipped; if it was the task the command was asked for, that is `not-found`.
 
 ## The graph

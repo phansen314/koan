@@ -1,6 +1,7 @@
 package model
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,6 +31,18 @@ func TestFolders(t *testing.T) {
 	}
 	if !Folder("/proj").Holds(f) || Folder("/pro").Holds(f) || !Root.Holds(f) || !f.Holds(f) || Folder("/proj").Holds("/proj-b") {
 		t.Error("Holds")
+	}
+}
+
+// TreeOrder agrees with the walk: depth first, siblings by name byte for
+// byte, so a folder's children come before a later sibling's.
+func TestTreeOrder(t *testing.T) {
+	want := []Folder{"/", "/Zed", "/a", "/a/x", "/a-b", "/a-b/y", "/b"}
+	got := slices.Clone(want)
+	slices.Reverse(got)
+	slices.SortFunc(got, TreeOrder)
+	if !slices.Equal(got, want) {
+		t.Errorf("%v, want %v", got, want)
 	}
 }
 

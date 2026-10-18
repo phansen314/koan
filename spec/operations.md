@@ -163,8 +163,6 @@ Report the root's state without failing on it.
 
 Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lock alone while it looks, as a write does, and changes nothing. It runs on a root that needs migration, when this binary has a conversion from the tree's format.
 
-- **Refuses:** `no-conversion`, on a tree in a format this binary has no conversion from.
-
 - **Input:** none.
 - **Result:** `healthy` (no findings), and `findings`, each:
 
@@ -177,6 +175,7 @@ Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lo
 
 - For `cycle`, `ids` is one cycle, each task blocked by the next and the last by the first. For `unusable-file`, `message` says why the file can't be used.
 - **Order:** by kind, in the order [design.md](design.md#doctor-and-repair) lists them, then tree order.
+- **Refuses:** `no-conversion`, on a tree in a format this binary has no conversion from.
 
 ### repair
 
@@ -242,7 +241,7 @@ Create an open task.
 | `tags` | `[]` | |
 | `blocked_by` | `[]` | IDs of existing tasks, open or done. |
 | `extra` | `{}` | |
-| `notes` | `""` | The initial content of the `.md`. |
+| `notes` | `""` | The initial content of the `@<id>.md`. |
 
 - The new ID is the counter's next one, after the IDs of any folders made for it. The counter is written first, then any folders, then the task file, then the notes. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
 - The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
@@ -276,7 +275,7 @@ Return one task.
 
 ### update
 
-Change a task's title, priority, tags, or `extra`. Fields not given are left alone. Other fields have their own commands, and notes are edited in the `.md`.
+Change a task's title, priority, tags, or `extra`. Fields not given are left alone. Other fields have their own commands, and notes are edited in the `@<id>.md`.
 
 - **Input:** `id` (required), and at least one of:
 

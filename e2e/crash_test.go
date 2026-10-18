@@ -46,7 +46,8 @@ const freshInit = "init on a new home"
 // setup makes a tree with something for every command to act on: task 1 in
 // the root; 2 and 3 in /proj, 2 waiting on 1 and 3 claimed with notes; and
 // 4, done, in /proj/sub. The tasks are made in the root and moved, so that
-// they keep the IDs 1 to 4, and the folders take 5 and 6. For repair, 1 is claimed and its task file is gone,
+// they keep the IDs 1 to 4, and the folders take 5 and 6. For repair, there
+// is also a folder made by hand, with no folder file. For repair, 1 is claimed and its task file is gone,
 // leaving a dangling reference, a claim on a task that is gone, and notes
 // without their task.
 func setup(t *testing.T, name string) string {
@@ -69,6 +70,7 @@ func setup(t *testing.T, name string) string {
 	if strings.HasPrefix(name, "repair") {
 		ok(t, home, "claim", "1")
 		os.Remove(filepath.Join(home, "koan-root", "@1.json"))
+		os.Mkdir(filepath.Join(home, "koan-root", "@hand"), 0o755)
 	}
 	return home
 }
@@ -77,9 +79,10 @@ func setup(t *testing.T, name string) string {
 // spec/design.md lists them: a temp file, a reference to a deleted task, a
 // claim on a task that is done or gone, and notes without their task. Every
 // one is something repair fixes, the reference, and a claim on a task that is
-// gone, only when asked for by name.
-// An ID used with no task is not a finding.
-var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
+// gone, only when asked for by name. An ID used with no task is not a
+// finding. The folder with no folder file is repair's setup, left as it is
+// by a repair killed before it writes one.
+var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes", "missing-folder-file"}
 
 // checkAfter requires what the design promises after a crash or a failure:
 // the next write succeeds, doctor reports nothing but the expected kinds,

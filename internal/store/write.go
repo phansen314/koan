@@ -94,7 +94,7 @@ func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error
 	return errs.FromOS(t.Abs(rel), err)
 }
 
-// WriteMeta writes koan.json with the given format.
+// WriteMeta writes @koan.json with the given format.
 func (t *Tree) WriteMeta(schema int64, create bool) *errs.Error {
 	data, err := model.Encode(model.Meta{Schema: schema})
 	if err != nil {
@@ -179,38 +179,41 @@ func (t *Tree) Missing(f model.Folder) ([]model.Folder, *errs.Error) {
 // MakeFolder creates folder f, whose parent is there, whole: a hidden temp
 // folder in the parent gets the folder file, with ID id, and empty notes,
 // and is then renamed into place, so the folder never appears without its
-// folder file. Something already at f is a not-a-folder conflict when it is
-// not a folder, and otherwise left as it is, with the temp folder removed.
-func (t *Tree) MakeFolder(f model.Folder, id model.ID) *errs.Error {
+// folder file. made is false when something was already at f, which only an
+// outside change can do: a not-a-folder conflict when it is not a folder,
+// and otherwise left as it is. The temp folder is removed either way, so it
+// is not a change; one a kill leaves behind is doctor's.
+func (t *Tree) MakeFolder(f model.Folder, id model.ID) (made bool, e *errs.Error) {
 	tmp := fsys.TempName(f.Parent().Rel())
 	if err := t.root.Mkdir(tmp, FolderMode); err != nil {
-		return errs.FromOS(t.Abs(tmp), err)
+		return false, errs.FromOS(t.Abs(tmp), err)
 	}
-	t.note(tmp)
+	fail := func(rel string, err error) (bool, *errs.Error) {
+		t.root.RemoveAll(tmp)
+		return false, errs.FromOS(t.Abs(rel), err)
+	}
 	data, err := model.Encode(model.NewFolderFile(id))
 	if err != nil {
-		return errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
+		t.root.RemoveAll(tmp)
+		return false, errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
 	}
 	if err := Publish(t.root, path.Join(tmp, FolderFileName), data, FileMode, false); err != nil {
-		t.root.RemoveAll(tmp)
-		return errs.FromOS(t.Abs(path.Join(tmp, FolderFileName)), err)
+		return fail(path.Join(tmp, FolderFileName), err)
 	}
 	if err := Publish(t.root, path.Join(tmp, FolderNotesName), nil, FileMode, false); err != nil {
-		t.root.RemoveAll(tmp)
-		return errs.FromOS(t.Abs(path.Join(tmp, FolderNotesName)), err)
+		return fail(path.Join(tmp, FolderNotesName), err)
 	}
 	err = t.root.RenameNoReplace(tmp, f.Rel())
 	switch {
 	case err == nil:
 		t.root.SyncDir(f.Parent().Rel())
 		t.note(f.Rel())
-		return nil
+		return true, nil
 	case errs.IsErrno(err, syscall.EEXIST, syscall.ENOTEMPTY):
 		t.root.RemoveAll(tmp)
-		return t.mustBeFolder(f)
+		return false, t.mustBeFolder(f)
 	}
-	t.root.RemoveAll(tmp)
-	return errs.FromOS(t.Abs(f.Rel()), err)
+	return fail(f.Rel(), err)
 }
 
 // WriteFolderFile writes a folder file into folder f, which must not have

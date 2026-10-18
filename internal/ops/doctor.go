@@ -122,9 +122,12 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	for _, ff := range folderFiles {
 		highest = max(highest, ff.ID)
 	}
+	for id := range x.Notes { // notes whose task is gone still hold its ID
+		highest = max(highest, id)
+	}
 
 	for _, rel := range x.Temps {
-		d.add("temp-leftover", "a temp file koan left behind: `koan repair` removes it", nil,
+		d.add("temp-leftover", "a temp file or folder koan left behind: `koan repair` removes it", nil,
 			[]string{t.Abs(rel)}, func() (bool, *errs.Error) { return done(t.RemoveAll(rel)) })
 	}
 

@@ -49,11 +49,11 @@ Error kinds worth handling:
 - `conflict` — `.error.rule` says which rule refused it:
   - `cycle` — the block would make a cycle; `.error.ids` shows it. (A `corrupt` from `block` means the check met a task file it can't read: report it, as below.)
   - `not-empty` — `delete-folder` without `--recursive` on a folder that holds anything. Don't add `--recursive` on your own: ask the user.
-  - `destination-exists` — `move-folder`'s `--to` already exists (folders are never merged), or `move` would overwrite a `.md` with text in the target folder; show it to the user.
+  - `destination-exists` — `move-folder`'s `--to` already exists (folders are never merged), or `move` would overwrite a `@<id>.md` with text in the target folder; show it to the user.
   - `not-a-folder` — something on a folder path is a file or a symlink.
   - `claimed` — someone has claimed the task; `.error.message` says since when and with what `extra`. See Claims.
   - `task-done` — `claim` on a done task; `reopen` it first if the user wants it worked on again.
-  - `duplicate-id` — two task files have one ID; `.error.paths` lists them. The tree is damaged: check it (below), don't work around it.
+  - `duplicate-id` — two task files, or a task and a folder, have one ID; `.error.paths` lists them. The tree is damaged: check it (below), don't work around it.
 - `migration-pending` — koan was upgraded and the tree is in an older format. Stop and tell the user to run `koan migrate`, committing the tree first if it's a git repository. **Never run `migrate` unasked**: it rewrites task files and holds the write lock while it runs.
 - `not-initialized`, `corrupt`, `unsupported-format`, `io`, `internal` — stop and report to the user, quoting `.error.message`; don't try to fix files by hand.
 
@@ -61,7 +61,7 @@ Error kinds worth handling:
 
 After a `duplicate-id` or `corrupt` error, or any warning, run `koan doctor` — once per session, not after every command — and summarize `.result.findings` for the user: each finding's `kind`, its `paths` and `ids`, and its `message`, which says what to do. `doctor` changes nothing, and takes the write lock while it runs, so other writes wait for it.
 
-- Findings with `repairable: true` are what `koan repair` can fix. A plain `koan repair` fixes leftover temp files, claims on tasks that are done, notes that lost their task, an ID counter that is too low; it leaves the two below. **Never run `repair` unasked**: offer it, saying what it would change. It asks for permission anyway.
+- Findings with `repairable: true` are what `koan repair` can fix. A plain `koan repair` fixes leftover temp files and folders, claims on tasks that are done, notes that lost their task, an ID counter that is too low, and a folder with no `@folder.json` (it writes one, with a new ID); it leaves the two below. **Never run `repair` unasked**: offer it, saying what it would change. It asks for permission anyway.
 - `dangling-reference` findings (blockers that no longer exist) and `stale-claim` findings on tasks that no longer exist are left by a plain `repair`. Ask the user first whether a folder was moved or renamed by hand: if so, moving it back restores the links. Otherwise offer `koan repair --kinds dangling-reference` or `--kinds stale-claim`.
 - Findings with `repairable: false` (duplicate IDs, cycles, unusable files, notes with text and no task) are the user's to resolve. Pass on `message`; don't edit files to fix them yourself.
 - `old-format` findings are fixed by `koan migrate`, never by `repair`.

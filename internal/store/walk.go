@@ -98,12 +98,13 @@ func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 		own := f == model.Root && name == MetaName ||
 			f != model.Root && (name == FolderFileName || name == FolderNotesName)
 		switch {
+		case own && name == FolderFileName:
+			// Whatever is there, a folder file koan can't use is
+			// reported as that, by whoever reads it, never as missing.
+			x.Filed[f] = true
 		case (isTask || own) && !e.Type().IsRegular():
 			x.Skipped = append(x.Skipped, rel)
 		case own:
-			if name == FolderFileName {
-				x.Filed[f] = true
-			}
 		case isTask && suffix == model.NotesSuffix:
 			x.Notes[id] = append(x.Notes[id], f)
 		case isTask:
@@ -187,7 +188,8 @@ func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
 }
 
 // LoadFolder reads and checks folder f's folder file. gone is true when
-// there is none.
+// there is none. There is one folder file format yet, so a file in another
+// is corrupt.
 func (t *Tree) LoadFolder(f model.Folder) (ff *model.FolderFile, gone bool, e *errs.Error) {
 	rel := FolderFileRel(f)
 	p := t.Abs(rel)
@@ -197,6 +199,10 @@ func (t *Tree) LoadFolder(f model.Folder) (ff *model.FolderFile, gone bool, e *e
 	}
 	if err != nil {
 		return nil, false, unreadable(p, err)
+	}
+	if schema, err := model.SchemaOf(data); err == nil && schema != model.FileFormat {
+		return nil, false, errs.New(errs.Corrupt, "%s is in format %d, and this koan reads only %d", p, schema, model.FileFormat).
+			WithPaths(p).WithFolders(string(f))
 	}
 	ff, problems, err := model.DecodeFolderFile(data)
 	if e := corrupt(p, problems, err); e != nil {

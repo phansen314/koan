@@ -14,7 +14,7 @@ import (
 )
 
 // Format is the one tree format this binary reads and writes: the tree's
-// layout, and what koan.json records.
+// layout, and what @koan.json records.
 const Format = 2
 
 // FileFormat is the format of the task files, folder files, and state file

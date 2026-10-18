@@ -117,7 +117,7 @@ func Inspect(env Env, root fsys.Root, openErr error) Condition {
 	return c
 }
 
-// readMeta reads koan.json. Both results are nil when it is missing.
+// readMeta reads @koan.json. Both results are nil when it is missing.
 func readMeta(env Env, root fsys.Root) (*model.Meta, *errs.Error) {
 	p := path.Join(env.RootPath(), MetaName)
 	data, err := root.ReadFile(MetaName)

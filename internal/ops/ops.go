@@ -287,10 +287,13 @@ func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
 func (c *call) makeFolders(missing []model.Folder, first model.ID) ([]model.Folder, *errs.Error) {
 	made := []model.Folder{}
 	for i, f := range missing {
-		if e := c.t.MakeFolder(f, first+model.ID(i)); e != nil {
+		ok, e := c.t.MakeFolder(f, first+model.ID(i))
+		if e != nil {
 			return made, e
 		}
-		made = append(made, f)
+		if ok {
+			made = append(made, f)
+		}
 	}
 	return made, nil
 }

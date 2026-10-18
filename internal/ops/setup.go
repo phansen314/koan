@@ -17,7 +17,7 @@ type initResult struct {
 	Created   []string `json:"created"`
 }
 
-// cmdInit creates whatever is missing of the root, its koan.json, and the
+// cmdInit creates whatever is missing of the root, its @koan.json, and the
 // state file, and changes nothing that is there.
 func cmdInit(c *call) (any, *errs.Error) {
 	if e := c.checked(); e != nil {
@@ -83,7 +83,10 @@ func cmdInit(c *call) (any, *errs.Error) {
 		}
 		// So do folders; a folder file that can't be read is doctor's.
 		for _, f := range x.Folders {
-			if ff, _, e := t.LoadFolder(f); x.Filed[f] && e == nil && ff != nil {
+			if !x.Filed[f] {
+				continue
+			}
+			if ff, _, e := t.LoadFolder(f); e == nil && ff != nil {
 				st.LastID = max(st.LastID, ff.ID)
 			}
 		}
@@ -242,7 +245,7 @@ type migrateResult struct {
 }
 
 // cmdMigrate converts every task file in an earlier format to this binary's,
-// each by its own schema, and writes koan.json last.
+// each by its own schema, and writes @koan.json last.
 func cmdMigrate(c *call) (any, *errs.Error) {
 	dry := c.in.top().boolean("dry_run", false)
 	if e := c.beginNeed(store.NeedInitialized, true); e != nil {

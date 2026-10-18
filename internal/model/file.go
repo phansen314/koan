@@ -111,7 +111,7 @@ func (f *FolderFile) Check() []Problem {
 	return ps
 }
 
-// Meta is koan.json's content.
+// Meta is @koan.json's content.
 type Meta struct {
 	Schema int64 `json:"schema"`
 }
@@ -348,7 +348,7 @@ func DecodeState(data []byte) (*State, []Problem, error) {
 	return &s, ps, nil
 }
 
-// DecodeMeta reads koan.json.
+// DecodeMeta reads @koan.json.
 func DecodeMeta(data []byte) (*Meta, []Problem, error) {
 	n, err := SchemaOf(data)
 	if err != nil {
@@ -357,7 +357,7 @@ func DecodeMeta(data []byte) (*Meta, []Problem, error) {
 		}
 		return nil, []Problem{prob("/schema", err.Error())}, nil
 	}
-	// A koan.json in another format may hold anything else: only its
+	// A @koan.json in another format may hold anything else: only its
 	// schema is read, so that it is reported as that format.
 	if n != Format {
 		return &Meta{Schema: n}, nil, nil

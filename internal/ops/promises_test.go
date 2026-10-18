@@ -218,7 +218,7 @@ func TestFilesInOtherShapes(t *testing.T) {
 	w.fail("show", `{"id":1}]`, errs.InvalidInput, "")
 	w.fail("show", `{"id":1} {"id":1}`, errs.InvalidInput, "")
 
-	// A koan.json from a newer koan is that, whatever else it holds.
+	// A @koan.json from a newer koan is that, whatever else it holds.
 	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3, "name": "x"}`), 0o644)
 	w.fail("show", `{"id":1}`, errs.UnsupportedFormat, "")
 	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 2, "name": "x"}`), 0o644)
@@ -561,5 +561,75 @@ func TestATreeInFormatOneIsMaterial(t *testing.T) {
 	}
 	if got := w.ok("list", `{}`); got["total"] != float64(0) {
 		t.Errorf("list: %v", got)
+	}
+}
+
+// A failed command's changed_paths name only what it changed: never the
+// temp folder a new folder is built in.
+func TestChangedPathsLeaveOutTempFolders(t *testing.T) {
+	w := ready(t)
+	// The state file, the folder file, the folder's notes, then the task
+	// file: fail the fourth.
+	w.env.FS = fsys.Fault{FS: fsys.OS{}, Hook: fsys.ErrnoAt(fsys.OpCreateTemp, "", 4, syscall.ENOSPC)}
+	e := w.fail("create", `{"title":"a","folder":"/new"}`, errs.IO, "")
+	w.env.FS = fsys.OS{}
+	if !slices.Contains(e.ChangedPaths, w.root("new")) {
+		t.Errorf("changed_paths %v lack the folder made", e.ChangedPaths)
+	}
+	for _, p := range e.ChangedPaths {
+		if strings.Contains(p, fsys.TempPrefix) {
+			t.Errorf("changed_paths %v name a temp folder", e.ChangedPaths)
+		}
+	}
+	if fs := w.findings(); len(fs) != 0 {
+		t.Errorf("findings %v", fs)
+	}
+}
+
+// init takes the counter from folder IDs too, with no task to give one.
+func TestInitCountsFolderIDs(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/a/b/c"}`)
+	os.Remove(w.env.StatePath())
+	w.ok("init", `{}`)
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(3) {
+		t.Errorf("last_id %v, want 3", n)
+	}
+}
+
+// A folder file koan can't use is reported as that, never as missing: a
+// symlink, or one in another format. repair leaves it, and the counter.
+func TestUnusableFolderFiles(t *testing.T) {
+	w := ready(t)
+	w.ok("create-folder", `{"folder":"/p"}`)
+	w.ok("create-folder", `{"folder":"/q"}`)
+	os.Remove(w.root("p/folder.json"))
+	os.Symlink("nowhere", w.root("p/folder.json"))
+	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":2,"id":2}`), 0o644)
+	want := []string{"unusable-file @p/@folder.json", "unusable-file @q/@folder.json"}
+	if fs := w.findings(); !slices.Equal(fs, want) {
+		t.Errorf("findings %v, want %v", fs, want)
+	}
+	if got := w.ok("repair", `{}`); len(got["repaired"].([]any)) != 0 {
+		t.Errorf("repaired %v", got["repaired"])
+	}
+	if n := w.ok("info", `{}`)["last_id"]; n != float64(2) {
+		t.Errorf("last_id %v, want 2", n)
+	}
+	// Nor is a directory in the folder file's place the folder's own.
+	w.ok("create-folder", `{"folder":"/r"}`)
+	os.Remove(w.root("r/folder.json"))
+	os.Mkdir(w.root("r/folder.json"), 0o755)
+	w.fail("delete-folder", `{"folder":"/r"}`, errs.Conflict, errs.RuleNotEmpty)
+}
+
+// repair's new folder ID is above an ID that notes alone still hold.
+func TestRepairSkipsIDsHeldByNotes(t *testing.T) {
+	w := ready(t)
+	os.Mkdir(w.root("hand"), 0o755)
+	os.WriteFile(w.root("hand/6.md"), []byte("kept"), 0o644)
+	w.ok("repair", `{}`)
+	if data, _ := os.ReadFile(w.root("hand/folder.json")); !strings.Contains(string(data), `"id": 7`) {
+		t.Errorf("folder file %s, want ID 7", data)
 	}
 }
