@@ -5,7 +5,7 @@
 ## Status and how the work goes (2026-10-18)
 
 - **Where:** the worktree `.claude/worktrees/absorb-shingi` of `/home/phansen/code/koan`, branch `repair-kinds`. Every unit builds on that branch, one after another; nothing is merged to `main` or pushed yet.
-- **Done:** units 1–4, each committed with the fixes its review found. Unit 6 is dropped (gates deferred, below). **Unit 5:** spec committed (`eb155b5`); code committed (`9520cbe`); review fixes committed. **Unit 7:** spec committed (`9abc0c5`); code committed (`ff04067`); review fixes committed. **Next ready: 8 (`forget-folder`, without its gates part), 9 (worktree markers), 10 (shell completion); 11 waits on 9.**
+- **Done:** units 1–4, each committed with the fixes its review found. Unit 6 is dropped (gates deferred, below). **Unit 5:** spec committed (`eb155b5`); code committed (`9520cbe`); review fixes committed. **Unit 7:** spec committed (`9abc0c5`); code committed (`ff04067`); review fixes committed. **This PR's units are done.** Units 8, 9, 10, and the shingi retirement in 11 move to later PRs (below). **Next: a whole-branch check, then merge to `main` and the format-2 fresh start.**
 - **Per unit:** agree the decisions with the user; draft the spec (`spec/`, `schemas/`) and show it; implement with tests (`go vet ./...`, `go test -count=1 ./...`, crash tests included); commit when the user says so; spawn a read-only Opus review session with sesshin (job `review-<unit>`, findings written to a file in the scratchpad); check each finding against the code, fix, commit.
 - **Conventions in the tests:** `w.root("p/3.json")` is `<root>/@p/@3.json` (it adds the `@`); `w.disk(...)` takes names as they are on disk, for material. Folders take IDs from the shared counter, so task IDs in tests account for the folders made first. `w.findings()` lists doctor's findings as `kind paths`; `paths(records)` and `w.record(res)` read folder records.
 - **Decisions are recorded here and in review.md**; where they and design-notes.md disagree, these win.
@@ -17,6 +17,15 @@ Gates are not implemented in this work. The user is still deciding how they shou
 - `@folder.json` has no `start` or `done`: its fields are `schema`, `id`, `title`, `extra`.
 - Unit 6 (gates) is dropped, and every gate part of the other units with it: gate links in `create-batch` (`after`, `before`, wiring inline tasks), and removing gates in `forget-folder`.
 - Everything else goes ahead.
+
+## Later PRs (decided 2026-10-18)
+
+Nothing built in this PR needs these, so they leave it:
+
+- **8. `forget-folder`**, with a new **`forget-task`**: what happens to a forgotten task's koan data and notes is `forget-folder`'s core question, so the two are designed together.
+- **9. Worktree markers.**
+- **10. Shell completion.**
+- **11. Retiring the shingi plugin**, which waits on 9 if shingi's `bind` is still in use. The rest of 11 is done: each unit updated koan's skill.
 
 ## One format bump (decided 2026-10-17)
 
