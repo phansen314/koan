@@ -38,7 +38,7 @@ var crashCases = []struct {
 	{"repair by name", []string{"repair", "--kinds", "dangling-reference,stale-claim"}},
 }
 
-const batchInput = `{"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
+const batchInput = `{"folders":[{"path":"/b1","title":"B1","extra":{"k":1},"notes":"fn"},{"path":"/b3/deep"}],"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
 
 // freshInit marks the case that runs on a HOME where nothing exists yet.
 const freshInit = "init on a new home"

@@ -80,13 +80,13 @@ func cmdCreateFolder(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	if res.FoldersCreated, e = c.makeFolders(missing, first, &newFolder{folder: f, title: title, extra: extra, notes: notes}); e != nil {
-		return nil, e
+	// A folder with nothing to set may appear meanwhile without harm.
+	var asked []newFolder
+	if hasTitle || hasExtra || hasNotes {
+		asked = append(asked, newFolder{folder: f, title: title, extra: extra, notes: notes})
 	}
-	// Only an outside change can have put a folder there meanwhile.
-	if !slices.Contains(res.FoldersCreated, f) && (hasTitle || hasExtra || hasNotes) {
-		return nil, errs.NewConflict(errs.RuleDestinationExists, "%s appeared while it was being made: its title, extra, and notes were not set", f).
-			WithFolders(string(f)).WithPaths(c.t.Abs(f.Rel()))
+	if res.FoldersCreated, e = c.makeFolders(missing, first, asked...); e != nil {
+		return nil, e
 	}
 	res.Folder = c.passFolder(f)
 	return res, nil

@@ -130,7 +130,7 @@ var commands = []command{
 		{"extra", object, "a JSON object stored with the task", ""},
 		{"notes", text, "the initial notes", ""},
 		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
-	{name: "create-batch", short: "Create several tasks that may wait on each other (input only)"},
+	{name: "create-batch", short: "Create folders, and tasks that may wait on each other, in one write (input only)"},
 	{name: "show", short: "Return one task", subject: "id", subjKin: integer},
 	{name: "update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
 		{"title", text, "the new title", ""},

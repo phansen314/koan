@@ -376,7 +376,8 @@ func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
 	return missing, nil
 }
 
-// newFolder is what create-folder gives the folder it was asked for.
+// newFolder is a folder asked for by create-folder or a create-batch
+// folder entry, with what it is made with.
 type newFolder struct {
 	folder model.Folder
 	title  *string
@@ -385,21 +386,28 @@ type newFolder struct {
 }
 
 // makeFolders makes the planned folders, parents first, the first taking
-// the ID first and each the next; top, when not nil, gives its folder its
-// title, extra, and notes. It returns the folders it made.
-func (c *call) makeFolders(missing []model.Folder, first model.ID, top *newFolder) ([]model.Folder, *errs.Error) {
+// the ID first and each the next. Each folder asked for gets its title,
+// extra, and notes; one that is already there, which only an outside change
+// can have put there, stops it with destination-exists. It returns the
+// folders it made.
+func (c *call) makeFolders(missing []model.Folder, first model.ID, asked ...newFolder) ([]model.Folder, *errs.Error) {
 	made := []model.Folder{}
 	for i, f := range missing {
 		ff, notes := model.NewFolderFile(first+model.ID(i)), ""
-		if top != nil && top.folder == f {
-			ff.Title, notes = top.title, top.notes
-			if top.extra != nil {
-				ff.Extra = top.extra
+		j := slices.IndexFunc(asked, func(n newFolder) bool { return n.folder == f })
+		if j >= 0 {
+			ff.Title, notes = asked[j].title, asked[j].notes
+			if asked[j].extra != nil {
+				ff.Extra = asked[j].extra
 			}
 		}
 		ok, e := c.t.MakeFolder(f, ff, notes)
 		if e != nil {
 			return made, e
+		}
+		if !ok && j >= 0 {
+			return made, errs.NewConflict(errs.RuleDestinationExists, "%s appeared while it was being made: its title, extra, and notes were not set", f).
+				WithFolders(string(f)).WithPaths(c.t.Abs(f.Rel()))
 		}
 		if ok {
 			made = append(made, f)
@@ -419,7 +427,7 @@ func (c *call) ensure(f model.Folder) ([]model.Folder, *errs.Error) {
 	if e != nil {
 		return []model.Folder{}, e
 	}
-	return c.makeFolders(missing, first, nil)
+	return c.makeFolders(missing, first)
 }
 
 // dropClaim ends a task's claim, if it has one, and saves the state file.

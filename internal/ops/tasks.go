@@ -132,7 +132,7 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	folders, e := c.makeFolders(missing, first, nil)
+	folders, e := c.makeFolders(missing, first)
 	if e != nil {
 		return nil, e
 	}
@@ -196,22 +196,59 @@ func (c *call) noCycleThroughNew(blockers, blocks []model.ID) *errs.Error {
 }
 
 type batchResult struct {
-	IDs            []model.ID          `json:"ids"`
-	Refs           map[string]model.ID `json:"refs"`
-	FoldersCreated []model.Folder      `json:"folders_created"`
+	IDs            []model.ID                `json:"ids"`
+	Refs           map[string]model.ID       `json:"refs"`
+	Folders        map[model.Folder]model.ID `json:"folders"`
+	FoldersCreated []model.Folder            `json:"folders_created"`
 }
 
-// MaxBatch is the most tasks one create-batch takes.
+// MaxBatch is the most folders and tasks one create-batch takes.
 const MaxBatch = 1000
+
+// readFolderEntries reads create-batch's folder entries, and says how many
+// were given.
+func readFolderEntries(c *call) ([]newFolder, int) {
+	var raws []json.RawMessage
+	c.in.top().get("folders", false, &raws, "a list of folders")
+	var entries []newFolder
+	for i, raw := range raws {
+		at := fmt.Sprintf("/folders/%d", i)
+		m, err := model.Keys(raw)
+		if err != nil {
+			c.in.bad(at, "must be a JSON object")
+			continue
+		}
+		f := fields{in: c.in, m: m, at: at}
+		n := newFolder{folder: f.folder("path", true, "")}
+		n.title, _ = f.optTitle("title")
+		n.extra, _ = f.object("extra")
+		n.notes, _ = f.text("notes")
+		for k := range m {
+			if !slices.Contains([]string{"path", "title", "extra", "notes"}, k) {
+				c.in.bad(at+"/"+k, "is not a field of a folder")
+			}
+		}
+		switch {
+		case n.folder == model.Root:
+			c.in.bad(at+"/path", "may not be the root")
+		case n.folder == "":
+		case slices.ContainsFunc(entries, func(e newFolder) bool { return e.folder == n.folder }):
+			c.in.bad(at+"/path", "is used by an earlier folder")
+		default:
+			entries = append(entries, n)
+		}
+	}
+	return entries, len(raws)
+}
 
 func cmdCreateBatch(c *call) (any, *errs.Error) {
 	in := c.in.top()
+	entries, nFolders := readFolderEntries(c)
 	folder := in.folderRef("folder", false, folderRef{path: model.Root})
 	var raws []json.RawMessage
-	in.get("tasks", true, &raws, "a list of tasks")
-	if c.in.has("tasks") && (len(raws) < 1 || len(raws) > MaxBatch) {
-		c.in.bad("/tasks", "must hold 1 to %d tasks", MaxBatch)
-		raws = nil
+	in.get("tasks", false, &raws, "a list of tasks")
+	if n := len(raws) + nFolders; n < 1 || n > MaxBatch {
+		c.in.bad("/tasks", "must hold 1 to %d entries between it and folders", MaxBatch)
 	}
 	tasks := make([]newTask, len(raws))
 	refAt := map[string]int{}
@@ -270,16 +307,35 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
+	// A folder entry means one to make: every one already there is named.
+	var there []string
+	for _, n := range entries {
+		if _, err := c.t.Stat(n.folder.Rel()); err == nil {
+			there = append(there, string(n.folder))
+		}
+	}
+	if len(there) > 0 {
+		e := errs.NewConflict(errs.RuleDestinationExists, "%s already there: put tasks into a folder that is by naming it in their folder", strings.Join(there, ", ")).
+			WithFolders(there...)
+		for _, f := range there {
+			e.WithPaths(c.t.Abs(model.Folder(f).Rel()))
+		}
+		return nil, e
+	}
 	if e := c.mustExist(existing); e != nil {
 		return nil, e
 	}
-	targets := make([]model.Folder, len(tasks))
+	var targets []model.Folder
+	for _, n := range entries {
+		targets = append(targets, n.folder)
+	}
 	for i := range tasks {
 		f, e := c.resolve(tasks[i].at)
 		if e != nil {
 			return nil, e
 		}
-		tasks[i].folder, targets[i] = f, f
+		tasks[i].folder = f
+		targets = append(targets, f)
 	}
 	missing, e := c.plan(targets...)
 	if e != nil {
@@ -289,8 +345,14 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	res := batchResult{IDs: []model.ID{}, Refs: map[string]model.ID{}}
-	if res.FoldersCreated, e = c.makeFolders(missing, first, nil); e != nil {
+	res := batchResult{IDs: []model.ID{}, Refs: map[string]model.ID{}, Folders: map[model.Folder]model.ID{}}
+	res.FoldersCreated, e = c.makeFolders(missing, first, entries...)
+	for i, f := range missing {
+		if slices.Contains(res.FoldersCreated, f) {
+			res.Folders[f] = first + model.ID(i)
+		}
+	}
+	if e != nil {
 		return nil, e
 	}
 	base := first + model.ID(len(missing))

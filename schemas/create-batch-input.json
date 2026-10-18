@@ -19,5 +19,6 @@
     }
   },
   "additionalProperties": false,
+  "anyOf": [{ "required": ["folders"], "properties": { "folders": { "minItems": 1 } } }, { "required": ["tasks"], "properties": { "tasks": { "minItems": 1 } } }],
   "description": "folders and tasks hold 1 to 1000 entries between them."
 }

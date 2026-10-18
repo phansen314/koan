@@ -5,7 +5,7 @@
 ## Status and how the work goes (2026-10-18)
 
 - **Where:** the worktree `.claude/worktrees/absorb-shingi` of `/home/phansen/code/koan`, branch `repair-kinds`. Every unit builds on that branch, one after another; nothing is merged to `main` or pushed yet.
-- **Done:** units 1–4, each committed with the fixes its review found. Unit 6 is dropped (gates deferred, below). **Unit 5:** spec committed (`eb155b5`); code committed (`9520cbe`); review fixes committed. **Next: unit 7 is blocked on gates (6a), so the next candidates are 8 (`forget-folder`, without its gates part), 9 (worktree markers), or 10 (shell completion).**
+- **Done:** units 1–4, each committed with the fixes its review found. Unit 6 is dropped (gates deferred, below). **Unit 5:** spec committed (`eb155b5`); code committed (`9520cbe`); review fixes committed. **Unit 7:** spec committed (`9abc0c5`); code implemented and tested, awaiting its commit and review.
 - **Per unit:** agree the decisions with the user; draft the spec (`spec/`, `schemas/`) and show it; implement with tests (`go vet ./...`, `go test -count=1 ./...`, crash tests included); commit when the user says so; spawn a read-only Opus review session with sesshin (job `review-<unit>`, findings written to a file in the scratchpad); check each finding against the code, fix, commit.
 - **Conventions in the tests:** `w.root("p/3.json")` is `<root>/@p/@3.json` (it adds the `@`); `w.disk(...)` takes names as they are on disk, for material. Folders take IDs from the shared counter, so task IDs in tests account for the folders made first. `w.findings()` lists doctor's findings as `kind paths`; `paths(records)` and `w.record(res)` read folder records.
 - **Decisions are recorded here and in review.md**; where they and design-notes.md disagree, these win.
@@ -128,9 +128,9 @@ Decided 2026-10-18, without gates; specified in `operations.md#create-batch`.
 2 → 3
 2 → 4 → 5
       4 → 6a → 6b
-      6a → 7
+      4 → 7            (gates part dropped)
       4 → 8            (gates part needs 6a)
       5 → 9
       5 → 10
-6a, 7, 9 → 11
+7, 9 → 11
 ```

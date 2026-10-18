@@ -203,10 +203,23 @@ koan create-batch -i - <<'EOF'
 EOF
 ```
 
-- The result is small: `ids` (in input order), `refs` (ref → ID), and `folders_created`.
+**A whole piece of work at once**: `folders` lays out new folders with their titles, `extra`, and notes, made in the same write as the tasks, which go into them by naming the path in `folder`. A folder entry is for a folder to make: one already there is refused with `destination-exists` (put tasks into it by `folder`; change its fields with `update-folder`).
+
+```sh
+koan create-batch -i - <<'EOF'
+{"folders": [
+  {"path": "/work/HOME-12345", "title": "Payment retries", "extra": {"jira": "HOME-12345"}, "notes": "Context …"},
+  {"path": "/work/HOME-12345/research", "title": "Research"}],
+ "tasks": [
+  {"ref": "read", "title": "Read the retry code", "folder": "/work/HOME-12345/research"},
+  {"title": "Write up the options", "folder": "/work/HOME-12345/research", "blocked_by": ["read"]}]}
+EOF
+```
+
+- The result is small: `ids` (in input order), `refs` (ref → ID), `folders` (path → ID, for each folder made), and `folders_created`.
 - Everything is checked before anything is written: an `invalid-input` names every bad field as `/tasks/<i>/…`, and a `not-found` every missing ID. Fix and rerun.
 - To make an existing task wait on the plan, `block` it afterwards: `koan block 40 --blockers <ids>`.
-- A `create-batch` error with IDs in `.error.ids` stopped partway through: the first `len(.error.ids)` tasks of the input were created, in order, and the rest weren't. Don't rerun the whole batch (it would duplicate them). Rerun only the rest, with each ref to a created task replaced by its ID, and tell the user what happened.
+- A `create-batch` error with `.error.changed_paths` stopped partway through: the folders in it were made, whole, and the first `len(.error.ids)` tasks of the input were created, in order; the rest weren't. Don't rerun the whole batch (it would duplicate the tasks, and refuse the folders). Rerun only the rest, without the folders made and with each ref to a created task replaced by its ID, and tell the user what happened.
 
 Rules the commands enforce:
 
