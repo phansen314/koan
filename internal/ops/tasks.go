@@ -232,28 +232,21 @@ func readFolderEntries(c *call) ([]newFolder, int) {
 	c.in.top().get("folders", false, &raws, "a list of folders")
 	var entries []newFolder
 	for i, raw := range raws {
-		at := fmt.Sprintf("/folders/%d", i)
-		m, err := model.Keys(raw)
-		if err != nil {
-			c.in.bad(at, "must be a JSON object")
+		f, ok := c.in.entry(raw, fmt.Sprintf("/folders/%d", i))
+		if !ok {
 			continue
 		}
-		f := fields{in: c.in, m: m, at: at}
 		n := newFolder{folder: f.folder("path", true, "")}
 		n.title, _ = f.optTitle("title")
 		n.extra, _ = f.object("extra")
 		n.notes, _ = f.text("notes")
-		for k := range m {
-			if !slices.Contains([]string{"path", "title", "extra", "notes"}, k) {
-				c.in.bad(at+"/"+k, "is not a field of a folder")
-			}
-		}
+		f.unknown("a folder")
 		switch {
 		case n.folder == model.Root:
-			c.in.bad(at+"/path", "may not be the root")
+			c.in.bad(f.at+"/path", "may not be the root")
 		case n.folder == "":
 		case slices.ContainsFunc(entries, func(e newFolder) bool { return e.folder == n.folder }):
-			c.in.bad(at+"/path", "is used by an earlier folder")
+			c.in.bad(f.at+"/path", "is used by an earlier folder")
 		default:
 			entries = append(entries, n)
 		}
@@ -278,25 +271,22 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 	refAt := map[string]int{}
 	var existing []model.ID
 	for i, raw := range raws {
-		at := fmt.Sprintf("/tasks/%d", i)
-		m, err := model.Keys(raw)
-		if err != nil {
-			c.in.bad(at, "must be a JSON object")
+		f, ok := c.in.entry(raw, fmt.Sprintf("/tasks/%d", i))
+		if !ok {
 			continue
 		}
-		f := fields{in: c.in, m: m, at: at}
 		n := readNewTask(f, folder)
 		if f.has("ref") {
 			if f.get("ref", false, &n.ref, "a name") && !model.ValidTag(n.ref) {
-				c.in.bad(at+"/ref", "must be a name: lowercase letters, digits, and hyphens")
+				c.in.bad(f.at+"/ref", "must be a name: lowercase letters, digits, and hyphens")
 			} else if _, dup := refAt[n.ref]; dup {
-				c.in.bad(at+"/ref", "is used by an earlier task")
+				c.in.bad(f.at+"/ref", "is used by an earlier task")
 			}
 		}
 		var blockers []json.RawMessage
 		f.get("blocked_by", false, &blockers, "a list of task IDs and refs")
 		for j, b := range blockers {
-			bat := fmt.Sprintf("%s/blocked_by/%d", at, j)
+			bat := fmt.Sprintf("%s/blocked_by/%d", f.at, j)
 			var ref string
 			isRef := model.Decode(b, &ref) == nil && string(b) != "null" && !strings.HasPrefix(ref, model.Mark)
 			// A string without @ is a ref; anything else, an ID.
@@ -317,11 +307,7 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 				c.in.bad(bat, "must be a task ID or a ref")
 			}
 		}
-		for k := range m {
-			if !slices.Contains([]string{"ref", "title", "folder", "priority", "tags", "blocked_by", "extra", "notes"}, k) {
-				c.in.bad(at+"/"+k, "is not a field of a task")
-			}
-		}
+		f.unknown("a task")
 		if n.ref != "" {
 			refAt[n.ref] = i
 		}

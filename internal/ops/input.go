@@ -39,52 +39,63 @@ func (in *input) bad(field, format string, args ...any) {
 
 // done reports every problem found, and every field no one asked for.
 func (in *input) done() *errs.Error {
-	for _, k := range slices.Sorted(maps.Keys(in.m)) {
-		if !in.used[k] {
-			in.bad("/"+k, "is not a field of this command")
-		}
-	}
+	in.top().unknown("this command")
 	if len(in.problems) == 0 {
 		return nil
 	}
 	return errs.Invalid(in.problems)
 }
 
-// getAt decodes field k of the object m, which is at the JSON pointer `at`,
-// into v. It returns false when the field is absent, or is wrong, which it
-// records.
-func (in *input) getAt(m map[string]json.RawMessage, at, k string, required bool, v any, what string) bool {
-	if at == "" {
-		in.used[k] = true
+func (in *input) has(k string) bool { _, ok := in.m[k]; return ok }
+
+// fields reads one object's fields: the input itself (at == ""), or one
+// entry of a batch. used holds the fields asked for.
+type fields struct {
+	in   *input
+	m    map[string]json.RawMessage
+	at   string
+	used map[string]bool
+}
+
+func (in *input) top() fields { return fields{in: in, m: in.m, used: in.used} }
+
+// entry reads one entry of a batch, at the JSON pointer `at`. It returns
+// false when the entry is not an object, which it records.
+func (in *input) entry(raw json.RawMessage, at string) (fields, bool) {
+	m, err := model.Keys(raw)
+	if err != nil {
+		in.bad(at, "must be a JSON object")
+		return fields{}, false
 	}
-	raw, ok := m[k]
+	return fields{in: in, m: m, at: at, used: map[string]bool{}}, true
+}
+
+// get decodes field k into v. It returns false when the field is absent, or
+// is wrong, which it records.
+func (f fields) get(k string, required bool, v any, what string) bool {
+	f.used[k] = true
+	raw, ok := f.m[k]
 	if !ok {
 		if required {
-			in.bad(at+"/"+k, "is required")
+			f.in.bad(f.at+"/"+k, "is required")
 		}
 		return false
 	}
 	if err := model.Decode(raw, v); err != nil || string(raw) == "null" {
-		in.bad(at+"/"+k, "must be %s", what)
+		f.in.bad(f.at+"/"+k, "must be %s", what)
 		return false
 	}
 	return true
 }
 
-func (in *input) has(k string) bool { _, ok := in.m[k]; return ok }
-
-// fields reads one object's fields: the input itself (at == ""), or one
-// task of a batch.
-type fields struct {
-	in *input
-	m  map[string]json.RawMessage
-	at string
-}
-
-func (in *input) top() fields { return fields{in: in, m: in.m} }
-
-func (f fields) get(k string, required bool, v any, what string) bool {
-	return f.in.getAt(f.m, f.at, k, required, v, what)
+// unknown records every field of the object no one asked for, as not a
+// field of what.
+func (f fields) unknown(what string) {
+	for _, k := range slices.Sorted(maps.Keys(f.m)) {
+		if !f.used[k] {
+			f.in.bad(f.at+"/"+k, "is not a field of %s", what)
+		}
+	}
 }
 
 func (f fields) has(k string) bool { _, ok := f.m[k]; return ok }
@@ -205,9 +216,7 @@ func (f fields) title(k string, required bool) (string, bool) {
 // absent, or is wrong, which it records.
 func (f fields) optTitle(k string) (title *string, set bool) {
 	raw, ok := f.m[k]
-	if f.at == "" {
-		f.in.used[k] = true
-	}
+	f.used[k] = true
 	if !ok {
 		return nil, false
 	}
@@ -224,9 +233,7 @@ func (f fields) optTitle(k string) (title *string, set bool) {
 // priority reads an integer or null. set is false when the field is absent.
 func (f fields) priority(k string) (p *int64, set bool) {
 	raw, ok := f.m[k]
-	if f.at == "" {
-		f.in.used[k] = true
-	}
+	f.used[k] = true
 	if !ok {
 		return nil, false
 	}
