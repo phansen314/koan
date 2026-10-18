@@ -479,17 +479,25 @@ func TestDoctorAndRepair(t *testing.T) {
 		}
 	}
 
-	got := w.ok("repair", `{}`)
-	left := map[string]int{}
-	for _, f := range got["findings"].([]any) {
-		f := f.(map[string]any)
-		left[f["kind"].(string)]++
-		if f["repairable"] == true {
-			t.Errorf("repair left a repairable finding: %v", f)
+	// A plain repair leaves the dangling reference, which only it names.
+	left := func(got map[string]any) map[string]int {
+		n := map[string]int{}
+		for _, f := range got["findings"].([]any) {
+			f := f.(map[string]any)
+			n[f["kind"].(string)]++
+			if f["repairable"] == true && f["kind"] != "dangling-reference" {
+				t.Errorf("repair left a repairable finding: %v", f)
+			}
 		}
+		return n
 	}
-	if left["duplicate-id"] != 1 || left["unusable-file"] != 1 || left["skipped-entry"] != 1 || left["orphan-notes"] != 1 || len(left) != 4 {
-		t.Errorf("after repair: %v", left)
+	got := left(w.ok("repair", `{}`))
+	if got["duplicate-id"] != 1 || got["unusable-file"] != 1 || got["skipped-entry"] != 1 || got["orphan-notes"] != 1 || got["dangling-reference"] != 1 || len(got) != 5 {
+		t.Errorf("after repair: %v", got)
+	}
+	got = left(w.ok("repair", `{"kinds":["dangling-reference"]}`))
+	if got["dangling-reference"] != 0 || len(got) != 4 {
+		t.Errorf("after repair of dangling-reference: %v", got)
 	}
 	if n, _ := os.ReadFile(w.root("3.md")); string(n) != "keep" {
 		t.Errorf("repair did not move the notes to their task: %q", n)

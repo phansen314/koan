@@ -2,6 +2,7 @@ package ops
 
 import (
 	"runtime"
+	"slices"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/buildinfo"
@@ -168,8 +169,15 @@ type repairResult struct {
 	Findings []errs.Finding `json:"findings"`
 }
 
-// cmdRepair fixes every repairable finding, then reports what is left.
+// cmdRepair fixes the repairable findings of the kinds asked for, by default
+// all but dangling-reference, then reports what is left.
 func cmdRepair(c *call) (any, *errs.Error) {
+	kinds, ok := c.in.top().oneOf("kinds", repairableKinds)
+	if !ok {
+		kinds = slices.DeleteFunc(slices.Clone(repairableKinds), func(k string) bool { return k == "dangling-reference" })
+	} else if len(kinds) == 0 {
+		c.in.bad("/kinds", "must hold at least one finding kind")
+	}
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
@@ -179,7 +187,7 @@ func cmdRepair(c *call) (any, *errs.Error) {
 	}
 	res := repairResult{Repaired: []errs.Finding{}}
 	for i, f := range d.findings {
-		if d.fixes[i] == nil {
+		if d.fixes[i] == nil || !slices.Contains(kinds, f.Kind) {
 			continue
 		}
 		fixed, e := d.fixes[i]()

@@ -236,6 +236,23 @@ func TestRepairReportsOnlyWhatItRepaired(t *testing.T) {
 	}
 }
 
+// repair fixes only the kinds it is given, and refuses a kind it can't fix.
+func TestRepairFixesOnlyTheKindsAsked(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]}]}`)
+	os.Remove(w.root("1.json")) // dangling reference in 2, and orphan notes (empty)
+	got := w.ok("repair", `{"kinds":["temp-leftover","dangling-reference"]}`)
+	if r := got["repaired"].([]any); len(r) != 1 || r[0].(map[string]any)["kind"] != "dangling-reference" {
+		t.Errorf("repaired %v, want the dangling reference", r)
+	}
+	if f := got["findings"].([]any); len(f) != 1 || f[0].(map[string]any)["kind"] != "orphan-notes" {
+		t.Errorf("left %v, want the orphan notes", f)
+	}
+	w.fail("repair", `{"kinds":["cycle"]}`, errs.InvalidInput, "")
+	w.fail("repair", `{"kinds":[]}`, errs.InvalidInput, "")
+	w.fail("repair", `{"kinds":["stale-claim","stale-claim"]}`, errs.InvalidInput, "")
+}
+
 func TestStaleClaimsInIDOrder(t *testing.T) {
 	w := ready(t)
 	tasks := make([]string, 10)

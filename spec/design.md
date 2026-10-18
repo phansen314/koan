@@ -204,13 +204,13 @@ A **claim** reserves a task: once it is claimed, no other `claim` of it succeeds
 
 ## Doctor and repair
 
-`doctor` walks the whole tree and reports what it finds, each finding with a kind, the paths and IDs involved, and a sentence saying what to do. `repair` fixes the kinds that can be fixed without losing anything or choosing between versions, and leaves the rest to a person.
+`doctor` walks the whole tree and reports what it finds, each finding with a kind, the paths and IDs involved, and a sentence saying what to do. `repair` fixes the kinds that can be fixed without losing anything or choosing between versions, and leaves the rest to a person. One kind, `dangling-reference`, it fixes only when asked for it by name: a task that seems gone may only be out of koan's sight, in a folder moved by hand, and removing its ID would lose the link for good, where moving the folder back would restore it.
 
 | Finding | `repair` |
 |---|---|
 | `temp-leftover`: a temp file koan left behind | Removes it. |
 | `id-above-counter`: a task ID above `last_id` | Raises `last_id`. |
-| `dangling-reference`: a `blocked_by` ID with no task | Removes the ID. |
+| `dangling-reference`: a `blocked_by` ID with no task | Removes the ID, when asked for by name. |
 | `stale-claim`: a claim on a task that is done or gone | Removes the claim. |
 | `orphan-notes`: a `.md` with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes. Otherwise leaves it. |
 | `duplicate-id`: several task files with one ID | — |

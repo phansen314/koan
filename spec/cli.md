@@ -51,7 +51,7 @@ A command line the CLI can't turn into an input is a `usage` error: an unknown c
 | `koan version` | |
 | `koan info` | |
 | `koan doctor` | |
-| `koan repair` | |
+| `koan repair` | `--kinds` |
 | `koan migrate` | `--dry-run` |
 | `koan create-folder <folder>` | |
 | `koan move-folder <folder> --to <folder>` | |
@@ -98,4 +98,5 @@ koan claim-next --folder /proj --extra '{"agent":"shingi-3"}' | jq '.result.task
 koan release 42
 
 koan doctor | jq '.result.findings[] | select(.repairable | not)'
+koan repair --kinds dangling-reference
 ```

@@ -170,16 +170,17 @@ Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lo
 | `kind` | A finding kind. |
 | `message` | What is wrong and what to do about it. |
 | `paths`, `ids` | The files and tasks involved. |
-| `repairable` | Whether `repair` would fix it. |
+| `repairable` | Whether `repair` can fix it: by default, or, for `dangling-reference`, when asked for by name. |
 
 - For `cycle`, `ids` is one cycle, each task blocked by the next and the last by the first. For `unusable-file`, `message` says why the file can't be used.
 - **Order:** by kind, in the order [design.md](design.md#doctor-and-repair) lists them, then tree order.
 
 ### repair
 
-Fix every repairable finding, as the table in [design.md](design.md#doctor-and-repair) says, then report what is left.
+Fix repairable findings, as the table in [design.md](design.md#doctor-and-repair) says, then report what is left.
 
-- **Input:** none.
+- **Input:** `kinds`: the finding kinds to fix, one or more of `temp-leftover`, `id-above-counter`, `dangling-reference`, `stale-claim`, and `orphan-notes`. Without it, every one of them but `dangling-reference`.
+- Findings of other kinds are left alone, and reported in `findings`.
 - **Result:** `repaired` and `findings`, both lists of findings as `doctor` returns them.
 - Running it again is always safe.
 

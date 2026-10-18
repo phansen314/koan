@@ -3,6 +3,14 @@
   "$id": "repair-input",
   "type": "object",
   "required": [],
-  "properties": {},
+  "properties": {
+    "kinds": {
+      "type": "array",
+      "items": { "enum": ["temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes"] },
+      "uniqueItems": true,
+      "minItems": 1,
+      "description": "The finding kinds to fix. Without it, every one of them but dangling-reference."
+    }
+  },
   "additionalProperties": false
 }

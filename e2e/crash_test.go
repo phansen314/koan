@@ -65,7 +65,8 @@ func setup(t *testing.T, name string) string {
 // leftovers are the findings a killed or failed command may leave, as
 // spec/design.md lists them: a temp file, a reference to a deleted task, a
 // claim on a task that is done or gone, and notes without their task. Every
-// one is something repair fixes. An ID used with no task is not a finding.
+// one is something repair fixes, the reference only when asked for by name.
+// An ID used with no task is not a finding.
 var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes"}
 
 // checkAfter requires what the design promises after a crash or a failure:
@@ -88,7 +89,12 @@ func checkAfter(t *testing.T, home, what string) {
 			t.Errorf("%s: doctor found %v", what, f)
 		}
 	}
-	if left := ok(t, home, "repair")["findings"].([]any); len(left) != 0 {
+	for _, f := range ok(t, home, "repair")["findings"].([]any) {
+		if f := f.(map[string]any); f["kind"] != "dangling-reference" {
+			t.Errorf("%s: repair left %v", what, f)
+		}
+	}
+	if left := ok(t, home, "repair", "--kinds", "dangling-reference")["findings"].([]any); len(left) != 0 {
 		t.Errorf("%s: repair left %v", what, left)
 	}
 	if got := ok(t, home, "doctor"); got["healthy"] != true {

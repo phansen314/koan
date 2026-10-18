@@ -45,6 +45,10 @@ func sortLocs(x *store.Index, ls []loc) {
 	})
 }
 
+// repairableKinds are the finding kinds repair can fix, in the order the
+// design lists them.
+var repairableKinds = []string{"temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes"}
+
 // fix makes one repair. fixed is false when it found it could not after
 // all: the finding stays, and is not reported as repaired.
 type fix func() (fixed bool, e *errs.Error)
@@ -126,7 +130,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		if len(gone) == 0 {
 			continue
 		}
-		d.add("dangling-reference", fmt.Sprintf("task %d is blocked by %v, which do not exist: `koan repair` removes them from its blocked_by", l.id, gone),
+		d.add("dangling-reference", fmt.Sprintf("task %d is blocked by %v, which do not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds dangling-reference` removes them from its blocked_by", l.id, gone),
 			append([]model.ID{l.id}, gone...), []string{abs(l)}, func() (bool, *errs.Error) {
 				tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
 				tf.UpdatedAt = c.now
