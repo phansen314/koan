@@ -63,6 +63,7 @@ var commands = map[string]command{
 	"init": cmdInit, "version": cmdVersion, "info": cmdInfo,
 	"doctor": cmdDoctor, "repair": cmdRepair, "migrate": cmdMigrate,
 	"create-folder": cmdCreateFolder, "move-folder": cmdMoveFolder, "delete-folder": cmdDeleteFolder,
+	"show-folder": cmdShowFolder, "update-folder": cmdUpdateFolder,
 	"create": cmdCreate, "create-batch": cmdCreateBatch, "show": cmdShow, "update": cmdUpdate,
 	"done": cmdDone, "reopen": cmdReopen, "block": cmdBlock, "unblock": cmdUnblock,
 	"move": cmdMove, "delete": cmdDelete,
@@ -189,6 +190,25 @@ func (c *call) find(id model.ID) (model.Folder, *model.TaskFile, *errs.Error) {
 	return f, l.File, nil
 }
 
+// notFoundTasks is the error for IDs that name no task: it says when one
+// names a folder instead, which it reads every folder file to tell.
+func (c *call) notFoundTasks(ids ...model.ID) *errs.Error {
+	e := notFoundTask(ids...)
+	for _, f := range c.x.Folders {
+		if !c.x.Filed[f] {
+			continue
+		}
+		if ff, _, _ := c.t.LoadFolder(f); ff != nil && slices.Contains(ids, ff.ID) {
+			e.Message = fmt.Sprintf("%d is the ID of folder %s, not of a task", ff.ID, f)
+			if len(ids) > 1 {
+				e.Message = fmt.Sprintf("%d tasks do not exist: %s", len(ids), e.Message)
+			}
+			return e
+		}
+	}
+	return e
+}
+
 func notFoundTask(ids ...model.ID) *errs.Error {
 	if len(ids) == 1 {
 		return errs.New(errs.NotFound, "task %d does not exist", ids[0]).WithIDs(ids...)
@@ -282,12 +302,28 @@ func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
 	return missing, nil
 }
 
+// newFolder is what create-folder gives the folder it was asked for.
+type newFolder struct {
+	folder model.Folder
+	title  *string
+	extra  map[string]any
+	notes  string
+}
+
 // makeFolders makes the planned folders, parents first, the first taking
-// the ID first and each the next. It returns the folders it made.
-func (c *call) makeFolders(missing []model.Folder, first model.ID) ([]model.Folder, *errs.Error) {
+// the ID first and each the next; top, when not nil, gives its folder its
+// title, extra, and notes. It returns the folders it made.
+func (c *call) makeFolders(missing []model.Folder, first model.ID, top *newFolder) ([]model.Folder, *errs.Error) {
 	made := []model.Folder{}
 	for i, f := range missing {
-		ok, e := c.t.MakeFolder(f, first+model.ID(i))
+		ff, notes := model.NewFolderFile(first+model.ID(i)), ""
+		if top != nil && top.folder == f {
+			ff.Title, notes = top.title, top.notes
+			if top.extra != nil {
+				ff.Extra = top.extra
+			}
+		}
+		ok, e := c.t.MakeFolder(f, ff, notes)
 		if e != nil {
 			return made, e
 		}
@@ -309,7 +345,7 @@ func (c *call) ensure(f model.Folder) ([]model.Folder, *errs.Error) {
 	if e != nil {
 		return []model.Folder{}, e
 	}
-	return c.makeFolders(missing, first)
+	return c.makeFolders(missing, first, nil)
 }
 
 // dropClaim ends a task's claim, if it has one, and saves the state file.

@@ -71,6 +71,21 @@ Every command that returns a task returns it in one shape (`schemas/task.json`):
 | `blocking` | The IDs in `blocked_by` that block it now: open, missing, or unusable. Ascending; empty unless `readiness` is `blocked`. |
 | `claim` | `{claimed_at, extra}`, or `null` when the task is unclaimed or done. |
 
+### Folder
+
+Every command that returns a folder's record returns it in one shape (`schemas/folder.json`): the folder file's fields, and where it is.
+
+| Field | Holds |
+|---|---|
+| `id` | The folder's ID; `null` for the root, and for a folder with no folder file or one koan can't use. |
+| `path` | The folder path. |
+| `dir` | The absolute filesystem path of its directory, `@`s and all. |
+| `title` | Its title, or `null`. |
+| `extra` | Its `extra`; `{}` for the root. |
+| `notes_path` | The absolute filesystem path of its `@folder.md`, for an editor; `null` for the root, which has none. |
+
+Only the folder commands, and `list` with `include_folders`, return folder records. Every other result names a folder by its path: a task's `folder`, and `folders_created`.
+
 ### Orders
 
 - **Tree order**: by folder, a parent before its children and siblings by name (`/`, `/Zed`, `/infra`, `/proj`, `/proj/travel`, `/proj-b`); within a folder, by ID. Names are compared byte for byte, so every uppercase letter sorts before every lowercase one.
@@ -103,6 +118,8 @@ Their results always carry `total`, the number of tasks before `limit`, and `tru
 | [`create-folder`](#create-folder) | write | Create a folder. |
 | [`move-folder`](#move-folder) | write | Move or rename a folder. |
 | [`delete-folder`](#delete-folder) | write | Remove a folder and everything in it. |
+| [`show-folder`](#show-folder) | read | Return one folder. |
+| [`update-folder`](#update-folder) | write | Change a folder's title or `extra`. |
 | [`create`](#create) | write | Create a task. |
 | [`create-batch`](#create-batch) | write | Create several tasks that may wait on each other. |
 | [`show`](#show) | read | Return one task. |
@@ -202,8 +219,32 @@ Convert every file in an earlier format to this binary's, then record the format
 
 Create a folder, with any missing folders above it, each with its folder file and empty notes.
 
+- **Input:** `folder` (required), and, for the folder itself, `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`): its folder file's fields and its notes. The folders above it get none of them.
+- A folder already there is not an error, and is left as it is, when none of `title`, `extra`, and `notes` is given.
+- **Result:** `folder` (its record), and `folders_created`, empty when it already existed.
+- **Refuses:** `destination-exists`, when the folder is already there and `title`, `extra`, or `notes` is given: they are set with `update-folder`, and notes edited in the `@folder.md`.
+
+### show-folder
+
+Return one folder.
+
 - **Input:** `folder` (required).
-- **Result:** `folder`, and `folders_created`, empty when it already existed.
+- **Result:** `folder`, its record.
+- A folder file koan can't use fails it with `corrupt`. A folder with no folder file is returned with `id` `null`.
+
+### update-folder
+
+Change a folder's title or `extra`. Fields not given are left alone, and notes are edited in the `@folder.md`.
+
+- **Input:** `folder` (required, not `/`: the root has no folder file), and at least one of:
+
+| Field | Effect |
+|---|---|
+| `title` | Replaces the title, trimmed; `null` clears it. |
+| `extra_merge`, `extra_remove`, `extra_replace_all` | As `update`'s. |
+
+- A folder with no folder file, or one koan can't use, fails it: `not-found` for the first (`koan repair` writes one), `corrupt` for the second.
+- **Result:** `folder` (its record), `changed`.
 
 ### move-folder
 
@@ -212,7 +253,7 @@ Move a folder, with everything under it, to a new path. Renaming is moving to a 
 - **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into.
 - Neither may be `/`, and `to` may not be under `folder`: `invalid-input`.
 - No file is rewritten: a task's folder is where its file is, and the folder's own files move with it, its ID included.
-- **Result:** `folder` (the new path), `folders_created`, `changed`.
+- **Result:** `folder` (its record, at the new path), `folders_created`, `changed`.
 - **Refuses:** `destination-exists` when anything is at `to`.
 
 ### delete-folder
@@ -241,19 +282,22 @@ Create an open task.
 | `priority` | `null` | |
 | `tags` | `[]` | |
 | `blocked_by` | `[]` | IDs of existing tasks, open or done. |
+| `blocks` | `[]` | IDs of existing tasks, open or done, that wait on the new task: it is added to each one's `blocked_by`. |
 | `extra` | `{}` | |
 | `notes` | `""` | The initial content of the `@<id>.md`. |
 
-- The new ID is the counter's next one, after the IDs of any folders made for it. The counter is written first, then any folders, then the task file, then the notes. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
+- The new ID is the counter's next one, after the IDs of any folders made for it. The counter is written first, then any folders, then the task file, then the notes, then each task in `blocks`, in ascending order. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
 - The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
-- A new task can't close a cycle, since nothing waits on it yet.
-- **Result:** `task`, `folders_created`.
+- A new task closes a cycle only through `blocks`: when a task in `blocks` is in `blocked_by` too, or one in `blocked_by` already waits on one in `blocks`, directly or through other tasks. That is refused, as `block` refuses a cycle, before an ID is used.
+- A failure rewriting a task in `blocks` leaves the new task created, and the tasks before it rewritten: the error's `ids` is the new task, and its `changed_paths` what was written.
+- **Result:** `task`, `folders_created`, and `dependents`: the IDs of the tasks in `blocks`, ascending.
+- **Refuses:** `cycle`; `ids` is the existing tasks of one such cycle, from a task in `blocked_by` along `blocked_by` to the task in `blocks` it reaches (the new task, which closes it, has no ID yet). As for `block`, a cycle through a task file that can't be read can't be ruled out, and fails with that file's error.
 
 ### create-batch
 
 Create several open tasks in one write, where later ones may wait on earlier ones. Everything is checked before anything is written.
 
-- **Input:** `folder` (default `/`), the folder of every task that names none; and `tasks` (required, 1–1000), each with `create`'s fields plus:
+- **Input:** `folder` (default `/`), the folder of every task that names none; and `tasks` (required, 1–1000), each with `create`'s fields but `blocks`, plus:
 
 | Field | Holds |
 |---|---|
@@ -361,7 +405,7 @@ Return the tasks in scope, whatever their readiness.
 | Field | Default | Effect |
 |---|---|---|
 | `readiness` | `["ready", "blocked"]` | Which tasks to return. Done tasks pile up for ever, so they are left out unless asked for. |
-| `include_folders` | `false` | Also return `folders`: `folder` itself and the folders under it, empty ones included. Never narrowed. |
+| `include_folders` | `false` | Also return `folders`: the records of `folder` itself and the folders under it, empty ones included, in tree order. Never narrowed. A folder file koan can't use gives its folder `id` `null` and `title` `null`, and an `unusable-file` warning. |
 
 - **Result:** `tasks`, `total`, `truncated`, and `folders` when asked for.
 - **Order:** tree order.

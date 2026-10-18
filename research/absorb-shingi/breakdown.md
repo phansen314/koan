@@ -49,7 +49,9 @@ koan's rule is that every change to a file's fields is a new format, with a conv
 - The files exist from unit 2; this unit makes `title`, `extra`, and the notes usable.
 - `show-folder` and `update-folder` (`--title`, `--extra-merge`, `--extra-remove`, `--extra-replace-all`), mirroring `show` and `update`. `create-folder` takes `--title`, `--extra`, `--notes`.
 - The folder output shape, used by `show-folder`, `list --include-folders`, and every result that names a folder: id, path, dir, title, extra, notes_path. Settles review open item 2.
-- Invariant and finding: a `blocked_by` never names a folder's ID.
+- Invariant and finding: a `blocked_by` never names a folder's ID. Already held: `create` and `block` refuse an ID that is no task with `not-found` (now saying when it is a folder's), and `doctor` reports one that got in as `dangling-reference`.
+- Only folder commands return folder records; a task's `folder` and `folders_created` stay paths (decided 2026-10-18).
+- `create --blocks <ids>`: the new task is added to each named task's `blocked_by`, and a cycle through it is refused before an ID is used (added 2026-10-18, in place of gates for now).
 
 ### 5. References
 

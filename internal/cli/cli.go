@@ -62,6 +62,7 @@ const (
 	keys                 // one string per occurrence
 	object               // one JSON value
 	priority             // an integer, or null
+	nullText             // a string, or null
 )
 
 type option struct {
@@ -100,7 +101,17 @@ var commands = []command{
 		{"kinds", names, "only these finding kinds, and every fix of them (default: all, but not dangling-reference, nor a stale-claim on a task that is gone)", ""}}},
 	{name: "migrate", short: "Convert the tree to this binary's format", options: []option{
 		{"dry-run", boolean, "report what would change and write nothing", ""}}},
-	{name: "create-folder", short: "Create a folder", subject: "folder"},
+	{name: "create-folder", short: "Create a folder", subject: "folder", options: []option{
+		{"title", nullText, "the folder's title", ""},
+		{"extra", object, "a JSON object stored with the folder", ""},
+		{"notes", text, "the initial notes", ""},
+		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
+	{name: "show-folder", short: "Return one folder", subject: "folder"},
+	{name: "update-folder", short: "Change a folder's title or extra", subject: "folder", options: []option{
+		{"title", nullText, "the new title, or null to clear it", ""},
+		{"extra-merge", object, "a JSON object of keys to set", ""},
+		{"extra-remove", keys, "a key to delete (repeatable)", ""},
+		{"extra-replace-all", object, "the whole new extra object", ""}}},
 	{name: "move-folder", short: "Move or rename a folder", subject: "folder", options: []option{
 		{"to", text, "the folder's new path (required)", ""}}},
 	{name: "delete-folder", short: "Remove a folder and everything in it", subject: "folder", options: []option{
@@ -111,6 +122,7 @@ var commands = []command{
 		{"priority", priority, "an integer; higher is more important", ""},
 		{"tags", names, "tags", ""},
 		{"blocked-by", ids, "IDs of the tasks it waits on", ""},
+		{"blocks", ids, "IDs of the tasks that wait on it", ""},
 		{"extra", object, "a JSON object stored with the task", ""},
 		{"notes", text, "the initial notes", ""},
 		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
@@ -375,6 +387,11 @@ func scalar(k kind, s string) any {
 		if b, err := strconv.ParseBool(s); err == nil && (s == "true" || s == "false") {
 			return b
 		}
+	case nullText:
+		if s == "null" {
+			return nil
+		}
+		return s
 	case priority:
 		if s == "null" {
 			return nil

@@ -221,7 +221,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 				if e := t.SaveState(); e != nil {
 					return false, e
 				}
-				return done(t.WriteFolderFile(f, model.NewFolderFile(id)))
+				return done(t.WriteFolderFile(f, model.NewFolderFile(id), true))
 			})
 	}
 

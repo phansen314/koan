@@ -53,10 +53,12 @@ A command line the CLI can't turn into an input is a `usage` error: an unknown c
 | `koan doctor` | |
 | `koan repair` | `--kinds` |
 | `koan migrate` | `--dry-run` |
-| `koan create-folder <folder>` | |
+| `koan create-folder <folder>` | `--title`, `--extra`, `--notes`, `--notes-file` |
+| `koan show-folder <folder>` | |
+| `koan update-folder <folder>` | `--title`, `--extra-merge`, `--extra-remove`, `--extra-replace-all` |
 | `koan move-folder <folder> --to <folder>` | |
 | `koan delete-folder <folder>` | `-r, --recursive`, `--force` |
-| `koan create <title>` | `--folder`, `--priority`, `--tags`, `--blocked-by`, `--extra`, `--notes`, `--notes-file` |
+| `koan create <title>` | `--folder`, `--priority`, `--tags`, `--blocked-by`, `--blocks`, `--extra`, `--notes`, `--notes-file` |
 | `koan create-batch -i <file>` | |
 | `koan show <id>` | |
 | `koan update <id>` | `--title`, `--priority`, `--tags-add`, `--tags-remove`, `--tags-replace-all`, `--extra-merge`, `--extra-remove`, `--extra-replace-all` |
@@ -75,7 +77,7 @@ A command line the CLI can't turn into an input is a `usage` error: an unknown c
 
 Every command also takes `-i, --input <file>` and `-h, --help`. `--to` and `--blockers` are required, and named, because a second bare word would not say what it is.
 
-One option sets a field under another name: `create`'s `--notes-file <file>` reads the notes from a file, or from stdin for `-`, exactly as they are. It can't be given with `--notes`.
+One option sets a field under another name: `create`'s and `create-folder`'s `--notes-file <file>` reads the notes from a file, or from stdin for `-`, exactly as they are. It can't be given with `--notes`.
 
 ## Examples
 

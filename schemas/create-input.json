@@ -15,6 +15,11 @@
       "$ref": "task-file#/properties/blocked_by",
       "default": []
     },
+    "blocks": {
+      "$ref": "task-file#/properties/blocked_by",
+      "default": [],
+      "description": "IDs of existing tasks that wait on the new one."
+    },
     "extra": {
       "$ref": "task-file#/properties/extra",
       "default": {}

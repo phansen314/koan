@@ -23,8 +23,8 @@ func TestTreeOrderPutsChildrenBeforeLaterSiblings(t *testing.T) {
 	w.ok("create-batch", `{"tasks":[{"title":"a","folder":"/proj-b"},{"title":"b","folder":"/proj/travel"},{"title":"c","folder":"/proj"},{"title":"d","folder":"/Zed"}]}`)
 	// The four folders take 1 to 4; the tasks, in input order, 5 to 8.
 	wantIDs(t, "list", w.ok("list", `{}`)["tasks"], 8, 7, 6, 5)
-	folders, _ := json.Marshal(w.ok("list", `{"include_folders":true}`)["folders"])
-	if string(folders) != `["/","/Zed","/proj","/proj/travel","/proj-b"]` {
+	folders := paths(w.ok("list", `{"include_folders":true}`)["folders"])
+	if folders != `["/","/Zed","/proj","/proj/travel","/proj-b"]` {
 		t.Errorf("folders %s", folders)
 	}
 }
@@ -473,7 +473,7 @@ func TestMaterialIsNeverRead(t *testing.T) {
 		t.Errorf("doctor found %v in material", fs)
 	}
 	got := w.ok("list", `{"include_folders":true}`)
-	if folders, _ := json.Marshal(got["folders"]); string(folders) != `["/","/p"]` {
+	if folders := paths(got["folders"]); folders != `["/","/p"]` {
 		t.Errorf("folders %s", folders)
 	}
 	wantIDs(t, "tasks", got["tasks"], 2)
@@ -660,5 +660,99 @@ func TestDeleteFolderRefusesMaterial(t *testing.T) {
 	wantIDs(t, "deleted", got["deleted"], 6)
 	if _, err := os.Stat(w.disk("@p")); !os.IsNotExist(err) {
 		t.Errorf("the folder is still there: %v", err)
+	}
+}
+
+// record is the folder record in a result, as JSON with its keys sorted
+// and the root's path cut to ~, for comparing.
+func (w *world) record(res map[string]any) string {
+	data, _ := json.Marshal(res["folder"])
+	return strings.ReplaceAll(string(data), w.disk(), "~")
+}
+
+// A folder's title, extra, and notes are set by create-folder, changed by
+// update-folder, and shown by show-folder and list.
+func TestFolderMetadata(t *testing.T) {
+	w := ready(t)
+	got := w.ok("create-folder", `{"folder":"/p/q","title":" Research ","extra":{"kind":"phase"},"notes":"n"}`)
+	want := `{"dir":"~/@p/@q","extra":{"kind":"phase"},"id":2,"notes_path":"~/@p/@q/@folder.md","path":"/p/q","title":"Research"}`
+	if r := w.record(got); r != want {
+		t.Errorf("create-folder: %s, want %s", r, want)
+	}
+	if n, _ := os.ReadFile(w.root("p/q/folder.md")); string(n) != "n" {
+		t.Errorf("notes %q", n)
+	}
+	// The folders above it get none of it.
+	if r := w.record(w.ok("show-folder", `{"folder":"/p"}`)); r != `{"dir":"~/@p","extra":{},"id":1,"notes_path":"~/@p/@folder.md","path":"/p","title":null}` {
+		t.Errorf("show-folder /p: %s", r)
+	}
+	if r := w.record(w.ok("show-folder", `{"folder":"/"}`)); r != `{"dir":"~","extra":{},"id":null,"notes_path":null,"path":"/","title":null}` {
+		t.Errorf("show-folder /: %s", r)
+	}
+	w.fail("show-folder", `{"folder":"/nope"}`, errs.NotFound, "")
+	// Fields for a folder already there are refused; without them, it is fine.
+	w.fail("create-folder", `{"folder":"/p/q","title":"x"}`, errs.Conflict, errs.RuleDestinationExists)
+	if got := w.ok("create-folder", `{"folder":"/p/q"}`); len(got["folders_created"].([]any)) != 0 {
+		t.Errorf("create-folder again: %v", got)
+	}
+
+	got = w.ok("update-folder", `{"folder":"/p/q","title":null,"extra_merge":{"n":1}}`)
+	if r := w.record(got); got["changed"] != true || !strings.Contains(r, `"extra":{"kind":"phase","n":1}`) || !strings.Contains(r, `"title":null`) {
+		t.Errorf("update-folder: %s %v", r, got["changed"])
+	}
+	if got := w.ok("update-folder", `{"folder":"/p/q","extra_merge":{"n":1}}`); got["changed"] != false {
+		t.Errorf("an update that changes nothing changed %v", got)
+	}
+	w.fail("update-folder", `{"folder":"/"}`, errs.InvalidInput, "")
+	w.fail("update-folder", `{"folder":"/p"}`, errs.InvalidInput, "")
+	w.fail("update-folder", `{"folder":"/p","extra_merge":{},"extra_replace_all":{}}`, errs.InvalidInput, "")
+	w.fail("update-folder", `{"folder":"/p","title":"   "}`, errs.InvalidInput, "")
+
+	// A moved folder keeps its fields.
+	got = w.ok("move-folder", `{"folder":"/p","to":"/r"}`)
+	if r := w.record(got); r != `{"dir":"~/@r","extra":{},"id":1,"notes_path":"~/@r/@folder.md","path":"/r","title":null}` {
+		t.Errorf("move-folder: %s", r)
+	}
+
+	// A folder with no folder file, and one koan can't use.
+	os.Mkdir(w.root("hand"), 0o755)
+	w.fail("update-folder", `{"folder":"/hand","title":"x"}`, errs.NotFound, "")
+	if r := w.record(w.ok("show-folder", `{"folder":"/hand"}`)); !strings.Contains(r, `"id":null`) {
+		t.Errorf("show-folder /hand: %s", r)
+	}
+	os.WriteFile(w.root("r/q/folder.json"), []byte("{"), 0o644)
+	w.fail("show-folder", `{"folder":"/r/q"}`, errs.Corrupt, "")
+	w.fail("update-folder", `{"folder":"/r/q","title":"x"}`, errs.Corrupt, "")
+	env := w.run("list", `{"include_folders":true}`)
+	if len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
+		t.Errorf("warnings %+v", env.Warnings)
+	}
+}
+
+// create's blocks: the tasks named wait on the new one. A cycle through it
+// is refused before an ID is used.
+func TestCreateBlocks(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]}]}`)
+	got := w.ok("create", `{"title":"c","blocks":[2,1]}`)
+	wantIDs(t, "dependents", got["dependents"], 1, 2)
+	if tk := task(w.ok("show", `{"id":1}`)); tk["readiness"] != "blocked" {
+		t.Errorf("task 1 does not wait on 3: %v", tk)
+	}
+	// 2 waits on 1: a task blocked by 2 that blocks 1 closes a cycle.
+	e := w.fail("create", `{"title":"d","blocked_by":[2],"blocks":[1]}`, errs.Conflict, errs.RuleCycle)
+	if !slices.Equal(e.IDs, []int64{2, 1}) {
+		t.Errorf("cycle %v, want [2 1]", e.IDs)
+	}
+	w.fail("create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle)
+	w.fail("create", `{"title":"d","blocks":[9]}`, errs.NotFound, "")
+	w.fail("create", `{"title":"d","blocks":[1,1]}`, errs.InvalidInput, "")
+	if id := task(w.ok("create", `{"title":"e"}`))["id"]; id != float64(4) {
+		t.Errorf("a refused create used an ID: next is %v", id)
+	}
+	// A folder's ID is not a task's, and the error says so.
+	w.ok("create-folder", `{"folder":"/f"}`) // 5
+	if e := w.fail("create", `{"title":"g","blocks":[5]}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /f") {
+		t.Errorf("message %q", e.Message)
 	}
 }

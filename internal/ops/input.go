@@ -155,6 +155,26 @@ func (f fields) title(k string, required bool) (string, bool) {
 	return title, true
 }
 
+// optTitle reads a title, trimmed, or null. set is false when the field is
+// absent, or is wrong, which it records.
+func (f fields) optTitle(k string) (title *string, set bool) {
+	raw, ok := f.m[k]
+	if f.at == "" {
+		f.in.used[k] = true
+	}
+	if !ok {
+		return nil, false
+	}
+	if string(bytes.TrimSpace(raw)) == "null" {
+		return nil, true
+	}
+	t, ok := f.title(k, false)
+	if !ok {
+		return nil, false
+	}
+	return &t, true
+}
+
 // priority reads an integer or null. set is false when the field is absent.
 func (f fields) priority(k string) (p *int64, set bool) {
 	raw, ok := f.m[k]

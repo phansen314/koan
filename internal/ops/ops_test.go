@@ -54,6 +54,16 @@ func (w *world) root(rel ...string) string {
 	return w.disk(segs...)
 }
 
+// paths takes the paths of a list of folder records, as JSON.
+func paths(records any) string {
+	var ps []string
+	for _, r := range records.([]any) {
+		ps = append(ps, r.(map[string]any)["path"].(string))
+	}
+	data, _ := json.Marshal(ps)
+	return string(data)
+}
+
 func (w *world) disk(rel ...string) string {
 	return filepath.Join(append([]string{w.env.RootPath()}, rel...)...)
 }
@@ -349,7 +359,7 @@ func TestFoldersAndMove(t *testing.T) {
 	w.fail("move-folder", `{"folder":"/c","to":"/c/x"}`, errs.InvalidInput, "")
 	w.fail("move-folder", `{"folder":"/nope","to":"/x"}`, errs.NotFound, "")
 	w.fail("move-folder", `{"folder":"/c","to":"/a"}`, errs.Conflict, errs.RuleDestinationExists)
-	if got := w.ok("move-folder", `{"folder":"/c","to":"/z/y"}`); got["folder"] != "/z/y" || got["changed"] != true {
+	if got := w.ok("move-folder", `{"folder":"/c","to":"/z/y"}`); got["folder"].(map[string]any)["path"] != "/z/y" || got["changed"] != true {
 		t.Errorf("move-folder: %v", got)
 	}
 	if tk := task(w.ok("show", `{"id":3}`)); tk["folder"] != "/z/y/d" {
@@ -401,8 +411,8 @@ func TestListAndFrontier(t *testing.T) {
 	if one, _ := json.Marshal(got["tasks"]); string(one) != `[{"id":5,"readiness":"ready","title":"high"}]` {
 		t.Errorf("fields: %s", one)
 	}
-	folders, _ := json.Marshal(w.ok("list", `{"include_folders":true}`)["folders"])
-	if string(folders) != `["/","/Zed","/proj","/proj/sub"]` {
+	folders := paths(w.ok("list", `{"include_folders":true}`)["folders"])
+	if folders != `["/","/Zed","/proj","/proj/sub"]` {
 		t.Errorf("folders %s", folders)
 	}
 	w.fail("list", `{"folder":"/nope"}`, errs.NotFound, "")

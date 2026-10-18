@@ -59,6 +59,16 @@ type FolderFile struct {
 	Extra  map[string]any `json:"extra"`
 }
 
+// FolderRecord is a folder as every command that returns one returns it.
+type FolderRecord struct {
+	ID        *ID            `json:"id"`
+	Path      Folder         `json:"path"`
+	Dir       string         `json:"dir"`
+	Title     *string        `json:"title"`
+	Extra     map[string]any `json:"extra"`
+	NotesPath *string        `json:"notes_path"`
+}
+
 // NewFolderFile is the folder file of a new folder.
 func NewFolderFile(id ID) *FolderFile {
 	return &FolderFile{Schema: FileFormat, ID: id, Extra: map[string]any{}}

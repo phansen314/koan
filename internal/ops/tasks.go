@@ -60,7 +60,7 @@ func (c *call) mustExist(ids []model.ID) *errs.Error {
 		}
 	}
 	if len(gone) > 0 {
-		return notFoundTask(gone...)
+		return c.notFoundTasks(gone...)
 	}
 	return nil
 }
@@ -87,16 +87,21 @@ func (c *call) writeNew(n newTask, tf *model.TaskFile) (created bool, e *errs.Er
 type createResult struct {
 	Task           model.Task     `json:"task"`
 	FoldersCreated []model.Folder `json:"folders_created"`
+	Dependents     []model.ID     `json:"dependents"`
 }
 
 func cmdCreate(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	n := readNewTask(in, model.Root)
 	n.blockers = in.ids("blocked_by", false)
+	blocks := slices.Sorted(slices.Values(in.ids("blocks", false)))
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
-	if e := c.mustExist(n.blockers); e != nil {
+	if e := c.mustExist(append(slices.Clone(n.blockers), blocks...)); e != nil {
+		return nil, e
+	}
+	if e := c.noCycleThroughNew(n.blockers, blocks); e != nil {
 		return nil, e
 	}
 	missing, e := c.plan(n.folder)
@@ -107,7 +112,7 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	folders, e := c.makeFolders(missing, first)
+	folders, e := c.makeFolders(missing, first, nil)
 	if e != nil {
 		return nil, e
 	}
@@ -125,7 +130,49 @@ func cmdCreate(c *call) (any, *errs.Error) {
 		c.x = &store.Index{Tasks: map[model.ID]model.Folder{}}
 	}
 	c.x.Tasks[id] = n.folder
-	return createResult{Task: c.task(n.folder, tf), FoldersCreated: folders}, nil
+	res := createResult{Task: c.task(n.folder, tf), FoldersCreated: folders, Dependents: []model.ID{}}
+	for _, b := range blocks {
+		f, btf, e := c.find(b)
+		if e == nil {
+			btf.BlockedBy = append(btf.BlockedBy, id)
+			btf.UpdatedAt = c.now
+			e = c.t.WriteTask(f, btf, false)
+		}
+		if e != nil {
+			return nil, e.WithIDs(id)
+		}
+		res.Dependents = append(res.Dependents, b)
+	}
+	return res, nil
+}
+
+// noCycleThroughNew refuses a new task that would close a cycle: one
+// blocked by the tasks in blockers and blocking those in blocks closes one
+// when a task in blocks is reachable from one in blockers along blocked_by.
+// A cycle through a task file that can't be read can't be ruled out, so
+// meeting one refuses the task with that file's error.
+func (c *call) noCycleThroughNew(blockers, blocks []model.ID) *errs.Error {
+	if len(blockers) == 0 || len(blocks) == 0 {
+		return nil
+	}
+	var unreadable *errs.Error
+	look := func(n model.ID) (graph.Node, bool) {
+		if f, ok := c.x.Tasks[n]; ok && unreadable == nil {
+			if l := c.t.Load(f, n); l.Err != nil && !l.Gone {
+				unreadable = l.Err
+			}
+		}
+		return c.look(n)
+	}
+	for _, b := range blocks {
+		for _, x := range blockers {
+			if path := graph.Path(x, b, look); path != nil {
+				return errs.NewConflict(errs.RuleCycle, "task %d waits on task %d, so a new task blocked by %d and blocking %d would make a cycle", x, b, x, b).
+					WithIDs(path...)
+			}
+		}
+	}
+	return unreadable
 }
 
 type batchResult struct {
@@ -218,7 +265,7 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	res := batchResult{IDs: []model.ID{}, Refs: map[string]model.ID{}}
-	if res.FoldersCreated, e = c.makeFolders(missing, first); e != nil {
+	if res.FoldersCreated, e = c.makeFolders(missing, first, nil); e != nil {
 		return nil, e
 	}
 	base := first + model.ID(len(missing))
@@ -310,9 +357,7 @@ func cmdUpdate(c *call) (any, *errs.Error) {
 	add, _ := in.tags("tags_add")
 	remove, _ := in.tags("tags_remove")
 	replace, hasReplace := in.tags("tags_replace_all")
-	merge, _ := in.object("extra_merge")
-	drop, _ := in.strs("extra_remove")
-	all, hasAll := in.object("extra_replace_all")
+	edit := readExtraEdit(c, in)
 
 	if len(c.in.m) < 2 && c.in.has("id") {
 		c.in.bad("", "gives nothing to change")
@@ -323,14 +368,6 @@ func cmdUpdate(c *call) (any, *errs.Error) {
 	for i, t := range add {
 		if slices.Contains(remove, t) {
 			c.in.bad(fmt.Sprintf("/tags_add/%d", i), "is also in tags_remove")
-		}
-	}
-	if hasAll && (c.in.has("extra_merge") || c.in.has("extra_remove")) {
-		c.in.bad("/extra_replace_all", "may not be given with extra_merge or extra_remove")
-	}
-	for i, k := range drop {
-		if _, both := merge[k]; both {
-			c.in.bad(fmt.Sprintf("/extra_remove/%d", i), "is also in extra_merge")
 		}
 	}
 	if e := c.begin(true); e != nil {
@@ -352,15 +389,7 @@ func cmdUpdate(c *call) (any, *errs.Error) {
 				tf.Tags = append(tf.Tags, t)
 			}
 		}
-		if hasAll {
-			tf.Extra = all
-		}
-		for k, v := range merge {
-			tf.Extra[k] = v
-		}
-		for _, k := range drop {
-			delete(tf.Extra, k)
-		}
+		tf.Extra = edit.apply(tf.Extra)
 		return nil
 	}, nil)
 }

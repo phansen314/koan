@@ -57,7 +57,7 @@ Every key is required and no other key is allowed.
 | `title` | `null`, or a title by the task rule. |
 | `extra` | Any JSON object. koan stores it and never interprets it. |
 
-No command sets `title` or `extra` yet: koan writes `null` and `{}`, and keeps any valid values a file holds.
+`create-folder` and `update-folder` set `title` and `extra`; a folder made as needed by another command gets `null` and `{}`.
 
 A folder exists when its directory does. A missing `@folder.md` reads as empty notes. A folder with no folder file is still a folder, whose tasks and folders count as usual; it has no ID until one is written, and `doctor` reports it.
 

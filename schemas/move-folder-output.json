@@ -4,7 +4,7 @@
   "type": "object",
   "required": ["folder", "folders_created", "changed"],
   "properties": {
-    "folder": { "$ref": "folder-path" },
+    "folder": { "$ref": "folder" },
     "folders_created": {
       "type": "array",
       "items": { "$ref": "folder-path" }

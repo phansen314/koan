@@ -526,7 +526,7 @@ func (r *random) compare() {
 	})
 	got := []string{}
 	for _, f := range res["folders"].([]any) {
-		got = append(got, f.(string))
+		got = append(got, f.(map[string]any)["path"].(string))
 	}
 	if !slices.Equal(got, want) {
 		r.failf("folders %v, want %v", got, want)

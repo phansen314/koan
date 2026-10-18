@@ -177,13 +177,13 @@ func (t *Tree) Missing(f model.Folder) ([]model.Folder, *errs.Error) {
 }
 
 // MakeFolder creates folder f, whose parent is there, whole: a hidden temp
-// folder in the parent gets the folder file, with ID id, and empty notes,
+// folder in the parent gets the folder file ff and the notes,
 // and is then renamed into place, so the folder never appears without its
 // folder file. made is false when something was already at f, which only an
 // outside change can do: a not-a-folder conflict when it is not a folder,
 // and otherwise left as it is. The temp folder is removed either way, so it
 // is not a change; one a kill leaves behind is doctor's.
-func (t *Tree) MakeFolder(f model.Folder, id model.ID) (made bool, e *errs.Error) {
+func (t *Tree) MakeFolder(f model.Folder, ff *model.FolderFile, notes string) (made bool, e *errs.Error) {
 	tmp := fsys.TempName(f.Parent().Rel())
 	if err := t.root.Mkdir(tmp, FolderMode); err != nil {
 		return false, errs.FromOS(t.Abs(tmp), err)
@@ -192,7 +192,7 @@ func (t *Tree) MakeFolder(f model.Folder, id model.ID) (made bool, e *errs.Error
 		t.root.RemoveAll(tmp)
 		return false, errs.FromOS(t.Abs(rel), err)
 	}
-	data, err := model.Encode(model.NewFolderFile(id))
+	data, err := model.Encode(ff)
 	if err != nil {
 		t.root.RemoveAll(tmp)
 		return false, errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
@@ -200,7 +200,7 @@ func (t *Tree) MakeFolder(f model.Folder, id model.ID) (made bool, e *errs.Error
 	if err := Publish(t.root, path.Join(tmp, FolderFileName), data, FileMode, false); err != nil {
 		return fail(path.Join(tmp, FolderFileName), err)
 	}
-	if err := Publish(t.root, path.Join(tmp, FolderNotesName), nil, FileMode, false); err != nil {
+	if err := Publish(t.root, path.Join(tmp, FolderNotesName), []byte(notes), FileMode, false); err != nil {
 		return fail(path.Join(tmp, FolderNotesName), err)
 	}
 	err = t.root.RenameNoReplace(tmp, f.Rel())
@@ -216,14 +216,15 @@ func (t *Tree) MakeFolder(f model.Folder, id model.ID) (made bool, e *errs.Error
 	return fail(f.Rel(), err)
 }
 
-// WriteFolderFile writes a folder file into folder f, which must not have
-// one: repair's way to give a folder an ID.
-func (t *Tree) WriteFolderFile(f model.Folder, ff *model.FolderFile) *errs.Error {
+// WriteFolderFile writes folder f's folder file: a new one when create is
+// set, which fails if a file is already there (repair's way to give a folder
+// an ID), otherwise over the old one.
+func (t *Tree) WriteFolderFile(f model.Folder, ff *model.FolderFile, create bool) *errs.Error {
 	data, err := model.Encode(ff)
 	if err != nil {
 		return errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
 	}
-	return t.put(FolderFileRel(f), data, false)
+	return t.put(FolderFileRel(f), data, !create)
 }
 
 func notAFolder(t *Tree, f model.Folder) *errs.Error {

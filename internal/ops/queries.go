@@ -180,15 +180,15 @@ func cmdList(c *call) (any, *errs.Error) {
 	if !folders {
 		return l, nil
 	}
-	fs := []model.Folder{}
+	fs := []model.FolderRecord{}
 	for _, f := range c.x.Folders {
 		if s.folder.Holds(f) {
-			fs = append(fs, f)
+			fs = append(fs, c.passFolder(f))
 		}
 	}
 	return struct {
 		listing
-		Folders []model.Folder `json:"folders"`
+		Folders []model.FolderRecord `json:"folders"`
 	}{l, fs}, nil
 }
 

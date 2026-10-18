@@ -155,7 +155,23 @@ koan update 42 --priority null --tags-add urgent --extra-merge '{"status":"waiti
 koan block 42 --blockers 40,41                      # 40 and 41 must finish before 42
 koan unblock 42 --blockers 41
 koan reopen 42
+koan create 'Pick a library' --blocks 42           # the new task must finish before 42
 ```
+
+`--blocks` is `--blocked-by` the other way round: the tasks named wait on the new one (`.result.dependents`). A new task that would close a cycle is refused with `cycle`, as `block` refuses one.
+
+### Folders
+
+A folder has an ID (from the same counter as tasks), an optional title, an `extra` object, and notes in its `@folder.md`: the place for what a folder of work is about.
+
+```sh
+koan create-folder /work/HOME-12345 --title 'Payment retries' --extra '{"jira":"HOME-12345"}' --notes 'Context …'
+koan show-folder /work/HOME-12345           # .result.folder: id, path, dir, title, extra, notes_path
+koan update-folder /work/HOME-12345 --title null --extra-merge '{"status":"review"}'
+koan list --folder /work --include-folders --limit 0 | jq '.result.folders[] | {id, path, title}'
+```
+
+`create-folder` sets a title, `extra`, or notes only on a folder it makes: on one already there it refuses with `destination-exists`, and `update-folder` is the way. Edit a folder's notes in its `@folder.md`, as a task's in its `@<id>.md`. The root, `/`, has no ID, title, or notes.
 
 **Folders are created as needed.** `create`, `create-batch`, `move`, `move-folder`, and `create-folder` make any folder they are given that doesn't exist, so a typo in a folder path makes a new folder. Their results list what was made in `folders_created`: **check it, and tell the user about any folder you didn't mean to make.**
 

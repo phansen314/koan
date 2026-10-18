@@ -2,12 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "create-output",
   "type": "object",
-  "required": ["task", "folders_created"],
+  "required": ["task", "folders_created", "dependents"],
   "properties": {
     "task": { "$ref": "task" },
     "folders_created": {
       "type": "array",
       "items": { "$ref": "folder-path" }
+    },
+    "dependents": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "The tasks in blocks, which now wait on the new one. Ascending."
     }
   },
   "additionalProperties": false
