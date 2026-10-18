@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-file",
+  "type": "object",
+  "required": ["schema", "id", "title", "start", "done", "extra"],
+  "properties": {
+    "schema": { "const": 1, "description": "The format this file is in." },
+    "id": { "$ref": "task-file#/properties/id", "description": "The folder's identity, from the same counter as task IDs." },
+    "title": { "anyOf": [{ "$ref": "task-file#/properties/title" }, { "type": "null" }] },
+    "start": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "The folder's start gate, a task ID." },
+    "done": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "The folder's done gate, a task ID." },
+    "extra": { "type": "object", "description": "Any JSON object; koan stores it and never interprets it." }
+  },
+  "additionalProperties": false,
+  "description": "@folder.json, in every folder but the root."
+}

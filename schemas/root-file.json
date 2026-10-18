@@ -7,5 +7,5 @@
     "schema": { "type": "integer", "minimum": 1, "description": "The tree's format." }
   },
   "additionalProperties": false,
-  "description": "koan.json, in the root of the tree."
+  "description": "@koan.json, in the root of the tree."
 }

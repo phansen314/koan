@@ -25,8 +25,8 @@ koan's rule is that every change to a file's fields is a new format, with a conv
 - `init` recovers `last_id` from `@` task names and folder IDs.
 - IDs are unique across tasks and folders and within the counter (invariants, with `doctor` findings), since the counter is shared from this unit on.
 - `orphan-notes` and the other findings now concern `@N.md` only. New finding: an `@` folder in a koan folder with no `@folder.json`.
-- `migrate` restructures the tree, not just converting files one by one. It has to finish a half-renamed tree when run again: in format 1 `@x` isn't a valid name, and in format 2 `x` is material. Settles review open item 1.
-- The live tree is migrated at the end of this unit.
+- No conversion from format 1 (decided 2026-10-18: the user is koan's only user, and starts fresh on both machines). The root file is `@koan.json`, with `{"schema": 2}`, so every entry koan owns carries the `@`. This binary sees a format-1 tree (with only `koan.json`) as not initialized, and `init` there makes everything format 1 wrote material. An earlier binary on a new tree is not guarded against: the user doesn't care, starting fresh on both machines. Settles review open item 1.
+- Starting over, once the units wanted have merged: install the new binary, move `~/koan-root` and `~/.config/koan/state.json` aside, `koan init`, and recreate the open tasks worth keeping.
 
 ### 3. `delete-folder`: refuse material unless forced
 

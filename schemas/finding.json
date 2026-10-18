@@ -5,7 +5,7 @@
   "required": ["kind", "message", "paths", "ids", "repairable"],
   "properties": {
     "kind": {
-      "enum": ["temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes", "duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry"]
+      "enum": ["temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes", "missing-folder-file", "duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry"]
     },
     "message": { "type": "string", "description": "What is wrong and what to do about it." },
     "paths": {

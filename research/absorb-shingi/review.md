@@ -81,7 +81,7 @@ Plus the notes' own finding: an `@` folder in a koan folder with no `@folder.jso
 
 Not examined in the review; each is settled when its unit of work is specified. The first two come first, since other units build on them.
 
-1. **Migrating the live tree.** Format 2 renames every folder and task file to `@` names and writes a `@folder.json`, with an ID from the counter, for every existing folder. That is a restructured tree, not only new file formats, so `migrate`'s file-by-file model needs extending to describe it.
+1. **Migrating the live tree: settled 2026-10-18, not done.** The user starts fresh on both machines. Format 2 ships with no conversion from format 1. The root file becomes `@koan.json`, so the new binary sees a format-1 tree as not initialized; nothing guards an earlier binary against a new tree.
 2. **Folder output.** What `show-folder` and `list --include-folders` return: id, path, dir, title, gate IDs, state, notes_path, extra. State's rule when the done gate is done but start isn't.
 3. **Worktree markers.** The `.koan/` marker's fields (id, path, dir, the folder's ID in place of shingi's UUID); `bind`, `unbind`, `where`; whether `context` is still needed.
 4. **Batch input.** Whether task refs are global to the batch or per folder; whether a top-level task's `blocked_by` can name a folder's gate; `after`/`before` taking `@id` as well as `/path`.

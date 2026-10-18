@@ -206,7 +206,7 @@ koan delete-folder /proj/old --recursive      # .result.deleted: what went; .res
 
 ## Hard rules
 
-- **Never** hand-edit, create, rename, or delete anything under `~/koan-root` except a task's notes `.md` — use `move`, `move-folder`, `delete`, and `delete-folder`. Task `.json` files and `koan.json` belong to koan; a hand edit can break invariants no command will repair. The same goes for `~/.config/koan/state.json`.
+- **Never** hand-edit, create, rename, or delete anything under `~/koan-root` except a task's notes `.md` — use `move`, `move-folder`, `delete`, and `delete-folder`. Task `.json` files and `@koan.json` belong to koan; a hand edit can break invariants no command will repair. The same goes for `~/.config/koan/state.json`.
 - Don't pass `--input` unless building input from other JSON, or for `create-batch`, which takes nothing else; flags are clearer.
 - Don't create tasks the user didn't ask for. When a follow-up turns up during other work, offer it: "Want me to add a task for X?"
 
