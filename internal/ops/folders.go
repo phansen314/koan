@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
@@ -11,17 +12,28 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// folderResult is what create-folder and move-folder return.
-type folderResult struct {
-	Folder         model.FolderRecord `json:"folder"`
-	FoldersCreated []model.Folder     `json:"folders_created"`
-	Changed        *bool              `json:"changed,omitempty"`
+// folderWritten is what folder update returns: the folder's identity.
+type folderWritten struct {
+	ID      *model.ID    `json:"id"`
+	Path    model.Folder `json:"path"`
+	Changed bool         `json:"changed"`
 }
 
-// shownFolder is what show-folder and update-folder return.
+// folderMade is what folder create and folder move return.
+type folderMade struct {
+	folderWritten
+	FoldersCreated []model.Folder `json:"folders_created"`
+}
+
+// made is the result of a folder create or folder move that left folder f
+// at its path. Its ID is read from its folder file: one koan can't use is a
+// warning.
+func (c *call) made(f model.Folder, changed bool, created []model.Folder) folderMade {
+	return folderMade{folderWritten{c.passFolder(f).ID, f, changed}, created}
+}
+
 type shownFolder struct {
-	Folder  model.FolderRecord `json:"folder"`
-	Changed *bool              `json:"changed,omitempty"`
+	Folder model.FolderRecord `json:"folder"`
 }
 
 // record is folder f's record. A folder file koan can't use is the error,
@@ -53,7 +65,7 @@ func (c *call) passFolder(f model.Folder) model.FolderRecord {
 	return r
 }
 
-func cmdCreateFolder(c *call) (any, *errs.Error) {
+func cmdFolderCreate(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	f := in.folder("folder", true, model.Root)
 	title, hasTitle := in.optTitle("title")
@@ -66,13 +78,11 @@ func cmdCreateFolder(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	res := folderResult{FoldersCreated: []model.Folder{}}
 	if len(missing) == 0 {
 		if hasTitle || hasExtra || hasNotes {
-			return nil, c.destinationExists("already exists: set its title and extra with update-folder, and edit its notes in its @folder.md", f)
+			return nil, c.destinationExists("already exists: set its title and extra with folder update, and edit its notes in its @folder.md", f)
 		}
-		res.Folder = c.passFolder(f)
-		return res, nil
+		return c.made(f, false, []model.Folder{}), nil
 	}
 	first, e := c.issue(len(missing))
 	if e != nil {
@@ -83,14 +93,14 @@ func cmdCreateFolder(c *call) (any, *errs.Error) {
 	if hasTitle || hasExtra || hasNotes {
 		asked = append(asked, newFolder{folder: f, title: title, extra: extra, notes: notes})
 	}
-	if res.FoldersCreated, e = c.makeFolders(missing, first, asked...); e != nil {
+	created, e := c.makeFolders(missing, first, asked...)
+	if e != nil {
 		return nil, e
 	}
-	res.Folder = c.passFolder(f)
-	return res, nil
+	return c.made(f, len(created) > 0, created), nil
 }
 
-func cmdShowFolder(c *call) (any, *errs.Error) {
+func cmdFolderShow(c *call) (any, *errs.Error) {
 	ref := c.in.top().folderRef("folder", true, folderRef{})
 	if e := c.begin(false); e != nil {
 		return nil, e
@@ -109,7 +119,7 @@ func cmdShowFolder(c *call) (any, *errs.Error) {
 	return shownFolder{Folder: r}, nil
 }
 
-func cmdUpdateFolder(c *call) (any, *errs.Error) {
+func cmdFolderUpdate(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	ref := in.folderRef("folder", true, folderRef{})
 	title, hasTitle := in.optTitle("title")
@@ -150,15 +160,11 @@ func cmdUpdateFolder(c *call) (any, *errs.Error) {
 			return nil, e
 		}
 	}
-	r, e := c.record(f)
-	if e != nil {
-		return nil, e
-	}
-	return shownFolder{Folder: r, Changed: &changed}, nil
+	return folderWritten{ID: &ff.ID, Path: f, Changed: changed}, nil
 }
 
-// extraEdit is a change to an extra object, as update and update-folder
-// take it.
+// extraEdit is a change to an extra object, as task update and folder
+// update take it.
 type extraEdit struct {
 	merge  map[string]any
 	drop   []string
@@ -196,7 +202,7 @@ func (x extraEdit) apply(m map[string]any) map[string]any {
 	return m
 }
 
-func cmdMoveFolder(c *call) (any, *errs.Error) {
+func cmdFolderMove(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	ref := in.folderRef("folder", true, folderRef{})
 	to := in.folder("to", true, "")
@@ -223,17 +229,13 @@ func cmdMoveFolder(c *call) (any, *errs.Error) {
 	if e := c.folderOrNotFound(from); e != nil {
 		return nil, e
 	}
-	changed := from != to
-	res := folderResult{FoldersCreated: []model.Folder{}, Changed: &changed}
-	if !changed {
-		res.Folder = c.passFolder(to)
-		return res, nil
+	if from == to {
+		return c.made(to, false, []model.Folder{}), nil
 	}
 	if _, err := c.t.Stat(to.Rel()); err == nil {
 		return nil, c.destinationExists("already exists", to)
 	}
 	created, e := c.ensure(to.Parent())
-	res.FoldersCreated = created
 	if e != nil {
 		return nil, e
 	}
@@ -244,20 +246,19 @@ func cmdMoveFolder(c *call) (any, *errs.Error) {
 	if taken {
 		return nil, c.destinationExists("already exists", to)
 	}
-	res.Folder = c.passFolder(to)
-	return res, nil
+	return c.made(to, true, created), nil
 }
 
 type deleteFolderResult struct {
-	Folder     model.Folder `json:"folder"`
-	Deleted    []model.ID   `json:"deleted"`
-	Dependents []model.ID   `json:"dependents"`
+	Folder     model.FolderRecord `json:"folder"`
+	Deleted    []model.ID         `json:"deleted"`
+	Dependents []model.ID         `json:"dependents"`
 }
 
-func cmdDeleteFolder(c *call) (any, *errs.Error) {
+func cmdFolderDelete(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	ref := in.folderRef("folder", true, folderRef{})
-	recursive := in.boolean("recursive", false)
+	contents := in.boolean("contents", false)
 	force := in.boolean("force", false)
 	if ref.path == model.Root {
 		c.in.bad("/folder", "may not be the root")
@@ -272,7 +273,7 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 	if e := c.folderOrNotFound(f); e != nil {
 		return nil, e
 	}
-	if !recursive {
+	if !contents {
 		entries, e := c.t.List(f)
 		if e != nil {
 			return nil, e
@@ -289,7 +290,7 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 				own = err == nil && fi.Mode().IsRegular() && fi.Size() == 0
 			}
 			if !own && !strings.HasPrefix(name, ".") {
-				return nil, errs.NewConflict(errs.RuleNotEmpty, "%s is not empty: pass recursive to remove everything in it", f).
+				return nil, errs.NewConflict(errs.RuleNotEmpty, "%s is not empty: pass contents to remove everything in it", f).
 					WithFolders(string(f))
 			}
 		}
@@ -298,7 +299,7 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	if recursive && !force {
+	if contents && !force {
 		var material []string
 		for _, g := range x.Folders {
 			if !f.Holds(g) {
@@ -317,13 +318,13 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 				WithFolders(string(f)).WithPaths(material...)
 		}
 	}
-	res := deleteFolderResult{Folder: f, Deleted: []model.ID{}}
+	res := deleteFolderResult{Folder: c.passFolder(f), Deleted: []model.ID{}}
 	for _, id := range x.IDs() {
 		if f.Holds(x.Tasks[id]) {
 			res.Deleted = append(res.Deleted, id)
 		}
 	}
-	// The folder goes first, for the reason delete gives.
+	// The folder goes first, for the reason task delete gives.
 	if e := c.t.Discard(f.Rel()); e != nil {
 		return nil, e
 	}
@@ -334,6 +335,44 @@ func cmdDeleteFolder(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	return res, nil
+}
+
+type folderListing struct {
+	Folders   []json.RawMessage `json:"folders"`
+	Total     int               `json:"total"`
+	Truncated bool              `json:"truncated"`
+}
+
+func cmdFolderList(c *call) (any, *errs.Error) {
+	in := c.in.top()
+	ref := in.folderRef("folder", false, folderRef{path: model.Root})
+	recursive := in.boolean("recursive", true)
+	n := readNarrowing(in, model.FolderFields)
+	if e := c.begin(false); e != nil {
+		return nil, e
+	}
+	f, e := c.resolve(ref)
+	if e != nil {
+		return nil, e
+	}
+	if e := c.folderOrNotFound(f); e != nil {
+		return nil, e
+	}
+	x, e := c.index()
+	if e != nil {
+		return nil, e
+	}
+	// Every folder in scope is read before the limit, so that warnings do
+	// not depend on narrowing.
+	records := []model.FolderRecord{}
+	for _, g := range x.Folders {
+		if g != f && (g.Parent() == f || (recursive && f.Holds(g))) {
+			records = append(records, c.passFolder(g))
+		}
+	}
+	l := folderListing{Total: len(records)}
+	l.Folders, l.Truncated, e = narrow(n, records, model.FolderFields, "id", "path")
+	return l, e
 }
 
 // unreference removes the IDs in gone from the blocked_by of every other
@@ -504,8 +543,8 @@ func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
 	return missing, nil
 }
 
-// newFolder is a folder asked for by create-folder or a create-batch
-// folder entry, with what it is made with.
+// newFolder is a folder asked for by folder create or a batch folder
+// entry, with what it is made with.
 type newFolder struct {
 	folder model.Folder
 	title  *string

@@ -62,13 +62,13 @@ type command func(c *call) (any, *errs.Error)
 var commands = map[string]command{
 	"init": cmdInit, "version": cmdVersion, "info": cmdInfo,
 	"doctor": cmdDoctor, "repair": cmdRepair, "migrate": cmdMigrate,
-	"create-folder": cmdCreateFolder, "move-folder": cmdMoveFolder, "delete-folder": cmdDeleteFolder,
-	"show-folder": cmdShowFolder, "update-folder": cmdUpdateFolder,
-	"create": cmdCreate, "create-batch": cmdCreateBatch, "show": cmdShow, "update": cmdUpdate,
-	"done": cmdDone, "reopen": cmdReopen, "block": cmdBlock, "unblock": cmdUnblock,
-	"move": cmdMove, "delete": cmdDelete,
-	"frontier": cmdFrontier, "list": cmdList, "why": cmdWhy, "where": cmdWhere,
-	"claim": cmdClaim, "claim-next": cmdClaimNext, "release": cmdRelease,
+	"folder create": cmdFolderCreate, "folder show": cmdFolderShow, "folder update": cmdFolderUpdate,
+	"folder move": cmdFolderMove, "folder delete": cmdFolderDelete, "folder list": cmdFolderList,
+	"task create": cmdCreate, "batch": cmdBatch, "task show": cmdShow, "task update": cmdUpdate,
+	"task done": cmdDone, "task reopen": cmdReopen, "task block": cmdBlock, "task unblock": cmdUnblock,
+	"task move": cmdMove, "task delete": cmdDelete,
+	"task frontier": cmdFrontier, "task list": cmdList, "task why": cmdWhy, "where": cmdWhere,
+	"task claim": cmdClaim, "task claim-next": cmdClaimNext, "task release": cmdRelease,
 }
 
 // Names lists every command, sorted.
@@ -81,7 +81,8 @@ func Names() []string {
 	return names
 }
 
-// Run runs the command named name on the input raw, one JSON object; empty
+// Run runs the command named name, its command line without koan
+// ("task create"), on the input raw, one JSON object; empty
 // input is the empty object.
 func Run(env store.Env, name string, raw []byte) Envelope {
 	cmd, ok := commands[name]
@@ -255,13 +256,14 @@ func (c *call) look(id model.ID) (graph.Node, bool) {
 // task builds the shape every command returns a task in. It needs the index.
 func (c *call) task(f model.Folder, tf *model.TaskFile) model.Task {
 	node, _ := c.look(tf.ID)
-	readiness, blocking := graph.Readiness(node, c.look)
+	readiness, open := graph.Readiness(node, c.look)
 	t := model.Task{
-		TaskFile:  *tf,
-		Folder:    f,
-		NotesPath: c.t.Abs(model.NotesRel(f, tf.ID)),
-		Readiness: readiness,
-		Blocking:  blocking,
+		ID: tf.ID, Title: tf.Title, Priority: tf.Priority, CreatedAt: tf.CreatedAt, CompletedAt: tf.CompletedAt,
+		UpdatedAt: tf.UpdatedAt, BlockedBy: tf.BlockedBy, Tags: tf.Tags, Extra: tf.Extra,
+		Folder:       f,
+		NotesPath:    c.t.Abs(model.NotesRel(f, tf.ID)),
+		Readiness:    readiness,
+		OpenBlockers: open,
 	}
 	if tf.Open() {
 		t.Claim = c.t.Claim(tf.ID)

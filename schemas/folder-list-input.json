@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-list-input",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "folder": { "$ref": "folder-ref", "default": "/" },
+    "recursive": { "type": "boolean", "default": true },
+    "limit": { "type": "integer", "minimum": 1 },
+    "fields": {
+      "type": "array",
+      "items": { "$ref": "folder#/$defs/field" },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

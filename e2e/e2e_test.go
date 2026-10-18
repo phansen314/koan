@@ -77,10 +77,19 @@ func koan(t testing.TB, home, stdin string, extra []string, args ...string) run 
 			t.Errorf("koan %v: envelope: %v\n%s", args, err, r.stdout)
 		}
 		if res, isOK := r.env["result"]; isOK && len(args) > 0 {
-			schematest.Must(t, args[0]+"-output", res)
+			schematest.Must(t, schemaName(args)+"-output", res)
 		}
 	}
 	return r
+}
+
+// schemaName is the name of the schemas of the command args run: a group
+// and its command, joined by a hyphen.
+func schemaName(args []string) string {
+	if (args[0] == "task" || args[0] == "folder") && len(args) > 1 {
+		return args[0] + "-" + args[1]
+	}
+	return args[0]
 }
 
 // ok runs koan and requires success.
@@ -102,41 +111,48 @@ func newHome(t testing.TB) string {
 
 func TestCommandLine(t *testing.T) {
 	home := newHome(t)
-	res := ok(t, home, "create", "Book flights", "--folder", "/proj/travel", "--priority", "2",
+	res := ok(t, home, "task", "create", "Book flights", "--folder", "/proj/travel", "--priority", "2",
 		"--tags", "travel,urgent", "--extra", `{"status":"waiting"}`, "--notes", "hi")
-	task := res["task"].(map[string]any)
 	// /proj and /proj/travel took 1 and 2.
-	if task["id"] != float64(3) || task["folder"] != "/proj/travel" || task["priority"] != float64(2) {
+	if res["id"] != float64(3) {
+		t.Errorf("create: %v", res)
+	}
+	task := ok(t, home, "task", "show", "3")["task"].(map[string]any)
+	if task["folder"] != "/proj/travel" || task["priority"] != float64(2) {
 		t.Errorf("create: %v", task)
 	}
-	ok(t, home, "create", "--blocked-by", "3", "--", "-starts with a dash")
-	ok(t, home, "update", "4", "--priority", "null", "--tags-add", "a", "--tags-add", "b,c", "--extra-merge", `{"k":"v"}`, "--extra-remove", "x,y")
-	ok(t, home, "block", "4", "--blockers", "3")
-	ok(t, home, "move", "4", "--to", "/archive")
-	if got := ok(t, home, "list", "--fields", "id,title", "--readiness", "ready,blocked,done"); got["total"] != float64(2) {
+	ok(t, home, "task", "create", "--blocked-by", "3", "--", "-starts with a dash")
+	ok(t, home, "task", "update", "4", "--priority", "null", "--tags-add", "a", "--tags-add", "b,c", "--extra-merge", `{"k":"v"}`, "--extra-remove", "x,y")
+	ok(t, home, "task", "block", "4", "--blocked-by", "3")
+	ok(t, home, "task", "move", "4", "--to", "/archive")
+	if got := ok(t, home, "task", "list", "--fields", "id,title", "--readiness", "ready,blocked,done"); got["total"] != float64(2) {
 		t.Errorf("list: %v", got)
 	}
-	if got := ok(t, home, "frontier", "--recursive=false"); got["total"] != float64(0) {
+	if got := ok(t, home, "task", "frontier", "--recursive=false"); got["total"] != float64(0) {
 		t.Errorf("frontier of / alone: %v", got)
 	}
-	ok(t, home, "claim-next", "--extra", `{"worker":"w1"}`)
-	if got := ok(t, home, "list", "--claimed"); got["total"] != float64(1) {
+	ok(t, home, "task", "claim-next", "--extra", `{"worker":"w1"}`)
+	if got := ok(t, home, "task", "list", "--claimed"); got["total"] != float64(1) {
 		t.Errorf("list --claimed: %v", got)
 	}
-	ok(t, home, "release", "3")
-	ok(t, home, "done", "3")
-	ok(t, home, "delete-folder", "/proj", "--recursive")
+	ok(t, home, "task", "release", "3")
+	ok(t, home, "task", "done", "3")
+	if got := ok(t, home, "folder", "list", "--recursive=false", "--fields", "title"); got["total"] != float64(2) {
+		t.Errorf("folder list: %v", got)
+	}
+	ok(t, home, "folder", "delete", "/proj", "--contents")
 	if got := ok(t, home, "doctor"); got["healthy"] != true {
 		t.Errorf("doctor after a run of ordinary commands: %v", got)
 	}
 
 	// --input and --notes-file read stdin only when - names it.
-	r := koan(t, home, `{"tasks":[{"ref":"a","title":"First"},{"title":"Second","blocked_by":["a"]}]}`, nil, "create-batch", "-i", "-")
+	r := koan(t, home, `{"tasks":[{"ref":"a","title":"First"},{"title":"Second","blocked_by":["a"]}]}`, nil, "batch", "-i", "-")
 	if r.exit != 0 {
-		t.Fatalf("create-batch: %s", r.stdout)
+		t.Fatalf("batch: %s", r.stdout)
 	}
-	r = koan(t, home, "from stdin\n", nil, "create", "With notes", "--notes-file", "-")
-	notes, _ := os.ReadFile(r.result()["task"].(map[string]any)["notes_path"].(string))
+	r = koan(t, home, "from stdin\n", nil, "task", "create", "With notes", "--notes-file", "-")
+	id := fmt.Sprint(r.result()["id"])
+	notes, _ := os.ReadFile(ok(t, home, "task", "show", id)["task"].(map[string]any)["notes_path"].(string))
 	if string(notes) != "from stdin\n" {
 		t.Errorf("notes %q", notes)
 	}
@@ -150,20 +166,25 @@ func TestExitCodesAndStderr(t *testing.T) {
 		kind   string
 		stderr string
 	}{
-		{[]string{"show", "99"}, 1, "not-found", "koan: not-found: task 99 does not exist\n"},
-		{[]string{"show", "abc"}, 1, "invalid-input", ""},
-		{[]string{"show"}, 2, "usage", ""},
-		{[]string{"show", "1", "2"}, 2, "usage", ""},
-		{[]string{"show", "1", "--nope"}, 2, "usage", ""},
+		{[]string{"task", "show", "99"}, 1, "not-found", "koan: not-found: task 99 does not exist\n"},
+		{[]string{"task", "show", "abc"}, 1, "invalid-input", ""},
+		{[]string{"task", "show"}, 2, "usage", ""},
+		{[]string{"task", "show", "1", "2"}, 2, "usage", ""},
+		{[]string{"task", "show", "1", "--nope"}, 2, "usage", ""},
 		{[]string{"sho", "1"}, 2, "usage", ""},
 		{[]string{}, 2, "usage", ""},
 		{[]string{"help"}, 2, "usage", ""},
-		{[]string{"create", "x", "--notes", "a", "--notes-file", "b"}, 2, "usage", ""},
-		{[]string{"create", "x", "-i", "f"}, 2, "usage", ""},
-		{[]string{"create", "x", "--extra", "{"}, 2, "usage", ""},
-		{[]string{"create", "x", "--priority", "high"}, 1, "invalid-input", ""},
-		{[]string{"list", "--recursive=maybe"}, 1, "invalid-input", ""},
-		{[]string{"create", "x", "--tags", `a"b`}, 1, "invalid-input", ""},
+		{[]string{"task", "create", "x", "--notes", "a", "--notes-file", "b"}, 2, "usage", ""},
+		{[]string{"task", "create", "x", "-i", "f"}, 2, "usage", ""},
+		{[]string{"task", "create", "x", "--extra", "{"}, 1, "invalid-input", ""},
+		{[]string{"task", "create", "x", "--notes-file", filepath.Join(home, "none")}, 1, "io", ""},
+		{[]string{"task"}, 2, "usage", ""},
+		{[]string{"task", "frob"}, 2, "usage", ""},
+		{[]string{"folder"}, 2, "usage", ""},
+		{[]string{"show", "1"}, 2, "usage", ""},
+		{[]string{"task", "create", "x", "--priority", "high"}, 1, "invalid-input", ""},
+		{[]string{"task", "list", "--recursive=maybe"}, 1, "invalid-input", ""},
+		{[]string{"task", "create", "x", "--tags", `a"b`}, 1, "invalid-input", ""},
 		{[]string{"__complete", "cre"}, 2, "usage", ""},
 		{[]string{"__completeNoDesc", "cre"}, 2, "usage", ""},
 	}
@@ -179,16 +200,16 @@ func TestExitCodesAndStderr(t *testing.T) {
 			t.Errorf("koan %v: more than one line on stderr: %q", c.args, r.stderr)
 		}
 	}
-	for _, args := range [][]string{{"--help"}, {"create", "-h"}} {
+	for _, args := range [][]string{{"--help"}, {"task", "--help"}, {"task", "create", "-h"}} {
 		r := koan(t, home, "", nil, args...)
 		if r.exit != 0 || r.env != nil || !strings.Contains(r.stdout, "koan") || r.stderr != "" {
 			t.Errorf("koan %v: exit %d, stdout %q", args, r.exit, r.stdout)
 		}
 	}
 	// A success with warnings says so on stderr.
-	ok(t, home, "create", "a")
+	ok(t, home, "task", "create", "a")
 	os.WriteFile(filepath.Join(home, "koan-root", "@7.json"), []byte("x"), 0o644)
-	if r := koan(t, home, "", nil, "list"); r.exit != 0 || r.stderr != "koan: 1 warning\n" {
+	if r := koan(t, home, "", nil, "task", "list"); r.exit != 0 || r.stderr != "koan: 1 warning\n" {
 		t.Errorf("warnings: exit %d, stderr %q", r.exit, r.stderr)
 	}
 }
@@ -218,7 +239,7 @@ func TestStdoutClosed(t *testing.T) {
 // the disk, holding the lock, and returns once the lock is seen to be held.
 func holder(t *testing.T, home string) *exec.Cmd {
 	t.Helper()
-	cmd := exec.Command(koanBin, "create", "held")
+	cmd := exec.Command(koanBin, "task", "create", "held")
 	cmd.Env = []string{"HOME=" + home, "KOAN_E2E_PAUSE_BEFORE=1"}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -226,7 +247,7 @@ func holder(t *testing.T, home string) *exec.Cmd {
 	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=20"}, "create-folder", "/probe"); r.err()["kind"] == "busy" {
+		if r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=20"}, "folder", "create", "/probe"); r.err()["kind"] == "busy" {
 			return cmd
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -238,11 +259,11 @@ func holder(t *testing.T, home string) *exec.Cmd {
 func TestLockBusyAndKilledHolder(t *testing.T) {
 	home := newHome(t)
 	h := holder(t, home)
-	r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=100"}, "create", "second")
+	r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=100"}, "task", "create", "second")
 	if r.exit != 1 || r.err()["kind"] != "busy" {
 		t.Fatalf("a write under a held lock: exit %d, %s", r.exit, r.stdout)
 	}
-	if r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=100"}, "list"); r.err()["kind"] != "busy" {
+	if r := koan(t, home, "", []string{"KOAN_E2E_LOCK_WAIT_MS=100"}, "task", "list"); r.err()["kind"] != "busy" {
 		t.Errorf("a read under a held write lock: %s", r.stdout)
 	}
 	if r := koan(t, home, "", nil, "info"); r.exit != 0 {
@@ -250,7 +271,7 @@ func TestLockBusyAndKilledHolder(t *testing.T) {
 	}
 	h.Process.Signal(syscall.SIGKILL)
 	h.Wait()
-	ok(t, home, "create", "after the holder died")
+	ok(t, home, "task", "create", "after the holder died")
 	if got := ok(t, home, "doctor"); got["healthy"] != true {
 		t.Errorf("doctor after a killed holder: %v", got)
 	}
@@ -270,12 +291,12 @@ func TestConcurrentCreates(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < each; i++ {
-				r := koan(t, home, "", nil, "create", fmt.Sprintf("task %d-%d", p, i), "--folder", fmt.Sprintf("/p%d", p%4))
+				r := koan(t, home, "", nil, "task", "create", fmt.Sprintf("task %d-%d", p, i), "--folder", fmt.Sprintf("/p%d", p%4))
 				if r.exit != 0 {
 					t.Errorf("create: %s", r.stdout)
 					return
 				}
-				id := r.result()["task"].(map[string]any)["id"].(float64)
+				id := r.result()["id"].(float64)
 				mu.Lock()
 				if seen[id] {
 					t.Errorf("ID %v issued twice", id)
@@ -297,12 +318,12 @@ func TestConcurrentCreates(t *testing.T) {
 // Two blocks that would close a cycle between them never both succeed.
 func TestRacingBlocks(t *testing.T) {
 	home := newHome(t)
-	ok(t, home, "create", "a")
-	ok(t, home, "create", "b")
+	ok(t, home, "task", "create", "a")
+	ok(t, home, "task", "create", "b")
 	for i := 0; i < 20; i++ {
 		var wg sync.WaitGroup
 		exits := make([]int, 2)
-		for j, args := range [][]string{{"block", "1", "--blockers", "2"}, {"block", "2", "--blockers", "1"}} {
+		for j, args := range [][]string{{"task", "block", "1", "--blocked-by", "2"}, {"task", "block", "2", "--blocked-by", "1"}} {
 			wg.Add(1)
 			go func() { defer wg.Done(); exits[j] = koan(t, home, "", nil, args...).exit }()
 		}
@@ -310,8 +331,8 @@ func TestRacingBlocks(t *testing.T) {
 		if exits[0] == 0 && exits[1] == 0 {
 			t.Fatalf("round %d: both blocks succeeded", i)
 		}
-		ok(t, home, "unblock", "1", "--blockers", "2")
-		ok(t, home, "unblock", "2", "--blockers", "1")
+		ok(t, home, "task", "unblock", "1", "--blocked-by", "2")
+		ok(t, home, "task", "unblock", "2", "--blocked-by", "1")
 	}
 }
 
@@ -319,7 +340,7 @@ func TestRacingBlocks(t *testing.T) {
 func TestRacingClaims(t *testing.T) {
 	home := newHome(t)
 	for i := 0; i < 8; i++ {
-		ok(t, home, "create", fmt.Sprintf("t%d", i))
+		ok(t, home, "task", "create", fmt.Sprintf("t%d", i))
 	}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -328,7 +349,7 @@ func TestRacingClaims(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r := koan(t, home, "", nil, "claim-next")
+			r := koan(t, home, "", nil, "task", "claim-next")
 			if task, _ := r.result()["task"].(map[string]any); task != nil {
 				mu.Lock()
 				got = append(got, task["id"].(float64))
@@ -349,7 +370,7 @@ func TestReadsSeeWholeWrites(t *testing.T) {
 	home := newHome(t)
 	const n = 20
 	for i := 0; i < n; i++ {
-		ok(t, home, "create", fmt.Sprintf("t%d", i), "--folder", "/a/m")
+		ok(t, home, "task", "create", fmt.Sprintf("t%d", i), "--folder", "/a/m")
 	}
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
@@ -367,14 +388,14 @@ func TestReadsSeeWholeWrites(t *testing.T) {
 				from, to = to, from
 			}
 			if i%4 < 2 {
-				koan(t, home, "", nil, "move-folder", from, "--to", to)
+				koan(t, home, "", nil, "folder", "move", from, "--to", to)
 			} else {
-				koan(t, home, "", nil, "move", "5", "--to", "/elsewhere"+fmt.Sprint(i%3))
+				koan(t, home, "", nil, "task", "move", "5", "--to", "/elsewhere"+fmt.Sprint(i%3))
 			}
 		}
 	}()
 	for i := 0; i < 150; i++ {
-		r := koan(t, home, "", nil, "list", "--fields", "id")
+		r := koan(t, home, "", nil, "task", "list", "--fields", "id")
 		if r.exit != 0 || r.result()["total"] != float64(n) || len(r.env["warnings"].([]any)) != 0 {
 			t.Errorf("list during moves: %s", r.stdout)
 			break

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-move-output",
+  "type": "object",
+  "required": ["id", "changed", "folders_created"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id" },
+    "changed": { "type": "boolean" },
+    "folders_created": {
+      "type": "array",
+      "items": { "$ref": "folder-path" }
+    }
+  },
+  "additionalProperties": false
+}

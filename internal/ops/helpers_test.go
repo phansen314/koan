@@ -79,11 +79,11 @@ func (w *world) run(name, input string) Envelope {
 		w.t.Errorf("%s %s: envelope: %v\n%s", name, input, err, data)
 	}
 	if env.OK {
-		schematest.Must(w.t, name+"-output", env.Result)
+		schematest.Must(w.t, schemaName(name)+"-output", env.Result)
 	}
 	// The input schema and the command must agree on what is valid.
 	if json.Valid([]byte(input)) {
-		schemaErr := schematest.Check(w.t, name+"-input", []byte(input))
+		schemaErr := schematest.Check(w.t, schemaName(name)+"-input", []byte(input))
 		invalid := !env.OK && env.Error.Kind == errs.InvalidInput
 		if (schemaErr != nil) != invalid && !crossField(env) {
 			w.t.Errorf("%s %s: schema says %v, command says invalid=%v", name, input, schemaErr, invalid)
@@ -199,3 +199,7 @@ func (w *world) record(res map[string]any) string {
 	data, _ := json.Marshal(res["folder"])
 	return strings.ReplaceAll(string(data), w.disk(), "~")
 }
+
+// schemaName is the name of a command's schemas: "task-create" for
+// "task create".
+func schemaName(command string) string { return strings.ReplaceAll(command, " ", "-") }

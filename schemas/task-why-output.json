@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-why-output",
+  "type": "object",
+  "required": ["readiness", "ready", "stuck"],
+  "properties": {
+    "readiness": {
+      "enum": ["ready", "blocked", "done"]
+    },
+    "ready": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "IDs of the ready tasks it waits on, in work order."
+    },
+    "stuck": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "description": "IDs no work will clear. Ascending."
+    }
+  },
+  "additionalProperties": false
+}

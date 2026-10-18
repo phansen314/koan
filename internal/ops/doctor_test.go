@@ -19,9 +19,9 @@ func TestDoctorAndRepair(t *testing.T) {
 	if got := w.ok("doctor", `{}`); got["healthy"] != true {
 		t.Fatalf("a new tree is not healthy: %v", got)
 	}
-	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]},{"title":"c","notes":"keep"},{"title":"d"}]}`)
-	w.ok("move", `{"id":3,"to":"/p"}`) // /p takes ID 5, after the tasks
-	w.ok("claim", `{"id":1}`)
+	w.ok("batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]},{"title":"c","notes":"keep"},{"title":"d"}]}`)
+	w.ok("task move", `{"id":3,"to":"/p"}`) // /p takes ID 5, after the tasks
+	w.ok("task claim", `{"id":1}`)
 
 	os.Remove(w.root("1.json"))                       // dangling reference in 2, stale claim, orphan notes (empty)
 	os.WriteFile(w.root(".koan-tmp-abc"), nil, 0o644) // temp leftover
@@ -103,7 +103,7 @@ func TestRepairKindsMatchTheSchema(t *testing.T) {
 
 func TestDoctorFindsCycles(t *testing.T) {
 	w := ready(t)
-	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]}]}`)
+	w.ok("batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]}]}`)
 	data, _ := os.ReadFile(w.root("1.json"))
 	os.WriteFile(w.root("1.json"), []byte(strings.Replace(string(data), `"blocked_by": []`, `"blocked_by": [2]`, 1)), 0o644)
 	fs := w.ok("doctor", `{}`)["findings"].([]any)
@@ -111,7 +111,7 @@ func TestDoctorFindsCycles(t *testing.T) {
 		t.Fatalf("findings %v", fs)
 	}
 	wantIDs(t, "cycle", fs[0].(map[string]any)["ids"], 1, 2)
-	wantIDs(t, "why stuck", w.ok("why", `{"id":2}`)["stuck"], 1, 2)
+	wantIDs(t, "why stuck", w.ok("task why", `{"id":2}`)["stuck"], 1, 2)
 }
 
 func TestDoctorTakesTheLock(t *testing.T) {
@@ -128,12 +128,12 @@ func TestDoctorTakesTheLock(t *testing.T) {
 // A command that succeeds leaves nothing for doctor to find.
 func TestSuccessLeavesTheTreeHealthy(t *testing.T) {
 	w := ready(t)
-	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","folder":"/p/q","notes":"n"},{"title":"b","folder":"/p","blocked_by":["a"]},{"title":"c"}]}`)
+	w.ok("batch", `{"tasks":[{"ref":"a","title":"a","folder":"/p/q","notes":"n"},{"title":"b","folder":"/p","blocked_by":["a"]},{"title":"c"}]}`)
 	for _, step := range [][2]string{
-		{"claim", `{"id":3}`}, {"update", `{"id":4,"tags_add":["x"]}`}, {"move", `{"id":3,"to":"/r"}`},
-		{"move-folder", `{"folder":"/p","to":"/s/p"}`}, {"done", `{"id":3}`}, {"reopen", `{"id":3}`},
-		{"claim-next", `{}`}, {"delete", `{"id":5}`}, {"delete-folder", `{"folder":"/s","recursive":true}`},
-		{"delete-folder", `{"folder":"/r","recursive":true}`},
+		{"task claim", `{"id":3}`}, {"task update", `{"id":4,"tags_add":["x"]}`}, {"task move", `{"id":3,"to":"/r"}`},
+		{"folder move", `{"folder":"/p","to":"/s/p"}`}, {"task done", `{"id":3}`}, {"task reopen", `{"id":3}`},
+		{"task claim-next", `{}`}, {"task delete", `{"id":5}`}, {"folder delete", `{"folder":"/s","contents":true}`},
+		{"folder delete", `{"folder":"/r","contents":true}`},
 	} {
 		w.ok(step[0], step[1])
 		if got := w.ok("doctor", `{}`); got["healthy"] != true {
@@ -144,10 +144,10 @@ func TestSuccessLeavesTheTreeHealthy(t *testing.T) {
 
 func TestRepairReportsOnlyWhatItRepaired(t *testing.T) {
 	w := ready(t)
-	w.ok("create", `{"title":"a","folder":"/home"}`) // task 2, in /home, 1
+	w.ok("task create", `{"title":"a","folder":"/home"}`) // task 2, in /home, 1
 	os.Remove(w.root("home/2.md"))
 	for _, dir := range []string{"x", "y"} {
-		w.ok("create-folder", `{"folder":"/`+dir+`"}`)
+		w.ok("folder create", `{"folder":"/`+dir+`"}`)
 		os.WriteFile(w.root(dir, "2.md"), []byte(dir), 0o644)
 	}
 	got := w.ok("repair", `{}`)
@@ -161,11 +161,11 @@ func TestRepairReportsOnlyWhatItRepaired(t *testing.T) {
 // it can't fix.
 func TestRepairFixesOnlyTheKindsAsked(t *testing.T) {
 	w := ready(t)
-	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a","notes":"keep"},{"title":"b","blocked_by":["a"]},{"title":"c"}]}`)
-	w.ok("claim", `{"id":1}`)
-	w.ok("claim", `{"id":3}`)
+	w.ok("batch", `{"tasks":[{"ref":"a","title":"a","notes":"keep"},{"title":"b","blocked_by":["a"]},{"title":"c"}]}`)
+	w.ok("task claim", `{"id":1}`)
+	w.ok("task claim", `{"id":3}`)
 	state, _ := os.ReadFile(w.env.StatePath())
-	w.ok("done", `{"id":3}`)
+	w.ok("task done", `{"id":3}`)
 	os.WriteFile(w.env.StatePath(), state, 0o644) // a claim on 3, which is done
 	os.Remove(w.root("1.json"))                   // dangling reference in 2, claim on 1, which is gone, and orphan notes
 	os.WriteFile(w.root(".koan-tmp-abc"), nil, 0o644)
@@ -206,9 +206,9 @@ func TestStaleClaimsInIDOrder(t *testing.T) {
 	for i := range tasks {
 		tasks[i] = `{"title":"t"}`
 	}
-	w.ok("create-batch", `{"tasks":[`+strings.Join(tasks, ",")+`]}`)
-	w.ok("claim", `{"id":9}`)
-	w.ok("claim", `{"id":10}`)
+	w.ok("batch", `{"tasks":[`+strings.Join(tasks, ",")+`]}`)
+	w.ok("task claim", `{"id":9}`)
+	w.ok("task claim", `{"id":10}`)
 	os.Remove(w.root("9.json"))
 	os.Remove(w.root("10.json"))
 	var got []int64
@@ -225,7 +225,7 @@ func TestStaleClaimsInIDOrder(t *testing.T) {
 // An entry named with @ that is none of koan's is reported, and skipped.
 func TestStrayAtNamesAreSkipped(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p"}`)
+	w.ok("folder create", `{"folder":"/p"}`)
 	os.WriteFile(w.disk("@p/@notes.txt"), nil, 0o644)
 	os.WriteFile(w.disk("@folder.json"), nil, 0o644) // the root has no folder file
 	os.Mkdir(w.disk("@p/@5.json"), 0o755)
@@ -240,14 +240,14 @@ func TestStrayAtNamesAreSkipped(t *testing.T) {
 // gives it a new ID, above every ID in the tree.
 func TestRepairGivesAFolderItsFile(t *testing.T) {
 	w := ready(t)
-	w.ok("create", `{"title":"a"}`)
+	w.ok("task create", `{"title":"a"}`)
 	os.Mkdir(w.root("hand"), 0o755)
 	data, _ := os.ReadFile(w.root("1.json"))
 	os.WriteFile(w.root("hand/9.json"), []byte(strings.Replace(string(data), `"id": 1`, `"id": 9`, 1)), 0o644)
 	if fs := w.findings(); !slices.Equal(fs, []string{"id-above-counter @hand/@9.json", "missing-folder-file @hand"}) {
 		t.Errorf("findings %v", fs)
 	}
-	wantIDs(t, "tasks", w.ok("list", `{}`)["tasks"], 1, 9)
+	wantIDs(t, "tasks", w.ok("task list", `{}`)["tasks"], 1, 9)
 	got := w.ok("repair", `{"kinds":["missing-folder-file"]}`)
 	if len(got["repaired"].([]any)) != 1 {
 		t.Errorf("repaired %v", got["repaired"])
@@ -264,8 +264,8 @@ func TestRepairGivesAFolderItsFile(t *testing.T) {
 // symlink, or one in another format. repair leaves it, and the counter.
 func TestUnusableFolderFiles(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p"}`)
-	w.ok("create-folder", `{"folder":"/q"}`)
+	w.ok("folder create", `{"folder":"/p"}`)
+	w.ok("folder create", `{"folder":"/q"}`)
 	os.Remove(w.root("p/folder.json"))
 	os.Symlink("nowhere", w.root("p/folder.json"))
 	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":2,"id":2}`), 0o644)
@@ -280,10 +280,10 @@ func TestUnusableFolderFiles(t *testing.T) {
 		t.Errorf("last_id %v, want 2", n)
 	}
 	// Nor is a directory in the folder file's place the folder's own.
-	w.ok("create-folder", `{"folder":"/r"}`)
+	w.ok("folder create", `{"folder":"/r"}`)
 	os.Remove(w.root("r/folder.json"))
 	os.Mkdir(w.root("r/folder.json"), 0o755)
-	w.fail("delete-folder", `{"folder":"/r"}`, errs.Conflict, errs.RuleNotEmpty)
+	w.fail("folder delete", `{"folder":"/r"}`, errs.Conflict, errs.RuleNotEmpty)
 }
 
 // repair's new folder ID is above an ID that notes alone still hold.

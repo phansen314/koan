@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-delete-input",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "$ref": "task-ref" }
+  },
+  "additionalProperties": false
+}

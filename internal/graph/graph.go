@@ -26,20 +26,20 @@ type Lookup func(model.ID) (n Node, ok bool)
 // Readiness is a task's readiness and the blockers that block it now, in
 // ascending order: every one that is open, missing, or unusable.
 func Readiness(n Node, look Lookup) (model.Readiness, []model.ID) {
-	blocking := []model.ID{}
+	open := []model.ID{}
 	if !n.Open {
-		return model.Done, blocking
+		return model.Done, open
 	}
 	for _, b := range n.BlockedBy {
 		if bn, ok := look(b); !ok || bn.Open {
-			blocking = append(blocking, b)
+			open = append(open, b)
 		}
 	}
-	slices.Sort(blocking)
-	if len(blocking) > 0 {
-		return model.Blocked, blocking
+	slices.Sort(open)
+	if len(open) > 0 {
+		return model.Blocked, open
 	}
-	return model.Ready, blocking
+	return model.Ready, open
 }
 
 // Path is a shortest path from `from` to `to` along blocked_by, through
@@ -206,12 +206,12 @@ func Why(id model.ID, look Lookup) (ready, stuck []model.ID) {
 			continue
 		}
 		nodes[n] = node
-		_, blocking := Readiness(node, look)
-		if len(blocking) == 0 {
+		_, open := Readiness(node, look)
+		if len(open) == 0 {
 			ready = append(ready, n)
 		}
-		edges[n] = blocking
-		for _, b := range blocking {
+		edges[n] = open
+		for _, b := range open {
 			if !seen[b] {
 				seen[b] = true
 				queue = append(queue, b)

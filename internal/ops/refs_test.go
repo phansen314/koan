@@ -12,24 +12,26 @@ import (
 // A task is 42, "42", or "@42" wherever an ID is taken.
 func TestTaskIDsTakeTheirAt(t *testing.T) {
 	w := ready(t)
-	w.ok("create", `{"title":"a"}`) // 1
-	w.ok("create", `{"title":"b"}`) // 2
+	w.ok("task create", `{"title":"a"}`) // 1
+	w.ok("task create", `{"title":"b"}`) // 2
 	for _, id := range []string{`1`, `"1"`, `"@1"`} {
-		if tk := task(w.ok("show", `{"id":`+id+`}`)); tk["id"] != float64(1) {
+		if tk := task(w.ok("task show", `{"id":`+id+`}`)); tk["id"] != float64(1) {
 			t.Errorf("show %s: %v", id, tk)
 		}
 	}
-	wantIDs(t, "blocked_by", task(w.ok("block", `{"id":"@2","blockers":["@1"]}`))["blocked_by"], 1)
-	wantIDs(t, "blocked_by", task(w.ok("create", `{"title":"c","blocked_by":["2","@1"]}`))["blocked_by"], 1, 2)
+	w.ok("task block", `{"id":"@2","blocked_by":["@1"]}`)
+	wantIDs(t, "blocked_by", task(w.ok("task show", `{"id":2}`))["blocked_by"], 1)
+	w.ok("task create", `{"title":"c","blocked_by":["2","@1"]}`) // 3
+	wantIDs(t, "blocked_by", task(w.ok("task show", `{"id":3}`))["blocked_by"], 1, 2)
 	// One ID twice, in two forms, is repeated.
-	w.fail("block", `{"id":2,"blockers":[1,"@1"]}`, errs.InvalidInput, "")
+	w.fail("task block", `{"id":2,"blocked_by":[1,"@1"]}`, errs.InvalidInput, "")
 	for _, bad := range []string{`"@"`, `"@0"`, `"@x"`, `"@@1"`, `" 1"`, `"01"`, `"+1"`} {
-		w.fail("show", `{"id":`+bad+`}`, errs.InvalidInput, "")
+		w.fail("task show", `{"id":`+bad+`}`, errs.InvalidInput, "")
 	}
-	// In create-batch, a string with @ is an ID and one without a ref.
-	got := w.ok("create-batch", `{"tasks":[{"ref":"1","title":"d"},{"title":"e","blocked_by":["1","@1"]}]}`)
-	w.fail("create-batch", `{"tasks":[{"title":"e","blocked_by":["@1",1]}]}`, errs.InvalidInput, "")
-	e := task(w.ok("show", `{"id":5}`))
+	// In batch, a string with @ is an ID and one without a ref.
+	got := w.ok("batch", `{"tasks":[{"ref":"1","title":"d"},{"title":"e","blocked_by":["1","@1"]}]}`)
+	w.fail("batch", `{"tasks":[{"title":"e","blocked_by":["@1",1]}]}`, errs.InvalidInput, "")
+	e := task(w.ok("task show", `{"id":5}`))
 	wantIDs(t, "batch blocked_by", e["blocked_by"], 1, 4)
 	wantIDs(t, "batch ids", got["ids"], 4, 5)
 }
@@ -37,94 +39,95 @@ func TestTaskIDsTakeTheirAt(t *testing.T) {
 // A folder is a path, or its ID in any form, wherever it must exist.
 func TestFolderIDs(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p/q"}`) // 1, 2
+	w.ok("folder create", `{"folder":"/p/q"}`) // 1, 2
 	for _, ref := range []string{`2`, `"2"`, `"@2"`} {
-		if r := w.ok("show-folder", `{"folder":`+ref+`}`); r["folder"].(map[string]any)["path"] != "/p/q" {
-			t.Errorf("show-folder %s: %v", ref, r)
+		if r := w.ok("folder show", `{"folder":`+ref+`}`); r["folder"].(map[string]any)["path"] != "/p/q" {
+			t.Errorf("folder show %s: %v", ref, r)
 		}
 	}
-	tk := task(w.ok("create", `{"title":"a","folder":"@2"}`)) // 3
-	if tk["folder"] != "/p/q" {
+	w.ok("task create", `{"title":"a","folder":"@2"}`) // 3
+	if tk := task(w.ok("task show", `{"id":3}`)); tk["folder"] != "/p/q" {
 		t.Errorf("create in @2: %v", tk)
 	}
-	if got := w.ok("create-batch", `{"folder":1,"tasks":[{"title":"b"},{"title":"c","folder":"@2"}]}`); len(got["folders_created"].([]any)) != 0 {
-		t.Errorf("create-batch made folders: %v", got)
+	if got := w.ok("batch", `{"folder":1,"tasks":[{"title":"b"},{"title":"c","folder":"@2"}]}`); len(got["folders_created"].([]any)) != 0 {
+		t.Errorf("batch made folders: %v", got)
 	}
-	if f := task(w.ok("show", `{"id":4}`))["folder"]; f != "/p" {
+	if f := task(w.ok("task show", `{"id":4}`))["folder"]; f != "/p" {
 		t.Errorf("task 4 is in %v", f)
 	}
-	wantIDs(t, "list @2", w.ok("list", `{"folder":"@2"}`)["tasks"], 3, 5)
-	wantIDs(t, "frontier 1", w.ok("frontier", `{"folder":"1","recursive":false}`)["tasks"], 4)
-	if c := task(w.ok("claim-next", `{"folder":"@2"}`)); c["id"] != float64(3) {
+	wantIDs(t, "list @2", w.ok("task list", `{"folder":"@2"}`)["tasks"], 3, 5)
+	wantIDs(t, "frontier 1", w.ok("task frontier", `{"folder":"1","recursive":false}`)["tasks"], 4)
+	if c := task(w.ok("task claim-next", `{"folder":"@2"}`)); c["id"] != float64(3) {
 		t.Errorf("claim-next: %v", c)
 	}
-	w.ok("update-folder", `{"folder":"@2","title":"Q"}`)
-	if r := w.record(w.ok("show-folder", `{"folder":"/p/q"}`)); !strings.Contains(r, `"title":"Q"`) {
-		t.Errorf("update-folder by ID: %s", r)
+	w.ok("folder update", `{"folder":"@2","title":"Q"}`)
+	if r := w.record(w.ok("folder show", `{"folder":"/p/q"}`)); !strings.Contains(r, `"title":"Q"`) {
+		t.Errorf("folder update by ID: %s", r)
 	}
-	if tk := task(w.ok("move", `{"id":4,"to":"@2"}`)); tk["folder"] != "/p/q" {
+	w.ok("task move", `{"id":4,"to":"@2"}`)
+	if tk := task(w.ok("task show", `{"id":4}`)); tk["folder"] != "/p/q" {
 		t.Errorf("move to @2: %v", tk)
 	}
 
 	// An ID is never made as needed: one no folder has is not-found, and a
 	// task's says so.
 	before := w.ok("info", `{}`)
-	if e := w.fail("create", `{"title":"x","folder":"@99"}`, errs.NotFound, ""); len(e.IDs) != 1 || e.IDs[0] != 99 {
+	if e := w.fail("task create", `{"title":"x","folder":"@99"}`, errs.NotFound, ""); len(e.IDs) != 1 || e.IDs[0] != 99 {
 		t.Errorf("ids %v", e.IDs)
 	}
-	if e := w.fail("move", `{"id":4,"to":"@3"}`, errs.NotFound, ""); !strings.Contains(e.Message, "task") {
+	if e := w.fail("task move", `{"id":4,"to":"@3"}`, errs.NotFound, ""); !strings.Contains(e.Message, "task") {
 		t.Errorf("message %q", e.Message)
 	}
 	if after := w.ok("info", `{}`); after["last_id"] != before["last_id"] {
 		t.Errorf("a refused create used an ID: %v, then %v", before["last_id"], after["last_id"])
 	}
 	// Paths only where the folder is new.
-	w.fail("create-folder", `{"folder":"@2"}`, errs.InvalidInput, "")
-	w.fail("move-folder", `{"folder":"/p","to":"@2"}`, errs.InvalidInput, "")
-	w.fail("show-folder", `{"folder":"p"}`, errs.InvalidInput, "")
+	w.fail("folder create", `{"folder":"@2"}`, errs.InvalidInput, "")
+	w.fail("folder move", `{"folder":"/p","to":"@2"}`, errs.InvalidInput, "")
+	w.fail("folder show", `{"folder":"p"}`, errs.InvalidInput, "")
 
 	// A folder given by ID can't go under itself, which only the tree tells.
-	w.fail("move-folder", `{"folder":1,"to":"/p/q/r"}`, errs.InvalidInput, "")
-	got := w.ok("move-folder", `{"folder":"@2","to":"/s"}`)
-	if r := w.record(got); !strings.Contains(r, `"path":"/s"`) || !strings.Contains(r, `"id":2`) {
-		t.Errorf("move-folder by ID: %s", r)
+	w.fail("folder move", `{"folder":1,"to":"/p/q/r"}`, errs.InvalidInput, "")
+	got := w.ok("folder move", `{"folder":"@2","to":"/s"}`)
+	if got["path"] != "/s" || got["id"] != float64(2) {
+		t.Errorf("folder move by ID: %v", got)
 	}
-	wantIDs(t, "deleted", w.ok("delete-folder", `{"folder":"@2","recursive":true}`)["deleted"], 3, 4, 5)
-	w.fail("show-folder", `{"folder":"@2"}`, errs.NotFound, "")
+	wantIDs(t, "deleted", w.ok("folder delete", `{"folder":"@2","contents":true}`)["deleted"], 3, 4, 5)
+	w.fail("folder show", `{"folder":"@2"}`, errs.NotFound, "")
 }
 
 // Finding a folder by ID reads every folder file: a copy of the ID is
 // duplicate-id, and a folder file koan can't use is a warning.
 func TestFolderIDsReadEveryFolderFile(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p"}`) // 1
-	w.ok("create-folder", `{"folder":"/q"}`) // 2
-	w.ok("create-folder", `{"folder":"/r"}`) // 3
+	w.ok("folder create", `{"folder":"/p"}`) // 1
+	w.ok("folder create", `{"folder":"/q"}`) // 2
+	w.ok("folder create", `{"folder":"/r"}`) // 3
 	os.WriteFile(w.root("r/folder.json"), []byte("{"), 0o644)
-	env := w.run("show-folder", `{"folder":"@1"}`)
+	env := w.run("folder show", `{"folder":"@1"}`)
 	if !env.OK || len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
-		t.Errorf("show-folder @1: %+v", env)
+		t.Errorf("folder show @1: %+v", env)
 	}
 	// By path, no folder file is read but the one asked for.
-	if env := w.run("show-folder", `{"folder":"/p"}`); len(env.Warnings) != 0 {
-		t.Errorf("show-folder /p warned: %+v", env.Warnings)
+	if env := w.run("folder show", `{"folder":"/p"}`); len(env.Warnings) != 0 {
+		t.Errorf("folder show /p warned: %+v", env.Warnings)
 	}
 	data, _ := os.ReadFile(w.root("p/folder.json"))
 	os.WriteFile(w.root("q/folder.json"), data, 0o644)
-	if e := w.fail("show-folder", `{"folder":"@1"}`, errs.Conflict, errs.RuleDuplicateID); len(e.Paths) != 2 {
+	if e := w.fail("folder show", `{"folder":"@1"}`, errs.Conflict, errs.RuleDuplicateID); len(e.Paths) != 2 {
 		t.Errorf("paths %v", e.Paths)
 	}
-	w.ok("create", `{"title":"a"}`) // 4
+	w.ok("task create", `{"title":"a"}`) // 4
 	os.WriteFile(w.root("q/folder.json"), []byte(strings.Replace(string(data), `"id": 1`, `"id": 4`, 1)), 0o644)
-	w.fail("list", `{"folder":"@4"}`, errs.Conflict, errs.RuleDuplicateID)
+	w.fail("task list", `{"folder":"@4"}`, errs.Conflict, errs.RuleDuplicateID)
 	w.fail("where", `{"ref":"4"}`, errs.Conflict, errs.RuleDuplicateID)
 }
 
 // where gives a reference's disk paths, and a disk path's reference.
 func TestWhere(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p/q","title":"Q"}`)     // 1, 2
-	w.ok("create", `{"title":"Book flights","folder":"/p/q"}`) // 3
+	w.ok("folder create", `{"folder":"/p/q","title":"Q"}`)          // 1, 2
+	w.ok("task create", `{"title":"Book flights","folder":"/p/q"}`) // 3
 	os.Mkdir(w.root("hand"), 0o755)
 	cut := func(s string) string { return strings.ReplaceAll(s, w.disk(), "~") }
 	str := func(v any) string {
@@ -199,26 +202,26 @@ func TestWhere(t *testing.T) {
 // takes a folder by ID; and a folder's ID where a task is wanted.
 func TestIDsOfTheOtherKind(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p"}`) // 1
-	w.ok("create", `{"title":"a"}`)          // 2
+	w.ok("folder create", `{"folder":"/p"}`) // 1
+	w.ok("task create", `{"title":"a"}`)     // 2
 	for _, c := range [][2]string{
-		{"update-folder", `{"folder":"@2","title":"x"}`},
-		{"delete-folder", `{"folder":"2"}`},
-		{"move-folder", `{"folder":2,"to":"/q"}`},
-		{"show-folder", `{"folder":2}`},
+		{"folder update", `{"folder":"@2","title":"x"}`},
+		{"folder delete", `{"folder":"2"}`},
+		{"folder move", `{"folder":2,"to":"/q"}`},
+		{"folder show", `{"folder":2}`},
 	} {
 		if e := w.fail(c[0], c[1], errs.NotFound, ""); !strings.Contains(e.Message, "task") {
 			t.Errorf("%s: message %q", c[0], e.Message)
 		}
 	}
-	if e := w.fail("delete", `{"id":1}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
+	if e := w.fail("task delete", `{"id":1}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
 		t.Errorf("delete: message %q", e.Message)
 	}
-	if e := w.fail("create-batch", `{"tasks":[{"title":"b","blocked_by":["@1"]}]}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
-		t.Errorf("create-batch: message %q", e.Message)
+	if e := w.fail("batch", `{"tasks":[{"title":"b","blocked_by":["@1"]}]}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
+		t.Errorf("batch: message %q", e.Message)
 	}
-	w.fail("create-batch", `{"tasks":[{"title":"b","blocked_by":["@9"]}]}`, errs.NotFound, "")
-	if e := w.fail("create-batch", `{"tasks":[{"title":"b","blocked_by":[null]}]}`, errs.InvalidInput, ""); !strings.Contains(e.Message, "task ID or a ref") {
+	w.fail("batch", `{"tasks":[{"title":"b","blocked_by":["@9"]}]}`, errs.NotFound, "")
+	if e := w.fail("batch", `{"tasks":[{"title":"b","blocked_by":[null]}]}`, errs.InvalidInput, ""); !strings.Contains(e.Message, "task ID or a ref") {
 		t.Errorf("null blocker: message %q", e.Message)
 	}
 
@@ -226,9 +229,9 @@ func TestIDsOfTheOtherKind(t *testing.T) {
 	// told, a folder found by ID, or where, is.
 	data, _ := os.ReadFile(w.root("p/folder.json"))
 	os.WriteFile(w.root("p/folder.json"), []byte(strings.Replace(string(data), `"id": 1`, `"id": 2`, 1)), 0o644)
-	w.ok("show", `{"id":2}`)
-	w.fail("update-folder", `{"folder":2,"title":"x"}`, errs.Conflict, errs.RuleDuplicateID)
-	w.fail("delete-folder", `{"folder":2}`, errs.Conflict, errs.RuleDuplicateID)
+	w.ok("task show", `{"id":2}`)
+	w.fail("folder update", `{"folder":2,"title":"x"}`, errs.Conflict, errs.RuleDuplicateID)
+	w.fail("folder delete", `{"folder":2}`, errs.Conflict, errs.RuleDuplicateID)
 	w.fail("where", `{"ref":"2"}`, errs.Conflict, errs.RuleDuplicateID)
 }
 
@@ -236,11 +239,11 @@ func TestIDsOfTheOtherKind(t *testing.T) {
 // koan can't use, however many times the command reads them.
 func TestWhereWarnsOfUnusableFolderFiles(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p"}`) // 1
-	w.ok("create-folder", `{"folder":"/q"}`) // 2
-	w.ok("create", `{"title":"a"}`)          // 3
+	w.ok("folder create", `{"folder":"/p"}`) // 1
+	w.ok("folder create", `{"folder":"/q"}`) // 2
+	w.ok("task create", `{"title":"a"}`)     // 3
 	os.WriteFile(w.root("q/folder.json"), []byte("{"), 0o644)
-	for _, c := range [][2]string{{"where", `{"ref":"3"}`}, {"list", `{"folder":"@1","include_folders":true}`}, {"list", `{"folder":1}`}} {
+	for _, c := range [][2]string{{"where", `{"ref":"3"}`}, {"folder list", `{"folder":"@1"}`}, {"task list", `{"folder":1}`}} {
 		env := w.run(c[0], c[1])
 		if !env.OK || len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
 			t.Errorf("%s %s: %+v", c[0], c[1], env)
@@ -252,7 +255,7 @@ func TestWhereWarnsOfUnusableFolderFiles(t *testing.T) {
 // walk takes it: a stray entry, with no reference.
 func TestWhereFileThroughStrayEntries(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p"}`)
+	w.ok("folder create", `{"folder":"/p"}`)
 	os.WriteFile(w.root("p/stray"), nil, 0o644)
 	os.Symlink(t.TempDir(), w.root("p/lnk"))
 	for _, p := range []string{w.root("p/stray"), w.root("p/stray") + "/x", w.root("p/lnk") + "/x"} {
@@ -267,7 +270,7 @@ func TestWhereFileThroughStrayEntries(t *testing.T) {
 		t.Errorf("through a link: %v", got)
 	}
 	w.fail("where", `{"file":"`+t.TempDir()+`/x"}`, errs.NotFound, "")
-	// By reference it is a folder path, and not-a-folder, as for show-folder.
+	// By reference it is a folder path, and not-a-folder, as for folder show.
 	w.fail("where", `{"ref":"/p/stray"}`, errs.Conflict, errs.RuleNotAFolder)
 	w.fail("where", `{"ref":"@1:a\u0000b"}`, errs.InvalidInput, "")
 }

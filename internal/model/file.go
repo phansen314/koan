@@ -118,22 +118,34 @@ type Meta struct {
 	Schema int64 `json:"schema"`
 }
 
-// Task is a task as every command returns it: the file's fields and five
-// derived ones.
+// Task is a task as every command returns it: the file's fields but schema,
+// and five derived ones.
 type Task struct {
-	TaskFile
-	Folder    Folder    `json:"folder"`
-	NotesPath string    `json:"notes_path"`
-	Readiness Readiness `json:"readiness"`
-	Blocking  []ID      `json:"blocking"`
-	Claim     *Claim    `json:"claim"`
+	ID           ID             `json:"id"`
+	Title        string         `json:"title"`
+	Priority     *int64         `json:"priority"`
+	CreatedAt    string         `json:"created_at"`
+	CompletedAt  *string        `json:"completed_at"`
+	UpdatedAt    string         `json:"updated_at"`
+	BlockedBy    []ID           `json:"blocked_by"`
+	Tags         []string       `json:"tags"`
+	Extra        map[string]any `json:"extra"`
+	Folder       Folder         `json:"folder"`
+	NotesPath    string         `json:"notes_path"`
+	Readiness    Readiness      `json:"readiness"`
+	OpenBlockers []ID           `json:"open_blockers"`
+	Claim        *Claim         `json:"claim"`
 }
 
 // TaskFields are the names of a Task's fields, in the order they are written.
 var TaskFields = []string{
-	"schema", "id", "title", "priority", "created_at", "completed_at", "updated_at",
-	"blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "blocking", "claim",
+	"id", "title", "priority", "created_at", "completed_at", "updated_at",
+	"blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "open_blockers", "claim",
 }
+
+// FolderFields are the names of a FolderRecord's fields, in the order they
+// are written.
+var FolderFields = []string{"id", "path", "dir", "title", "extra", "notes_path"}
 
 // Encode writes v as koan writes every file: two-space indentation, map keys
 // sorted, no HTML escaping, and a trailing newline.
@@ -215,7 +227,7 @@ func missing(m map[string]json.RawMessage, want []string, nullable ...string) []
 	return ps
 }
 
-var taskKeys = TaskFields[:10]
+var taskKeys = append([]string{"schema"}, TaskFields[:9]...)
 
 // DecodeTaskFile reads a task file in this binary's format and checks every
 // rule. A nil error and no problems means the file is usable.

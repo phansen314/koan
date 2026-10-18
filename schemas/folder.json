@@ -1,16 +1,26 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "folder",
-  "type": "object",
+  "description": "A folder as every command that returns one returns it.",
+  "$ref": "#/$defs/partial",
   "required": ["id", "path", "dir", "title", "extra", "notes_path"],
-  "properties": {
-    "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for the root, and for a folder with no usable folder file." },
-    "path": { "$ref": "folder-path" },
-    "dir": { "type": "string", "description": "The absolute filesystem path of the folder's directory." },
-    "title": { "$ref": "folder-file#/properties/title" },
-    "extra": { "type": "object" },
-    "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for the root." }
-  },
-  "additionalProperties": false,
-  "description": "A folder, as every command that returns one returns it."
+  "$defs": {
+    "partial": {
+      "type": "object",
+      "required": ["id", "path"],
+      "properties": {
+        "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for the root, and for a folder with no usable folder file." },
+        "path": { "$ref": "folder-path" },
+        "dir": { "type": "string", "description": "The absolute filesystem path of the folder's directory." },
+        "title": { "$ref": "folder-file#/properties/title" },
+        "extra": { "type": "object" },
+        "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for the root." }
+      },
+      "additionalProperties": false,
+      "description": "A folder cut down by `fields`: id, path, and the fields asked for."
+    },
+    "field": {
+      "enum": ["id", "path", "dir", "title", "extra", "notes_path"]
+    }
+  }
 }

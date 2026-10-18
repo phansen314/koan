@@ -46,14 +46,20 @@ func (c *call) cycleLook(unreadable **errs.Error) func(model.ID) (graph.Node, bo
 }
 
 type taskResult struct {
-	Task    model.Task `json:"task"`
-	Changed *bool      `json:"changed,omitempty"`
+	Task model.Task `json:"task"`
+}
+
+// written is what a write that changes one task returns: the task's
+// identity.
+type written struct {
+	ID      model.ID `json:"id"`
+	Changed bool     `json:"changed"`
 }
 
 type moveResult struct {
-	Task           model.Task     `json:"task"`
-	FoldersCreated []model.Folder `json:"folders_created"`
+	ID             model.ID       `json:"id"`
 	Changed        bool           `json:"changed"`
+	FoldersCreated []model.Folder `json:"folders_created"`
 }
 
 func cmdShow(c *call) (any, *errs.Error) {
@@ -94,7 +100,7 @@ func (c *call) edit(id model.ID, change func(tf *model.TaskFile) *errs.Error, af
 			return nil, e
 		}
 	}
-	return taskResult{Task: c.task(f, tf), Changed: &changed}, nil
+	return written{ID: id, Changed: changed}, nil
 }
 
 func cloneExtra(m map[string]any) map[string]any {
@@ -182,22 +188,22 @@ func cmdReopen(c *call) (any, *errs.Error) {
 	})
 }
 
-// blockers reads the input block and unblock share.
-func readBlockers(c *call) (model.ID, []model.ID) {
+// readBlockedBy reads the input task block and task unblock share.
+func readBlockedBy(c *call) (model.ID, []model.ID) {
 	in := c.in.top()
 	id := in.id("id", true)
-	bs := in.ids("blockers", true)
+	bs := in.ids("blocked_by", true)
 	if bs != nil && len(bs) == 0 {
-		c.in.bad("/blockers", "must hold at least one task ID")
+		c.in.bad("/blocked_by", "must hold at least one task ID")
 	}
 	return id, bs
 }
 
 func cmdBlock(c *call) (any, *errs.Error) {
-	id, bs := readBlockers(c)
+	id, bs := readBlockedBy(c)
 	for i, b := range bs {
 		if b == id {
-			c.in.bad(fmt.Sprintf("/blockers/%d", i), "is the task itself")
+			c.in.bad(fmt.Sprintf("/blocked_by/%d", i), "is the task itself")
 		}
 	}
 	if e := c.begin(true); e != nil {
@@ -235,7 +241,7 @@ func cmdBlock(c *call) (any, *errs.Error) {
 }
 
 func cmdUnblock(c *call) (any, *errs.Error) {
-	id, bs := readBlockers(c)
+	id, bs := readBlockedBy(c)
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
@@ -256,11 +262,11 @@ func cmdMove(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	from, tf, e := c.find(id)
+	from, _, e := c.find(id)
 	if e != nil {
 		return nil, e
 	}
-	res := moveResult{FoldersCreated: []model.Folder{}, Changed: from != to}
+	res := moveResult{ID: id, Changed: from != to, FoldersCreated: []model.Folder{}}
 	if res.Changed {
 		if res.FoldersCreated, e = c.ensure(to); e != nil {
 			return nil, e
@@ -285,20 +291,19 @@ func cmdMove(c *call) (any, *errs.Error) {
 		if taken {
 			return nil, exists.WithPaths(c.t.Abs(model.TaskRel(to, id)))
 		}
-		c.x.Tasks[id] = to
 		if _, err := c.t.Stat(model.NotesRel(from, id)); err == nil {
 			if _, e := c.t.Move(model.NotesRel(from, id), notes); e != nil {
 				return nil, e
 			}
 		}
 	}
-	res.Task = c.task(to, tf)
 	return res, nil
 }
 
 type deleteResult struct {
-	ID         model.ID   `json:"id"`
-	Dependents []model.ID `json:"dependents"`
+	ID         model.ID    `json:"id"`
+	Task       *model.Task `json:"task"`
+	Dependents []model.ID  `json:"dependents"`
 }
 
 func cmdDelete(c *call) (any, *errs.Error) {
@@ -313,6 +318,13 @@ func cmdDelete(c *call) (any, *errs.Error) {
 	f, ok := x.Tasks[id]
 	if !ok {
 		return nil, c.notFoundTasks(id)
+	}
+	// Its record, as it was; a file it can't use has none, which does not
+	// stop the delete.
+	var record *model.Task
+	if tf := c.pass(id); tf != nil {
+		t := c.task(f, tf)
+		record = &t
 	}
 	// The task goes before its dependents are rewritten: a kill after that
 	// leaves references to a task that is gone, which doctor finds. The other
@@ -337,5 +349,5 @@ func cmdDelete(c *call) (any, *errs.Error) {
 	if e := c.dropClaims(id); e != nil {
 		return nil, e
 	}
-	return deleteResult{ID: id, Dependents: dependents}, nil
+	return deleteResult{ID: id, Task: record, Dependents: dependents}, nil
 }

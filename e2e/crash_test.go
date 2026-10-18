@@ -19,28 +19,28 @@ var crashCases = []struct {
 	args []string
 }{
 	{freshInit, []string{"init"}},
-	{"create", []string{"create", "new", "--folder", "/fresh/deep", "--blocked-by", "1", "--notes", "n"}},
-	{"create blocks", []string{"create", "new", "--folder", "/fresh", "--blocks", "1,2,3"}},
-	{"create-batch", []string{"create-batch", "-i", "-"}},
-	{"create-folder", []string{"create-folder", "/x/y/z", "--title", "Z", "--notes", "n"}},
-	{"update-folder", []string{"update-folder", "/proj", "--title", "P", "--extra-merge", `{"k":1}`}},
-	{"move-folder", []string{"move-folder", "/proj", "--to", "/moved/proj"}},
-	{"delete-folder", []string{"delete-folder", "/proj", "--recursive"}},
-	{"update", []string{"update", "2", "--title", "renamed", "--tags-add", "t"}},
-	{"done", []string{"done", "3"}},
-	{"reopen", []string{"reopen", "4"}},
-	{"block", []string{"block", "1", "--blockers", "4"}},
-	{"unblock", []string{"unblock", "2", "--blockers", "1"}},
-	{"move", []string{"move", "3", "--to", "/elsewhere"}},
-	{"delete", []string{"delete", "1"}},
-	{"claim", []string{"claim", "1"}},
-	{"claim-next", []string{"claim-next"}},
-	{"release", []string{"release", "3"}},
+	{"task create", []string{"task", "create", "new", "--folder", "/fresh/deep", "--blocked-by", "1", "--notes", "n"}},
+	{"task create blocks", []string{"task", "create", "new", "--folder", "/fresh", "--blocks", "1,2,3"}},
+	{"batch", []string{"batch", "-i", "-"}},
+	{"folder create", []string{"folder", "create", "/x/y/z", "--title", "Z", "--notes", "n"}},
+	{"folder update", []string{"folder", "update", "/proj", "--title", "P", "--extra-merge", `{"k":1}`}},
+	{"folder move", []string{"folder", "move", "/proj", "--to", "/moved/proj"}},
+	{"folder delete", []string{"folder", "delete", "/proj", "--contents"}},
+	{"task update", []string{"task", "update", "2", "--title", "renamed", "--tags-add", "t"}},
+	{"task done", []string{"task", "done", "3"}},
+	{"task reopen", []string{"task", "reopen", "4"}},
+	{"task block", []string{"task", "block", "1", "--blocked-by", "4"}},
+	{"task unblock", []string{"task", "unblock", "2", "--blocked-by", "1"}},
+	{"task move", []string{"task", "move", "3", "--to", "/elsewhere"}},
+	{"task delete", []string{"task", "delete", "1"}},
+	{"task claim", []string{"task", "claim", "1"}},
+	{"task claim-next", []string{"task", "claim-next"}},
+	{"task release", []string{"task", "release", "3"}},
 	{"repair", []string{"repair"}},
 	{"repair by name", []string{"repair", "--kinds", "dangling-reference,stale-claim"}},
 }
 
-const batchInput = `{"folders":[{"path":"/b1","title":"B1","extra":{"k":1},"notes":"fn"},{"path":"/b3/deep"}],"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
+const batchInput = `{"folders":[{"folder":"/b1","title":"B1","extra":{"k":1},"notes":"fn"},{"folder":"/b3/deep"}],"tasks":[{"ref":"a","title":"A","folder":"/b1","notes":"n"},{"title":"B","folder":"/b2","blocked_by":["a",1]}]}`
 
 // freshInit marks the case that runs on a HOME where nothing exists yet.
 const freshInit = "init on a new home"
@@ -60,17 +60,17 @@ func setup(t *testing.T, name string) string {
 		return home
 	}
 	home := newHome(t)
-	ok(t, home, "create", "one")
-	ok(t, home, "create", "two", "--blocked-by", "1")
-	ok(t, home, "create", "three", "--notes", "notes")
-	ok(t, home, "create", "four")
-	ok(t, home, "move", "2", "--to", "/proj")
-	ok(t, home, "move", "3", "--to", "/proj")
-	ok(t, home, "move", "4", "--to", "/proj/sub")
-	ok(t, home, "done", "4")
-	ok(t, home, "claim", "3")
+	ok(t, home, "task", "create", "one")
+	ok(t, home, "task", "create", "two", "--blocked-by", "1")
+	ok(t, home, "task", "create", "three", "--notes", "notes")
+	ok(t, home, "task", "create", "four")
+	ok(t, home, "task", "move", "2", "--to", "/proj")
+	ok(t, home, "task", "move", "3", "--to", "/proj")
+	ok(t, home, "task", "move", "4", "--to", "/proj/sub")
+	ok(t, home, "task", "done", "4")
+	ok(t, home, "task", "claim", "3")
 	if strings.HasPrefix(name, "repair") {
-		ok(t, home, "claim", "1")
+		ok(t, home, "task", "claim", "1")
 		os.Remove(filepath.Join(home, "koan-root", "@1.json"))
 		os.Mkdir(filepath.Join(home, "koan-root", "@hand"), 0o755)
 	}
@@ -96,7 +96,7 @@ func checkAfter(t *testing.T, home, what string) {
 			t.Fatalf("%s: left the root %v, and init afterwards failed: %s", what, what0, r.stdout)
 		}
 	}
-	if r := koan(t, home, "", nil, "create", "after"); r.exit != 0 {
+	if r := koan(t, home, "", nil, "task", "create", "after"); r.exit != 0 {
 		t.Fatalf("%s: the next write failed: %s", what, r.stdout)
 	}
 	for _, f := range ok(t, home, "doctor")["findings"].([]any) {
@@ -119,7 +119,7 @@ func checkAfter(t *testing.T, home, what string) {
 }
 
 func stdinFor(args []string) string {
-	if args[0] == "create-batch" {
+	if args[0] == "batch" {
 		return batchInput
 	}
 	return ""

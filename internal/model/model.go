@@ -47,7 +47,7 @@ var (
 // ValidFolderName reports whether s can name a folder.
 func ValidFolderName(s string) bool { return folderName.MatchString(s) }
 
-// ValidTag reports whether s can be a tag, or a create-batch ref.
+// ValidTag reports whether s can be a tag, or a batch ref.
 func ValidTag(s string) bool { return tagName.MatchString(s) }
 
 // ParseIDRef reads an ID as a reference writes it, with or without its

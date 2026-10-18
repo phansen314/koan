@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-move-output",
+  "type": "object",
+  "required": ["id", "path", "changed", "folders_created"],
+  "properties": {
+    "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for the root, and for a folder with no usable folder file." },
+    "path": { "$ref": "folder-path", "description": "The new path." },
+    "changed": { "type": "boolean" },
+    "folders_created": {
+      "type": "array",
+      "items": { "$ref": "folder-path" }
+    }
+  },
+  "additionalProperties": false
+}

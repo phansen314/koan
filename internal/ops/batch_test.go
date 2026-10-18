@@ -14,11 +14,11 @@ import (
 
 func TestBatchRefsPointBackwards(t *testing.T) {
 	w := ready(t)
-	w.fail("create-batch", `{"tasks":[{"title":"a","blocked_by":["b"]},{"ref":"b","title":"b"}]}`, errs.InvalidInput, "")
-	w.fail("create-batch", `{"tasks":[{"ref":"a","title":"a","blocked_by":["a"]}]}`, errs.InvalidInput, "")
-	w.fail("create-batch", `{"tasks":[{"title":"a","blocked_by":["nope"]}]}`, errs.InvalidInput, "")
-	w.fail("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"ref":"a","title":"b"}]}`, errs.InvalidInput, "")
-	if id := task(w.ok("create", `{"title":"x"}`))["id"]; id != float64(1) {
+	w.fail("batch", `{"tasks":[{"title":"a","blocked_by":["b"]},{"ref":"b","title":"b"}]}`, errs.InvalidInput, "")
+	w.fail("batch", `{"tasks":[{"ref":"a","title":"a","blocked_by":["a"]}]}`, errs.InvalidInput, "")
+	w.fail("batch", `{"tasks":[{"title":"a","blocked_by":["nope"]}]}`, errs.InvalidInput, "")
+	w.fail("batch", `{"tasks":[{"ref":"a","title":"a"},{"ref":"a","title":"b"}]}`, errs.InvalidInput, "")
+	if id := w.ok("task create", `{"title":"x"}`)["id"]; id != float64(1) {
 		t.Errorf("a refused batch used IDs: next is %v", id)
 	}
 }
@@ -27,7 +27,7 @@ func TestBatchRefsPointBackwards(t *testing.T) {
 // are.
 func TestBatchUnknownFields(t *testing.T) {
 	w := ready(t)
-	e := w.fail("create-batch", `{"folders":[{"path":"/f","zz":1,"aa":2}],"tasks":[{"title":"a","bogus":1}],"top":1}`, errs.InvalidInput, "")
+	e := w.fail("batch", `{"folders":[{"folder":"/f","zz":1,"aa":2}],"tasks":[{"title":"a","bogus":1}],"top":1}`, errs.InvalidInput, "")
 	want := []errs.Problem{
 		{Field: "/folders/0/aa", Reason: "is not a field of a folder"},
 		{Field: "/folders/0/zz", Reason: "is not a field of a folder"},
@@ -44,24 +44,24 @@ func TestBatchUnknownFields(t *testing.T) {
 func TestBatchChecksFoldersFirst(t *testing.T) {
 	w := ready(t)
 	os.WriteFile(w.root("afile"), nil, 0o644)
-	e := w.fail("create-batch", `{"tasks":[{"title":"a"},{"title":"b","folder":"/afile/x"}]}`, errs.Conflict, errs.RuleNotAFolder)
+	e := w.fail("batch", `{"tasks":[{"title":"a"},{"title":"b","folder":"/afile/x"}]}`, errs.Conflict, errs.RuleNotAFolder)
 	if len(e.ChangedPaths) != 0 || len(e.IDs) != 0 {
 		t.Errorf("changed %v, ids %v: want nothing written", e.ChangedPaths, e.IDs)
 	}
-	w.fail("create", `{"title":"c","folder":"/afile"}`, errs.Conflict, errs.RuleNotAFolder)
-	if id := task(w.ok("create", `{"title":"d"}`))["id"]; id != float64(1) {
+	w.fail("task create", `{"title":"c","folder":"/afile"}`, errs.Conflict, errs.RuleNotAFolder)
+	if id := w.ok("task create", `{"title":"d"}`)["id"]; id != float64(1) {
 		t.Errorf("the refused creates used IDs: next is %v", id)
 	}
 }
 
-// create-batch makes folders with their fields, and tasks in them, in one
+// batch makes folders with their fields, and tasks in them, in one
 // write: folders take IDs first, in tree order, then the tasks.
 func TestBatchFolders(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/work"}`) // 1
-	got := w.ok("create-batch", `{"folders":[
-		{"path":"/work/s/research","title":"Research"},
-		{"path":"/work/s","title":"Story","extra":{"jira":"H-1"},"notes":"context"}],
+	w.ok("folder create", `{"folder":"/work"}`) // 1
+	got := w.ok("batch", `{"folders":[
+		{"folder":"/work/s/research","title":"Research"},
+		{"folder":"/work/s","title":"Story","extra":{"jira":"H-1"},"notes":"context"}],
 	 "tasks":[
 		{"ref":"a","title":"Read","folder":"/work/s/research"},
 		{"title":"Write","folder":"/work/s/research","blocked_by":["a"]},
@@ -74,17 +74,17 @@ func TestBatchFolders(t *testing.T) {
 		t.Errorf("folders_created %s", data)
 	}
 	wantIDs(t, "ids", got["ids"], 5, 6, 7)
-	if r := w.record(w.ok("show-folder", `{"folder":"/work/s"}`)); r != `{"dir":"~/@work/@s","extra":{"jira":"H-1"},"id":3,"notes_path":"~/@work/@s/@folder.md","path":"/work/s","title":"Story"}` {
-		t.Errorf("show-folder: %s", r)
+	if r := w.record(w.ok("folder show", `{"folder":"/work/s"}`)); r != `{"dir":"~/@work/@s","extra":{"jira":"H-1"},"id":3,"notes_path":"~/@work/@s/@folder.md","path":"/work/s","title":"Story"}` {
+		t.Errorf("folder show: %s", r)
 	}
 	if n, _ := os.ReadFile(w.root("work/s/folder.md")); string(n) != "context" {
 		t.Errorf("notes %q", n)
 	}
-	if r := w.record(w.ok("show-folder", `{"folder":4}`)); !strings.Contains(r, `"title":"Research"`) {
+	if r := w.record(w.ok("folder show", `{"folder":4}`)); !strings.Contains(r, `"title":"Research"`) {
 		t.Errorf("research: %s", r)
 	}
 	// Folders only.
-	got = w.ok("create-batch", `{"folders":[{"path":"/x"}]}`)
+	got = w.ok("batch", `{"folders":[{"folder":"/x"}]}`)
 	if data, _ := json.Marshal(got["folders"]); string(data) != `{"/x":8}` || len(got["ids"].([]any)) != 0 {
 		t.Errorf("folders only: %v", got)
 	}
@@ -97,33 +97,33 @@ func TestBatchFolders(t *testing.T) {
 // refused, before anything is written; bad entries are invalid-input.
 func TestBatchFolderEntriesRefused(t *testing.T) {
 	w := ready(t)
-	w.ok("create-folder", `{"folder":"/p/q"}`) // 1, 2
-	e := w.fail("create-batch", `{"folders":[{"path":"/p"},{"path":"/n"},{"path":"/p/q"}],"tasks":[{"title":"a"}]}`, errs.Conflict, errs.RuleDestinationExists)
+	w.ok("folder create", `{"folder":"/p/q"}`) // 1, 2
+	e := w.fail("batch", `{"folders":[{"folder":"/p"},{"folder":"/n"},{"folder":"/p/q"}],"tasks":[{"title":"a"}]}`, errs.Conflict, errs.RuleDestinationExists)
 	if !slices.Equal(e.Folders, []string{"/p", "/p/q"}) || len(e.Paths) != 2 || len(e.ChangedPaths) != 0 {
 		t.Errorf("folders %v, paths %v, changed %v", e.Folders, e.Paths, e.ChangedPaths)
 	}
 	// A task may still go into a folder already there.
-	w.ok("create-batch", `{"folders":[{"path":"/n"}],"tasks":[{"title":"a","folder":"/p"}]}`)
+	w.ok("batch", `{"folders":[{"folder":"/n"}],"tasks":[{"title":"a","folder":"/p"}]}`)
 	for _, in := range []string{
 		`{}`, `{"folders":[],"tasks":[]}`,
-		`{"folders":[{"path":"/"}]}`,
-		`{"folders":[{"path":"/m"},{"path":"/m"}]}`,
-		`{"folders":[{"path":"@1"}]}`,
-		`{"folders":[{"path":"/m","gates":true}]}`,
+		`{"folders":[{"folder":"/"}]}`,
+		`{"folders":[{"folder":"/m"},{"folder":"/m"}]}`,
+		`{"folders":[{"folder":"@1"}]}`,
+		`{"folders":[{"folder":"/m","gates":true}]}`,
 		`{"folders":[{"title":"x"}]}`,
-		`{"folders":[{"path":"/m","title":"  "}]}`,
-		`{"folders":[{"path":"/m","extra":[]}]}`,
+		`{"folders":[{"folder":"/m","title":"  "}]}`,
+		`{"folders":[{"folder":"/m","extra":[]}]}`,
 		`{"folders":"/m"}`,
 	} {
-		w.fail("create-batch", in, errs.InvalidInput, "")
+		w.fail("batch", in, errs.InvalidInput, "")
 	}
 	var many []string
 	for i := range 600 {
-		many = append(many, fmt.Sprintf(`{"path":"/f%d"}`, i))
+		many = append(many, fmt.Sprintf(`{"folder":"/f%d"}`, i))
 	}
 	tasks := strings.Repeat(`{"title":"t"},`, 400) + `{"title":"t"}`
-	w.fail("create-batch", `{"folders":[`+strings.Join(many, ",")+`],"tasks":[`+tasks+`]}`, errs.InvalidInput, "")
-	if id := task(w.ok("create", `{"title":"z"}`))["id"]; id != float64(5) {
+	w.fail("batch", `{"folders":[`+strings.Join(many, ",")+`],"tasks":[`+tasks+`]}`, errs.InvalidInput, "")
+	if id := w.ok("task create", `{"title":"z"}`)["id"]; id != float64(5) {
 		t.Errorf("a refused batch used an ID: next is %v", id)
 	}
 }
@@ -133,7 +133,7 @@ func TestBatchFolderEntriesRefused(t *testing.T) {
 func TestBatchFailsPartway(t *testing.T) {
 	w := ready(t)
 	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpLink, "", 5, 28 /* ENOSPC */)}
-	env := w.run("create-batch", `{"tasks":[{"title":"a"},{"title":"b"},{"title":"c"}]}`)
+	env := w.run("batch", `{"tasks":[{"title":"a"},{"title":"b"},{"title":"c"}]}`)
 	if env.OK || env.Error.Kind != errs.IO {
 		t.Fatalf("got %+v", env)
 	}
@@ -141,7 +141,7 @@ func TestBatchFailsPartway(t *testing.T) {
 		t.Errorf("ids %v, changed %v", env.Error.IDs, env.Error.ChangedPaths)
 	}
 	w.env.FS = fsys.FS{}
-	if id := task(w.ok("create", `{"title":"d"}`))["id"]; id != float64(4) {
+	if id := w.ok("task create", `{"title":"d"}`)["id"]; id != float64(4) {
 		t.Errorf("next ID %v: the batch's IDs must not be reused", id)
 	}
 	if got := w.ok("doctor", `{}`); got["healthy"] != true {
@@ -156,15 +156,15 @@ func TestBatchFoldersFailPartway(t *testing.T) {
 	// Each folder's two files are linked into place: the third link is /b's
 	// first, so /a is made whole and /b without its files.
 	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpLink, "", 3, 28 /* ENOSPC */)}
-	env := w.run("create-batch", `{"folders":[{"path":"/a","title":"A"},{"path":"/b"}],"tasks":[{"title":"t","folder":"/b"}]}`)
+	env := w.run("batch", `{"folders":[{"folder":"/a","title":"A"},{"folder":"/b"}],"tasks":[{"title":"t","folder":"/b"}]}`)
 	w.env.FS = fsys.FS{}
 	if env.OK || env.Error.Kind != errs.IO || len(env.Error.IDs) != 0 || !slices.Equal(env.Error.Folders, []string{"/a", "/b"}) {
 		t.Fatalf("got %+v", env)
 	}
-	if r := w.record(w.ok("show-folder", `{"folder":"/a"}`)); !strings.Contains(r, `"title":"A"`) || !strings.Contains(r, `"id":1`) {
+	if r := w.record(w.ok("folder show", `{"folder":"/a"}`)); !strings.Contains(r, `"title":"A"`) || !strings.Contains(r, `"id":1`) {
 		t.Errorf("/a: %s", r)
 	}
-	if id := task(w.ok("create", `{"title":"d"}`))["id"]; id != float64(4) {
+	if id := w.ok("task create", `{"title":"d"}`)["id"]; id != float64(4) {
 		t.Errorf("next ID %v: the batch's IDs must not be reused", id)
 	}
 	if fs := w.findings(); !slices.Equal(fs, []string{"missing-folder-file @b"}) {
@@ -188,17 +188,17 @@ func raceAt(dir string) fsys.Hook {
 func TestBatchFolderEntryRaced(t *testing.T) {
 	w := ready(t)
 	w.env.FS = fsys.FS{Hook: raceAt(w.root("b"))}
-	e := w.fail("create-batch", `{"folders":[{"path":"/a"},{"path":"/b","title":"B"}],"tasks":[{"title":"t","folder":"/b"}]}`, errs.Conflict, errs.RuleDestinationExists)
+	e := w.fail("batch", `{"folders":[{"folder":"/a"},{"folder":"/b","title":"B"}],"tasks":[{"title":"t","folder":"/b"}]}`, errs.Conflict, errs.RuleDestinationExists)
 	if !slices.Equal(e.Folders, []string{"/a"}) || len(e.IDs) != 0 || !slices.Equal(e.Paths, []string{w.root("b")}) || !strings.Contains(e.Message, "/b") {
 		t.Errorf("folders %v, ids %v, paths %v, message %q", e.Folders, e.IDs, e.Paths, e.Message)
 	}
-	// create-folder, given fields, is stopped the same way; without them, a
+	// folder create, given fields, is stopped the same way; without them, a
 	// folder that appeared is fine.
 	w.env.FS = fsys.FS{Hook: raceAt(w.root("c"))}
-	w.fail("create-folder", `{"folder":"/c","title":"C"}`, errs.Conflict, errs.RuleDestinationExists)
+	w.fail("folder create", `{"folder":"/c","title":"C"}`, errs.Conflict, errs.RuleDestinationExists)
 	w.env.FS = fsys.FS{Hook: raceAt(w.root("d"))}
-	if got := w.ok("create-folder", `{"folder":"/d"}`); len(got["folders_created"].([]any)) != 0 {
-		t.Errorf("create-folder /d: %v", got)
+	if got := w.ok("folder create", `{"folder":"/d"}`); len(got["folders_created"].([]any)) != 0 {
+		t.Errorf("folder create /d: %v", got)
 	}
 }
 
@@ -209,7 +209,7 @@ func TestBatchTasksFailAfterFolders(t *testing.T) {
 	// Two links make each folder, and two each task: the seventh is task
 	// 4's file, after folders 1 and 2 and task 3 are made whole.
 	w.env.FS = fsys.FS{Hook: fsys.ErrnoAt(fsys.OpLink, "", 7, 28 /* ENOSPC */)}
-	env := w.run("create-batch", `{"folders":[{"path":"/a/b","title":"B"}],"tasks":[{"title":"t","folder":"/a/b"},{"title":"u","folder":"/a/b"},{"title":"v"}]}`)
+	env := w.run("batch", `{"folders":[{"folder":"/a/b","title":"B"}],"tasks":[{"title":"t","folder":"/a/b"},{"title":"u","folder":"/a/b"},{"title":"v"}]}`)
 	w.env.FS = fsys.FS{}
 	if env.OK {
 		t.Fatal("succeeded")
@@ -224,10 +224,10 @@ func TestBatchTasksFailAfterFolders(t *testing.T) {
 		}
 	}
 	// The batch's folder is checked even when no task uses it.
-	w.fail("create-batch", `{"folder":"@99","folders":[{"path":"/x"}]}`, errs.NotFound, "")
+	w.fail("batch", `{"folder":"@99","folders":[{"folder":"/x"}]}`, errs.NotFound, "")
 	os.WriteFile(w.root("file"), nil, 0o644)
-	w.fail("create-batch", `{"folder":"/file/y","folders":[{"path":"/x"}]}`, errs.Conflict, errs.RuleNotAFolder)
-	if got := w.ok("create-batch", `{"folder":"/unused","folders":[{"path":"/x"}]}`); len(got["folders_created"].([]any)) != 1 {
+	w.fail("batch", `{"folder":"/file/y","folders":[{"folder":"/x"}]}`, errs.Conflict, errs.RuleNotAFolder)
+	if got := w.ok("batch", `{"folder":"/unused","folders":[{"folder":"/x"}]}`); len(got["folders_created"].([]any)) != 1 {
 		t.Errorf("an unused batch folder was made: %v", got)
 	}
 }

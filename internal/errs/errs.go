@@ -90,7 +90,10 @@ func (e *Error) WithChanged(paths ...string) *Error {
 // Invalid is an invalid-input error listing every problem found.
 func Invalid(ps []Problem) *Error {
 	msg := fmt.Sprintf("the input has %d problems", len(ps))
-	if len(ps) == 1 {
+	switch {
+	case len(ps) == 1 && ps[0].Field == "":
+		msg = "the input " + ps[0].Reason
+	case len(ps) == 1:
 		msg = "the input is invalid: " + ps[0].Field + " " + ps[0].Reason
 	}
 	return New(InvalidInput, "%s", msg).WithProblems(ps...)

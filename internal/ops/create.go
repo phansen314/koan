@@ -9,7 +9,6 @@ import (
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
 	"github.com/phansen314/koan/internal/model"
-	"github.com/phansen314/koan/internal/store"
 )
 
 // newTask is the input for one task to create.
@@ -20,13 +19,13 @@ type newTask struct {
 	priority *int64
 	tags     []string
 	blockers []model.ID // existing tasks
-	refs     []string   // create-batch: earlier tasks of the batch
+	refs     []string   // batch: earlier tasks of the batch
 	extra    map[string]any
 	notes    string
 	ref      string
 }
 
-// readNewTask reads the fields create and create-batch share.
+// readNewTask reads the fields task create and batch share.
 func readNewTask(f fields, defFolder folderRef) newTask {
 	var n newTask
 	n.title, _ = f.title("title", true)
@@ -65,7 +64,8 @@ func (c *call) writeNew(n newTask, tf *model.TaskFile) (created bool, e *errs.Er
 }
 
 type createResult struct {
-	Task           model.Task     `json:"task"`
+	ID             model.ID       `json:"id"`
+	Changed        bool           `json:"changed"`
 	FoldersCreated []model.Folder `json:"folders_created"`
 	Dependents     []model.ID     `json:"dependents"`
 }
@@ -117,7 +117,7 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	id := first + model.ID(len(missing))
 	// The tasks in blocks are made to wait on the new one before it exists:
 	// a kill between leaves them waiting on an ID with no task, a dangling
-	// reference doctor finds, as delete leaves one. The other order would
+	// reference doctor finds, as task delete leaves one. The other order would
 	// leave the new task with its dependents still free, and nothing to
 	// show for it.
 	dependents := []model.ID{}
@@ -146,12 +146,7 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	default:
 		return nil, e
 	}
-	// A task with no blockers needs no walk to describe: it is ready.
-	if c.x == nil {
-		c.x = &store.Index{Tasks: map[model.ID]model.Folder{}}
-	}
-	c.x.Tasks[id] = n.folder
-	return createResult{Task: c.task(n.folder, tf), FoldersCreated: folders, Dependents: dependents}, nil
+	return createResult{ID: id, Changed: true, FoldersCreated: folders, Dependents: dependents}, nil
 }
 
 // noCycleThroughNew refuses a new task that would close a cycle: one
@@ -186,10 +181,10 @@ type batchResult struct {
 	FoldersCreated []model.Folder            `json:"folders_created"`
 }
 
-// MaxBatch is the most folders and tasks one create-batch takes.
+// MaxBatch is the most folders and tasks one batch takes.
 const MaxBatch = 1000
 
-// readFolderEntries reads create-batch's folder entries, and says how many
+// readFolderEntries reads batch's folder entries, and says how many
 // were given.
 func readFolderEntries(c *call) ([]newFolder, int) {
 	var raws []json.RawMessage
@@ -200,17 +195,17 @@ func readFolderEntries(c *call) ([]newFolder, int) {
 		if !ok {
 			continue
 		}
-		n := newFolder{folder: f.folder("path", true, "")}
+		n := newFolder{folder: f.folder("folder", true, "")}
 		n.title, _ = f.optTitle("title")
 		n.extra, _ = f.object("extra")
 		n.notes, _ = f.text("notes")
 		f.unknown("a folder")
 		switch {
 		case n.folder == model.Root:
-			c.in.bad(f.at+"/path", "may not be the root")
+			c.in.bad(f.at+"/folder", "may not be the root")
 		case n.folder == "":
 		case slices.ContainsFunc(entries, func(e newFolder) bool { return e.folder == n.folder }):
-			c.in.bad(f.at+"/path", "is used by an earlier folder")
+			c.in.bad(f.at+"/folder", "is used by an earlier folder")
 		default:
 			entries = append(entries, n)
 		}
@@ -218,7 +213,7 @@ func readFolderEntries(c *call) ([]newFolder, int) {
 	return entries, len(raws)
 }
 
-func cmdCreateBatch(c *call) (any, *errs.Error) {
+func cmdBatch(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	entries, nFolders := readFolderEntries(c)
 	folder := in.folderRef("folder", false, folderRef{path: model.Root})
@@ -289,7 +284,7 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		}
 	}
 	if len(there) > 0 {
-		return nil, c.destinationExists("already exists: a folder entry is a folder to make; to put tasks in one, name it in their folder, and to change its fields, use update-folder", there...)
+		return nil, c.destinationExists("already exists: a folder entry is a folder to make; to put tasks in one, name it in their folder, and to change its fields, use folder update", there...)
 	}
 	if e := c.mustExist(existing); e != nil {
 		return nil, e
