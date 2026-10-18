@@ -86,6 +86,16 @@ Every command that returns a folder's record returns it in one shape (`schemas/f
 
 Only the folder commands, and `list` with `include_folders`, return folder records. Every other result names a folder by its path: a task's `folder`, and `folders_created`.
 
+### References
+
+Inputs take [references](design.md#references) wherever they name a task or a folder that exists:
+
+- **A task**, in every `id`, `blocked_by`, `blocks`, and `blockers`: an integer, or a string `"42"` or `"@42"`. The one exception is `create-batch`'s `blocked_by`, where a string names a batch `ref` unless it has the `@`: `"42"` is the task with ref `42`, `"@42"` and `42` the existing task.
+- **A folder**, in every `folder` and in `move`'s `to`: a path, or an ID as an integer or a string `"41"` or `"@41"`. A folder given by ID must exist, `not-found` otherwise, and is never made as needed; one given by path is made as needed where the command says so.
+- **Paths only** where the folder is new: `create-folder`'s `folder`, and `move-folder`'s `to`.
+
+Results use the plain forms: an ID is an integer, a folder a path. A `not-found` for an ID lists it in `ids`, and its message says when the ID is the other kind's. Giving a folder by ID can also fail with `duplicate-id`, and warns `unusable-file` for each folder file koan can't use, since any of them might have held the ID.
+
 ### Orders
 
 - **Tree order**: by folder, a parent before its children and siblings by name (`/`, `/Zed`, `/infra`, `/proj`, `/proj/travel`, `/proj-b`); within a folder, by ID. Names are compared byte for byte, so every uppercase letter sorts before every lowercase one.
@@ -133,6 +143,7 @@ Their results always carry `total`, the number of tasks before `limit`, and `tru
 | [`frontier`](#frontier) | read | Return the ready, unclaimed tasks, in work order. |
 | [`list`](#list) | read | Return the tasks, and optionally folders, in scope. |
 | [`why`](#why) | read | Say what a task is waiting on. |
+| [`where`](#where) | read | Turn a reference into disk paths, or a disk path into a reference. |
 | [`claim`](#claim) | write | Claim a task. |
 | [`claim-next`](#claim-next) | write | Claim the first ready, unclaimed task. |
 | [`release`](#release) | write | End a claim. |
@@ -219,7 +230,7 @@ Convert every file in an earlier format to this binary's, then record the format
 
 Create a folder, with any missing folders above it, each with its folder file and notes: empty but for the folder asked for, which gets `notes`.
 
-- **Input:** `folder` (required), and, for the folder itself, `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`): its folder file's fields and its notes. The folders above it get none of them.
+- **Input:** `folder` (required, a path), and, for the folder itself, `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`): its folder file's fields and its notes. The folders above it get none of them.
 - A folder already there is not an error, and is left as it is, when none of `title`, `extra`, and `notes` is given.
 - **Result:** `folder` (its record), and `folders_created`, empty when it already existed.
 - **Refuses:** `destination-exists`, when the folder is already there and `title`, `extra`, or `notes` is given, even one that appeared while it was being made: they are set with `update-folder`, and notes edited in the `@folder.md`.
@@ -250,7 +261,7 @@ Change a folder's title or `extra`. Fields not given are left alone, and notes a
 
 Move a folder, with everything under it, to a new path. Renaming is moving to a sibling path.
 
-- **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into.
+- **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into, so a path only.
 - Neither may be `/`, and `to` may not be under `folder`: `invalid-input`.
 - No file is rewritten: a task's folder is where its file is, and the folder's own files move with it, its ID included.
 - **Result:** `folder` (its record, at the new path), `folders_created`, `changed`.
@@ -424,6 +435,27 @@ Say what a task is waiting on, by following its blockers, and theirs, through op
 | `stuck` | The IDs no work will clear, ascending: blockers that are missing or unusable, and tasks that block each other. |
 
 - A done task has both lists empty. An open task has at least one of them non-empty.
+
+### where
+
+Turn a [reference](design.md#references) into where it is on disk, or a path on disk into its reference: the two forms for the key-plus-hint convention, and the absolute paths to open.
+
+- **Input:** exactly one of `ref`, a reference given as a string (`@42`, `/proj`, `/proj:docs/plan.md`, `@41:docs/plan.md`, each ID with or without the `@`). An ID names whichever task or folder has it; with material after it, a folder., and `file`, an absolute path on disk.
+- **From `file`:** the path is made clean without touching the disk (`a/../b` is `b`), and must be the tree's directory or under it, as `~/koan-root` or as the directory it links to; anywhere else is `not-found`. Its leading `@` folder names lead through folders, each of which must exist. What follows names the folder itself (nothing, `@folder.json`, or `@folder.md`); a task (`@42.json` or `@42.md`, the task file existing); or material, the rest of the path, whose first entry is not named with `@`. Any other `@` entry there is not one of koan's and has no reference: `not-found`.
+- The folders must exist, and a task must; material need not, and is never looked at. An ID given for material that is a task's is `not-found`, saying so.
+- **Result:**
+
+| Field | Holds |
+|---|---|
+| `ref` | The stable reference: `@<id>`, followed by `:` and the material for material. A folder with no ID (the root, or one with no folder file) is given by its path instead. |
+| `hint` | The readable form: the folder's path, followed by `:` and the material for material; a task's title for a task. |
+| `folder` | The record of the folder named, the folder holding the material, or the task's folder. |
+| `task` | The task's ID, or `null`. |
+| `material` | The material part, or `null`. |
+| `file` | The absolute path of the material, or of the task's `@<id>.md`; `null` for a folder, whose record has `dir`. |
+
+- A folder file koan can't use fails it with `corrupt`, as for `show-folder`.
+- Kept text writes `<ref> (<hint>)`: `koan where @41:docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'`.
 
 ## Claims
 

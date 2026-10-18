@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "where-input",
+  "type": "object",
+  "properties": {
+    "ref": { "type": "string", "minLength": 1, "description": "A reference: 42 or @42, /proj, @41, /proj:docs/plan.md, or @41:docs/plan.md." },
+    "file": { "type": "string", "pattern": "^/", "description": "An absolute path on disk." }
+  },
+  "oneOf": [{ "required": ["ref"] }, { "required": ["file"] }],
+  "additionalProperties": false
+}

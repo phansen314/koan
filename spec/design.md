@@ -122,6 +122,25 @@ An ID is a positive integer of at most 15 digits, unique across the whole tree, 
 
 The counter is outside the tree on purpose, so that restoring or merging the tree's files can never lower it. That is also why one machine writes a tree: two machines creating tasks in copies of it would issue the same IDs.
 
+### References
+
+A **reference** names a task, a folder, or material in a folder, in commands and in anything kept outside koan: notes, prompts, commit messages.
+
+| Written | Names | Holds |
+|---|---|---|
+| `42` or `@42` | task 42 | until it is deleted |
+| `/proj/travel` | a folder, by path | until a move |
+| `41` or `@41` | folder 41 | until it is deleted |
+| `/proj/travel:docs/plan.md` | material in a folder, by path | until a move |
+| `41:docs/plan.md` or `@41:docs/plan.md` | material in folder 41 | while the file stays |
+
+- **The `@` is optional on input**, and always written in output: `@41` stands out as a reference in prose, and in `git log --grep '@41'`, where a bare `41` does not.
+- **A reference by ID is stable**: IDs never change, so it survives moves and renames. A path is readable. Kept text writes both, the reference and its path as a hint: `@41 (/proj/travel)`, `@41:docs/plan.md (/proj/travel:docs/plan.md)`. Reading one, the reference wins; a hint that no longer matches has gone stale. koan never reads notes, so this is a convention, not a format; [`where`](operations.md#where) gives both forms.
+- **An ID** names a task or a folder, whichever has it, since they share the counter. Where only one kind is taken, the other is `not-found`, with a message saying what the ID is. The root has no ID, and is only `/`.
+- **The part after `:`** is a path to material, from the folder: segments separated by `/`, none empty, `.`, or `..`, and the first not starting with `@`, which would name one of koan's own entries. Further down is inside material, where `@` means nothing (`@41:node_modules/@types/x`). So a file has one reference per folder form. The colon can't occur in a folder path, so the first one splits the two; the material part may hold more.
+- A material reference says where a file is or would be; the file need not exist, and koan never looks.
+- **Finding folder 41** takes a walk that reads every folder file, since a folder's ID is only in its folder file. Two folder files with the ID, or a folder file and a task file, is `duplicate-id`. A folder whose folder file is missing or can't be used has no ID to be found by.
+
 ### Dependencies
 
 `blocked_by` makes a graph, with an edge from a task to each task it waits on. Folders play no part in it.
@@ -204,7 +223,7 @@ There is no index: a command that looks a task up by ID walks the tree.
 
 - A walk enters only folders: directories named `@` and a folder name, in the root or in a folder it entered. Within a folder, an entry named with `@` is a task file `@<id>.json`, notes `@<id>.md`, the folder file `@folder.json` or notes `@folder.md` (not in the root), or a folder. Every other entry is material, and is skipped without a look.
 - An entry named with `@` that is none of these, a symlink, or of the wrong type (a directory named `@42.json`) is skipped too, and `doctor` reports it.
-- A walk lists entries by name only. Folder files are read only by the commands that need folder IDs: `init` and `doctor`.
+- A walk lists entries by name only. Folder files are read only by the commands that need folder IDs or records, and by any command given a folder as `@` and its ID.
 - A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
 - **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`). koan never picks a copy. `doctor` lists the copies, for a person to resolve.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.

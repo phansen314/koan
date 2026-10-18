@@ -63,12 +63,14 @@ koan's rule is that every change to a file's fields is a new format, with a conv
 
 ### 5. References
 
-Proposed 2026-10-18, **not yet confirmed by the user** (items a–d below are the open choices):
+Decided 2026-10-18; specified in `spec/design.md#references`, `operations.md` (References, `where`), and `cli.md`.
 
-- **`@id` for a folder** in every input that names an existing folder: `show-folder`, `update-folder`, `delete-folder`, `move-folder`'s `folder`, the `folder` scope of `list`, `frontier`, and `claim-next`, and `create`'s and `create-batch`'s `folder` when it exists. (a) A destination that may not exist yet stays a path only: `move-folder`'s `to`, and a folder `create` would make. Resolving `@41` reads the folder files, only when an `@` reference is given; an unknown ID is `not-found`, a task's ID `not-found` saying it is a task.
-- **`@42` for a task** wherever a task ID is taken: `id`, `blocked_by`, `blockers`, `blocks`. In JSON an integer or the string `"@42"`; in create-batch's `blocked_by`, a ref can't clash, since a ref holds no `@`.
-- **Material references:** `/path:docs/plan.md` and `@41:docs/plan.md`. The part after the colon is a disk path: no `..`, no empty segment, and no segment starting with `@`, which would enter what is koan's. (c) The file need not exist, so an agent can ask where to write one.
-- **`koan where`**, both ways. `where <ref>` returns `path`, `dir`, the folder's `id`, and for material `material` and its absolute `file`; (b) for a task's `@42`, its folder and notes path. `where <disk path>` returns a path inside `~/koan-root` as its stable reference and its hint: `@41:docs/plan.md` and `/work/HOME-12345/research:docs/plan.md`. (d) A path outside the tree is `not-found` until worktree markers (unit 9).
+- **`@id` for a folder** wherever the folder must exist, or is used if it does: `show-folder`, `update-folder`, `delete-folder`, `move-folder`'s `folder`, `move`'s `to`, the `folder` of `list`, `frontier`, `claim-next`, `create`, and `create-batch`. An `@id` must exist (`not-found`), and is never made as needed. Paths only where the folder is new: `create-folder`'s `folder`, `move-folder`'s `to`. (a)
+- **`@42` for a task** wherever a task ID is taken: `id`, `blocked_by`, `blocks`, `blockers`. In JSON an integer or the string `"@42"`; in `create-batch`'s `blocked_by`, a string with `@` is an ID and one without a ref.
+- **The `@` is optional on input** (decided 2026-10-18): `41`, `"41"`, and `"@41"` all name ID 41, in task and folder positions alike, and `41:docs/plan.md` is material. The one exception is `create-batch`'s `blocked_by`, where a string without `@` is a ref. Output and kept text always write the `@`.
+- **Material references:** `/path:docs/plan.md` and `@41:docs/plan.md`. After the colon: no empty, `.`, or `..` segment, and the **first** segment not starting with `@` (deeper down is inside material, where `@` means nothing: `@41:node_modules/@types/x`). The file need not exist, and koan never looks. (c)
+- **`koan where <ref>`** and **`koan where --file <path>`** (input `ref` or `file`, exactly one; the CLI makes a relative `--file` absolute). (e) Result: `ref` (stable, `@id[:material]`, or the path for a folder with no ID), `hint` (path[:material], or a task's title), `folder` (record), `task`, `material`, `file` (material's or the task's `@<id>.md`; `null` for a folder). `where @42` for a task gives its folder and notes. (b) A `--file` outside the tree is `not-found` until worktree markers (unit 9). (d)
+- Resolving a folder `@id` reads every folder file; two holders of the ID is `duplicate-id`.
 - Dropped from the first plan: "every output that names a folder carries `path` and `dir`". Folder records already do, and unit 4 decided other results keep plain paths.
 
 ### 6. Gates

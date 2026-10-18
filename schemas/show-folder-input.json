@@ -4,7 +4,7 @@
   "type": "object",
   "required": ["folder"],
   "properties": {
-    "folder": { "$ref": "folder-path" }
+    "folder": { "$ref": "folder-ref" }
   },
   "additionalProperties": false
 }

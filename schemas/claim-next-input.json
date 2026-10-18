@@ -4,7 +4,7 @@
   "type": "object",
   "required": [],
   "properties": {
-    "folder": { "$ref": "folder-path", "default": "/" },
+    "folder": { "$ref": "folder-ref", "default": "/" },
     "recursive": { "type": "boolean", "default": true },
     "tags_any": {
       "type": "array",
