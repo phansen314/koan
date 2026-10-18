@@ -67,7 +67,7 @@ var commands = map[string]command{
 	"create": cmdCreate, "create-batch": cmdCreateBatch, "show": cmdShow, "update": cmdUpdate,
 	"done": cmdDone, "reopen": cmdReopen, "block": cmdBlock, "unblock": cmdUnblock,
 	"move": cmdMove, "delete": cmdDelete,
-	"frontier": cmdFrontier, "list": cmdList, "why": cmdWhy,
+	"frontier": cmdFrontier, "list": cmdList, "why": cmdWhy, "where": cmdWhere,
 	"claim": cmdClaim, "claim-next": cmdClaimNext, "release": cmdRelease,
 }
 
@@ -113,6 +113,7 @@ type call struct {
 	now      string // the one time every timestamp of this command is
 	t        *store.Tree
 	x        *store.Index
+	byID     map[model.ID][]model.Folder // the folders with each ID, once read
 	warnings []errs.Warning
 	warned   map[string]bool
 }
@@ -269,6 +270,79 @@ func (c *call) task(f model.Folder, tf *model.TaskFile) model.Task {
 		t.Claim = c.t.Claim(tf.ID)
 	}
 	return t
+}
+
+// folderIDs maps each folder ID to the folders that have it, reading every
+// folder file once per command. A folder file koan can't use is a warning:
+// it may have held the ID asked for.
+func (c *call) folderIDs() (map[model.ID][]model.Folder, *errs.Error) {
+	if c.byID != nil {
+		return c.byID, nil
+	}
+	x, e := c.index()
+	if e != nil {
+		return nil, e
+	}
+	c.byID = map[model.ID][]model.Folder{}
+	for _, f := range x.Folders {
+		if !x.Filed[f] {
+			continue
+		}
+		ff, _, e := c.t.LoadFolder(f)
+		if e != nil {
+			c.warn(errs.WarnUnusableFile, e.Message, []model.ID{}, c.t.Abs(store.FolderFileRel(f)))
+			continue
+		}
+		if ff != nil {
+			c.byID[ff.ID] = append(c.byID[ff.ID], f)
+		}
+	}
+	return c.byID, nil
+}
+
+// holder finds what has ID id: a task, in folder f, or folder f itself.
+// Nothing is not-found; more than one is duplicate-id.
+func (c *call) holder(id model.ID) (f model.Folder, isTask bool, e *errs.Error) {
+	byID, e := c.folderIDs()
+	if e != nil {
+		return "", false, e
+	}
+	tf, isTask := c.x.Tasks[id]
+	folders := byID[id]
+	switch {
+	case isTask && len(folders) == 0:
+		return tf, true, nil
+	case !isTask && len(folders) == 1:
+		return folders[0], false, nil
+	case !isTask && len(folders) == 0:
+		return "", false, errs.New(errs.NotFound, "no task or folder has ID %d", id).WithIDs(id)
+	}
+	e = errs.NewConflict(errs.RuleDuplicateID, "ID %d is held by more than one task or folder", id).WithIDs(id)
+	if isTask {
+		e.WithPaths(c.t.Abs(store.TaskRel(tf, id)))
+	}
+	for _, f := range folders {
+		e.WithPaths(c.t.Abs(store.FolderFileRel(f)))
+	}
+	return "", false, e
+}
+
+// resolve is the folder r names. One named by ID must exist.
+func (c *call) resolve(r folderRef) (model.Folder, *errs.Error) {
+	if r.id == 0 {
+		return r.path, nil
+	}
+	f, isTask, e := c.holder(r.id)
+	if e != nil {
+		if e.Kind == errs.NotFound {
+			e.Message = fmt.Sprintf("no folder has ID %d", r.id)
+		}
+		return "", e
+	}
+	if isTask {
+		return "", errs.New(errs.NotFound, "%d is the ID of a task, in %s, not of a folder", r.id, f).WithIDs(r.id)
+	}
+	return f, nil
 }
 
 // folderOrNotFound checks that folder f exists.

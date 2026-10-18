@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
@@ -15,7 +16,8 @@ import (
 // newTask is the input for one task to create.
 type newTask struct {
 	title    string
-	folder   model.Folder
+	at       folderRef    // the folder, as the input names it
+	folder   model.Folder // the folder, once resolved
 	priority *int64
 	tags     []string
 	blockers []model.ID // existing tasks
@@ -26,10 +28,10 @@ type newTask struct {
 }
 
 // readNewTask reads the fields create and create-batch share.
-func readNewTask(f fields, defFolder model.Folder) newTask {
+func readNewTask(f fields, defFolder folderRef) newTask {
 	var n newTask
 	n.title, _ = f.title("title", true)
-	n.folder = f.folder("folder", false, defFolder)
+	n.at = f.folderRef("folder", false, defFolder)
 	n.priority, _ = f.priority("priority")
 	n.tags, _ = f.tags("tags")
 	n.extra, _ = f.object("extra")
@@ -92,10 +94,14 @@ type createResult struct {
 
 func cmdCreate(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	n := readNewTask(in, model.Root)
+	n := readNewTask(in, folderRef{path: model.Root})
 	n.blockers = in.ids("blocked_by", false)
 	blocks := slices.Sorted(slices.Values(in.ids("blocks", false)))
 	if e := c.begin(true); e != nil {
+		return nil, e
+	}
+	var e *errs.Error
+	if n.folder, e = c.resolve(n.at); e != nil {
 		return nil, e
 	}
 	if e := c.mustExist(append(slices.Clone(n.blockers), blocks...)); e != nil {
@@ -200,7 +206,7 @@ const MaxBatch = 1000
 
 func cmdCreateBatch(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	folder := in.folder("folder", false, model.Root)
+	folder := in.folderRef("folder", false, folderRef{path: model.Root})
 	var raws []json.RawMessage
 	in.get("tasks", true, &raws, "a list of tasks")
 	if c.in.has("tasks") && (len(raws) < 1 || len(raws) > MaxBatch) {
@@ -230,15 +236,16 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		f.get("blocked_by", false, &blockers, "a list of task IDs and refs")
 		for j, b := range blockers {
 			bat := fmt.Sprintf("%s/blocked_by/%d", at, j)
-			var id model.ID
 			var ref string
-			switch {
-			case model.Decode(b, &id) == nil && model.ValidID(id):
+			isRef := model.Decode(b, &ref) == nil && !strings.HasPrefix(ref, model.Mark)
+			// A string without @ is a ref; anything else, an ID.
+			switch id, isID := idOf(b); {
+			case !isRef && isID:
 				if slices.Contains(n.blockers, id) {
-					c.in.bad(bat, "is repeated")
+					c.in.bad(bat, "names the same task as an earlier one")
 				}
 				n.blockers = append(n.blockers, id)
-			case model.Decode(b, &ref) == nil && string(b) != "null":
+			case isRef:
 				if _, ok := refAt[ref]; !ok {
 					c.in.bad(bat, "must be the ref of an earlier task in the batch")
 				} else if slices.Contains(n.refs, ref) {
@@ -267,8 +274,12 @@ func cmdCreateBatch(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	targets := make([]model.Folder, len(tasks))
-	for i, n := range tasks {
-		targets[i] = n.folder
+	for i := range tasks {
+		f, e := c.resolve(tasks[i].at)
+		if e != nil {
+			return nil, e
+		}
+		tasks[i].folder, targets[i] = f, f
 	}
 	missing, e := c.plan(targets...)
 	if e != nil {
@@ -513,8 +524,12 @@ func cmdUnblock(c *call) (any, *errs.Error) {
 func cmdMove(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	id := in.id("id", true)
-	to := in.folder("to", true, "")
+	ref := in.folderRef("to", true, folderRef{})
 	if e := c.begin(true); e != nil {
+		return nil, e
+	}
+	to, e := c.resolve(ref)
+	if e != nil {
 		return nil, e
 	}
 	from, tf, e := c.find(id)

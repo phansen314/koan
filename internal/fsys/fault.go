@@ -93,6 +93,9 @@ func (f Fault) Mkdir(p string, perm fs.FileMode) error {
 	return f.FS.Mkdir(p, perm)
 }
 
+// EvalSymlinks only reads, and passes through unhooked.
+func (f Fault) EvalSymlinks(p string) (string, error) { return f.FS.EvalSymlinks(p) }
+
 func (f Fault) MkdirAll(p string, perm fs.FileMode) error {
 	if err := f.before(Op{Name: OpMkdirAll, Path: p, Mutating: true}); err != nil {
 		return err

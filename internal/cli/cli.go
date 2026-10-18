@@ -1,6 +1,7 @@
 // Package cli maps the koan command line onto the commands in ops: it
 // builds one command's input from the arguments, runs it, and prints its
-// envelope (spec/cli.md). It adds no behavior of its own.
+// envelope (spec/cli.md). It adds no behavior of its own, but for making
+// where's --file absolute.
 package cli
 
 import (
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -63,6 +65,7 @@ const (
 	object               // one JSON value
 	priority             // an integer, or null
 	nullText             // a string, or null
+	diskPath             // a path on disk, made absolute from the working directory
 )
 
 type option struct {
@@ -77,6 +80,7 @@ type command struct {
 	short   string
 	subject string // the input field the one positional argument sets; "" for none
 	subjKin kind
+	subjOpt bool // the subject may be left out, for an option that stands in for it
 	options []option
 }
 
@@ -152,6 +156,8 @@ var commands = []command{
 		option{"readiness", names, "which of ready, blocked, done to return (default ready,blocked)", ""},
 		option{"include-folders", boolean, "also return the folders in scope", ""})},
 	{name: "why", short: "Say what a task is waiting on", subject: "id", subjKin: integer},
+	{name: "where", short: "Turn a reference into disk paths, or a disk path into a reference", subject: "ref", subjOpt: true, options: []option{
+		{"file", diskPath, "a path on disk to give the reference of, in place of <ref>", ""}}},
 	{name: "claim", short: "Claim a task", subject: "id", subjKin: integer, options: []option{
 		{"extra", object, "a JSON object stored with the claim", ""}}},
 	{name: "claim-next", short: "Claim the first ready, unclaimed task", options: append(append([]option{}, scopeOptions...),
@@ -324,11 +330,11 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 	switch {
 	case c.subject == "" && len(args) > 0:
 		return nil, usagef("%s takes no argument, got %q", c.name, args[0])
-	case c.subject != "" && len(args) == 0:
+	case c.subject != "" && len(args) == 0 && !c.subjOpt:
 		return nil, usagef("%s needs a <%s>", c.name, c.subject)
 	case len(args) > 1:
 		return nil, usagef("%s takes one <%s>, got %d arguments: quote a value with spaces", c.name, c.subject, len(args))
-	case c.subject != "":
+	case len(args) == 1:
 		in[c.subject] = scalar(c.subjKin, args[0])
 	}
 	if fs.Changed("notes") && fs.Changed("notes-file") {
@@ -371,6 +377,13 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 				}
 				in["notes"] = string(data)
 				continue
+			}
+			if o.kind == diskPath && s != "" {
+				abs, err := filepath.Abs(s)
+				if err != nil {
+					return nil, usagef("--%s: %v", o.name, err)
+				}
+				s = abs
 			}
 			in[field] = scalar(o.kind, s)
 		}

@@ -15,6 +15,9 @@ type FS interface {
 	Mkdir(path string, perm fs.FileMode) error
 	// MkdirAll creates the state file's directory and any missing parents.
 	MkdirAll(path string, perm fs.FileMode) error
+	// EvalSymlinks is path with every symlink in it resolved: where the
+	// root really is, for telling whether a path is in it.
+	EvalSymlinks(path string) (string, error)
 }
 
 // Root is a directory opened once, through which every call is made. Names

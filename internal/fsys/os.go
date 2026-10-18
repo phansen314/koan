@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -43,6 +44,7 @@ func (OS) OpenRoot(p string) (Root, error) {
 }
 
 func (OS) Mkdir(p string, perm fs.FileMode) error    { return os.Mkdir(p, perm) }
+func (OS) EvalSymlinks(p string) (string, error)     { return filepath.EvalSymlinks(p) }
 func (OS) MkdirAll(p string, perm fs.FileMode) error { return os.MkdirAll(p, perm) }
 
 type osRoot struct {

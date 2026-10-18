@@ -40,6 +40,7 @@ var (
 	folderName = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$`)
 	tagName    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
 	taskName   = regexp.MustCompile(`^@([1-9][0-9]{0,14})\.(json|md)$`)
+	idRef      = regexp.MustCompile(`^@?([1-9][0-9]{0,14})$`)
 	timestamp  = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`)
 )
 
@@ -48,6 +49,35 @@ func ValidFolderName(s string) bool { return folderName.MatchString(s) }
 
 // ValidTag reports whether s can be a tag, or a create-batch ref.
 func ValidTag(s string) bool { return tagName.MatchString(s) }
+
+// ParseIDRef reads an ID as a reference writes it, with or without its
+// `@`: "42" or "@42".
+func ParseIDRef(s string) (ID, bool) {
+	m := idRef.FindStringSubmatch(s)
+	if m == nil {
+		return 0, false
+	}
+	id, _ := strconv.ParseInt(m[1], 10, 64)
+	return id, true
+}
+
+// IDRef is ID id as a reference writes it: "@42".
+func IDRef(id ID) string { return Mark + strconv.FormatInt(id, 10) }
+
+// ValidMaterial reports whether s can be the material part of a reference:
+// a relative path with no empty, ".", or ".." segment, whose first segment
+// is not named with `@`.
+func ValidMaterial(s string) bool {
+	if strings.HasPrefix(s, Mark) || strings.ContainsRune(s, 0) {
+		return false
+	}
+	for _, seg := range strings.Split(s, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
+}
 
 // Suffixes of a task's two files.
 const (

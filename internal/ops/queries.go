@@ -12,14 +12,15 @@ import (
 
 // scope is which tasks a query looks at.
 type scope struct {
-	folder    model.Folder
+	at        folderRef    // the folder, as the input names it
+	folder    model.Folder // the folder, once resolved
 	recursive bool
 	tagsAny   []string
 	tagsAll   []string
 }
 
 func readScope(f fields) scope {
-	s := scope{folder: f.folder("folder", false, model.Root), recursive: f.boolean("recursive", true)}
+	s := scope{at: f.folderRef("folder", false, folderRef{path: model.Root}), recursive: f.boolean("recursive", true)}
 	s.tagsAny, _ = f.tags("tags_any")
 	s.tagsAll, _ = f.tags("tags_all")
 	return s
@@ -43,7 +44,12 @@ func (s scope) matches(tf *model.TaskFile) bool {
 
 // tasks returns every usable task in scope that keep accepts, in tree order.
 // An unusable file in scope is a warning.
-func (c *call) tasks(s scope, keep func(model.Task) bool) ([]model.Task, *errs.Error) {
+// It resolves s's folder.
+func (c *call) tasks(s *scope, keep func(model.Task) bool) ([]model.Task, *errs.Error) {
+	var e *errs.Error
+	if s.folder, e = c.resolve(s.at); e != nil {
+		return nil, e
+	}
 	if e := c.folderOrNotFound(s.folder); e != nil {
 		return nil, e
 	}
@@ -144,7 +150,7 @@ func cmdFrontier(c *call) (any, *errs.Error) {
 	if e := c.begin(false); e != nil {
 		return nil, e
 	}
-	tasks, e := c.tasks(s, available)
+	tasks, e := c.tasks(&s, available)
 	if e != nil {
 		return nil, e
 	}
@@ -167,7 +173,7 @@ func cmdList(c *call) (any, *errs.Error) {
 	if e := c.begin(false); e != nil {
 		return nil, e
 	}
-	tasks, e := c.tasks(s, func(t model.Task) bool {
+	tasks, e := c.tasks(&s, func(t model.Task) bool {
 		return slices.Contains(readiness, string(t.Readiness)) && (!hasClaimed || claimed == (t.Claim != nil))
 	})
 	if e != nil {

@@ -65,6 +65,13 @@ func TestBuildInput(t *testing.T) {
 	}{
 		{[]string{"show", "42"}, `{"id":42}`},
 		{[]string{"show", "abc"}, `{"id":"abc"}`},
+		{[]string{"show", "@42"}, `{"id":"@42"}`},
+		{[]string{"block", "@1", "--blockers", "2,@3"}, `{"blockers":[2,"@3"],"id":"@1"}`},
+		{[]string{"list", "--folder", "41"}, `{"folder":"41"}`},
+		{[]string{"where", "@41:docs/plan.md"}, `{"ref":"@41:docs/plan.md"}`},
+		{[]string{"where", "--file", "/a/../b"}, `{"file":"/b"}`},
+		{[]string{"where"}, `{}`},
+		{[]string{"where", "a", "b"}, ""},
 		{[]string{"create", "Book flights", "--priority", "2", "--tags", "a,b", "--tags", "c"}, `{"priority":2,"tags":["a","b","c"],"title":"Book flights"}`},
 		{[]string{"update", "1", "--priority", "null", "--extra-remove", "a,b", "--extra-remove", "c"}, `{"extra_remove":["a,b","c"],"id":1,"priority":null}`},
 		{[]string{"update", "1", "--extra-merge", `{"n":1.50}`}, `{"extra_merge":{"n":1.50},"id":1}`},
@@ -82,6 +89,12 @@ func TestBuildInput(t *testing.T) {
 		{[]string{"update", "1", "--extra-merge", "{"}, ""},
 		{[]string{"list", "--tag", "x"}, ""},
 	}
+	// A relative --file is taken from the working directory.
+	wd, _ := os.Getwd()
+	cases = append(cases, struct {
+		args []string
+		want string
+	}{[]string{"where", "--file", "docs/plan.md"}, `{"file":"` + wd + `/docs/plan.md"}`})
 	for _, c := range cases {
 		var got []byte
 		var failed error

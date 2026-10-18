@@ -177,6 +177,18 @@ koan list --folder /work --include-folders --limit 1 --fields id | jq '.result.f
 
 A command asked for what already holds (`done` on a done task, a blocker already there) succeeds with `changed: false`.
 
+### References
+
+A folder can be named by its ID as well as its path, wherever it must already exist: `koan show-folder 41`, `koan create 'x' --folder @41`, `koan list --folder 41`, `koan move 42 --to @41`. A folder given by ID is never created: a wrong one is `not-found`, never a stray new folder. Material in a folder is `@41:docs/plan.md` or `/work/HOME-12345:docs/plan.md`. The `@` is optional when typing (`41`, `@41`), and koan always writes it.
+
+```sh
+koan where @41:docs/plan.md | jq -r .result.file      # the absolute path, to read or write; the file need not exist
+koan where 42 | jq -r .result.file                    # a task: its @42.md
+koan where --file docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'   # a file on disk → @41:docs/plan.md (/work/HOME-12345:docs/plan.md)
+```
+
+**When writing a reference down** (in notes, a prompt for another agent, a commit message), write the stable ID and the path as a hint: `@41 (/work/HOME-12345)`, `@41:docs/plan.md (/work/HOME-12345:docs/plan.md)`. IDs survive moves and renames; paths don't. Get both from `where`'s `ref` and `hint`. **When reading one**, resolve the ID with `koan where`; if the path no longer matches the hint, the ID wins, and say the hint is stale.
+
 ### A plan: several tasks at once
 
 When a request breaks down into several tasks, especially with dependencies among them, create them in **one** `create-batch` instead of a chain of `create`s. Give a task a `ref` to let later tasks in the batch wait on it; a `blocked_by` item is an existing task's ID (a number) or an earlier task's ref (a string). List blockers before what they block.

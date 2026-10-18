@@ -93,8 +93,12 @@ func cmdCreateFolder(c *call) (any, *errs.Error) {
 }
 
 func cmdShowFolder(c *call) (any, *errs.Error) {
-	f := c.in.top().folder("folder", true, model.Root)
+	ref := c.in.top().folderRef("folder", true, folderRef{})
 	if e := c.begin(false); e != nil {
+		return nil, e
+	}
+	f, e := c.resolve(ref)
+	if e != nil {
 		return nil, e
 	}
 	if e := c.folderOrNotFound(f); e != nil {
@@ -109,16 +113,20 @@ func cmdShowFolder(c *call) (any, *errs.Error) {
 
 func cmdUpdateFolder(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	f := in.folder("folder", true, "")
+	ref := in.folderRef("folder", true, folderRef{})
 	title, hasTitle := in.optTitle("title")
 	edit := readExtraEdit(c, in)
-	if f == model.Root {
+	if ref.path == model.Root {
 		c.in.bad("/folder", "may not be the root, which has no folder file")
 	}
 	if len(c.in.m) < 2 && c.in.has("folder") {
 		c.in.bad("", "gives nothing to change")
 	}
 	if e := c.begin(true); e != nil {
+		return nil, e
+	}
+	f, e := c.resolve(ref)
+	if e != nil {
 		return nil, e
 	}
 	if e := c.folderOrNotFound(f); e != nil {
@@ -192,19 +200,27 @@ func (x extraEdit) apply(m map[string]any) map[string]any {
 
 func cmdMoveFolder(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	from := in.folder("folder", true, "")
+	ref := in.folderRef("folder", true, folderRef{})
 	to := in.folder("to", true, "")
-	if from == model.Root {
+	if ref.path == model.Root {
 		c.in.bad("/folder", "may not be the root")
 	}
 	if to == model.Root {
 		c.in.bad("/to", "may not be the root")
 	}
-	if from != "" && to != "" && from != to && from.Holds(to) {
+	if ref.path != "" && to != "" && ref.path != to && ref.path.Holds(to) {
 		c.in.bad("/to", "may not be under the folder being moved")
 	}
 	if e := c.begin(true); e != nil {
 		return nil, e
+	}
+	from, e := c.resolve(ref)
+	if e != nil {
+		return nil, e
+	}
+	// A folder given by ID is known only now.
+	if ref.id != 0 && from != to && from.Holds(to) {
+		return nil, errs.Invalid([]errs.Problem{{Field: "/to", Reason: "may not be under the folder being moved, " + string(from)}})
 	}
 	if e := c.folderOrNotFound(from); e != nil {
 		return nil, e
@@ -246,13 +262,17 @@ type deleteFolderResult struct {
 
 func cmdDeleteFolder(c *call) (any, *errs.Error) {
 	in := c.in.top()
-	f := in.folder("folder", true, "")
+	ref := in.folderRef("folder", true, folderRef{})
 	recursive := in.boolean("recursive", false)
 	force := in.boolean("force", false)
-	if f == model.Root {
+	if ref.path == model.Root {
 		c.in.bad("/folder", "may not be the root")
 	}
 	if e := c.begin(true); e != nil {
+		return nil, e
+	}
+	f, e := c.resolve(ref)
+	if e != nil {
 		return nil, e
 	}
 	if e := c.folderOrNotFound(f); e != nil {

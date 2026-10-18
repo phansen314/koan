@@ -101,7 +101,7 @@ func crossField(env Envelope) bool {
 	}
 	for _, p := range env.Error.Problems {
 		for _, s := range []string{"may not be", "is also in", "is the task itself", "earlier task", "is used by",
-			"is empty", "is longer than", "control character", "gives nothing"} {
+			"is empty", "is longer than", "control character", "gives nothing", "same task as"} {
 			if strings.Contains(p.Reason, s) {
 				return true
 			}
