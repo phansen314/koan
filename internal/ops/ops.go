@@ -181,7 +181,7 @@ func (c *call) find(id model.ID) (model.Folder, *model.TaskFile, *errs.Error) {
 	}
 	f, ok := x.Tasks[id]
 	if !ok {
-		return "", nil, notFoundTask(id)
+		return "", nil, c.notFoundTasks(id)
 	}
 	l := c.t.Load(f, id)
 	if l.Err != nil {
@@ -190,21 +190,21 @@ func (c *call) find(id model.ID) (model.Folder, *model.TaskFile, *errs.Error) {
 	return f, l.File, nil
 }
 
-// notFoundTasks is the error for IDs that name no task: it says when one
-// names a folder instead, which it reads every folder file to tell.
+// notFoundTasks is the error for IDs that name no task: it says which name
+// a folder instead, which it reads every folder file to tell.
 func (c *call) notFoundTasks(ids ...model.ID) *errs.Error {
 	e := notFoundTask(ids...)
+	var folders []string
 	for _, f := range c.x.Folders {
 		if !c.x.Filed[f] {
 			continue
 		}
 		if ff, _, _ := c.t.LoadFolder(f); ff != nil && slices.Contains(ids, ff.ID) {
-			e.Message = fmt.Sprintf("%d is the ID of folder %s, not of a task", ff.ID, f)
-			if len(ids) > 1 {
-				e.Message = fmt.Sprintf("%d tasks do not exist: %s", len(ids), e.Message)
-			}
-			return e
+			folders = append(folders, fmt.Sprintf("%d is the ID of folder %s", ff.ID, f))
 		}
+	}
+	if len(folders) > 0 {
+		e.Message += ": " + strings.Join(folders, ", ")
 	}
 	return e
 }
@@ -213,7 +213,7 @@ func notFoundTask(ids ...model.ID) *errs.Error {
 	if len(ids) == 1 {
 		return errs.New(errs.NotFound, "task %d does not exist", ids[0]).WithIDs(ids...)
 	}
-	return errs.New(errs.NotFound, "%d tasks do not exist", len(ids)).WithIDs(ids...)
+	return errs.New(errs.NotFound, "tasks %v do not exist", ids).WithIDs(ids...)
 }
 
 // pass loads a task a command only passes: an unusable file is a warning,

@@ -168,7 +168,7 @@ A folder has an ID (from the same counter as tasks), an optional title, an `extr
 koan create-folder /work/HOME-12345 --title 'Payment retries' --extra '{"jira":"HOME-12345"}' --notes 'Context …'
 koan show-folder /work/HOME-12345           # .result.folder: id, path, dir, title, extra, notes_path
 koan update-folder /work/HOME-12345 --title null --extra-merge '{"status":"review"}'
-koan list --folder /work --include-folders --limit 0 | jq '.result.folders[] | {id, path, title}'
+koan list --folder /work --include-folders --limit 1 --fields id | jq '.result.folders[] | {id, path, title}'
 ```
 
 `create-folder` sets a title, `extra`, or notes only on a folder it makes: on one already there it refuses with `destination-exists`, and `update-folder` is the way. Edit a folder's notes in its `@folder.md`, as a task's in its `@<id>.md`. The root, `/`, has no ID, title, or notes.

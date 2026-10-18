@@ -104,6 +104,20 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	if e := c.noCycleThroughNew(n.blockers, blocks); e != nil {
 		return nil, e
 	}
+	// Every task in blocks is rewritten, so each must be usable: found out
+	// now, before an ID is used.
+	type dependent struct {
+		f  model.Folder
+		tf *model.TaskFile
+	}
+	var deps []dependent
+	for _, b := range blocks {
+		f, btf, e := c.find(b)
+		if e != nil {
+			return nil, e
+		}
+		deps = append(deps, dependent{f, btf})
+	}
 	missing, e := c.plan(n.folder)
 	if e != nil {
 		return nil, e
@@ -131,17 +145,14 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	}
 	c.x.Tasks[id] = n.folder
 	res := createResult{Task: c.task(n.folder, tf), FoldersCreated: folders, Dependents: []model.ID{}}
-	for _, b := range blocks {
-		f, btf, e := c.find(b)
-		if e == nil {
-			btf.BlockedBy = append(btf.BlockedBy, id)
-			btf.UpdatedAt = c.now
-			e = c.t.WriteTask(f, btf, false)
-		}
-		if e != nil {
+	for _, d := range deps {
+		d.tf.BlockedBy = append(d.tf.BlockedBy, id)
+		d.tf.UpdatedAt = c.now
+		if e := c.t.WriteTask(d.f, d.tf, false); e != nil {
+			e.Message = fmt.Sprintf("task %d was created, and %v made to wait on it, but task %d was not: %s", id, res.Dependents, d.tf.ID, e.Message)
 			return nil, e.WithIDs(id)
 		}
-		res.Dependents = append(res.Dependents, b)
+		res.Dependents = append(res.Dependents, d.tf.ID)
 	}
 	return res, nil
 }
@@ -166,6 +177,9 @@ func (c *call) noCycleThroughNew(blockers, blocks []model.ID) *errs.Error {
 	}
 	for _, b := range blocks {
 		for _, x := range blockers {
+			if x == b {
+				return errs.NewConflict(errs.RuleCycle, "task %d is in both blocked_by and blocks, so the new task would wait on itself", b).WithIDs(b)
+			}
 			if path := graph.Path(x, b, look); path != nil {
 				return errs.NewConflict(errs.RuleCycle, "task %d waits on task %d, so a new task blocked by %d and blocking %d would make a cycle", x, b, x, b).
 					WithIDs(path...)

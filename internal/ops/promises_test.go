@@ -696,12 +696,24 @@ func TestFolderMetadata(t *testing.T) {
 		t.Errorf("create-folder again: %v", got)
 	}
 
+	w.fail("create-folder", `{"folder":"/p/q","notes":""}`, errs.Conflict, errs.RuleDestinationExists)
+
 	got = w.ok("update-folder", `{"folder":"/p/q","title":null,"extra_merge":{"n":1}}`)
 	if r := w.record(got); got["changed"] != true || !strings.Contains(r, `"extra":{"kind":"phase","n":1}`) || !strings.Contains(r, `"title":null`) {
 		t.Errorf("update-folder: %s %v", r, got["changed"])
 	}
+	before, _ := os.Stat(w.root("p/q/folder.json"))
 	if got := w.ok("update-folder", `{"folder":"/p/q","extra_merge":{"n":1}}`); got["changed"] != false {
 		t.Errorf("an update that changes nothing changed %v", got)
+	}
+	if after, _ := os.Stat(w.root("p/q/folder.json")); !after.ModTime().Equal(before.ModTime()) {
+		t.Error("an update that changes nothing wrote the folder file")
+	}
+	if r := w.record(w.ok("update-folder", `{"folder":"/p/q","extra_remove":["n"]}`)); !strings.Contains(r, `"extra":{"kind":"phase"}`) {
+		t.Errorf("extra_remove: %s", r)
+	}
+	if r := w.record(w.ok("update-folder", `{"folder":"/p/q","extra_replace_all":{"z":true}}`)); !strings.Contains(r, `"extra":{"z":true}`) {
+		t.Errorf("extra_replace_all: %s", r)
 	}
 	w.fail("update-folder", `{"folder":"/"}`, errs.InvalidInput, "")
 	w.fail("update-folder", `{"folder":"/p"}`, errs.InvalidInput, "")
@@ -723,9 +735,21 @@ func TestFolderMetadata(t *testing.T) {
 	os.WriteFile(w.root("r/q/folder.json"), []byte("{"), 0o644)
 	w.fail("show-folder", `{"folder":"/r/q"}`, errs.Corrupt, "")
 	w.fail("update-folder", `{"folder":"/r/q","title":"x"}`, errs.Corrupt, "")
+	// list shows each folder's fields; the folder with no folder file has
+	// no ID, and no warning (doctor reports it); the unusable one, a warning.
 	env := w.run("list", `{"include_folders":true}`)
 	if len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
 		t.Errorf("warnings %+v", env.Warnings)
+	}
+	w.ok("update-folder", `{"folder":"/r","title":"R"}`)
+	ids := map[string]any{}
+	titles := map[string]any{}
+	for _, r := range w.ok("list", `{"include_folders":true}`)["folders"].([]any) {
+		r := r.(map[string]any)
+		ids[r["path"].(string)], titles[r["path"].(string)] = r["id"], r["title"]
+	}
+	if ids["/hand"] != nil || ids["/r/q"] != nil || ids["/r"] != float64(1) || titles["/r"] != "R" {
+		t.Errorf("ids %v titles %v", ids, titles)
 	}
 }
 
@@ -750,9 +774,45 @@ func TestCreateBlocks(t *testing.T) {
 	if id := task(w.ok("create", `{"title":"e"}`))["id"]; id != float64(4) {
 		t.Errorf("a refused create used an ID: next is %v", id)
 	}
-	// A folder's ID is not a task's, and the error says so.
+	// A folder's ID is not a task's, and the error says so, naming every ID.
 	w.ok("create-folder", `{"folder":"/f"}`) // 5
-	if e := w.fail("create", `{"title":"g","blocks":[5]}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /f") {
+	if e := w.fail("create", `{"title":"g","blocks":[5,99]}`, errs.NotFound, ""); e.Message != "tasks [5 99] do not exist: 5 is the ID of folder /f" {
 		t.Errorf("message %q", e.Message)
+	}
+	if e := w.fail("show", `{"id":5}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /f") {
+		t.Errorf("show: message %q", e.Message)
+	}
+	if e := w.fail("create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle); !strings.Contains(e.Message, "both") {
+		t.Errorf("message %q", e.Message)
+	}
+
+	// A done task can be blocked, as block allows.
+	w.ok("done", `{"id":4}`)
+	wantIDs(t, "dependents", w.ok("create", `{"title":"h","blocks":[4]}`)["dependents"], 4)
+}
+
+// Every task in blocks is read before anything is written: one that can't
+// be used refuses the command, and changes nothing. So does one the cycle
+// search meets.
+func TestCreateBlocksReadsFirst(t *testing.T) {
+	w := ready(t)
+	w.ok("create-batch", `{"tasks":[{"ref":"a","title":"a"},{"title":"b","blocked_by":["a"]},{"title":"c"}]}`)
+	good := w.file("3.json")
+	os.WriteFile(w.root("3.json"), []byte("{"), 0o644)
+	e := w.fail("create", `{"title":"d","blocks":[2,3]}`, errs.Corrupt, "")
+	if len(e.ChangedPaths) != 0 {
+		t.Errorf("changed %v", e.ChangedPaths)
+	}
+	if tk := task(w.ok("show", `{"id":2}`)); tk["readiness"] != "blocked" || len(tk["blocked_by"].([]any)) != 1 {
+		t.Errorf("task 2 was rewritten: %v", tk)
+	}
+	os.WriteFile(w.root("3.json"), []byte(good), 0o644)
+	os.WriteFile(w.root("1.json"), []byte("{"), 0o644)
+	// From 2 the search reaches 1, which it can't read: a cycle through it
+	// can't be ruled out.
+	w.fail("create", `{"title":"d","blocked_by":[2],"blocks":[3]}`, errs.Corrupt, "")
+	os.Remove(w.root("1.json"))
+	if id := task(w.ok("create", `{"title":"e"}`))["id"]; id != float64(4) {
+		t.Errorf("a refused create used an ID: next is %v", id)
 	}
 }

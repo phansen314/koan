@@ -91,9 +91,9 @@ Every command reads the state file after taking the lock, never before.
 There is no index on disk; a command that needs one builds it.
 
 - **By name only.** The walk lists folders depth-first, each folder's entries sorted, and classifies every entry by its name and type without opening any file. It enters only `@` folders, and never looks inside material. It returns each task ID with its path, and the list of folders. Two paths for one task ID is the `duplicate-id` error.
-- **Folder files are read only when folder IDs are needed**, by `init` and `doctor`. A folder ID that repeats another folder's or a task's is found by `doctor`, not by the walk.
+- **Folder files are read only when a command needs them:** `init` and `doctor`, for folder IDs; the folder commands and `list` with `include_folders`, for records; and a `not-found` for a task, to say when the ID is a folder's. A folder ID that repeats another folder's or a task's is found by `doctor`, not by the walk.
 - **Task files are loaded when needed**, and each at most once per command. Finding a task by ID, or proving it absent, costs one walk and one file read. Only commands that need every task's fields load them all: `frontier`, `list`, `claim-next`, `delete` and `delete-folder` (to find references), `doctor`, and `migrate`.
-- **Commands that need no walk don't make one:** `create` without `blocked_by`, `create-folder`, `release`, `version`, `info`. `init` walks, and reads the folder files, when it has to make a state file for a tree that is already there.
+- **Commands that need no walk don't make one:** `create` without `blocked_by` or `blocks`, `create-folder`, `release`, `version`, `info`. `init` walks, and reads the folder files, when it has to make a state file for a tree that is already there.
 - **A file that vanishes** between the walk and its load can only be an outside change, since the command holds the lock. It is skipped; if it was the task the command was asked for, that is `not-found`.
 
 ## The graph
@@ -102,6 +102,7 @@ There is no index on disk; a command that needs one builds it.
 
 - **Readiness** of an open task is computed from all its blockers, not stopping at the first that blocks, so `blocking` is complete.
 - **The cycle check** for `block`: adding "A is blocked by B" closes a cycle exactly when A is reachable from B along `blocked_by`. A breadth-first search from each new blocker, through open and done tasks alike, loads only the files it reaches. The path it finds is the cycle reported; no particular one is promised.
+- **The cycle check for `create` with `blocks`**: every new edge ends at the new task, so a cycle runs through it, and exists exactly when a task in `blocks` is reachable from one in `blocked_by`. The same search runs from each task in `blocked_by` to each in `blocks`.
 - **`doctor`'s cycles** are the strongly connected components of the whole graph with more than one task.
 
 ## Errors

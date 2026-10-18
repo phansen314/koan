@@ -217,12 +217,12 @@ Convert every file in an earlier format to this binary's, then record the format
 
 ### create-folder
 
-Create a folder, with any missing folders above it, each with its folder file and empty notes.
+Create a folder, with any missing folders above it, each with its folder file and notes: empty but for the folder asked for, which gets `notes`.
 
 - **Input:** `folder` (required), and, for the folder itself, `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`): its folder file's fields and its notes. The folders above it get none of them.
 - A folder already there is not an error, and is left as it is, when none of `title`, `extra`, and `notes` is given.
 - **Result:** `folder` (its record), and `folders_created`, empty when it already existed.
-- **Refuses:** `destination-exists`, when the folder is already there and `title`, `extra`, or `notes` is given: they are set with `update-folder`, and notes edited in the `@folder.md`.
+- **Refuses:** `destination-exists`, when the folder is already there and `title`, `extra`, or `notes` is given, even one that appeared while it was being made: they are set with `update-folder`, and notes edited in the `@folder.md`.
 
 ### show-folder
 
@@ -289,7 +289,7 @@ Create an open task.
 - The new ID is the counter's next one, after the IDs of any folders made for it. The counter is written first, then any folders, then the task file, then the notes, then each task in `blocks`, in ascending order. A failure after the counter uses up an ID. A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `create` fails with `io`, and the new task has that file as its notes.
 - The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
 - A new task closes a cycle only through `blocks`: when a task in `blocks` is in `blocked_by` too, or one in `blocked_by` already waits on one in `blocks`, directly or through other tasks. That is refused, as `block` refuses a cycle, before an ID is used.
-- A failure rewriting a task in `blocks` leaves the new task created, and the tasks before it rewritten: the error's `ids` is the new task, and its `changed_paths` what was written.
+- Every task in `blocks` is read before an ID is used, so one that can't be used refuses the command with its error, and changes nothing. Only an I/O error rewriting one can leave the new task created, and the tasks before it rewritten: the error's `ids` is then the new task, its `message` names the tasks rewritten, and its `changed_paths` what was written.
 - **Result:** `task`, `folders_created`, and `dependents`: the IDs of the tasks in `blocks`, ascending.
 - **Refuses:** `cycle`; `ids` is the existing tasks of one such cycle, from a task in `blocked_by` along `blocked_by` to the task in `blocks` it reaches (the new task, which closes it, has no ID yet). As for `block`, a cycle through a task file that can't be read can't be ruled out, and fails with that file's error.
 
