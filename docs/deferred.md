@@ -8,6 +8,7 @@ Turn a koan folder or task back into plain files, leaving the work itself in pla
 
 - `forget-folder` removes the folder's `@folder.json` and the `@` from its name; `@folder.md` becomes `folder.md`, refused when one is there.
 - It refuses a folder holding tasks (`has-tasks`) unless `--force`, and one holding folders (`has-children`).
+- To weigh when the task question is settled: it could let a finished folder be archived in place rather than deleted. As material, which koan never walks, it would cost nothing and stay browsable (say, moved under `~/koan-root/archive/2026/`), if its tasks' notes survive as plain files. Until then, a finished folder is committed and deleted (the README's "Keeping the tree small").
 
 ## Shell completion
 
