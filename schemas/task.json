@@ -23,13 +23,13 @@
         "properties": {
           "folder": { "$ref": "folder-path" },
           "ids": {
-            "anyOf": [{ "type": "array", "items": { "$ref": "task-file#/properties/id" }, "uniqueItems": true }, { "type": "null" }],
+            "anyOf": [{ "type": "array", "items": { "$ref": "task-file#/properties/id" }, "uniqueItems": true, "minItems": 1 }, { "type": "null" }],
             "description": "The IDs in that folder's blocked_by that block now, ascending; null when its folder file is missing or can't be used, so its blockers are unknown."
           }
         },
         "additionalProperties": false
       },
-      "description": "One entry per folder above that blocks now, outermost first. Empty unless readiness is blocked."
+      "description": "One entry per folder above whose own blocked_by holds an ID that blocks now, or whose blockers are unknown; outermost first. For a folder's record, the folders above it, never itself. Empty unless readiness is blocked."
     }
   }
 }

@@ -120,7 +120,7 @@ Every key is required and no other key is allowed.
 | `tags` | A set of labels, each following the folder-name rule but lowercase only: `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`. |
 | `extra` | Any JSON object. koan stores it and returns it, and never interprets it. A workflow `status` goes here: one key holds one value, where tags could hold two. |
 
-Integers are within ±(2^53 − 1), and written without a fraction or an exponent: `4`, never `4.0`. Timestamps are UTC to the second, `YYYY-MM-DDTHH:MM:SSZ`, and name a real date and time. Keys are matched exactly: `Title` is not `title`. The schemas cannot say these three things; koan checks them.
+Integers are within ±(2^53 − 1), and written without a fraction or an exponent: `4`, never `4.0`. Timestamps are UTC to the second, `YYYY-MM-DDTHH:MM:SSZ`, and name a real date and time. Keys are matched exactly: `Title` is not `title`. A `blocked_by` never holds its own file's ID, in a task file or a folder file. The schemas cannot say these four things; koan checks them, and a file that breaks one can't be used.
 
 ### IDs
 
@@ -156,7 +156,7 @@ A **reference** names a task, a folder, or material in a folder, in commands and
 - **What something waits on**, a task or a folder: its own `blocked_by`, and the `blocked_by` of every folder above it, up to the root. A folder's blockers apply to everything in it at any depth, without being copied into any file.
 - **Done.** A task is done when its `completed_at` is set. A folder is **done** when every task and every folder directly in it is done: when every task under it, at any depth, is done. An empty folder is done. A task file that can't be used counts as not done.
 - **Done-ness ignores blockers.** A task can be marked done at any time, blocked or not, so a folder can be done while what it waits on is still open. Blockers constrain readiness, not completion.
-- **A blocker blocks** while it is an open task, a folder that is not done, or an ID that names nothing or a task or folder whose file is unusable.
+- **A blocker blocks** while it is an open task, a folder that is not done, or an ID that names nothing or a task whose file is unusable. A folder's ID is only in its folder file, so the ID of a folder whose file is unusable reads as naming nothing, and blocks the same way.
 - **Unknown blockers hold back.** A folder whose folder file is missing or can't be used has unknown blockers, so everything in it counts as blocked: where koan can't tell, it holds back.
 - An open task is **ready** when nothing it waits on blocks, and **blocked** otherwise. A done task is neither.
 - A folder is `done`, or else `blocked` when something it waits on blocks or is unknown, or else `ready`. The root has no blockers, so it is never blocked.
@@ -248,10 +248,11 @@ There is no index: a command that looks a task up by ID walks the tree.
 - An entry named with `@` that is none of these, a symlink, or of the wrong type (a directory named `@42.json`) is skipped too, and `doctor` reports it.
 - A walk lists entries by name only; folder files are read only by the commands that need them ([implementation.md](implementation.md)).
 - A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
-- **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`): one that looks the ID up, as a task, a folder, or a blocker, and finds two files holding it. koan never picks a copy. `doctor` lists the copies, for a person to resolve.
+- **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`): one that looks the ID up and finds two files holding it. A lookup as a task counts task files only; one as a folder or as a blocker counts task files and folder files. koan never picks a copy. `doctor` lists the copies, for a person to resolve.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.
-- **An unusable or missing folder file** fails a command that was asked for that folder's fields. A command that only reads it, for readiness, an ID, or a cycle check, reports an `unusable-file` warning and carries on: the folder has no ID, and its blockers are unknown.
-- **A dangling reference** counts as blocking, and is reported as a warning.
+- **An unusable or missing folder file** fails a command that was asked for that folder's fields. A command that only reads it, for readiness or an ID, reports an `unusable-file` warning and carries on: the folder has no ID, and its blockers are unknown.
+- **A cycle check is the exception.** A cycle through an unusable task file or folder file can't be ruled out, so a check that reaches one fails with that file's error ([Cycles](operations.md#cycles)). A missing folder file holds no blockers to hide one, and fails nothing.
+- **A dangling reference** counts as blocking, and is reported as a warning. While a folder file can't be used, a dangling ID may be that folder's, and the warning says so.
 
 ## Concurrency
 
@@ -293,7 +294,7 @@ A **claim** reserves a task: once it is claimed, no other `task claim` of it suc
 |---|---|
 | `temp-leftover`: a temp file koan left behind | Removes it. |
 | `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name or in a folder file | Raises `last_id`. |
-| `dangling-reference`: a `blocked_by` ID, in a task file or a folder file, with no task or folder | Removes the ID, when asked for by name. |
+| `dangling-reference`: a `blocked_by` ID, in a task file or a folder file, with no task or folder | Removes the ID, when asked for by name. Not while any folder file can't be used: the ID may be that folder's, and removing it would lose the link once the file is fixed. |
 | `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name. |
 | `orphan-notes`: a `@<id>.md` with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes. Otherwise leaves it. |
 | `missing-folder-file`: a folder with no `@folder.json` | Writes one, with a new ID and an empty `blocked_by`. A `blocked_by` that named the folder's old ID then dangles, and the finding's message says so: re-point such references with `task block` or `folder block` before repairing `dangling-reference`. |
@@ -311,7 +312,7 @@ Every failure has one **kind**:
 |---|---|
 | `usage` | The command line could not be turned into an input (see [cli.md](cli.md#command-line)). |
 | `invalid-input` | The input breaks a rule in this document or the command's schema. |
-| `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The root is not usable (see [Root states](#root-states)); or, for `corrupt` and `unsupported-format`, a task file the command needs is not. |
+| `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The root is not usable (see [Root states](#root-states)); or, for `corrupt` and `unsupported-format`, a task file or folder file the command needs is not. |
 | `busy` | The lock was held against the command for 5 seconds. |
 | `not-found` | A task or folder named in the input does not exist. |
 | `conflict` | The input is valid but the tree's state refuses it; a `rule` says which: `duplicate-id`, `case-mismatch`, `claimed`, `cycle`, and the commands' own. |

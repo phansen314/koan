@@ -26,6 +26,7 @@
     },
     "problems": {
       "type": "array",
+      "description": "For invalid-input, the problems in the input; for corrupt, the rules the file breaks; for cycle, the input fields that close the cycle.",
       "items": { "type": "object", "required": ["field", "reason"], "properties": { "field": { "type": "string", "description": "A JSON Pointer into the input or the file." }, "reason": { "type": "string" } }, "additionalProperties": false }
     },
     "changed_paths": {

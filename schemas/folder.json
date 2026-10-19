@@ -17,9 +17,9 @@
         "extra": { "type": "object" },
         "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for the root." },
         "readiness": { "enum": ["ready", "blocked", "done"], "description": "done when every task under it, at any depth, is done; else blocked or ready by its own and inherited blockers. The root is never blocked." },
-        "open_blockers": { "$ref": "task#/$defs/partial/properties/open_blockers" },
+        "open_blockers": { "$ref": "task#/$defs/partial/properties/open_blockers", "description": "The IDs that block its contents now, in its own blocked_by and those of the folders above it. Ascending." },
         "inherited": { "$ref": "task#/$defs/inherited" },
-        "empty": { "type": "boolean", "description": "Whether it holds no task at any depth. An empty folder is done." }
+        "empty": { "type": "boolean", "description": "Whether it holds no task file at any depth, usable or not. An empty folder is done." }
       },
       "additionalProperties": false,
       "description": "A folder cut down by `fields`: id, path, and the fields asked for."

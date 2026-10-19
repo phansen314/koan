@@ -10,13 +10,14 @@
     "message": { "type": "string", "description": "What is wrong and what to do about it." },
     "paths": {
       "type": "array",
+      "description": "The files involved; for a cycle, the directories of its folders, in cycle order.",
       "items": { "type": "string" }
     },
     "ids": {
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" }
     },
-    "repairable": { "type": "boolean", "description": "Whether repair can fix it: by default, or, for dangling-reference and a stale-claim on a task that is gone, when asked for by name." }
+    "repairable": { "type": "boolean", "description": "Whether repair can fix it: by default, or, for dangling-reference and a stale-claim on a task that is gone, when asked for by name. A dangling-reference is not repairable while any folder file can't be used." }
   },
   "additionalProperties": false
 }
