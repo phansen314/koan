@@ -199,6 +199,13 @@ func TestHelp(t *testing.T) {
 	if strings.Contains(h, "string[=") || strings.Contains(h, "stringArray") {
 		t.Errorf("koan task list --help names how options are read:\n%s", h)
 	}
+	// A file koan reads, or - for stdin, is a file; where's --file a path.
+	if h := help("task", "create"); !strings.Contains(h, "--notes-file file ") || !strings.Contains(h, "--input file ") {
+		t.Errorf("koan task create --help: the options that read a file:\n%s", h)
+	}
+	if h := help("where"); !strings.Contains(h, "--file path ") {
+		t.Errorf("koan where --help:\n%s", h)
+	}
 	for _, c := range [][]string{{"task", "move"}, {"folder", "move"}, {"task", "block"}, {"task", "unblock"}, {"folder", "block"}, {"folder", "unblock"}} {
 		want := map[string]string{"move": "--to <folder>", "block": "--blocked-by <blockers>", "unblock": "--blocked-by <blockers>"}[c[1]]
 		if h := help(c...); !strings.Contains(h, "koan "+strings.Join(c, " ")+" <") || !strings.Contains(h, want+" [options]") {

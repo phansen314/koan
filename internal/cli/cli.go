@@ -67,12 +67,13 @@ const (
 	priority             // an integer, or null
 	nullText             // a string, or null
 	diskPath             // a path on disk, made absolute from the working directory
+	readFrom             // a file koan reads, or - for stdin
 )
 
 // shown is the name help gives each kind's value.
 var shown = map[kind]string{
 	text: "string", integer: "int", boolean: "bool", ids: "ids", names: "list", keys: "key",
-	object: "json", priority: "int", nullText: "string", diskPath: "path",
+	object: "json", priority: "int", nullText: "string", diskPath: "path", readFrom: "file",
 }
 
 type option struct {
@@ -123,7 +124,7 @@ var commands = []command{
 		{"title", nullText, "the folder's title", ""},
 		{"extra", object, "a JSON object stored with the folder", ""},
 		{"notes", text, "the initial notes", ""},
-		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""},
+		{"notes-file", readFrom, "read the initial notes from a file, or - for stdin", ""},
 		{"blocked-by", ids, "tasks and folders, by ID or folder path, that everything in it waits on", ""},
 		{"blocks", ids, "tasks and folders, by ID or folder path, that wait on it", ""}}},
 	{name: "folder show", short: "Return one folder", subject: "folder"},
@@ -155,7 +156,7 @@ var commands = []command{
 		{"blocks", ids, "tasks and folders, by ID or folder path, that wait on it", ""},
 		{"extra", object, "a JSON object stored with the task", ""},
 		{"notes", text, "the initial notes", ""},
-		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
+		{"notes-file", readFrom, "read the initial notes from a file, or - for stdin", ""}}},
 	{name: "batch", short: "Create folders, and tasks that may wait on each other, in one write (input only)"},
 	{name: "task show", short: "Return one task", subject: "id", subjKin: integer},
 	{name: "task update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
@@ -381,7 +382,7 @@ func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
 			fs.Lookup(o.name).NoOptDefVal = "true"
 		}
 	}
-	fs.StringP("input", "i", "", "read the whole input as one JSON object from a file, or - for stdin")
+	fs.VarP(&value{kind: shown[readFrom]}, "input", "i", "read the whole input as one JSON object from a file, or - for stdin")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		raw, err := buildInput(c, cmd, args, env)
 		if err != nil {
@@ -402,8 +403,7 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 		if len(args) > 0 || fs.NFlag() > 1 {
 			return nil, usagef("--input takes the whole input: give no other argument or option with it")
 		}
-		name, _ := fs.GetString("input")
-		return readFile(name, env)
+		return readFile(valueOf(fs, "input").text(), env)
 	}
 	in := map[string]any{}
 	switch {
@@ -448,7 +448,8 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 			in[field] = v
 		default:
 			s := valueOf(fs, o.name).text()
-			if o.name == "notes-file" {
+			// --notes-file, the one option that reads a file, sets notes.
+			if o.kind == readFrom {
 				data, err := readFile(s, env)
 				if err != nil {
 					return nil, err
