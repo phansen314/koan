@@ -132,17 +132,19 @@ func TestATreeInFormatOneIsMaterial(t *testing.T) {
 func TestFormats(t *testing.T) {
 	w := ready(t)
 	w.ok("task create", `{"title":"a"}`)
-	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(2) {
+	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(3) {
 		t.Errorf("migrate on a current tree: %v", got)
 	}
 
-	// Format 1 has no conversion: migrate and doctor refuse it.
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 1}`), 0o644)
-	w.fail("task show", `{"id":1}`, errs.MigrationPending, "")
-	w.fail("migrate", `{}`, errs.Conflict, errs.RuleNoConversion)
-	w.fail("doctor", `{}`, errs.Conflict, errs.RuleNoConversion)
+	// Formats 1 and 2 have no conversion: migrate and doctor refuse them.
+	for _, old := range []string{"1", "2"} {
+		os.WriteFile(w.root("koan.json"), []byte(`{"schema": `+old+`}`), 0o644)
+		w.fail("task show", `{"id":1}`, errs.MigrationPending, "")
+		w.fail("migrate", `{}`, errs.Conflict, errs.RuleNoConversion)
+		w.fail("doctor", `{}`, errs.Conflict, errs.RuleNoConversion)
+	}
 
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3}`), 0o644)
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 4}`), 0o644)
 	w.fail("task show", `{"id":1}`, errs.UnsupportedFormat, "")
 	w.fail("migrate", `{}`, errs.UnsupportedFormat, "")
 	w.fail("doctor", `{}`, errs.UnsupportedFormat, "")

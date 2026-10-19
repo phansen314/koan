@@ -169,12 +169,12 @@ func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
 			return &Loaded{Err: corrupt(p, nil, kerr).WithIDs(id)}
 		}
 		return &Loaded{Err: corrupt(p, []model.Problem{{Field: "/schema", Reason: err.Error()}}, nil).WithIDs(id)}
-	case schema < model.FileFormat:
+	case schema < model.TaskFormat:
 		return &Loaded{OldFormat: schema, Err: errs.New(errs.MigrationPending,
-			"%s is in format %d and this koan uses %d: run `koan migrate`", p, schema, model.FileFormat).WithIDs(id).WithPaths(p)}
-	case schema > model.FileFormat:
+			"%s is in format %d and this koan uses %d: run `koan migrate`", p, schema, model.TaskFormat).WithIDs(id).WithPaths(p)}
+	case schema > model.TaskFormat:
 		return &Loaded{Err: errs.New(errs.UnsupportedFormat,
-			"%s is in format %d, newer than this koan's %d", p, schema, model.FileFormat).WithIDs(id).WithPaths(p)}
+			"%s is in format %d, newer than this koan's %d", p, schema, model.TaskFormat).WithIDs(id).WithPaths(p)}
 	}
 	tf, problems, err := model.DecodeTaskFile(data)
 	if err == nil && len(problems) == 0 && tf.ID != id {
@@ -188,8 +188,9 @@ func (t *Tree) load(f model.Folder, id model.ID) *Loaded {
 }
 
 // LoadFolder reads and checks folder f's folder file. gone is true when
-// there is none. There is one folder file format yet, so a file in another
-// is corrupt.
+// there is none. There is no conversion between folder file formats, so a
+// file in an earlier one is corrupt, and one in a later one
+// unsupported-format.
 func (t *Tree) LoadFolder(f model.Folder) (ff *model.FolderFile, gone bool, e *errs.Error) {
 	rel := model.FolderFileRel(f)
 	p := t.Abs(rel)
@@ -200,14 +201,18 @@ func (t *Tree) LoadFolder(f model.Folder) (ff *model.FolderFile, gone bool, e *e
 	if err != nil {
 		return nil, false, unreadable(p, err)
 	}
-	if schema, err := model.SchemaOf(data); err == nil && schema != model.FileFormat {
-		return nil, false, errs.New(errs.Corrupt, "%s is in format %d, and this koan reads only %d", p, schema, model.FileFormat).
+	if schema, err := model.SchemaOf(data); err == nil && schema > model.FolderFormat {
+		return nil, false, errs.New(errs.UnsupportedFormat, "%s is in format %d, newer than this koan's %d", p, schema, model.FolderFormat).
+			WithPaths(p).WithFolders(string(f))
+	} else if err == nil && schema != model.FolderFormat {
+		return nil, false, errs.New(errs.Corrupt, "%s is in format %d, and this koan reads only %d", p, schema, model.FolderFormat).
 			WithPaths(p).WithFolders(string(f))
 	}
 	ff, problems, err := model.DecodeFolderFile(data)
 	if e := corrupt(p, problems, err); e != nil {
 		return nil, false, e.WithFolders(string(f))
 	}
+	ff.Normalize()
 	return ff, false, nil
 }
 

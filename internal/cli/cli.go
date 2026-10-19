@@ -60,7 +60,7 @@ const (
 	text     kind = iota // a string
 	integer              // an integer
 	boolean              // true, or =false
-	ids                  // comma-separated task IDs, repeatable
+	ids                  // comma-separated task and folder IDs and folder paths, repeatable
 	names                // comma-separated strings, repeatable
 	keys                 // one string per occurrence
 	object               // one JSON value
@@ -116,7 +116,9 @@ var commands = []command{
 		{"title", nullText, "the folder's title", ""},
 		{"extra", object, "a JSON object stored with the folder", ""},
 		{"notes", text, "the initial notes", ""},
-		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
+		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""},
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, that everything in it waits on", ""},
+		{"blocks", ids, "tasks and folders, by ID or folder path, that wait on it", ""}}},
 	{name: "folder show", short: "Return one folder", subject: "folder"},
 	{name: "folder update", short: "Change a folder's title or extra", subject: "folder", options: []option{
 		{"title", nullText, "the new title, or null to clear it", ""},
@@ -133,12 +135,17 @@ var commands = []command{
 		{"recursive", boolean, "include the folders under those (default true)", ""},
 		{"limit", integer, "return at most this many", ""},
 		{"fields", names, "return only these fields of each folder", ""}}},
+	{name: "folder block", short: "Add blockers to a folder", subject: "folder", options: []option{
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, for everything in it to wait on (required)", ""}}},
+	{name: "folder unblock", short: "Remove blockers from a folder", subject: "folder", options: []option{
+		{"blocked-by", ids, "IDs or folder paths to stop waiting on (required)", ""}}},
+	{name: "folder why", short: "Say what a folder is waiting on to be done", subject: "folder"},
 	{name: "task create", short: "Create a task", subject: "title", options: []option{
 		{"folder", text, "where the task goes (default /)", ""},
 		{"priority", priority, "an integer; higher is more important", ""},
 		{"tags", names, "tags", ""},
-		{"blocked-by", ids, "IDs of the tasks it waits on", ""},
-		{"blocks", ids, "IDs of the tasks that wait on it", ""},
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, that it waits on", ""},
+		{"blocks", ids, "tasks and folders, by ID or folder path, that wait on it", ""},
 		{"extra", object, "a JSON object stored with the task", ""},
 		{"notes", text, "the initial notes", ""},
 		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
@@ -156,9 +163,9 @@ var commands = []command{
 	{name: "task done", short: "Mark a task done", subject: "id", subjKin: integer},
 	{name: "task reopen", short: "Make a done task open again", subject: "id", subjKin: integer},
 	{name: "task block", short: "Add blockers to a task", subject: "id", subjKin: integer, options: []option{
-		{"blocked-by", ids, "IDs of the tasks to wait on (required)", ""}}},
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, to wait on (required)", ""}}},
 	{name: "task unblock", short: "Remove blockers from a task", subject: "id", subjKin: integer, options: []option{
-		{"blocked-by", ids, "IDs to stop waiting on (required)", ""}}},
+		{"blocked-by", ids, "IDs or folder paths to stop waiting on (required)", ""}}},
 	{name: "task move", short: "Move a task to another folder", subject: "id", subjKin: integer, options: []option{
 		{"to", text, "the folder to move it into (required)", ""}}},
 	{name: "task delete", short: "Remove a task", subject: "id", subjKin: integer},

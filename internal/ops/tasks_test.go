@@ -182,7 +182,7 @@ func TestListAndFrontier(t *testing.T) {
 		t.Errorf("folder list limit and fields: %v", got)
 	}
 	w.fail("folder list", `{"folder":"/nope"}`, errs.NotFound, "")
-	w.fail("folder list", `{"fields":["readiness"]}`, errs.InvalidInput, "")
+	w.fail("folder list", `{"fields":["claim"]}`, errs.InvalidInput, "")
 	w.fail("task list", `{"folder":"/nope"}`, errs.NotFound, "")
 	w.fail("task frontier", `{"claimed":false}`, errs.InvalidInput, "")
 	w.fail("task frontier", `{"fields":["nope"],"limit":0}`, errs.InvalidInput, "")
@@ -335,16 +335,16 @@ func TestCreateBlocks(t *testing.T) {
 	if id := w.ok("task create", `{"title":"e"}`)["id"]; id != float64(4) {
 		t.Errorf("a refused create used an ID: next is %v", id)
 	}
-	// A folder's ID is not a task's, and the error says so, naming every ID.
+	// blocks takes folders as well, and names every ID that is neither.
 	w.ok("folder create", `{"folder":"/f"}`) // 5
-	if e := w.fail("task create", `{"title":"g","blocks":[5,99]}`, errs.NotFound, ""); e.Message != "tasks [5 99] do not exist: 5 is the ID of folder /f" {
-		t.Errorf("message %q", e.Message)
+	if e := w.fail("task create", `{"title":"g","blocks":[5,99,98]}`, errs.NotFound, ""); !slices.Equal(e.IDs, []int64{99, 98}) {
+		t.Errorf("ids %v", e.IDs)
 	}
 	if e := w.fail("task show", `{"id":5}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /f") {
 		t.Errorf("show: message %q", e.Message)
 	}
-	if e := w.fail("task create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle); !strings.Contains(e.Message, "both") {
-		t.Errorf("message %q", e.Message)
+	if e := w.fail("task create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle); !slices.Equal(e.IDs, []int64{3}) || !strings.Contains(e.Message, `the new task "d" waits on task 3`) {
+		t.Errorf("cycle %v: message %q", e.IDs, e.Message)
 	}
 
 	// A done task can be blocked, as block allows.

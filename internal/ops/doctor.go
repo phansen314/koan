@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
@@ -141,27 +142,64 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			})
 	}
 
-	for i, l := range files {
-		tf := loaded[i].File
-		if tf == nil {
-			continue
+	// The graph's view of the tree, for references and cycles.
+	dt := &doctorTree{x: x, usable: usable, files: folderFiles, bad: folderErrs,
+		byID: map[model.ID][]model.Folder{}, tasks: map[model.Folder][]model.ID{}, subs: map[model.Folder][]model.Folder{}}
+	for _, f := range x.Folders {
+		if ff := folderFiles[f]; ff != nil {
+			dt.byID[ff.ID] = append(dt.byID[ff.ID], f)
 		}
-		var gone []model.ID
-		for _, b := range tf.BlockedBy {
-			if _, ok := x.Tasks[b]; !ok {
-				gone = append(gone, b)
+		if f != model.Root {
+			dt.subs[f.Parent()] = append(dt.subs[f.Parent()], f)
+		}
+	}
+	for _, l := range files {
+		dt.tasks[l.f] = append(dt.tasks[l.f], l.id)
+	}
+	var brokenFiles []string
+	for _, f := range x.Folders {
+		if folderErrs[f] != nil {
+			brokenFiles = append(brokenFiles, t.Abs(model.FolderFileRel(f)))
+		}
+	}
+	// A dangling ID may be the ID of a folder whose file can't be used:
+	// removing it would lose the link once the file is fixed.
+	dangling := func(who string, id model.ID, gone []model.ID, p string, remove func() *errs.Error) {
+		if len(brokenFiles) > 0 {
+			d.add(errs.FindingDanglingReference, fmt.Sprintf("%s is blocked by %v, which do not exist, unless one is the ID of a folder whose file can't be used (%s): fix that file first, and then run doctor again", who, gone, strings.Join(brokenFiles, ", ")),
+				append([]model.ID{id}, gone...), []string{p}, nil)
+			return
+		}
+		d.add(errs.FindingDanglingReference, fmt.Sprintf("%s is blocked by %v, which do not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds dangling-reference` removes them from its blocked_by", who, gone),
+			append([]model.ID{id}, gone...), []string{p}, func() (bool, *errs.Error) { return done(remove()) })
+		d.onlyByName()
+	}
+	byFolder := map[model.Folder][]int{}
+	for i, l := range files {
+		byFolder[l.f] = append(byFolder[l.f], i)
+	}
+	for _, f := range x.Folders {
+		if ff := folderFiles[f]; ff != nil {
+			if gone := dt.gone(ff.BlockedBy); len(gone) > 0 {
+				dangling("folder "+string(f), ff.ID, gone, t.Abs(model.FolderFileRel(f)), func() *errs.Error {
+					ff.BlockedBy = slices.DeleteFunc(ff.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
+					return t.WriteFolderFile(f, ff, false)
+				})
 			}
 		}
-		if len(gone) == 0 {
-			continue
+		for _, i := range byFolder[f] {
+			l, tf := files[i], loaded[i].File
+			if tf == nil {
+				continue
+			}
+			if gone := dt.gone(tf.BlockedBy); len(gone) > 0 {
+				dangling(fmt.Sprintf("task %d", l.id), l.id, gone, abs(l), func() *errs.Error {
+					tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
+					tf.UpdatedAt = c.now
+					return t.WriteTask(l.f, tf, false)
+				})
+			}
 		}
-		d.add(errs.FindingDanglingReference, fmt.Sprintf("task %d is blocked by %v, which do not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds dangling-reference` removes them from its blocked_by", l.id, gone),
-			append([]model.ID{l.id}, gone...), []string{abs(l)}, func() (bool, *errs.Error) {
-				tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
-				tf.UpdatedAt = c.now
-				return done(t.WriteTask(l.f, tf, false))
-			})
-		d.onlyByName()
 	}
 
 	var claimed []model.ID
@@ -203,7 +241,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 
 	for _, f := range x.Unfiled() {
-		d.add(errs.FindingMissingFolderFile, fmt.Sprintf("folder %s has no %s: `koan repair` writes one, with a new ID", f, model.FolderFileName),
+		d.add(errs.FindingMissingFolderFile, fmt.Sprintf("folder %s has no %s, so its blockers are unknown and everything in it is held back: `koan repair` writes one, with a new ID and no blockers; a blocked_by that named its old ID then dangles, so re-point such references with `koan task block` or `koan folder block` before repairing dangling-reference", f, model.FolderFileName),
 			nil, []string{t.Abs(f.Rel())}, func() (bool, *errs.Error) {
 				id := max(t.State.LastID, highest) + 1
 				t.State.LastID, highest = id, id
@@ -231,20 +269,57 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		}
 	}
 
-	edges := map[model.ID][]model.ID{}
-	for id, tf := range usable {
-		edges[id] = tf.BlockedBy
+	// Every node of the graph: each usable task, and each folder's two.
+	g := graph.New(dt)
+	var nodes []graph.Ref
+	for _, l := range files {
+		if usable[l.id] != nil {
+			nodes = append(nodes, graph.TaskRef(l.id))
+		}
 	}
-	for _, cycle := range graph.Cycles(edges) {
-		d.add(errs.FindingCycle, fmt.Sprintf("tasks %v block each other, each waiting on the next: `koan task unblock` one of them", cycle), cycle, nil, nil)
+	for _, f := range x.Folders {
+		if f != model.Root {
+			nodes = append(nodes, graph.WaitOf(f), graph.DoneOf(f))
+		}
+	}
+	key := func(r graph.Ref) model.ID {
+		if r.Kind == graph.TaskNode {
+			return r.ID
+		}
+		return dt.Folder(r.Folder).ID
+	}
+	for _, cycle := range g.Cycles(nodes, key) {
+		var ids []model.ID
+		var dirs []string
+		for _, r := range graph.Collapse(cycle) {
+			if id := key(r); id != 0 {
+				ids = append(ids, id)
+			}
+			if r.IsFolder() {
+				dirs = append(dirs, t.Abs(r.Folder.Rel()))
+			}
+		}
+		var steps []string
+		now := "they are stuck now"
+		empty := func(f model.Folder) bool { return len(g.Under(f)) == 0 }
+		for i, a := range cycle {
+			b := cycle[(i+1)%len(cycle)]
+			if a.Kind == graph.DoneNode && b.Kind == graph.WaitNode && a.Folder == b.Folder && empty(a.Folder) {
+				now = "nothing is stuck yet, but a task added to " + string(a.Folder) + " would be"
+			}
+			steps = append(steps, stepWords(a, b, func(r graph.Ref) string {
+				if r.Kind == graph.TaskNode {
+					return fmt.Sprintf("task %d", r.ID)
+				}
+				return string(r.Folder)
+			}, empty))
+		}
+		d.add(errs.FindingCycle, fmt.Sprintf("tasks and folders wait on each other (%s), and %s: `koan task unblock` or `koan folder unblock` one of them", strings.Join(steps, "; "), now),
+			ids, dirs, nil)
 	}
 
 	// Unusable files come in tree order: a folder's own file before its
 	// tasks'.
-	byFolder := map[model.Folder][]int{}
-	for i, l := range files {
-		byFolder[l.f] = append(byFolder[l.f], i)
-	}
 	for _, f := range x.Folders {
 		if e := folderErrs[f]; e != nil {
 			d.add(errs.FindingUnusableFile, e.Message+": fix the file by hand, or remove it and `koan repair` writes a new one",
@@ -292,4 +367,69 @@ func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (fix,
 		}, fmt.Sprintf("`koan repair` moves them to their task in %s", home)
 	}
 	return nil, "move or delete them by hand"
+}
+
+// doctorTree is the graph's view of the tree as doctor reads it: a task
+// with more than one copy is not usable, and a duplicated ID is not an
+// error.
+type doctorTree struct {
+	x      *store.Index
+	usable map[model.ID]*model.TaskFile
+	files  map[model.Folder]*model.FolderFile
+	bad    map[model.Folder]*errs.Error
+	byID   map[model.ID][]model.Folder
+	tasks  map[model.Folder][]model.ID
+	subs   map[model.Folder][]model.Folder
+}
+
+// gone lists the IDs in bs that name no task and no folder.
+func (d *doctorTree) gone(bs []model.ID) []model.ID {
+	var gone []model.ID
+	for _, b := range bs {
+		if _, isTask := d.x.Tasks[b]; !isTask && len(d.byID[b]) == 0 {
+			gone = append(gone, b)
+		}
+	}
+	return gone
+}
+
+func (d *doctorTree) Resolve(id model.ID) graph.Item {
+	if f, ok := d.x.Tasks[id]; ok {
+		return graph.Item{Kind: graph.TaskKind, Folder: f}
+	}
+	if fs := d.byID[id]; len(fs) > 0 {
+		return graph.Item{Kind: graph.FolderKind, Folder: fs[0]}
+	}
+	return graph.Item{}
+}
+
+func (d *doctorTree) TaskFolder(id model.ID) (model.Folder, bool) {
+	f, ok := d.x.Tasks[id]
+	return f, ok
+}
+
+func (d *doctorTree) Task(id model.ID) (graph.Node, bool) {
+	tf := d.usable[id]
+	if tf == nil {
+		return graph.Node{}, false
+	}
+	return graph.Node{Open: tf.Open(), Priority: tf.Priority, BlockedBy: tf.BlockedBy}, true
+}
+
+func (d *doctorTree) Folder(f model.Folder) graph.Folder {
+	var id model.ID
+	if ff := d.files[f]; ff != nil {
+		id = ff.ID
+	}
+	return graph.Folder{ID: id, Tasks: d.tasks[f], Folders: d.subs[f]}
+}
+
+func (d *doctorTree) Blockers(f model.Folder) ([]model.ID, bool, bool) {
+	if f == model.Root {
+		return nil, true, false
+	}
+	if ff := d.files[f]; ff != nil {
+		return ff.BlockedBy, true, false
+	}
+	return nil, false, d.bad[f] != nil
 }

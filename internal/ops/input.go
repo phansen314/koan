@@ -126,25 +126,58 @@ func (f fields) id(k string, required bool) model.ID {
 	return n
 }
 
-// ids reads a list of distinct task IDs.
-func (f fields) ids(k string, required bool) []model.ID {
-	var raws []json.RawMessage
-	if !f.get(k, required, &raws, "a list of task IDs") {
-		return nil
-	}
-	ns := []model.ID{}
-	for i, raw := range raws {
-		n, ok := idOf(raw)
+// item is a task or a folder as a blocked_by or blocks entry names it: by
+// ID, whichever kind has it, or a folder by path.
+type item struct {
+	id   model.ID     // when not 0, the task or folder with this ID
+	path model.Folder // otherwise, the folder at this path
+	at   string       // where it is in the input
+}
+
+// readItem reads one item, recording why it can't be one. A path is never
+// the root's, which has no ID to wait on.
+func (f fields) readItem(raw json.RawMessage, at string) (item, bool) {
+	var s string
+	if model.Decode(raw, &s) == nil && strings.HasPrefix(s, "/") {
+		folder, ok := model.ParseFolder(s)
 		switch {
 		case !ok:
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be a task ID, like 42 or @42")
-		case slices.Contains(ns, n):
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "names the same task as an earlier one")
+			f.in.bad(at, "must be a folder path like /proj/travel")
+		case folder == model.Root:
+			f.in.bad(at, "is the root, which has no ID to wait on")
 		default:
-			ns = append(ns, n)
+			return item{path: folder, at: at}, true
 		}
+		return item{}, false
 	}
-	return ns
+	if id, ok := idOf(raw); ok {
+		return item{id: id, at: at}, true
+	}
+	f.in.bad(at, "must be a task or folder ID, like 42 or @42, or a folder path, like /proj/research")
+	return item{}, false
+}
+
+// items reads a list of distinct tasks and folders: nil when the field is
+// absent.
+func (f fields) items(k string, required bool) []item {
+	var raws []json.RawMessage
+	if !f.get(k, required, &raws, "a list of task or folder IDs and folder paths") {
+		return nil
+	}
+	out := []item{}
+	for i, raw := range raws {
+		at := fmt.Sprintf("%s/%s/%d", f.at, k, i)
+		it, ok := f.readItem(raw, at)
+		if !ok {
+			continue
+		}
+		if slices.ContainsFunc(out, func(o item) bool { return o.id == it.id && o.path == it.path }) {
+			f.in.bad(at, "names the same task or folder as an earlier one")
+			continue
+		}
+		out = append(out, it)
+	}
+	return out
 }
 
 // folderRef is a folder as an input names it: by path, or by ID.

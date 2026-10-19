@@ -60,7 +60,7 @@ func TestFoldersAndMove(t *testing.T) {
 	w.ok("task create", `{"title":"outside","blocked_by":[3]}`)
 	w.ok("task claim", `{"id":3}`)
 	got = w.ok("folder delete", `{"folder":"/z","contents":true}`)
-	if r := w.record(got); r != `{"dir":"~/@z","extra":{},"id":6,"notes_path":"~/@z/@folder.md","path":"/z","title":null}` {
+	if r := w.record(got); r != `{"blocked_by":[],"dir":"~/@z","empty":false,"extra":{},"id":6,"inherited":[],"notes_path":"~/@z/@folder.md","open_blockers":[],"path":"/z","readiness":"ready","title":null}` {
 		t.Errorf("folder delete: %s", r)
 	}
 	wantIDs(t, "deleted", got["deleted"], 3)
@@ -77,7 +77,7 @@ func TestFoldersAndMove(t *testing.T) {
 func TestFolderMetadata(t *testing.T) {
 	w := ready(t)
 	w.ok("folder create", `{"folder":"/p/q","title":" Research ","extra":{"kind":"phase"},"notes":"n"}`)
-	want := `{"dir":"~/@p/@q","extra":{"kind":"phase"},"id":2,"notes_path":"~/@p/@q/@folder.md","path":"/p/q","title":"Research"}`
+	want := `{"blocked_by":[],"dir":"~/@p/@q","empty":true,"extra":{"kind":"phase"},"id":2,"inherited":[],"notes_path":"~/@p/@q/@folder.md","open_blockers":[],"path":"/p/q","readiness":"done","title":"Research"}`
 	if r := w.record(w.ok("folder show", `{"folder":"/p/q"}`)); r != want {
 		t.Errorf("folder create: %s, want %s", r, want)
 	}
@@ -85,10 +85,10 @@ func TestFolderMetadata(t *testing.T) {
 		t.Errorf("notes %q", n)
 	}
 	// The folders above it get none of it.
-	if r := w.record(w.ok("folder show", `{"folder":"/p"}`)); r != `{"dir":"~/@p","extra":{},"id":1,"notes_path":"~/@p/@folder.md","path":"/p","title":null}` {
+	if r := w.record(w.ok("folder show", `{"folder":"/p"}`)); r != `{"blocked_by":[],"dir":"~/@p","empty":true,"extra":{},"id":1,"inherited":[],"notes_path":"~/@p/@folder.md","open_blockers":[],"path":"/p","readiness":"done","title":null}` {
 		t.Errorf("folder show /p: %s", r)
 	}
-	if r := w.record(w.ok("folder show", `{"folder":"/"}`)); r != `{"dir":"~","extra":{},"id":null,"notes_path":null,"path":"/","title":null}` {
+	if r := w.record(w.ok("folder show", `{"folder":"/"}`)); r != `{"blocked_by":[],"dir":"~","empty":true,"extra":{},"id":null,"inherited":[],"notes_path":null,"open_blockers":[],"path":"/","readiness":"done","title":null}` {
 		t.Errorf("folder show /: %s", r)
 	}
 	w.fail("folder show", `{"folder":"/nope"}`, errs.NotFound, "")
@@ -129,7 +129,7 @@ func TestFolderMetadata(t *testing.T) {
 
 	// A moved folder keeps its fields.
 	w.ok("folder move", `{"folder":"/p","to":"/r"}`)
-	if r := w.record(w.ok("folder show", `{"folder":"/r"}`)); r != `{"dir":"~/@r","extra":{},"id":1,"notes_path":"~/@r/@folder.md","path":"/r","title":null}` {
+	if r := w.record(w.ok("folder show", `{"folder":"/r"}`)); r != `{"blocked_by":[],"dir":"~/@r","empty":true,"extra":{},"id":1,"inherited":[],"notes_path":"~/@r/@folder.md","open_blockers":[],"path":"/r","readiness":"done","title":null}` {
 		t.Errorf("folder move: %s", r)
 	}
 
@@ -143,12 +143,16 @@ func TestFolderMetadata(t *testing.T) {
 	w.fail("folder show", `{"folder":"/r/q"}`, errs.Corrupt, "")
 	w.fail("folder update", `{"folder":"/r/q","title":"x"}`, errs.Corrupt, "")
 	// folder list shows each folder's fields; the folder with no folder
-	// file has no ID, and no warning (doctor reports it); the unusable one,
-	// a warning. So do the folder writes that return its ID.
-	for _, c := range [][2]string{{"folder list", `{}`}, {"folder create", `{"folder":"/r/q"}`}} {
-		env := w.run(c[0], c[1])
-		if len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
-			t.Errorf("%s: warnings %+v", c[0], env.Warnings)
+	// file has no ID, and the unusable one none either: each is a warning,
+	// since their blockers are unknown. A folder write that returns the ID
+	// warns about the one it reads; with nothing to make, it walks nothing.
+	for _, c := range []struct {
+		name, input string
+		n           int
+	}{{"folder list", `{}`, 2}, {"folder create", `{"folder":"/r/q"}`, 1}} {
+		env := w.run(c.name, c.input)
+		if len(env.Warnings) != c.n || slices.ContainsFunc(env.Warnings, func(w errs.Warning) bool { return w.Kind != errs.WarnUnusableFile }) {
+			t.Errorf("%s: warnings %+v", c.name, env.Warnings)
 		}
 	}
 	w.ok("folder update", `{"folder":"/r","title":"R"}`)
@@ -170,8 +174,8 @@ func TestFolderFilesAndIDs(t *testing.T) {
 	w.ok("task create", `{"title":"a","folder":"/p"}`) // /p is 1, the task 2
 	w.ok("folder create", `{"folder":"/q"}`)           // 3
 	w.ok("folder create", `{"folder":"/r"}`)           // 4
-	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":1,"id":2,"title":null,"extra":{}}`), 0o644)
-	os.WriteFile(w.root("r/folder.json"), []byte(`{"schema":1,"id":4}`), 0o644)
+	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":2,"id":2,"title":null,"blocked_by":[],"extra":{}}`), 0o644)
+	os.WriteFile(w.root("r/folder.json"), []byte(`{"schema":2,"id":4}`), 0o644)
 	want := []string{"duplicate-id @p/@2.json,@q/@folder.json", "unusable-file @r/@folder.json"}
 	if fs := w.findings(); !slices.Equal(fs, want) {
 		t.Errorf("findings %v, want %v", fs, want)

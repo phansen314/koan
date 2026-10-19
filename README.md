@@ -39,6 +39,20 @@ A write returns what it changed, by ID (`.result.id`); a read returns the whole 
 
 Folder names use letters, digits, and hyphens, up to 64 characters, and a path matches a folder only in its exact case: with `/work` there, `/Work` is refused as `case-mismatch` on every platform, so a tree made on Linux always moves to a Mac intact. `koan folder move /work --to /Work` changes a folder's case. Tags are lowercase only, so matching one is always exact. See [Folders](spec/design.md#folders).
 
+## Ordering folders
+
+A folder can wait on tasks and on other folders, and everything in it, at any depth, waits with it. A folder is done when every task under it is, so one phase of work can wait on another:
+
+```sh
+koan folder create /work/phase1
+koan folder create /work/phase2 --blocked-by /work/phase1   # nothing under phase2 is ready while phase1 has open work
+koan task block 12 --blocked-by /work/research              # a task can wait on a folder too
+koan task show 14 | jq .result.task.inherited               # the folders above that hold a task back
+koan folder why /work/phase1 | jq .result.ready             # what to work on to finish phase1
+```
+
+The order is continuous: a task added to a finished phase1 makes it not done again, and blocks phase2 again. An empty folder is done, so lay the work out before anything waits on it, or all at once with `koan batch`. koan refuses a cycle, including one that would close only once a task is added to a folder: nothing may wait on a folder that holds it. See [Dependencies](spec/design.md#dependencies).
+
 ## Use it from Claude Code and OpenCode
 
 The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin (this repo is a Claude Code plugin marketplace):

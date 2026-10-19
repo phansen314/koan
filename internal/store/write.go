@@ -225,6 +225,7 @@ func caseMismatch(t *Tree, f, there model.Folder) *errs.Error {
 // already at f, which only an outside change can do: a not-a-folder conflict
 // when it is not a folder, and otherwise left as it is.
 func (t *Tree) MakeFolder(f model.Folder, ff *model.FolderFile, notes string) (made bool, e *errs.Error) {
+	ff.Normalize()
 	data, err := model.Encode(ff)
 	if err != nil {
 		return false, errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
@@ -252,6 +253,7 @@ func (t *Tree) MakeFolder(f model.Folder, ff *model.FolderFile, notes string) (m
 // set, which fails if a file is already there (repair's way to give a folder
 // an ID), otherwise over the old one.
 func (t *Tree) WriteFolderFile(f model.Folder, ff *model.FolderFile, create bool) *errs.Error {
+	ff.Normalize()
 	data, err := model.Encode(ff)
 	if err != nil {
 		return errs.New(errs.Internal, "encode the folder file of %s: %v", f, err)
