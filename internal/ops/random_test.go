@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"runtime"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/phansen314/koan/internal/model"
 )
 
 // TestRandomCommands runs long random sequences of commands against a tree
@@ -78,6 +80,43 @@ func parent(f string) string {
 }
 
 func holds(f, g string) bool { return f == "/" || g == f || strings.HasPrefix(g, f+"/") }
+
+// caseMismatch reports whether a part of f's path is no folder of the model
+// but one is there with its name in another case, other than self.
+func (m *expected) caseMismatch(f, self string) bool {
+	cur := "/"
+	for _, seg := range model.Folder(f).Segments() {
+		par := cur
+		cur = path.Join(cur, seg)
+		if m.folders[cur] {
+			continue
+		}
+		for g := range m.folders {
+			if g != "/" && g != self && parent(g) == par && model.SameButCase(path.Base(g), seg) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// clash reports whether two paths of one input differ only in case.
+func clash(a, b string) bool {
+	i, _ := model.CaseClash([]model.Folder{model.Folder(a), model.Folder(b)})
+	return i >= 0
+}
+
+// either is a want of two failures, when koan may report either.
+func either(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return a + "|" + b
+}
 
 func (m *expected) ids() []int64 {
 	ids := []int64{}
@@ -198,13 +237,8 @@ func (r *random) failf(format string, args ...any) {
 }
 
 // folderNames are the names folders are made of: few, so that paths collide
-// and nest. Two differ only in case, where the filesystem tells them apart.
-var folderNames = func() []string {
-	if runtime.GOOS == "darwin" {
-		return []string{"a", "b", "c", "d"}
-	}
-	return []string{"a", "b", "c", "A"}
-}()
+// and nest. Two differ only in case, which koan refuses on every platform.
+var folderNames = []string{"a", "b", "c", "A"}
 
 // folder picks a path up to three deep.
 func (r *random) folder() string {
@@ -261,7 +295,8 @@ func js(v any) string {
 }
 
 // do runs a command and checks that it failed the way the model says, or
-// succeeded. want is "" for success, a kind, or "conflict/<rule>".
+// succeeded. want is "" for success, a kind, or "conflict/<rule>", or two
+// of them joined by "|" when either may be reported.
 func (r *random) do(name, input, want string) map[string]any {
 	r.t.Helper()
 	r.log = append(r.log, fmt.Sprintf("koan %s -i - <<< '%s'   # want %s", name, input, cond(want == "", "ok", want)))
@@ -276,7 +311,7 @@ func (r *random) do(name, input, want string) map[string]any {
 			r.failf("%s %s: refused with %s, but changed %v", name, input, got, env.Error.ChangedPaths)
 		}
 	}
-	if got != want {
+	if !slices.Contains(strings.Split(want, "|"), got) {
 		r.failf("%s %s: got %s, want %s", name, input, cond(got == "", "ok", got), cond(want == "", "ok", want))
 		return nil
 	}
@@ -309,7 +344,7 @@ func (r *random) step() {
 			p := int64(r.rng.Intn(5) - 1)
 			pri = &p
 		}
-		want := cond(r.missing(blockers...), "not-found", "")
+		want := either(cond(r.missing(blockers...), "not-found", ""), cond(m.caseMismatch(folder, ""), "conflict/case-mismatch", ""))
 		res := r.do("task create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": blockers, "priority": pri}), want)
 		if res != nil {
 			m.addFolder(folder)
@@ -317,11 +352,18 @@ func (r *random) step() {
 		}
 	case n < 24: // batch: a chain of three in two folders
 		f1, f2 := r.folder(), r.folder()
+		want := ""
+		switch {
+		case clash(f1, f2):
+			want = "invalid-input"
+		case m.caseMismatch(f1, "") || m.caseMismatch(f2, ""):
+			want = "conflict/case-mismatch"
+		}
 		res := r.do("batch", js(map[string]any{"folder": f1, "tasks": []any{
 			map[string]any{"ref": "x", "title": "x"},
 			map[string]any{"ref": "y", "title": "y", "folder": f2, "blocked_by": []any{"x"}},
 			map[string]any{"title": "z", "blocked_by": []any{"x", "y"}},
-		}}), "")
+		}}), want)
 		if res != nil {
 			got := ids(res["ids"])
 			m.addFolder(f1) // folders take their IDs before every task
@@ -379,24 +421,31 @@ func (r *random) step() {
 		}
 	case n < 66: // move
 		id, to := r.id(), r.folder()
-		if r.do("task move", js(map[string]any{"id": id, "to": to}), cond(r.missing(id), "not-found", "")) != nil {
+		want := either(cond(r.missing(id), "not-found", ""), cond(m.caseMismatch(to, ""), "conflict/case-mismatch", ""))
+		if r.do("task move", js(map[string]any{"id": id, "to": to}), want) != nil {
 			m.tasks[id].folder = to
 			m.addFolder(to)
 		}
 	case n < 70: // folder create
 		f := r.folder()
-		if r.do("folder create", js(map[string]any{"folder": f}), "") != nil {
+		if r.do("folder create", js(map[string]any{"folder": f}), cond(m.caseMismatch(f, ""), "conflict/case-mismatch", "")) != nil {
 			m.addFolder(f)
 		}
 	case n < 77: // folder move
 		from, to := r.existingFolder(), r.folder()
 		want := ""
+		recase := parent(from) == parent(to) && model.SameButCase(path.Base(from), path.Base(to))
 		switch {
-		case from == "/" || to == "/" || (from != to && holds(from, to)):
+		case from == "/" || to == "/" || (from != to && holds(from, to)) || (!recase && clash(from, to)):
 			want = "invalid-input"
+		case m.caseMismatch(from, ""):
+			want = "conflict/case-mismatch"
 		case !m.folders[from]:
 			want = "not-found"
-		case from != to && m.folders[to]:
+		case from == to:
+		case m.caseMismatch(to, from):
+			want = "conflict/case-mismatch"
+		case m.folders[to]:
 			want = "conflict/destination-exists"
 		}
 		if r.do("folder move", js(map[string]any{"folder": from, "to": to}), want) != nil && from != to {
@@ -441,6 +490,8 @@ func (r *random) step() {
 		switch {
 		case f == "/":
 			want = "invalid-input"
+		case m.caseMismatch(f, ""):
+			want = "conflict/case-mismatch"
 		case !m.folders[f]:
 			want = "not-found"
 		case !contents && (!empty || len(inside) > 0):

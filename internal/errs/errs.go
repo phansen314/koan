@@ -37,6 +37,7 @@ const (
 	RuleClaimed           = "claimed"
 	RuleNoConversion      = "no-conversion"
 	RuleHasMaterial       = "has-material"
+	RuleCaseMismatch      = "case-mismatch"
 )
 
 // Problem is one thing wrong with an input or a file.

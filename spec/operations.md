@@ -50,7 +50,7 @@ A command that changes the tree returns **identities**, which go straight into t
 | `problems` | For `invalid-input`: one `{field, reason}` per problem, `field` a JSON pointer into the input. For `corrupt`: one per rule the file breaks. |
 | `changed_paths` | Files and folders the command created, rewrote, or removed before it failed. Empty means nothing changed. |
 
-Two `conflict` rules are shared, and are not repeated below. Any command that walks the tree can fail with `duplicate-id` (`ids`: the ID; `paths`: every copy). Any command given a folder path can fail with `not-a-folder` (something on the path is a file or a symlink).
+Three `conflict` rules are shared, and are not repeated below. Any command that walks the tree can fail with `duplicate-id` (`ids`: the ID; `paths`: every copy). Any command given a folder path can fail with `not-a-folder` (something on the path is a file or a symlink), and with `case-mismatch` (a part of the path is on disk only in another case: `folders` holds the path as it is on disk, as far as it goes, and the message says "exists as /proj"; see [Folders](design.md#folders)).
 
 ### Warnings
 
@@ -279,8 +279,9 @@ Move a folder, with everything under it, to a new path. Renaming is moving to a 
 - **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into, so a path only.
 - Neither may be `/`, and `to` may not be under `folder`: `invalid-input`. For a `folder` given by ID, the second is known only once the tree is read, so it is reported after the root's state and `busy`.
 - No file is rewritten: a task's folder is where its file is, and the folder's own files move with it, its ID included.
+- **A rename that changes only case** (`/proj` to `/Proj`: same parent, names equal ignoring case) is allowed on every platform. It is the one way to fix a folder's case, and on a filesystem that ignores case `to` is the folder itself, so it can't be refused as `destination-exists` there.
 - **Result:** `id`, `path` (the new one), `changed`, `folders_created`.
-- **Refuses:** `destination-exists` when anything is at `to`.
+- **Refuses:** `destination-exists` when anything is at `to` other than the folder itself.
 
 ### folder delete
 
@@ -346,6 +347,7 @@ Create folders, and open tasks in them, in one write, where later tasks may wait
 
 - Refs are global to the batch, and may only point backwards, so a batch cannot contain a cycle.
 - A `blocked_by` string that is a valid ref but names no earlier task is `invalid-input` saying so; any other string that is not an ID is `invalid-input` saying what an entry may be: a task ID, like `42` or `@42`, or the ref of an earlier task.
+- No two folder paths in the batch, among its folder entries, its tasks' folders, and its `folder`, differ only in case ([Folders](design.md#folders)): `invalid-input`, before the tree is read.
 - Every folder is checked before an ID is used: each folder entry, that nothing is at its `folder`; each task's folder given by path, that it can be made; one given by ID, that it exists; and the batch's `folder`, the same way, even when no task falls back to it.
 - A folder entry's missing parents, and a task's missing folder, are made as needed, with no title, as by any command.
 - **IDs**: the folders the batch makes take theirs first, in tree order, parents before children, entries and folders made as needed alike; then the tasks, consecutively, in input order. Every task gets the same `created_at`.

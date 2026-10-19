@@ -205,7 +205,7 @@ func readFolderEntries(c *call) ([]newFolder, int) {
 		if !ok {
 			continue
 		}
-		n := newFolder{folder: f.folder("folder", true, "")}
+		n := newFolder{folder: f.folder("folder", true, ""), at: f.at + "/folder"}
 		n.title, _ = f.optTitle("title")
 		n.extra, _ = f.object("extra")
 		n.notes, _ = f.text("notes")
@@ -237,6 +237,15 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		}
 	}
 	tasks := make([]newTask, len(raws))
+	// Every folder path in the batch, and where it is, for the case check.
+	var paths []model.Folder
+	var pathsAt []string
+	for _, n := range entries {
+		paths, pathsAt = append(paths, n.folder), append(pathsAt, n.at)
+	}
+	if folder.id == 0 && folder.path != "" {
+		paths, pathsAt = append(paths, folder.path), append(pathsAt, "/folder")
+	}
 	refAt := map[string]int{}
 	var existing []model.ID
 	for i, raw := range raws {
@@ -278,11 +287,17 @@ func cmdBatch(c *call) (any, *errs.Error) {
 			}
 		}
 		f.unknown("a task")
+		if f.has("folder") && n.at.id == 0 && n.at.path != "" {
+			paths, pathsAt = append(paths, n.at.path), append(pathsAt, f.at+"/folder")
+		}
 		if n.ref != "" {
 			refAt[n.ref] = i
 		}
 		existing = append(existing, n.blockers...)
 		tasks[i] = n
+	}
+	if i, q := model.CaseClash(paths); i >= 0 {
+		c.in.bad(pathsAt[i], "differs only in case from %s, earlier in the batch", q)
 	}
 	if e := c.begin(true); e != nil {
 		return nil, e
@@ -290,7 +305,11 @@ func cmdBatch(c *call) (any, *errs.Error) {
 	// A folder entry means one to make: every one already there is named.
 	var there []model.Folder
 	for _, n := range entries {
-		if _, err := c.t.Stat(n.folder.Rel()); err == nil {
+		taken, e := c.t.Taken(n.folder, "")
+		if e != nil {
+			return nil, e
+		}
+		if taken {
 			there = append(there, n.folder)
 		}
 	}

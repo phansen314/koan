@@ -175,6 +175,57 @@ func (f Folder) Parent() Folder { return Folder(path.Dir(string(f))) }
 // Join is the folder named name inside f.
 func (f Folder) Join(name string) Folder { return Folder(path.Join(string(f), name)) }
 
+// Name is f's own name, the last part of its path; "" for the root.
+func (f Folder) Name() string {
+	if f == Root {
+		return ""
+	}
+	return path.Base(string(f))
+}
+
+// SameButCase reports whether a and b differ only in the case of ASCII
+// letters: two names a filesystem that ignores case takes for one. Folder
+// names are ASCII, so no other folding can matter.
+func SameButCase(a, b string) bool {
+	if a == b || len(a) != len(b) {
+		return false
+	}
+	for i := range len(a) {
+		if lower(a[i]) != lower(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func lower(c byte) byte {
+	if 'A' <= c && c <= 'Z' {
+		return c + 'a' - 'A'
+	}
+	return c
+}
+
+// CaseClash finds the first of paths that differs only in case from an
+// earlier one, in some part of its path: its index, and the earlier
+// path's part it clashes with, as far as it goes. i is -1 when there is
+// none. The paths are valid, so ASCII.
+func CaseClash(paths []Folder) (i int, earlier Folder) {
+	seen := map[string]Folder{}
+	for i, p := range paths {
+		cur := Root
+		for _, seg := range p.Segments() {
+			cur = cur.Join(seg)
+			k := strings.ToLower(string(cur))
+			if q, ok := seen[k]; ok && q != cur {
+				return i, q
+			} else if !ok {
+				seen[k] = cur
+			}
+		}
+	}
+	return -1, ""
+}
+
 // Holds reports whether g is f or under it.
 func (f Folder) Holds(g Folder) bool {
 	return f == Root || g == f || strings.HasPrefix(string(g), string(f)+"/")

@@ -216,6 +216,13 @@ func cmdFolderMove(c *call) (any, *errs.Error) {
 	if ref.path != "" && to != "" && ref.path != to && ref.path.Holds(to) {
 		c.in.bad("/to", "may not be under the folder being moved")
 	}
+	// Changing the case of the folder's own name is the one way two paths of
+	// a move may differ only in case.
+	if ref.path != "" && to != "" && !(ref.path.Parent() == to.Parent() && model.SameButCase(ref.path.Name(), to.Name())) {
+		if i, q := model.CaseClash([]model.Folder{ref.path, to}); i >= 0 {
+			c.in.bad("/to", "differs only in case from %s: rename that folder first", q)
+		}
+	}
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
@@ -233,14 +240,23 @@ func cmdFolderMove(c *call) (any, *errs.Error) {
 	if from == to {
 		return c.made(to, false, []model.Folder{}), nil
 	}
-	if _, err := c.t.Stat(to.Rel()); err == nil {
+	// A rename to another case is the one move whose to may be the folder
+	// itself, on a filesystem that ignores case.
+	recase := from.Parent() == to.Parent() && model.SameButCase(from.Name(), to.Name())
+	if taken, e := c.t.Taken(to, from); e != nil {
+		return nil, e
+	} else if taken {
 		return nil, c.destinationExists("already exists", to)
 	}
 	created, e := c.ensure(to.Parent())
 	if e != nil {
 		return nil, e
 	}
-	taken, e := c.t.Move(from.Rel(), to.Rel())
+	move := c.t.Move
+	if recase {
+		move = c.t.MoveCase
+	}
+	taken, e := move(from.Rel(), to.Rel())
 	if e != nil {
 		return nil, e
 	}
@@ -609,6 +625,7 @@ func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
 // entry, with what it is made with.
 type newFolder struct {
 	folder model.Folder
+	at     string // where it is in a batch's input
 	title  *string
 	extra  map[string]any
 	notes  string

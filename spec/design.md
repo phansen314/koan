@@ -69,7 +69,11 @@ A folder name is 1–64 ASCII letters, digits, and hyphens, not starting or endi
 ^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$
 ```
 
-Names are case-sensitive: koan compares them byte for byte, so `Proj` and `proj` are two folders. That holds on Linux. macOS filesystems usually ignore case, so there the two are one directory, and a tree that has both on Linux cannot be copied to a Mac intact. koan does not check for this; a tree that moves between the two should not hold names that differ only in case.
+Names are compared byte for byte, but koan never lets two names in one folder differ only in case, on any platform. macOS filesystems usually ignore case, so there `Proj` and `proj` would be one directory; refusing the pair everywhere means a tree made on Linux always moves to a Mac intact.
+
+- **A path names a folder only in its exact case.** When a part of a path matches no entry in its folder exactly but matches one ignoring case, the command fails with `conflict` (`case-mismatch`), naming the path as it is on disk. So `/Proj` never reaches `/proj`, on a Mac or elsewhere, and a new folder is never made beside one whose name differs from it only in case.
+- **One input never names two paths that differ only in case** in the same part (`/Proj/a` and `/proj/b`): `invalid-input`. The one exception is `folder move` renaming a folder to the same name in another case.
+- A tree that already holds such a pair, made by hand or by an older koan, still works on Linux: an exact match always wins.
 
 A **folder path** names a folder from the root: `/` is the root, `/proj/travel` is `travel` inside `proj`. Leading `/`, no trailing `/`, no empty segment, no `.` or `..`. Paths never carry the `@`: `/proj/travel` is `@proj/@travel` on disk, so a name is at most 65 characters there.
 
@@ -292,7 +296,7 @@ Every failure has one **kind**:
 | `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The root is not usable (see [Root states](#root-states)); or, for `corrupt` and `unsupported-format`, a task file the command needs is not. |
 | `busy` | The lock was held against the command for 5 seconds. |
 | `not-found` | A task or folder named in the input does not exist. |
-| `conflict` | The input is valid but the tree's state refuses it; a `rule` says which: `duplicate-id`, `claimed`, `cycle`, and the commands' own. |
+| `conflict` | The input is valid but the tree's state refuses it; a `rule` says which: `duplicate-id`, `case-mismatch`, `claimed`, `cycle`, and the commands' own. |
 | `io` | The operating system refused something. |
 | `internal` | A bug in koan. |
 

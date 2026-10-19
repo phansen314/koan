@@ -37,7 +37,7 @@ jq -n '{folder: "/work/api", tasks: [              # a plan in one call: refs na
 
 A write returns what it changed, by ID (`.result.id`); a read returns the whole record. A task's notes are a plain file, edited with any editor: `koan task show 4 | jq -r .result.task.notes_path` says where.
 
-Folder names use letters, digits, and hyphens, up to 64 characters, and are case-sensitive (`/work` does not find `/Work`; avoid names that differ only in case if the tree may move to a Mac). Tags are lowercase only, so matching one is always exact. See [Folders](spec/design.md#folders).
+Folder names use letters, digits, and hyphens, up to 64 characters, and a path matches a folder only in its exact case: with `/work` there, `/Work` is refused as `case-mismatch` on every platform, so a tree made on Linux always moves to a Mac intact. `koan folder move /work --to /Work` changes a folder's case. Tags are lowercase only, so matching one is always exact. See [Folders](spec/design.md#folders).
 
 ## Use it from Claude Code and OpenCode
 
