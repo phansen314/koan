@@ -21,7 +21,7 @@ Ready when `.result.state` is `usable`. Otherwise:
 - `too-new`: a newer koan wrote the tree; the user needs to upgrade this machine's binary.
 - `unusable`: `.result.error` is what every command would fail with. Report it.
 
-If `version`'s `.result.version` is below `0.2.0` (`0.0.0-dev` is a build from source: treat it as current), the binary is older than this skill: tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error saying `unknown command`, or `unknown flag`, for a command or option this skill names means the same.
+If `version`'s `.result.version` is below `0.3.0` (`0.0.0-dev` is a build from source: treat it as current), the binary is older than this skill: tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error saying `unknown command`, or `unknown flag`, for a command or option this skill names means the same.
 
 ## Reading output
 
