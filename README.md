@@ -113,7 +113,7 @@ git restores only what it tracked:
 
 A tree is written from one machine, and a machine has one tree; keep separate bodies of work as top-level folders (`/work`, `/home`).
 
-To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`: it starts that machine's ID counter at the highest ID it finds. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve.
+To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`: it starts that machine's ID counter at the highest ID it finds, or raises a counter already there that is below it. Commands that issue IDs also start above the highest ID in the tree, so a pull or a restore can't make koan issue an ID that is already in use. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve.
 
 ## Upgrading
 

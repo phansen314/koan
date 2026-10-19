@@ -30,7 +30,7 @@ Every command writes one envelope:
 - success: `{"ok":true,"result":{…},"warnings":[…]}`
 - failure: `{"ok":false,"error":{"kind":"…","rule":…,"message":"…","ids":[…],"folders":[…],"paths":[…],"problems":[…],"changed_paths":[…]},"warnings":[…]}`
 
-Branch on `.error.kind`, not the exit code. **Always tell the user about any `warnings`** (`unusable-file`, `dangling-reference`): they mean the tree needs attention.
+Branch on `.error.kind`, not the exit code. **Always tell the user about any `warnings`** (`unusable-file`, `dangling-reference`, `id-above-counter`): they mean the tree needs attention. `id-above-counter` means something outside koan (a clone, a merge, a restore) brought in IDs above this machine's counter; koan already issued past them, so nothing needs fixing, but the user should know.
 
 | Exit | Meaning | What to do |
 |---|---|---|

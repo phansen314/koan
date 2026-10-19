@@ -127,6 +127,7 @@ func IsErrno(err error, errnos ...syscall.Errno) bool {
 const (
 	WarnUnusableFile      = "unusable-file"
 	WarnDanglingReference = "dangling-reference"
+	WarnIDAboveCounter    = "id-above-counter"
 )
 
 // Warning is a problem that did not stop the command.

@@ -43,8 +43,19 @@ func (n newTask) file(id model.ID, now string, blockers []model.ID) *model.TaskF
 	}
 }
 
-// issue takes n new IDs from the counter and saves it: the first is returned.
+// issue takes n new IDs and saves the counter: the first is returned. They
+// start above the tree's highest ID as well as the counter's, since an
+// outside change can bring in IDs the counter never issued.
 func (c *call) issue(n int) (model.ID, *errs.Error) {
+	top, rel, e := c.highest()
+	if e != nil {
+		return 0, e
+	}
+	if top > c.t.State.LastID {
+		c.warn(errs.WarnIDAboveCounter, fmt.Sprintf("the tree holds ID %d, above the counter (%d), as an outside change can leave it: the counter was raised past it", top, c.t.State.LastID),
+			[]model.ID{top}, c.t.Abs(rel))
+		c.t.State.LastID = top
+	}
 	first := c.t.State.LastID + 1
 	if first+model.ID(n)-1 > model.MaxID {
 		return 0, errs.New(errs.Internal, "the ID counter is exhausted")

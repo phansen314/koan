@@ -122,6 +122,8 @@ An ID is a positive integer of at most 15 digits, unique across the whole tree, 
 
 The counter is outside the tree on purpose, so that restoring or merging the tree's files can never lower it. That is also why one machine writes a tree: two machines creating tasks in copies of it would issue the same IDs.
 
+The counter knows the IDs that are gone; only the tree knows the IDs an outside change brought in (a clone, a merge, a restore). So **a command that issues IDs starts above both**: it walks the tree, reads every folder file, and takes the highest ID in any task file's or notes file's name or in any folder file, and issues from above that or `last_id`, whichever is higher. When the tree was ahead, the counter is raised past it and the command warns `id-above-counter`. A folder file koan can't read can't be counted: it is an `unusable-file` warning, and the command carries on.
+
 ### References
 
 A **reference** names a task, a folder, or material in a folder, in commands and in anything kept outside koan: notes, prompts, commit messages.
@@ -158,7 +160,7 @@ Every tree that only koan has written satisfies these, and koan refuses any chan
 1. **Acyclic.** No task waits on itself, directly or through other tasks, whether they are open or done.
 2. **No dangling references.** Every ID in a `blocked_by` names an existing task. Deleting a task removes its ID from every `blocked_by`.
 3. **Unique IDs.** No two task files or folder files have the same ID.
-4. **IDs within the counter.** No task's or folder's ID is above `last_id`.
+4. **IDs within the counter.** No ID in a task file's or notes file's name, and no folder's ID, is above `last_id`. An outside change can break this one; the next command that issues IDs, or `init`, restores it.
 
 ### `@koan.json`
 
@@ -215,7 +217,7 @@ koan writes JSON with two-space indentation, keys in schema order, `blocked_by` 
 | Needs migration, or too new | See [Formats](#formats). | `migration-pending`, `unsupported-format`. |
 | Usable | Otherwise. | — |
 
-`init` creates whatever is missing and changes nothing that is there. A state file it creates beside an existing tree starts `last_id` at the highest ID in any filename in the tree. That is how a tree cloned onto a new machine is attached, and how a lost state file is replaced; in the second case an ID whose task was deleted can be issued again.
+`init` creates whatever is missing, and changes nothing that is there but a counter that is too low. A state file it creates beside an existing tree starts `last_id` at the highest ID in the tree. That is how a tree cloned onto a new machine is attached, and how a lost state file is replaced; in the second case an ID whose task was deleted can be issued again. A state file already there whose `last_id` is below the tree's highest ID is raised to it: that is how a tree cloned, copied, or restored onto a machine that already has a state file is attached.
 
 ### Walking
 
@@ -296,4 +298,4 @@ Every failure has one **kind**:
 
 A command reports one error. Input is checked first, then the root's state, then `busy`; among errors after that, which one is reported is not specified.
 
-A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file` and `dangling-reference`.
+A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file`, `dangling-reference`, and `id-above-counter` (see [IDs](#ids)).

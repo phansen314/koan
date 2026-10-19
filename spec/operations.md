@@ -58,14 +58,14 @@ Two `conflict` rules are shared, and are not repeated below. Any command that wa
 { "kind": "dangling-reference", "message": "task 42 is blocked by 17, which does not exist", "ids": [42, 17], "paths": ["/home/paul/koan-root/@proj/@42.json"] }
 ```
 
-There are two kinds, `unusable-file` and `dangling-reference`, both defined in [design.md](design.md#walking). A command reports each at most once per file, and only for files it reads: a write that returns identities reads no task's blockers to build a record, so it reports nothing about them.
+There are three kinds: `unusable-file` and `dangling-reference`, defined in [design.md](design.md#walking), and `id-above-counter`, from a command that issues IDs into a tree an outside change put IDs in above the counter ([IDs](design.md#ids)): its `ids` is the highest such ID, its `paths` the file that holds it, and its message says the counter was raised. A command reports each at most once per file, and only for files it reads: a write that returns identities reads no task's blockers to build a record, so it reports nothing about them.
 
 ### Rules for every command
 
 - **A usable root.** Every command but `init`, `version`, and `info` fails unless the root is usable ([Root states](design.md#root-states)). `doctor` and `migrate` also run on a root that needs migration, when the binary has a conversion from its format.
 - **Reads and writes.** A write holds the tree's lock alone; a read shares it with other reads, and changes nothing. So a read never sees part of a write. Either fails with `busy` if it can't get the lock in 5 seconds. `info` and `version` take no lock.
 - **Folders are made as needed.** A command that puts something into a folder creates that folder, and any above it, when it is missing: `task create`, `batch`, `task move`, `folder move`, and `folder create`. Their results list what was created in `folders_created`. A command that only reads a folder, or removes one, fails with `not-found` when it is missing.
-- **Each folder made takes an ID.** The counter is raised once for every folder and task a command makes, before any is made; folders take their IDs first, parents before children, and tasks after them. Each folder is made, then its folder file and its notes, empty unless given, are written in it. A command that fails partway leaves the folders made so far, the last perhaps without its folder file or notes ([Crashes and failures](design.md#crashes-and-failures)), and the IDs set aside for the rest unused.
+- **Each folder made takes an ID.** The counter is first brought up to the highest ID in the tree, if it is below it ([IDs](design.md#ids)), then raised once for every folder and task a command makes, before any is made; folders take their IDs first, parents before children, and tasks after them. Each folder is made, then its folder file and its notes, empty unless given, are written in it. A command that fails partway leaves the folders made so far, the last perhaps without its folder file or notes ([Crashes and failures](design.md#crashes-and-failures)), and the IDs set aside for the rest unused.
 - **Asking for what already holds is not an error.** `task done` on a done task, `task block` with a blocker already there, `task move` to the folder the task is in: the command succeeds, writes nothing, and returns `changed: false`.
 - **`updated_at`** is set to the command's time whenever a command changes a field of a task file, and only then.
 - **One time per command.** Every timestamp a command writes is the same instant.
@@ -168,14 +168,15 @@ For each command below: **Input** lists its fields (required ones marked), **Res
 
 ### init
 
-Create whatever is missing of `~/koan-root`, its `@koan.json`, and the state file. What is already there is left alone, so running it again changes nothing.
+Create whatever is missing of `~/koan-root`, its `@koan.json`, and the state file, and raise the counter to the tree's highest ID when it is below it. What is already there is otherwise left alone, so running it again changes nothing.
 
 - **Input:** none.
-- A state file created beside an existing tree starts `last_id` at the highest ID in the name of any task file or notes file, or in any folder file it can read; otherwise at `0`. A folder file it can't read is skipped, and `doctor` reports it.
-- `init` makes the folder when it is missing, then holds the lock alone for everything else, so the highest ID is read from a tree at rest and two `init`s cannot overlap. It needs the whole tree for that: a folder it can't list fails it with `io`.
+- **The tree's highest ID** is the highest ID in the name of any task file or notes file, or in any folder file it can read; `0` for an empty tree. A folder file it can't read is skipped, and `doctor` reports it.
+- A state file created beside an existing tree starts `last_id` at the tree's highest ID. A state file already there whose `last_id` is below it is raised to it, its claims left as they are. Raising the counter never harms, so `init` stays safe to run again.
+- `init` makes the folder when it is missing, then holds the lock alone for everything else, so the highest ID is read from a tree at rest and two `init`s cannot overlap. It needs the whole tree for that: a folder it can't list fails it with `io`, whether or not the state file is there.
 - A folder without a `@koan.json` is adopted as it is: `init` writes the `@koan.json` and leaves everything else in the folder alone. What it holds that is not named with `@` is material.
-- A tree that needs migration, or is too new, is not an error here: its `@koan.json` is left alone, and a missing state file is still created.
-- **Result:** `root` and `state_path` (the two paths), and `created`: which of `root`, `metadata`, `state` it made.
+- A tree that needs migration, or is too new, is not an error here: its `@koan.json` is left alone, a missing state file is still created, and a low counter still raised.
+- **Result:** `root` and `state_path` (the two paths); `created`: which of `root`, `metadata`, `state` it made; and `counter_raised`: whether it raised the `last_id` of a state file that was already there.
 - On failure, `changed_paths` lists what it made.
 - **Refuses:** `not-a-folder` when `~/koan-root` is a file or leads nowhere, and `busy` when it can't get the lock. An existing `@koan.json` or state file that is unusable fails with `corrupt` or `io`, and is never replaced.
 
@@ -320,7 +321,7 @@ Create an open task.
 | `extra` | `{}` | |
 | `notes` | `""` | The initial content of the `@<id>.md`. |
 
-- The new ID is the counter's next one, after the IDs of any folders made for it. A failure after the counter is raised uses up the ID.
+- The new ID is the next one above both the counter and the tree's highest ID ([IDs](design.md#ids)), after the IDs of any folders made for it. A failure after the counter is raised uses up the ID.
 - The new task never exists without every task in `blocks` waiting on it. A kill partway can instead leave some of them waiting on an ID with no task, a dangling reference `doctor` finds, as [`task delete`](#task-delete) can leave one.
 - A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `task create` fails with `io`, and the new task has that file as its notes.
 - The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
