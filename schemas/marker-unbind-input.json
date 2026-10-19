@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "marker-unbind-input",
+  "type": "object",
+  "required": ["dir"],
+  "properties": {
+    "dir": { "type": "string", "pattern": "^/", "description": "The bound directory, an absolute path." }
+  },
+  "additionalProperties": false
+}

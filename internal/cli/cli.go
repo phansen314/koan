@@ -1,7 +1,8 @@
 // Package cli maps the koan command line onto the commands in ops: it
 // builds one command's input from the arguments, runs it, and prints its
 // envelope (spec/cli.md). It adds no behavior of its own, but for the CLI
-// conveniences: --notes-file, and making where's --file absolute.
+// conveniences: --notes-file, making a --file or --dir absolute, and the
+// working directory where context and the marker commands are given none.
 package cli
 
 import (
@@ -91,6 +92,7 @@ type command struct {
 	subjOpt bool   // the subject may be left out, for an option that stands in for it
 	needs   string // the required options, as the usage line names them
 	options []option
+	cwd     string // the input field set to the working directory when neither the subject nor that option is given
 }
 
 var scopeOptions = []option{
@@ -109,6 +111,7 @@ var narrowOptions = append(append([]option{}, scopeOptions...),
 var groups = []struct{ name, short string }{
 	{"folder", "Create, show, change, and remove folders"},
 	{"task", "Create, show, change, find, and claim tasks"},
+	{"marker", "Bind directories outside the tree to folders"},
 }
 
 var commands = []command{
@@ -184,6 +187,13 @@ var commands = []command{
 	{name: "task why", short: "Say what a task is waiting on", subject: "id", subjKin: integer},
 	{name: "where", short: "Turn a reference into disk paths, or a disk path into a reference", subject: "ref", subjOpt: true, options: []option{
 		{"file", diskPath, "a path on disk to give the reference of, in place of <ref>", ""}}},
+	{name: "context", short: "Return what starting work in a folder needs", subject: "folder", subjOpt: true, cwd: "file", options: []option{
+		{"file", diskPath, "a path on disk, in the tree or under a marker, in place of <folder> (default: the working directory)", ""}}},
+	{name: "marker bind", short: "Bind a directory outside the tree to a folder", subject: "folder", cwd: "dir", options: []option{
+		{"dir", diskPath, "the directory to bind (default: the working directory)", ""},
+		{"force", boolean, "bind a checkout, or a directory bound to another folder", ""}}},
+	{name: "marker unbind", short: "Remove a directory's marker", cwd: "dir", options: []option{
+		{"dir", diskPath, "the bound directory (default: the working directory)", ""}}},
 	{name: "task claim", short: "Claim a task", subject: "id", subjKin: integer, options: []option{
 		{"extra", object, "a JSON object stored with the claim", ""}}},
 	{name: "task claim-next", short: "Claim the first ready, unclaimed task", options: append(append([]option{}, scopeOptions...),
@@ -466,6 +476,15 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 			}
 			in[field] = scalar(o.kind, s)
 		}
+	}
+	// An optional subject stands in for the working directory, as the
+	// option does.
+	if _, given := in[c.subject]; c.cwd != "" && !fs.Changed(c.cwd) && !(c.subjOpt && given) {
+		wd, err := filepath.Abs(".")
+		if err != nil {
+			return nil, errs.New(errs.IO, "the working directory: %v", err)
+		}
+		in[c.cwd] = wd
 	}
 	return json.Marshal(in)
 }

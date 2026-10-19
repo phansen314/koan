@@ -1,6 +1,6 @@
 ---
 name: koan
-description: Track and work through the user's tasks with the koan CLI — a local, file-based task tree with dependencies. Use when the user mentions tasks, todos, their task list, "what should I work on next", blocking or unblocking work, marking something done, or koan by name; and to offer (not silently create) a task for a follow-up found during other work.
+description: Track and work through the user's tasks with the koan CLI — a local, file-based task tree with dependencies. Use when the user mentions tasks, todos, their task list, "what should I work on next", blocking or unblocking work, marking something done, starting work in a worktree or finding which folder of work it belongs to, or koan by name; and to offer (not silently create) a task for a follow-up found during other work.
 ---
 
 # koan
@@ -49,10 +49,11 @@ Error kinds worth handling:
 - `conflict` — `.error.rule` says which rule refused it:
   - `cycle` — the change would make tasks and folders wait on each other, now or once a task is added to a folder; `.error.message` gives each step, `.error.ids` and `.error.folders` the tasks and folders in it, and `.error.problems` the input fields that close it. Nothing may wait on a folder that holds it (`/proj contains /proj/phase2`). Tell the user rather than rearranging their blockers. (A `corrupt` from a block, a create with blockers, or a move means the check met a task file or folder file it can't read: report it, as below. A folder whose own `@folder.json` can't be used can still be renamed or moved to the top level, but not into another folder.)
   - `not-empty` — `folder delete` without `--contents` on a folder that holds anything. Don't add `--contents` on your own: ask the user.
-  - `has-material` — `folder delete --contents` on a folder holding the user's own files (material), hidden ones such as `.git` or `.env` included; `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good.
+  - `has-material` — `folder delete --contents` on a folder holding the user's own files (material), hidden ones such as `.git` or `.env` included; `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good. From `marker bind` or `marker unbind`, a `.koan/` holding files koan didn't write: show the user `.error.paths`; there is no `--force` for it.
   - `destination-exists` — `folder move`'s `--to` already exists (folders are never merged), `task move` would overwrite a `@<id>.md` with text in the target folder, `folder create` was given a title, `extra`, notes, or blockers for a folder already there (use `folder update` and `folder block`), or a `batch` folder entry names a folder already there; show it to the user.
   - `case-mismatch` — a folder path names a folder that exists only in another case; `.error.folders` has the path as it is on disk. Use that path. Don't rename the folder to match unless the user asks (`folder move /work --to /Work` changes its case).
-  - `not-a-folder` — something on a folder path is a file or a symlink.
+  - `not-a-folder` — something on a folder path is a file or a symlink; for the marker commands, a `.koan` that is not a directory.
+  - `in-tree`, `holds-tree`, `checkout`, `bound-elsewhere` — `marker bind` refused the directory: see Worktrees below.
   - `claimed` — someone has claimed the task; `.error.message` says since when and with what `extra`. See Claims.
   - `task-done` — `task claim` on a done task; `task reopen` it first if the user wants it worked on again.
   - `no-conversion` — from `doctor` or `migrate`: the tree is in a format this koan can't convert. Tell the user to move it aside and start a new tree with `koan init`; never do either yourself.
@@ -119,7 +120,7 @@ koan task release 42                                        # you won't do it af
 
 ### If a coordinator started you with one task
 
-When you were started by another agent and handed a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's read commands (`task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `folder why`, `where`), and put everything else you want changed (follow-up tasks, tags, the task being done) in your final report. The coordinator makes those changes.
+When you were started by another agent and handed a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's read commands (`task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `folder why`, `where`, `context`), and put everything else you want changed (follow-up tasks, tags, the task being done) in your final report. The coordinator makes those changes.
 
 ### Reading tasks
 
@@ -210,6 +211,26 @@ koan where --file docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'   # a fi
 
 **When writing a reference down** (in notes, a prompt for another agent, a commit message), write the stable ID and the path as a hint: `@41 (/work/HOME-12345)`, `@41:docs/plan.md (/work/HOME-12345:docs/plan.md)`. IDs survive moves and renames; paths don't. Get both from `where`'s `ref` and `hint`. **When reading one**, resolve the ID with `koan where`; if the path no longer matches the hint, the ID wins, and say the hint is stale.
 
+### Worktrees: markers and `context`
+
+A **marker** binds a directory outside the tree, usually a git worktree, to a folder, so koan can tell which folder of work you are in from anywhere inside it. It is a `.koan/` directory there, which git ignores by itself, and which goes when the worktree does.
+
+```sh
+koan marker bind @41 --dir "$worktree"     # right after git worktree add; --dir defaults to the working directory
+koan context                               # in the worktree: the folder, the folders above it, both notes, its open tasks
+koan context /work/HOME-12345              # or any folder, by path or ID
+koan where --file . | jq -r '.result | "\(.ref) (\(.hint))"'   # just which folder this directory is
+koan marker unbind --dir "$worktree"       # seldom needed: removing the worktree removes the marker
+```
+
+- **Starting work in a worktree, run `koan context` first**, and read what it returns before anything else: `.result.folder` is the folder, `.result.ancestors` the chain above it (top first), `.result.notes` and `.result.parent_notes` its and its parent's `@folder.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. Its output holds two notes files, so print it as is.
+- **Check the marker is the worktree's own**: in a git worktree, `.result.marker` should be `$(git rev-parse --show-toplevel)/.koan/marker.json`. If it is in a directory above the worktree, the worktree was never bound and is borrowing an outer folder: say so, rather than working in that folder. (A marker in a subdirectory of the worktree means someone bound that subdirectory on purpose; outside git there is nothing to check against.)
+- **Bind a worktree from its top**, or with `--dir` naming its top: `--dir` defaults to the working directory, so `marker bind` run from `src/` binds only `src/`.
+- **Bind worktrees, never the checkout that holds them**: a marker binds every directory under it, worktrees included. `marker bind` refuses a checkout (`checkout`, a `.git` directory), and a directory bound to another folder that still exists (`bound-elsewhere`); `--force` overrides either, so ask the user first. It refuses the tree itself and anything under it (`in-tree`), and any directory holding the tree, such as `$HOME` (`holds-tree`). A directory without git binds like any other.
+- **A `stale-marker` warning** means the folder has moved since it was bound: the marker still works, by ID. `koan marker bind` again refreshes it.
+- A marker copied or moved with its directory (`git worktree move`) binds nothing: `where` and `context` say so, and binding again fixes it. A marker whose folder was deleted names nothing, and `marker bind` replaces it without `--force`.
+- **As a worker**, you may run `context` and `where`, never `marker bind` or `marker unbind`: report a stale, copied, or missing marker to the coordinator instead.
+
 ### A plan: several tasks at once
 
 When a request breaks down into several tasks, especially with dependencies among them, create them in **one** `batch` instead of a chain of `task create`s. Give a task a `ref` (lowercase letters, digits, and hyphens, with at least one letter: `schema`, `step-2`) to let later tasks in the batch wait on it; a `blocked_by` item is an existing task's or folder's ID (`42`, `"42"`, or `"@42"`, as everywhere), a folder path (of the tree, or one the batch makes), or an earlier task's ref. List blockers before what they block.
@@ -266,6 +287,17 @@ koan folder delete /proj/old --contents            # .result.folder: as it was; 
   - Prefer cancelling (below) when the user just means "won't do": it keeps the record.
   - A deleted task's or folder's ID is removed from its dependents' blockers, tasks and folders alike, so they may become ready: deleting a phase frees the next. Tell the user which (`dependents` in the output).
   - Deleting a claimed task ends its claim without asking anyone. Say so when a task to be deleted has one.
+
+### Clearing out a finished folder
+
+The tree is kept small by letting finished work leave it, with git keeping it (the README's "Keeping the tree small"): commit, then delete.
+
+- **When the last open task in a folder is done**, or the user says its work has shipped, offer to clear it out, and say what that does: "Nothing in /work/HOME-12345 is open now. Want me to commit the whole tree and remove the folder?" First check that nothing under it is open: `koan task list --folder /work/HOME-12345 --limit 1 --fields id | jq '.result.total'` must be `0`. It counts the folders under it, and a claimed task is an open one, so this also rules out a folder anyone is working in.
+- **Never clear one out on your own initiative.** Only on a yes, which is the user asking for the commit, and in this order, never the other:
+  1. `git -C ~/koan-root add -A && git -C ~/koan-root commit -q -m "Before removing /work/HOME-12345"`. If `~/koan-root` is not a git repository, stop: the delete could not be undone, so say so, and go on only if the user says to.
+  2. `koan folder delete /work/HOME-12345 --contents`.
+- **On `has-material`**, show the user `.error.paths`, and what of it git doesn't have, which `--force` loses for good: ignored files (`git -C ~/koan-root status --short --ignored -- "$(koan folder show /work/HOME-12345 | jq -r .result.folder.dir)"`), and any `.git` in the list, a repository of its own that the tree's history only points to. Add `--force` only when they say so.
+- A worktree bound to the folder names nothing once it is gone: mention it, so the user can remove the worktree.
 
 ## Hard rules
 

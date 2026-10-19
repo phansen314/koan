@@ -33,8 +33,8 @@ koan reads stdin only when `-` names it, so it is safe in a loop that feeds stdi
 Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 
 - **A command is its operation's name**, `koan task create` running `task create`, and an option is named after the input field it sets, in kebab-case: `blocked_by` is `--blocked-by`.
-- **The one subject is positional**: the task's ID, the folder (its path, or its ID where it must exist), the new task's title, `where`'s reference. It is required, but for `where`, which takes `--file` in its place. Everything else is an option, so a bare word has one meaning.
-- **Folder paths are exact**: always from the root, with a leading `/`. koan never completes one or derives one from the working directory.
+- **The one subject is positional**: the task's ID, the folder (its path, or its ID where it must exist), the new task's title, `where`'s reference. It is required, but for `where`, which takes `--file` in its place, and `context`, which takes `--file` or nothing. `marker unbind` has none: its directory is `--dir`, as `marker bind`'s is. Everything else is an option, so a bare word has one meaning.
+- **Folder paths are exact**: always from the root, with a leading `/`. koan never completes one or derives one from the working directory. (`context` with no subject is no exception: it takes the working directory as a path on disk, `file`, and finds the folder from where that is in the tree or from its [marker](design.md#markers).)
 - **References**: wherever an input takes a [reference](design.md#references), the command line does too: `koan task show 42`, `koan task block @42 --blocked-by 17,@18`, `koan task list --folder 41`, with or without the `@`. An ID without `@` in a task position is passed to the operation as an integer; everything else as the string typed. A list of blockers mixes IDs and folder paths: `--blocked-by 17,/proj/research`, an ID without `@` passed as an integer and every other item as the string typed (a folder name has no comma).
 - **Booleans**: `--recursive` is `true`, `--recursive=false` is `false`.
 - **Lists** are comma-separated, and the option may be repeated: `--tags travel,urgent` or `--tags travel --tags urgent`. The exception is `--extra-remove`, which takes one key per occurrence, since a key may contain a comma.
@@ -43,7 +43,7 @@ Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 - **Names are matched exactly**: no abbreviations, so adding a command or option never changes what an existing command line means.
 - **`--`** ends the options, for a title that starts with `-`.
 
-**`usage` is only a command line the CLI can't turn into an input:** an unknown command or option, a group without a command (`koan task`) or with one it doesn't have (`koan task frob`), a missing or extra positional argument, an option without its value, `--input` with other arguments, or `--notes` with `--notes-file`. Every check of a value is the operation's, and is `invalid-input` exactly as it would be through `--input`: a missing required option, a value in the right place that is wrong (`koan task show abc`), or a JSON value that is not JSON, which the CLI passes on as a string. A file that `--input` or `--notes-file` names and koan can't read, or a working directory `--file` can't be resolved against, is `io`.
+**`usage` is only a command line the CLI can't turn into an input:** an unknown command or option, a group without a command (`koan task`) or with one it doesn't have (`koan task frob`), a missing or extra positional argument, an option without its value, `--input` with other arguments, or `--notes` with `--notes-file`. Every check of a value is the operation's, and is `invalid-input` exactly as it would be through `--input`: a missing required option, a value in the right place that is wrong (`koan task show abc`), or a JSON value that is not JSON, which the CLI passes on as a string. A file that `--input` or `--notes-file` names and koan can't read, or a working directory that `--file`, `--dir`, or a bare `koan context` can't be resolved against, is `io`.
 
 ## Commands
 
@@ -78,20 +78,25 @@ Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 | `koan task list` | `task frontier`'s, and `--claimed`, `--readiness` |
 | `koan task why <id>` | |
 | `koan where <ref>` | `--file` |
+| `koan context [<folder>]` | `--file` |
+| `koan marker bind <folder>` | `--dir`, `--force` |
+| `koan marker unbind` | `--dir` |
 | `koan task claim <id>` | `--extra` |
 | `koan task claim-next` | `--folder`, `--recursive`, `--tags-any`, `--tags-all`, `--extra` |
 | `koan task release <id>` | |
 
 Every command also takes `-i, --input <file>` and `-h, --help`. `--to` is required, as is `--blocked-by` on `task block`, `task unblock`, `folder block`, and `folder unblock`; they are named because a second bare word would not say what it is.
 
-`koan where` takes either its reference or `--file <path>`: neither or both is `invalid-input`, as through `--input`.
+`koan where` takes either its reference or `--file <path>`: neither or both is `invalid-input`, as through `--input`. `koan context` takes its folder, `--file <path>`, or neither; both is `invalid-input`.
 
 ## CLI conveniences
 
-Two options do what an input does not, since they need a file or a working directory, which only a shell has to hand. Through `--input`, give what they stand for.
+These do what an input does not, since they need a file or a working directory, which only a shell has to hand. Through `--input`, give what they stand for.
 
 - **`--notes-file <file>`**, on `task create` and `folder create`, reads the notes from a file, or from stdin for `-`, exactly as they are, and sets `notes`. An input has no `notes_file`.
-- **`where --file <path>`** takes a relative path from the working directory, where an input's `file` must be absolute.
+- **`where --file <path>`** and **`context --file <path>`** take a relative path from the working directory, where an input's `file` must be absolute.
+- **`koan context`** with neither a folder nor `--file` sets `file` to the working directory.
+- **`--dir <path>`**, on `marker bind` and `marker unbind`, takes a relative path from the working directory, and is the working directory when not given.
 
 ## Examples
 
@@ -107,6 +112,12 @@ koan task why 42 | jq '.result.ready'
 koan folder list --folder /proj --recursive=false --fields id,path,title
 koan where @41:docs/plan.md | jq -r '.result.file'
 koan where --file docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'
+koan context                                        # in a bound worktree: its folder, notes, open tasks
+koan context /work/HOME-12345 | jq '.result.tasks | map({id, title, readiness})'
+
+koan marker bind @41 --dir "$worktree"              # right after git worktree add
+koan marker bind @42 --force                        # this worktree is 42's now
+koan marker unbind --dir "$worktree"
 
 koan task update 42 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'
 koan task block 42 --blocked-by 17,18

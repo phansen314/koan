@@ -1,11 +1,13 @@
 package ops
 
 import (
+	"fmt"
 	"path"
 	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/store"
 )
 
 type whereResult struct {
@@ -15,14 +17,17 @@ type whereResult struct {
 	Task     *model.ID          `json:"task"`
 	Material *string            `json:"material"`
 	File     *string            `json:"file"`
+	Marker   *string            `json:"marker"`
 }
 
 // target is what a reference names: folder at, or the task or folder with
-// ID any, and material in the folder when material is not "".
+// ID any, and material in the folder when material is not "". marker is the
+// marker that named the folder, if one did.
 type target struct {
 	at       folderRef
 	any      model.ID
 	material string
+	marker   string
 }
 
 // parseRef reads a reference: a task or folder ID, or a folder by path or
@@ -92,6 +97,9 @@ func cmdWhere(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	res := whereResult{Ref: string(f), Hint: string(f), Folder: r}
+	if to.marker != "" {
+		res.Marker = &to.marker
+	}
 	if r.ID != nil {
 		res.Ref = model.IDRef(*r.ID)
 	}
@@ -128,7 +136,7 @@ func (c *call) fromFile(p string) (target, *errs.Error) {
 		rel, ok = c.inTree(c.resolveLinks(p))
 	}
 	if !ok {
-		return target{}, errs.New(errs.NotFound, "%s is not in the tree, %s", p, c.t.Abs(".")).WithPaths(p)
+		return c.fromMarker(p)
 	}
 	segs := strings.Split(rel, "/")
 	if rel == "" {
@@ -185,14 +193,58 @@ func (c *call) resolveLinks(p string) string {
 	}
 }
 
-// inTree is p relative to the tree's directory, "" for the directory
-// itself, given as ~/koan-root or as where that leads.
-func (c *call) inTree(p string) (string, bool) {
-	roots := []string{c.t.Abs(".")}
+// fromMarker is the folder named by the nearest marker at or above p, a
+// path outside the tree.
+func (c *call) fromMarker(p string) (target, *errs.Error) {
+	d, e := store.FindMarker(c.env, c.resolveLinks(p))
+	if e != nil {
+		return target{}, e
+	}
+	if d == "" {
+		return target{}, errs.New(errs.NotFound, "%s is not in the tree, %s, nor in a directory bound to a folder", p, c.t.Abs(".")).WithPaths(p)
+	}
+	b, e := store.OpenBound(c.env, d)
+	if e != nil {
+		return target{}, e
+	}
+	defer b.Close()
+	mp := b.MarkerPath()
+	m, e := b.ReadMarker()
+	switch {
+	case e != nil:
+		return target{}, e
+	case m == nil:
+		return target{}, errs.New(errs.NotFound, "%s is gone", mp).WithPaths(p, mp)
+	case !store.SameDir(c.env, m.Dir, d):
+		return target{}, errs.New(errs.NotFound, "%s was written for %s, and binds nothing here: it was copied or moved; koan marker bind binds this directory", mp, m.Dir).
+			WithPaths(mp)
+	}
+	f, e := c.resolve(folderRef{id: m.ID})
+	if e != nil {
+		e.Message = fmt.Sprintf("the marker %s names folder %d, but %s", mp, m.ID, e.Message)
+		return target{}, e.WithPaths(mp)
+	}
+	if f != m.Path {
+		c.warn(errs.WarnStaleMarker, fmt.Sprintf("the marker %s says folder %d is %s, and it is now %s: koan marker bind refreshes it", mp, m.ID, m.Path, f),
+			[]model.ID{m.ID}, mp)
+	}
+	return target{at: folderRef{path: f}, marker: mp}, nil
+}
+
+// treeDirs are the tree's directory as ~/koan-root, and as where that
+// leads when it is a link.
+func (c *call) treeDirs() []string {
+	roots := []string{c.env.RootPath()}
 	if real, err := c.env.FS.EvalSymlinks(roots[0]); err == nil && real != roots[0] {
 		roots = append(roots, real)
 	}
-	for _, root := range roots {
+	return roots
+}
+
+// inTree is p relative to the tree's directory, "" for the directory
+// itself, given as ~/koan-root or as where that leads.
+func (c *call) inTree(p string) (string, bool) {
+	for _, root := range c.treeDirs() {
 		if p == root {
 			return "", true
 		}

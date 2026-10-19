@@ -54,7 +54,15 @@ func (r run) err() map[string]any    { m, _ := r.env["error"].(map[string]any); 
 // added to its environment; stdin is what it reads.
 func koan(t testing.TB, home, stdin string, extra []string, args ...string) run {
 	t.Helper()
+	return koanIn(t, "", home, stdin, extra, args...)
+}
+
+// koanIn runs the binary as koan does, in the working directory dir, or
+// this process's when dir is "".
+func koanIn(t testing.TB, dir, home, stdin string, extra []string, args ...string) run {
+	t.Helper()
 	cmd := exec.Command(koanBin, args...)
+	cmd.Dir = dir
 	cmd.Env = append([]string{"HOME=" + home}, extra...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, errb bytes.Buffer
@@ -86,7 +94,7 @@ func koan(t testing.TB, home, stdin string, extra []string, args ...string) run 
 // schemaName is the name of the schemas of the command args run: a group
 // and its command, joined by a hyphen.
 func schemaName(args []string) string {
-	if (args[0] == "task" || args[0] == "folder") && len(args) > 1 {
+	if (args[0] == "task" || args[0] == "folder" || args[0] == "marker") && len(args) > 1 {
 		return args[0] + "-" + args[1]
 	}
 	return args[0]

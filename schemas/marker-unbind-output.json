@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "marker-unbind-output",
+  "type": "object",
+  "required": ["dir", "removed", "changed"],
+  "properties": {
+    "dir": { "type": "string", "description": "The directory, at its real path." },
+    "removed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The absolute paths removed, in the order removed: marker.json, temp files, .gitignore, each when it was there, then .koan."
+    },
+    "changed": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

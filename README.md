@@ -144,6 +144,26 @@ A tree is written from one machine, and a machine has one tree; keep separate bo
 
 To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`: it brings the counter up to the highest ID in the tree, whether it makes the state file or finds one there. Commands that issue IDs also start above the highest ID in the tree, so a restore can't make koan issue an ID that is already in use. After the move, write the tree from the new machine only. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve. A sync tool between two machines that both write the tree is the same thing, so use one only as a backup.
 
+## Keeping the tree small
+
+koan has no index: a command walks the folders it needs, so the tree's size is its speed. Rather than keep finished work in it, let a body of work leave the tree when it is done (a story shipped, a trip taken): git keeps it.
+
+```sh
+git -C ~/koan-root add -A && git -C ~/koan-root commit -q -m "Before removing /work/HOME-12345"   # 1. the whole tree, the folder in it
+koan folder delete /work/HOME-12345 --contents                                                   # 2. the folder, and every folder under it
+```
+
+Always commit first. Removing a finished folder changes no task's readiness, since done tasks never block; other tasks lose its tasks' IDs from `blocked_by`, and git still has them. To bring it back, see [Undoing a delete](#undoing-a-delete).
+
+- **Check what git doesn't have.** `folder delete` refuses a folder holding material (`has-material`), listing it, and removes it only with `--force`. Most of that list is in the commit. What isn't is gone for good: ignored files, which `git -C ~/koan-root status --short --ignored -- "$(koan folder show /work/HOME-12345 | jq -r .result.folder.dir)"` lists, and a directory with its own `.git` ([Undoing a delete](#undoing-a-delete)).
+- **A worktree bound to the folder** names nothing once the folder is gone: remove the worktree first.
+
+A folder is finished when nothing under it is open. `task list` returns only open tasks unless told otherwise, and counts the folders under it too; an empty folder passes as well:
+
+```sh
+koan task list --folder /work/HOME-12345 --limit 1 --fields id | jq '.result.total == 0'
+```
+
 ## Upgrading
 
 ```sh

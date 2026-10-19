@@ -38,6 +38,10 @@ const (
 	RuleNoConversion      = "no-conversion"
 	RuleHasMaterial       = "has-material"
 	RuleCaseMismatch      = "case-mismatch"
+	RuleInTree            = "in-tree"
+	RuleHoldsTree         = "holds-tree"
+	RuleCheckout          = "checkout"
+	RuleBoundElsewhere    = "bound-elsewhere"
 )
 
 // Problem is one thing wrong with an input or a file.
@@ -129,6 +133,7 @@ const (
 	WarnUnusableFile      = "unusable-file"
 	WarnDanglingReference = "dangling-reference"
 	WarnIDAboveCounter    = "id-above-counter"
+	WarnStaleMarker       = "stale-marker"
 )
 
 // Warning is a problem that did not stop the command.

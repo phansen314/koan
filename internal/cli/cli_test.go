@@ -110,6 +110,27 @@ func TestBuildInput(t *testing.T) {
 		args []string
 		want string
 	}{[]string{"where", "--file", "docs/plan.md"}, `{"file":"` + wd + `/docs/plan.md"}`})
+	empty := filepath.Join(t.TempDir(), "in.json")
+	os.WriteFile(empty, []byte(`{}`), 0o644)
+	// context, and the marker commands' --dir, take the working directory
+	// when given nothing in its place; --input is taken as it is.
+	cases = append(cases, []struct {
+		args []string
+		want string
+	}{
+		{[]string{"context"}, `{"file":"` + wd + `"}`},
+		{[]string{"context", "/p"}, `{"folder":"/p"}`},
+		{[]string{"context", "--file", "x"}, `{"file":"` + wd + `/x"}`},
+		{[]string{"context", "/p", "--file", "/x"}, `{"file":"/x","folder":"/p"}`},
+		{[]string{"marker", "bind", "@41"}, `{"dir":"` + wd + `","folder":"@41"}`},
+		{[]string{"marker", "bind", "@41", "--dir", "wt", "--force"}, `{"dir":"` + wd + `/wt","folder":"@41","force":true}`},
+		{[]string{"marker", "bind"}, ""},
+		{[]string{"marker", "unbind"}, `{"dir":"` + wd + `"}`},
+		{[]string{"marker", "unbind", "--dir", "/wt"}, `{"dir":"/wt"}`},
+		{[]string{"marker", "unbind", "x"}, ""},
+		{[]string{"marker"}, ""},
+		{[]string{"marker", "unbind", "--input", empty}, `{}`},
+	}...)
 	for _, c := range cases {
 		var got []byte
 		var failed error

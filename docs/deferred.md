@@ -8,11 +8,7 @@ Turn a koan folder or task back into plain files, leaving the work itself in pla
 
 - `forget-folder` removes the folder's `@folder.json` and the `@` from its name; `@folder.md` becomes `folder.md`, refused when one is there.
 - It refuses a folder holding tasks (`has-tasks`) unless `--force`, and one holding folders (`has-children`).
-
-## Worktree markers
-
-- `koan bind` and `unbind`: a self-ignoring `.koan/` marker in a working directory, keyed by folder ID, holding the folder's ID, path, and dir.
-- `koan where` resolves from a bound directory. Still open: whether a separate `context` command is needed.
+- To weigh when the task question is settled: it could let a finished folder be archived in place rather than deleted. As material, which koan never walks, it would cost nothing and stay browsable (say, moved under `~/koan-root/archive/2026/`), if its tasks' notes survive as plain files. Until then, a finished folder is committed and deleted (the README's "Keeping the tree small").
 
 ## Shell completion
 
@@ -21,7 +17,7 @@ Turn a koan folder or task back into plain files, leaving the work itself in pla
 
 ## Retiring the shingi plugin
 
-The rest of the shingi absorption is done and koan's skill covers it. The plugin can go once nothing uses shingi's `bind`, so this waits on worktree markers.
+The rest of the shingi absorption is done, worktree markers and `context` included, and koan's skill covers it. What is left is retiring the plugin: moving any `.shingi/` markers still in use to `koan marker bind`, and uninstalling it.
 
 ## Latched ordering
 

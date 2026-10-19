@@ -67,6 +67,15 @@ func (f FS) MkdirAll(p string, perm fs.FileMode) error {
 	return os.MkdirAll(p, perm)
 }
 
+// Lstat reports on the entry at p, outside any root, without following a
+// symlink at its end: the look for a marker, which may cross any directory.
+func (f FS) Lstat(p string) (fs.FileInfo, error) {
+	if err := f.before(Op{Name: OpLstat, Path: p}); err != nil {
+		return nil, err
+	}
+	return os.Lstat(p)
+}
+
 // EvalSymlinks is p with every symlink in it resolved: where the root really
 // is, for telling whether a path is in it. It only reads, and is not hooked.
 func (FS) EvalSymlinks(p string) (string, error) { return filepath.EvalSymlinks(p) }
@@ -170,6 +179,21 @@ func (r *Root) CreateTemp(dir string, perm fs.FileMode) (f *File, name string, e
 		return nil, "", err
 	}
 	return &File{f: of, r: r, name: name}, name, nil
+}
+
+// Create creates a new, empty file at name, exclusively: it fails with
+// EEXIST rather than open one that is there. It is for a file written in
+// place, which a reader may see before it is whole: a marker's .gitignore,
+// which has nothing to publish over.
+func (r *Root) Create(name string, perm fs.FileMode) (*File, error) {
+	if err := r.before(Op{Name: OpCreate, Path: name, Mutating: true}); err != nil {
+		return nil, err
+	}
+	of, err := r.r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return nil, err
+	}
+	return &File{f: of, r: r, name: name}, nil
 }
 
 // Link publishes a new file: it fails with EEXIST rather than replace one.
