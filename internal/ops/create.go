@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
@@ -236,8 +235,8 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		}
 		n := readNewTask(f, folder)
 		if f.has("ref") {
-			if f.get("ref", false, &n.ref, "a name") && !model.ValidTag(n.ref) {
-				c.in.bad(f.at+"/ref", "must be a name: lowercase letters, digits, and hyphens")
+			if f.get("ref", false, &n.ref, "a name") && !model.ValidRef(n.ref) {
+				c.in.bad(f.at+"/ref", "must be a name: lowercase letters, digits, and hyphens, with a letter, so it can't be read as a task ID")
 			} else if _, dup := refAt[n.ref]; dup {
 				c.in.bad(f.at+"/ref", "is used by an earlier task")
 			}
@@ -246,11 +245,12 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		f.get("blocked_by", false, &blockers, "a list of task IDs and refs")
 		for j, b := range blockers {
 			bat := fmt.Sprintf("%s/blocked_by/%d", f.at, j)
+			// An ID as every command takes one; any other string, a ref.
+			id, isID := idOf(b)
 			var ref string
-			isRef := model.Decode(b, &ref) == nil && string(b) != "null" && !strings.HasPrefix(ref, model.Mark)
-			// A string without @ is a ref; anything else, an ID.
-			switch id, isID := idOf(b); {
-			case !isRef && isID:
+			isRef := !isID && model.Decode(b, &ref) == nil && string(b) != "null"
+			switch {
+			case isID:
 				if slices.Contains(n.blockers, id) {
 					c.in.bad(bat, "names the same task as an earlier one")
 				}

@@ -19,7 +19,7 @@ One tree per user, written from one machine. Separate bodies of work are folders
 
 - **koan is the only writer of the tree and the state file.** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds.
 - **Notes are the exception.** A task's `@<id>.md` and a folder's `@folder.md` are edited with any editor. koan never reads meaning into them.
-- **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
+- **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). The one exception is a `.DS_Store`, which goes with its folder. Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
 
 ## Data model
 

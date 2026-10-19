@@ -132,6 +132,15 @@ func TestMaterialIsNeverRead(t *testing.T) {
 	os.WriteFile(w.root("q/folder.md"), []byte("notes"), 0o644)
 	w.fail("folder delete", `{"folder":"/q"}`, errs.Conflict, errs.RuleNotEmpty)
 	os.WriteFile(w.root("q/folder.md"), nil, 0o644)
-	os.WriteFile(w.disk("@q/.gitignore"), nil, 0o644)
+	// Hidden entries are material too, a temp file koan left and a
+	// .DS_Store aside: a .git, file or folder, may be history git can't
+	// bring back.
+	for _, hidden := range []string{".gitignore", ".git"} {
+		os.WriteFile(w.disk("@q", hidden), nil, 0o644)
+		w.fail("folder delete", `{"folder":"/q"}`, errs.Conflict, errs.RuleNotEmpty)
+		os.Remove(w.disk("@q", hidden))
+	}
+	os.WriteFile(w.disk("@q/.DS_Store"), nil, 0o644)
+	os.WriteFile(w.disk("@q/.koan-tmp-1"), nil, 0o644)
 	w.ok("folder delete", `{"folder":"/q"}`)
 }

@@ -132,7 +132,9 @@ git restore -- @proj/@42.json @proj/@42.md                        # not yet comm
 git restore --source=<commit>^ -- @proj/@42.json @proj/@42.md     # committed: from the commit before
 ```
 
-Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Every file in the tree is safe to commit and restore, with no `.gitignore` needed, because the ID counter is kept outside it. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `task block` again after restoring. Then run `koan doctor`: a restored task may name blockers deleted since.
+Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Every file koan writes is safe to commit and restore, because the ID counter is kept outside the tree. A crash can leave a `.koan-tmp-*` file, which `koan doctor` finds; a root `.gitignore` with `.koan-tmp-*` keeps one out of a commit.
+
+git restores only what it tracked. Material that was untracked or ignored (`.venv`, `.env`, build output) is gone for good, which is why `folder delete` lists it and removes it only with `--force`. A folder with a repository of its own inside it, its own `.git`, is not in the tree's history at all: git keeps only a pointer to the inner repository, and restoring it gives an empty directory. Don't let `koan repair` give that directory a folder file; remove it. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `task block` again after restoring. Then run `koan doctor`: a restored task may name blockers deleted since.
 
 ## More than one machine
 

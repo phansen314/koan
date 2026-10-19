@@ -28,11 +28,15 @@ func TestTaskIDsTakeTheirAt(t *testing.T) {
 	for _, bad := range []string{`"@"`, `"@0"`, `"@x"`, `"@@1"`, `" 1"`, `"01"`, `"+1"`} {
 		w.fail("task show", `{"id":`+bad+`}`, errs.InvalidInput, "")
 	}
-	// In batch, a string with @ is an ID and one without a ref.
-	got := w.ok("batch", `{"tasks":[{"ref":"1","title":"d"},{"title":"e","blocked_by":["1","@1"]}]}`)
+	// In batch too, every form is an ID, and a ref, which has a letter,
+	// is never one.
+	got := w.ok("batch", `{"tasks":[{"ref":"d1","title":"d"},{"title":"e","blocked_by":["d1","2","@1"]}]}`)
 	w.fail("batch", `{"tasks":[{"title":"e","blocked_by":["@1",1]}]}`, errs.InvalidInput, "")
+	w.fail("batch", `{"tasks":[{"title":"e","blocked_by":["1",1]}]}`, errs.InvalidInput, "")
+	w.fail("batch", `{"tasks":[{"ref":"1","title":"d"}]}`, errs.InvalidInput, "")
+	w.fail("batch", `{"tasks":[{"ref":"1-2","title":"d"}]}`, errs.InvalidInput, "")
 	e := task(w.ok("task show", `{"id":5}`))
-	wantIDs(t, "batch blocked_by", e["blocked_by"], 1, 4)
+	wantIDs(t, "batch blocked_by", e["blocked_by"], 1, 2, 4)
 	wantIDs(t, "batch ids", got["ids"], 4, 5)
 }
 

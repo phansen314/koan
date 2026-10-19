@@ -230,22 +230,24 @@ func TestDeleteFolderRemovesFolderFilesLast(t *testing.T) {
 	}
 }
 
-// A recursive folder delete removes material only when forced: it lists
-// what it found, at any depth but never inside it. Hidden entries don't
-// count.
+// A folder delete with contents removes material only when forced: it
+// lists what it found, at any depth but never inside it. Hidden entries
+// count, but for a temp file koan left and a .DS_Store.
 func TestDeleteFolderRefusesMaterial(t *testing.T) {
 	w := ready(t)
 	w.ok("task create", `{"title":"a","folder":"/p/q","notes":"n"}`)
-	os.WriteFile(w.disk("@p/.gitignore"), nil, 0o644)
-	os.MkdirAll(w.disk("@p/.obsidian"), 0o755)
-	w.ok("folder delete", `{"folder":"/p","contents":true}`) // only koan's and hidden entries
+	os.WriteFile(w.disk("@p/.DS_Store"), nil, 0o644)
+	os.WriteFile(w.disk("@p/@q/.koan-tmp-1"), nil, 0o644)
+	w.ok("folder delete", `{"folder":"/p","contents":true}`) // only koan's and disposable entries
 
 	w.ok("task create", `{"title":"b","folder":"/p/q"}`)
 	os.MkdirAll(w.disk("@p/@q/docs/deep"), 0o755)
 	os.WriteFile(w.disk("@p/@q/docs/deep/plan.md"), nil, 0o644)
 	os.WriteFile(w.disk("@p/@stray.txt"), nil, 0o644)
+	os.MkdirAll(w.disk("@p/.venv/lib"), 0o755)
+	os.WriteFile(w.disk("@p/@q/.env"), nil, 0o644)
 	e := w.fail("folder delete", `{"folder":"/p","contents":true}`, errs.Conflict, errs.RuleHasMaterial)
-	want := []string{w.disk("@p/@stray.txt"), w.disk("@p/@q/docs")}
+	want := []string{w.disk("@p/.venv"), w.disk("@p/@stray.txt"), w.disk("@p/@q/.env"), w.disk("@p/@q/docs")}
 	if !slices.Equal(e.Paths, want) {
 		t.Errorf("paths %v, want %v", e.Paths, want)
 	}

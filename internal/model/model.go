@@ -47,8 +47,14 @@ var (
 // ValidFolderName reports whether s can name a folder.
 func ValidFolderName(s string) bool { return folderName.MatchString(s) }
 
-// ValidTag reports whether s can be a tag, or a batch ref.
+// ValidTag reports whether s can be a tag.
 func ValidTag(s string) bool { return tagName.MatchString(s) }
+
+// ValidRef reports whether s can be a batch ref: a tag with a letter in it,
+// so that no ref reads as a task ID.
+func ValidRef(s string) bool {
+	return ValidTag(s) && strings.ContainsAny(s, "abcdefghijklmnopqrstuvwxyz")
+}
 
 // ParseIDRef reads an ID as a reference writes it, with or without its
 // `@`: "42" or "@42".

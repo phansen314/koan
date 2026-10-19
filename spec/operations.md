@@ -103,7 +103,7 @@ Only `folder show`, `folder list`, `folder delete`, and `where` return folder re
 
 Inputs take [references](design.md#references) wherever they name a task or a folder that exists:
 
-- **A task**, in every `id`, `blocked_by`, and `blocks`: an integer, or a string `"42"` or `"@42"`. The one exception is `batch`'s `blocked_by`, where a string names a batch `ref` unless it has the `@`: `"42"` is the task with ref `42`, `"@42"` and `42` the existing task.
+- **A task**, in every `id`, `blocked_by`, and `blocks`: an integer, or a string `"42"` or `"@42"`.
 - **A folder**, in every `folder` and in `task move`'s `to`: a path, or an ID as an integer or a string `"41"` or `"@41"`. A folder given by ID must exist, `not-found` otherwise, and is never made as needed; one given by path is made as needed where the command says so.
 - **Paths only** where the folder is new: `folder create`'s `folder`, a `batch` folder entry's `folder`, and `folder move`'s `to`.
 
@@ -286,8 +286,8 @@ Move a folder, with everything under it, to a new path. Renaming is moving to a 
 Remove a folder and everything under it, for good. koan keeps no trash; undo is git's.
 
 - **Input:** `folder` (required, not `/`), `contents` (default `false`), and `force` (default `false`).
-- Without `contents`, the folder must hold nothing but its folder file, empty notes, and hidden entries.
-- With `contents`, everything under it is removed. **Material blocks it unless `force` is given**: koan never deletes what it didn't write without being told to. Material here is every entry in the folder or in a folder under it that is not koan's and not hidden, an entry named with `@` that is not one of koan's included. Hidden entries (`.gitignore`, `.obsidian`) don't block, and are removed with the folder. Finding material takes a listing of each folder, never a look inside the material.
+- Without `contents`, the folder must hold nothing but its folder file, empty notes, and **disposable** entries: temp files koan left, and a `.DS_Store`.
+- With `contents`, everything under it is removed. **Material blocks it unless `force` is given**: koan never deletes what it didn't write without being told to. Material here is every entry in the folder or in a folder under it that is not koan's and not disposable: an entry named with `@` that is not one of koan's, and hidden entries (`.git`, `.gitignore`, `.env`, `.venv`), included. A hidden entry may be something git can't restore, untracked or ignored, or another repository's history. Finding material takes a listing of each folder, never a look inside the material.
 - Every task outside the folder loses the removed tasks' IDs from its `blocked_by`, and the removed tasks' claims end. The folder is removed first, as [`task delete`](#task-delete) removes its task first.
 - **Result:** `folder` (its record, as it was), `deleted` (IDs of the tasks removed), and `dependents` (IDs of the tasks whose `blocked_by` changed).
 - **Refuses:** `not-empty`, without `contents`; `has-material`, with `contents` and without `force`, listing in `paths` each material entry found, not what is inside it.
@@ -339,8 +339,8 @@ Create folders, and open tasks in them, in one write, where later tasks may wait
 
 | Field | Holds |
 |---|---|
-| `ref` | A name for this task within the batch, following the tag rule. Unique in the batch. Never stored. |
-| `blocked_by` | A mix of existing tasks' IDs, as integers or as strings with `@` (`"@42"`), and the `ref`s of **earlier** tasks in the batch, as strings without (`"42"` is a ref). |
+| `ref` | A name for this task within the batch, following the tag rule, with at least one letter, so that no ref reads as an ID. Unique in the batch. Never stored. |
+| `blocked_by` | A mix of existing tasks' IDs, in any form (`42`, `"42"`, `"@42"`), and the `ref`s of **earlier** tasks in the batch. |
 
 - Refs are global to the batch, and may only point backwards, so a batch cannot contain a cycle.
 - Every folder is checked before an ID is used: each folder entry, that nothing is at its `folder`; each task's folder given by path, that it can be made; one given by ID, that it exists; and the batch's `folder`, the same way, even when no task falls back to it.

@@ -289,7 +289,7 @@ func cmdFolderDelete(c *call) (any, *errs.Error) {
 				fi, err := c.t.Stat(model.FolderNotesRel(f))
 				own = err == nil && fi.Mode().IsRegular() && fi.Size() == 0
 			}
-			if !own && !strings.HasPrefix(name, ".") {
+			if !own && !store.Disposable(entry) {
 				return nil, errs.NewConflict(errs.RuleNotEmpty, "%s is not empty: pass contents to remove everything in it", f).
 					WithFolders(string(f))
 			}

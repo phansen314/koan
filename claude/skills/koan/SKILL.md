@@ -49,7 +49,7 @@ Error kinds worth handling:
 - `conflict` — `.error.rule` says which rule refused it:
   - `cycle` — the block would make a cycle; `.error.ids` shows it. (A `corrupt` from `task block` means the check met a task file it can't read: report it, as below.)
   - `not-empty` — `folder delete` without `--contents` on a folder that holds anything. Don't add `--contents` on your own: ask the user.
-  - `has-material` — `folder delete --contents` on a folder holding the user's own files (material); `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good.
+  - `has-material` — `folder delete --contents` on a folder holding the user's own files (material), hidden ones such as `.git` or `.env` included; `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good.
   - `destination-exists` — `folder move`'s `--to` already exists (folders are never merged), or `task move` would overwrite a `@<id>.md` with text in the target folder; show it to the user.
   - `not-a-folder` — something on a folder path is a file or a symlink.
   - `claimed` — someone has claimed the task; `.error.message` says since when and with what `extra`. See Claims.
@@ -193,7 +193,7 @@ koan where --file docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'   # a fi
 
 ### A plan: several tasks at once
 
-When a request breaks down into several tasks, especially with dependencies among them, create them in **one** `batch` instead of a chain of `task create`s. Give a task a `ref` to let later tasks in the batch wait on it; a `blocked_by` item is an existing task's ID (a number, or a string with `@`: `"@42"`) or an earlier task's ref (a string without `@`: `"42"` is a ref). List blockers before what they block.
+When a request breaks down into several tasks, especially with dependencies among them, create them in **one** `batch` instead of a chain of `task create`s. Give a task a `ref` (lowercase letters, digits, and hyphens, with at least one letter: `schema`, `step-2`) to let later tasks in the batch wait on it; a `blocked_by` item is an existing task's ID (`42`, `"42"`, or `"@42"`, as everywhere) or an earlier task's ref. List blockers before what they block.
 
 ```sh
 koan batch -i - <<'EOF'
