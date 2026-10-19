@@ -455,4 +455,22 @@ func TestNotFoundAcrossFields(t *testing.T) {
 			t.Errorf("%s %s: ids %v folders %v", c.name, c.input, e.IDs, e.Folders)
 		}
 	}
+	// A folder with no folder file has no ID to wait on: it is missing
+	// beside the rest, with the folder file's path.
+	w.ok("folder create", `{"folder":"/nf"}`) // 2
+	os.Remove(w.root("nf/folder.json"))
+	for _, c := range [][2]string{
+		{"task create", `{"title":"x","blocked_by":[98,"/nf"],"blocks":["/nope"]}`},
+		{"task unblock", `{"id":1,"blocked_by":[98,"/nf","/nope"]}`},
+	} {
+		e := w.fail(c[0], c[1], errs.NotFound, "")
+		wantIDs := []int64{98}
+		if c[0] == "task unblock" {
+			wantIDs = []int64{} // an ID need not exist there
+		}
+		if !slices.Equal(e.IDs, wantIDs) || !slices.Equal(e.Folders, []string{"/nf", "/nope"}) ||
+			!slices.Equal(e.Paths, []string{w.root("nf/folder.json")}) || !strings.Contains(e.Message, "koan repair") {
+			t.Errorf("%s %s: ids %v folders %v paths %v message %q", c[0], c[1], e.IDs, e.Folders, e.Paths, e.Message)
+		}
+	}
 }

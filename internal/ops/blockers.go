@@ -57,12 +57,20 @@ func (c *call) gather(items []item, anyID bool, m *absent) ([]resolved, *errs.Er
 			if ok, e := c.t.FolderExists(it.path); e != nil {
 				return nil, e
 			} else if !ok {
-				m.folder(it.path)
+				m.folder(it.path, "")
 				continue
 			}
-			var e *errs.Error
-			if id, e = c.folderIDAt(it.path); e != nil {
-				return nil, e
+			// The folder file holds the ID a blocked_by stores: one with
+			// none is missing too, and one koan can't use fails with its
+			// own error.
+			switch info := c.fx.at[it.path]; {
+			case info.err != nil:
+				return nil, info.err
+			case info.file == nil:
+				m.folder(it.path, c.t.Abs(model.FolderFileRel(it.path)))
+				continue
+			default:
+				id = info.file.ID
 			}
 		} else if !anyID {
 			_, isTask := c.x.Tasks[id]
@@ -87,7 +95,7 @@ func (c *call) gather(items []item, anyID bool, m *absent) ([]resolved, *errs.Er
 func alsoAbsent(gone, e *errs.Error) *errs.Error {
 	if e != nil && e.Kind == errs.NotFound {
 		gone.Message += "; " + e.Message
-		gone.WithIDs(e.IDs...).WithFolders(e.Folders...)
+		gone.WithIDs(e.IDs...).WithFolders(e.Folders...).WithPaths(e.Paths...)
 	}
 	return gone
 }
@@ -96,7 +104,14 @@ func alsoAbsent(gone, e *errs.Error) *errs.Error {
 // its fields, since not-found names everything missing at once.
 type absent struct {
 	ids     []model.ID
-	folders []model.Folder
+	folders []absentFolder
+}
+
+// absentFolder is a folder path an input names that has no ID: no folder
+// is there, or one is, with no folder file, whose path is file.
+type absentFolder struct {
+	path model.Folder
+	file string
 }
 
 func (m *absent) id(id model.ID) {
@@ -105,9 +120,11 @@ func (m *absent) id(id model.ID) {
 	}
 }
 
-func (m *absent) folder(f model.Folder) {
-	if !slices.Contains(m.folders, f) {
-		m.folders = append(m.folders, f)
+// folder adds folder f: one that is not there, or, with file, one that has
+// no folder file at that path.
+func (m *absent) folder(f model.Folder, file string) {
+	if !slices.ContainsFunc(m.folders, func(a absentFolder) bool { return a.path == f }) {
+		m.folders = append(m.folders, absentFolder{f, file})
 	}
 }
 
@@ -122,33 +139,23 @@ func (m *absent) err() *errs.Error {
 		parts = append(parts, fmt.Sprintf("no task or folder has IDs %v", m.ids))
 	}
 	for _, f := range m.folders {
-		parts = append(parts, fmt.Sprintf("folder %s does not exist", f))
+		if f.file == "" {
+			parts = append(parts, fmt.Sprintf("folder %s does not exist", f.path))
+		} else {
+			parts = append(parts, fmt.Sprintf("folder %s has no %s, so it has no ID to wait on: `koan repair` writes one", f.path, model.FolderFileName))
+		}
 	}
 	if len(parts) == 0 {
 		return nil
 	}
 	e := errs.New(errs.NotFound, "%s", strings.Join(parts, "; ")).WithIDs(m.ids...)
 	for _, f := range m.folders {
-		e.WithFolders(string(f))
+		e.WithFolders(string(f.path))
+		if f.file != "" {
+			e.WithPaths(f.file)
+		}
 	}
 	return e
-}
-
-// folderIDAt is the ID of the folder at path f, which a blocked_by stores
-// in its place.
-func (c *call) folderIDAt(f model.Folder) (model.ID, *errs.Error) {
-	if e := c.folderOrNotFound(f); e != nil {
-		return 0, e
-	}
-	info := c.fx.at[f]
-	switch {
-	case info.file != nil:
-		return info.file.ID, nil
-	case info.err != nil:
-		return 0, info.err
-	}
-	return 0, errs.New(errs.NotFound, "folder %s has no %s, so it has no ID to wait on: `koan repair` writes one", f, model.FolderFileName).
-		WithFolders(string(f)).WithPaths(c.t.Abs(model.FolderFileRel(f)))
 }
 
 // folderFile is the folder file of folder f, which a command that changes
