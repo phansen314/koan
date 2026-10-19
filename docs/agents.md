@@ -6,7 +6,6 @@ The rules let koan commands run without a prompt, except the ones that should as
 
 - `init`, which changes this machine's setup;
 - `task delete` and `folder delete`, which only git can undo;
-- `task archive` and `folder archive`, which nothing undoes;
 - `repair`, which changes files to repair the tree;
 - `migrate`, which rewrites them to a new format.
 
@@ -24,7 +23,7 @@ In `~/.claude/settings.json`:
 {
   "permissions": {
     "allow": ["Bash(koan:*)", "Bash(jq:*)"],
-    "ask": ["Bash(koan init:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)", "Bash(koan task archive:*)", "Bash(koan folder archive:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]
+    "ask": ["Bash(koan init:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]
   }
 }
 ```
@@ -44,8 +43,6 @@ In OpenCode the last matching rule wins, so order matters: these go after any ot
       "koan init*": "ask",
       "koan task delete *": "ask",
       "koan folder delete *": "ask",
-      "koan task archive *": "ask",
-      "koan folder archive *": "ask",
       "koan repair*": "ask",
       "koan migrate*": "ask"
     }
