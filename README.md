@@ -21,30 +21,34 @@ The tree is always at `~/koan-root`, and koan's own state (the ID counter and th
 
 ## A taste
 
+Folders are made as needed, and folders and tasks share one ID sequence: below, `/work` gets 1, `/work/api` 2, and the first task 3.
+
 ```sh
-koan task create 'Design schema' --folder /work/api --priority 2 --tags db   # folders are made as needed: /work is 1, /work/api 2, the task 3
+koan task create 'Design schema' --folder /work/api --priority 2 --tags db
 koan task create 'Write migrations' --folder /work/api --blocked-by 3
-koan task frontier --limit 10 --fields id,title                       # what can be taken now, in work order
-koan task why 4                                                       # why 4 isn't ready: .result.ready would move it
+koan task frontier --limit 10 --fields id,title   # what can be taken now, in work order
+koan task why 4                                   # .result.ready: the ready tasks 4 waits on
 koan task done 3
 koan folder list --folder /work --fields id,path,title
-jq -n '{folder: "/work/api", tasks: [                                  # a plan in one call: refs name earlier tasks
+jq -n '{folder: "/work/api", tasks: [              # a plan in one call: refs name earlier tasks
   {ref: "endpoints", title: "Add endpoints"},
   {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan batch -i -
 ```
 
 A write returns what it changed, by ID (`.result.id`); a read returns the whole record. A task's notes are a plain file, edited with any editor: `koan task show 4 | jq -r .result.task.notes_path` says where.
 
+Folder names use letters, digits, and hyphens, up to 64 characters, and are case-sensitive (`/work` does not find `/Work`; avoid names that differ only in case if the tree may move to a Mac). Tags are lowercase only, so matching one is always exact. See [Folders](spec/design.md#folders).
+
 ## Use it from Claude Code and OpenCode
 
-The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin (the repo is a Claude Code plugin marketplace):
+The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin (this repo is a Claude Code plugin marketplace):
 
 ```sh
 claude plugin marketplace add phansen314/koan
 claude plugin install koan@koan
 ```
 
-Then, from a clone of this repo, add the permission rules. They let koan commands run without a prompt, except the ones that should ask: `init`, which changes this machine's setup; the deletes, which can't be undone but through git; `repair`, which changes files to repair the tree; and `migrate`, which rewrites them to a new format.
+Then, from a clone of this repo, add the permission rules. They let koan run without prompting, except for `init`, the deletes, `repair`, and `migrate`, which still ask. For OpenCode the script also links the skill.
 
 ```sh
 scripts/install.sh               # every agent whose CLI is on PATH
@@ -52,48 +56,7 @@ scripts/install.sh --opencode    # or name them: --claude, --opencode
 scripts/install.sh --uninstall   # take it all out again
 ```
 
-It needs `jq`, backs a settings file up (to `.bak.<timestamp>`, a new one each time) before changing it, touches only koan's rules, and is safe to rerun. For OpenCode it also links the skill into `~/.config/opencode/skills/koan`, so OpenCode's skill comes from this clone: `git pull` updates it. Claude Code's comes from the plugin: `claude plugin update koan@koan` picks up changes. To try an edited skill in Claude Code before pushing, run `claude --plugin-dir .` in a clone.
-
-### The rules, to add by hand
-
-Claude Code, in `~/.claude/settings.json`:
-
-```json
-{
-  "permissions": {
-    "allow": ["Bash(koan:*)", "Bash(jq:*)"],
-    "ask": ["Bash(koan init:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)", "Bash(koan repair:*)", "Bash(koan migrate:*)"]
-  }
-}
-```
-
-OpenCode, in `~/.config/opencode/opencode.json` (the script leaves an `opencode.jsonc`, or a file with comments, alone, and prints these for you to add). In OpenCode the last matching rule wins, so order matters: these go after any other rule that matches koan, and the asks after `"koan *"`:
-
-```json
-{
-  "permission": {
-    "bash": {
-      "koan *": "allow",
-      "jq *": "allow",
-      "koan init*": "ask",
-      "koan task delete *": "ask",
-      "koan folder delete *": "ask",
-      "koan repair*": "ask",
-      "koan migrate*": "ask"
-    }
-  }
-}
-```
-
-For OpenCode, link the skill too: `ln -s "$PWD/claude/skills/koan" ~/.config/opencode/skills/koan` from the clone. Not in `~/.claude/skills`: OpenCode reads that as well, and Claude Code would load the skill a second time next to the plugin's.
-
-OpenCode also asks before its file tools touch anything outside the project, which includes a task's notes file. To let it read and edit notes without asking, add `"external_directory": { "~/koan-root/*": "allow" }` under `"permission"`.
-
-## Folder names and tags
-
-Folder names can use letters, digits, and hyphens, up to 64 characters, and are case-sensitive: `/Work/API-v2` is fine, and `/work` does not find `/Work`. Avoid names that differ only in case if the tree may move to a Mac; see [Folders](spec/design.md#folders).
-
-Tags are lowercase only (`db`, `needs-review`), so matching a tag is always exact.
+[docs/agents.md](docs/agents.md) has the rules to add by hand, what the script changes, and how each agent picks up skill updates.
 
 ## Several agents, one tree
 
@@ -121,9 +84,13 @@ koan repair --kinds dangling-reference,stale-claim   # remove blockers and claim
 
 `repair` never chooses between versions, and removes a link to a task that seems gone only when asked by name. [Doctor and repair](spec/design.md#doctor-and-repair) lists every kind and what `repair` does with it.
 
-## Undoing a delete
+## Keep the tree in git
 
-`koan task delete` and `koan folder delete` remove files for good; koan keeps no trash. Keep the tree in git (`git init` in it, and commit now and then) and a delete can be undone, back to the last commit:
+koan keeps no trash and no history; git is the way back. `git init` in `~/koan-root` and commit now and then. Every file koan writes is safe to commit and restore, because the ID counter is kept outside the tree, where nothing git does can set it back. A crash can leave a `.koan-tmp-*` file; a root `.gitignore` with `.koan-tmp-*` keeps one out of a commit.
+
+### Undoing a delete
+
+`koan task delete` and `koan folder delete` remove files for good. With the tree in git, a delete can be undone back to the last commit:
 
 ```sh
 cd ~/koan-root
@@ -132,15 +99,21 @@ git restore -- @proj/@42.json @proj/@42.md                        # not yet comm
 git restore --source=<commit>^ -- @proj/@42.json @proj/@42.md     # committed: from the commit before
 ```
 
-Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Every file koan writes is safe to commit and restore, because the ID counter is kept outside the tree. A crash can leave a `.koan-tmp-*` file, which `koan doctor` finds; a root `.gitignore` with `.koan-tmp-*` keeps one out of a commit.
+Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Then:
 
-git restores only what it tracked. Material that was untracked or ignored (`.venv`, `.env`, build output) is gone for good, which is why `folder delete` lists it and removes it only with `--force`. A folder with a repository of its own inside it, its own `.git`, is not in the tree's history at all: git keeps only a pointer to the inner repository, and restoring it gives an empty directory. Don't let `koan repair` give that directory a folder file; remove it. The delete also took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `task block` again after restoring. Then run `koan doctor`: a restored task may name blockers deleted since.
+- **Put back its blocks.** The delete took the task's ID out of other tasks' blockers; its output lists them as `dependents`, to `koan task block` again.
+- **Run `koan doctor`.** A restored task may name blockers deleted since.
 
-## More than one machine
+git restores only what it tracked:
 
-A tree is written from one machine. The ID counter is that machine's, kept in the state file and never in the tree, so that nothing git does to the tree can set it back. To use a tree on another machine, clone or copy it to `~/koan-root` there and run `koan init`: it starts that machine's counter at the highest ID it finds. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve.
+- Untracked or ignored material (`.venv`, `.env`, build output) is gone for good, which is why `folder delete` lists it and removes it only with `--force`.
+- A folder with its own `.git` inside is not in the tree's history at all: git keeps only a pointer to the inner repository, and restoring it gives an empty directory. Remove that directory rather than letting `koan repair` give it a folder file.
 
-A machine has one tree. Keep separate bodies of work as top-level folders (`/work`, `/home`).
+### More than one machine
+
+A tree is written from one machine, and a machine has one tree; keep separate bodies of work as top-level folders (`/work`, `/home`).
+
+To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`: it starts that machine's ID counter at the highest ID it finds. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve.
 
 ## Upgrading
 
@@ -149,17 +122,18 @@ GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest
 koan info | jq -r .result.state
 ```
 
-When a release changes the files a tree is made of, `state` is `needs-migration`, and every command but `migrate`, `doctor`, `init`, `info`, and `version` refuses the tree until you run `koan migrate`. Commit the tree first if it is in git: that commit is the way back, since there are no migrations in reverse. `koan migrate --dry-run` reports what would change.
+When a release changes the files a tree is made of, `state` is `needs-migration`, and every command but `migrate`, `doctor`, `init`, `info`, and `version` refuses the tree until you run `koan migrate`. There are no migrations in reverse, so commit the tree first: that commit is the way back. `koan migrate --dry-run` reports what would change.
 
-## Specs
+## Docs
 
 - [spec/design.md](spec/design.md): the data model, invariants, concurrency, and crashes.
 - [spec/operations.md](spec/operations.md): every command's input, output, and refusals.
 - [spec/cli.md](spec/cli.md): how the command line maps onto the commands.
 - [spec/implementation.md](spec/implementation.md): how it is built and tested.
 - [schemas/](schemas): the JSON Schemas of every file, input, and output.
-
-There is no interactive picker at the moment; it is being redesigned.
+- [docs/coordination.md](docs/coordination.md): coordinating workers on one tree.
+- [docs/agents.md](docs/agents.md): setting up an agent by hand.
+- [docs/deferred.md](docs/deferred.md): work decided on but not built yet.
 
 ## Development
 
@@ -168,16 +142,7 @@ go test ./...                          # unit and end-to-end tests
 go test -short ./...                   # without the 800-process lock test and the crash matrix
 ```
 
-### Releasing
-
-The plugin serves the skill from the release tag, so the skill and `go install …@latest` move together.
-
-1. CI is green on `main`.
-2. Pick the version: before 1.0, a new command or any change to the formats or the JSON output bumps the minor version; anything else, the patch.
-3. Set `ref` in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) to the new tag (until the first release the plugin's `source` is `"./"`: replace it with `{ "source": "github", "repo": "phansen314/koan", "ref": "vX.Y.Z" }`), and the skill's minimum version if the skill now needs this release; commit.
-4. Tag and push together: `git tag -a vX.Y.Z -m "…"` then `git push --atomic origin main vX.Y.Z`.
-5. `gh release create vX.Y.Z` with notes on what changed and how to fix existing trees.
-6. Check: `GOBIN=$(mktemp -d) GOPROXY=https://proxy.golang.org go install github.com/phansen314/koan/cmd/koan@vX.Y.Z`, and that binary's `koan version` reports `X.Y.Z`.
+[docs/releasing.md](docs/releasing.md) has the release steps.
 
 ## License
 
