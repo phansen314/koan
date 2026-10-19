@@ -222,13 +222,14 @@ func (t *Tree) Stat(rel string) (fs.FileInfo, error) { return t.root.Lstat(rel) 
 
 // Material lists the entries of folder f, not the root, that are not
 // koan's, hidden ones included, but for the Disposable: what folder delete
-// removes only when told to. It looks at names and types alone, never
-// inside an entry.
+// removes only when told to, sorted by name. It looks at names and types
+// alone, never inside an entry.
 func (t *Tree) Material(f model.Folder) ([]string, *errs.Error) {
 	entries, e := t.List(f)
 	if e != nil {
 		return nil, e
 	}
+	slices.SortFunc(entries, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	var material []string
 	for _, en := range entries {
 		name := en.Name()
