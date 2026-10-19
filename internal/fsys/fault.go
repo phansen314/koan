@@ -17,6 +17,7 @@ const (
 	OpLstat      = "lstat"
 	OpReadDir    = "readdir"
 	OpCreateTemp = "createtemp"
+	OpCreate     = "create"
 	OpWrite      = "write"
 	OpSyncFile   = "syncfile"
 	OpCloseFile  = "closefile"

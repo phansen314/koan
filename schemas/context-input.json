@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "context-input",
+  "type": "object",
+  "properties": {
+    "folder": { "$ref": "folder-ref", "description": "The folder, / included." },
+    "file": { "type": "string", "pattern": "^/", "description": "An absolute path on disk, in the tree or under a marker." }
+  },
+  "oneOf": [{ "required": ["folder"] }, { "required": ["file"] }],
+  "additionalProperties": false
+}

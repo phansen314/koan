@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"path"
 	"slices"
 	"strconv"
 
@@ -381,4 +382,52 @@ func DecodeMeta(data []byte) (*Meta, []Problem, error) {
 		return nil, ps, nil
 	}
 	return &Meta{Schema: n}, nil, nil
+}
+
+// Marker is a marker's content, .koan/marker.json in a directory outside
+// the tree bound to a folder. Field order is the order koan writes.
+type Marker struct {
+	Schema int64  `json:"schema"`
+	ID     ID     `json:"id"`
+	Path   Folder `json:"path"`
+	Dir    string `json:"dir"`
+}
+
+// The names of a marker's directory and files, and its .gitignore's content.
+const (
+	MarkerDir    = ".koan"
+	MarkerName   = "marker.json"
+	IgnoreName   = ".gitignore"
+	IgnoreAll    = "*\n"
+	MarkerFormat = 1
+)
+
+// DecodeMarker reads a marker in this binary's format and checks every
+// rule. A nil error and no problems means it is usable.
+func DecodeMarker(data []byte) (*Marker, []Problem, error) {
+	m, err := Keys(data)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ps := missing(m, []string{"schema", "id", "path", "dir"}); ps != nil {
+		return nil, ps, nil
+	}
+	var mk Marker
+	if err := Decode(data, &mk); err != nil {
+		return nil, []Problem{prob("", err.Error())}, nil
+	}
+	var ps []Problem
+	if mk.Schema != MarkerFormat {
+		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", MarkerFormat)))
+	}
+	if !ValidID(mk.ID) {
+		ps = append(ps, prob("/id", "is not an ID"))
+	}
+	if f, ok := ParseFolder(string(mk.Path)); !ok || f != mk.Path || f == Root {
+		ps = append(ps, prob("/path", "is not a folder path"))
+	}
+	if !path.IsAbs(mk.Dir) || path.Clean(mk.Dir) != mk.Dir {
+		ps = append(ps, prob("/dir", "is not a clean absolute path"))
+	}
+	return &mk, ps, nil
 }

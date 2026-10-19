@@ -23,7 +23,8 @@ A command that changes the tree returns **identities**, which go straight into t
   - `task delete` and `folder delete` return the record as it was, since there is nothing left to show: its `notes_path`, and a folder's `dir`, name paths that are gone. `task delete` returns the `id` beside it, since a task file it can't use gives no record.
   - `task claim-next` returns the record of the task it claimed, which the caller doesn't know yet.
   - `batch` returns the identities of everything it made.
-  - `where`, `task why`, and the commands of [setup and diagnosis](#setup-and-diagnosis) are reports, with shapes of their own.
+  - `where`, `context`, `task why`, and the commands of [setup and diagnosis](#setup-and-diagnosis) are reports, with shapes of their own.
+  - `marker bind` and `marker unbind`, of the kind `marker` in the table below, write only outside the tree, and return what they wrote or removed there.
 - **Inside a record**, a field naming another task or folder holds a reference: a task's `blocked_by` and `open_blockers` hold IDs, and its `folder` a path.
 
 ### Errors
@@ -50,7 +51,7 @@ A command that changes the tree returns **identities**, which go straight into t
 | `problems` | For `invalid-input`: one `{field, reason}` per problem, `field` a JSON pointer into the input. For `corrupt`: one per rule the file breaks. |
 | `changed_paths` | Files and folders the command created, rewrote, or removed before it failed. Empty means nothing changed. |
 
-Three `conflict` rules are shared, and are not repeated below. Any command that walks the tree can fail with `duplicate-id` (`ids`: the ID; `paths`: every copy). Any command given a folder path can fail with `not-a-folder` (something on the path is a file or a symlink), and with `case-mismatch` (a part of the path is on disk only in another case: `folders` holds the path as it is on disk, as far as it goes, and the message says "exists as /proj"; see [Folders](design.md#folders)).
+Three `conflict` rules are shared, and are not repeated below. Any command that walks the tree can fail with `duplicate-id` (`ids`: the ID; `paths`: every copy). Any command given a folder path can fail with `not-a-folder` (something on the path is a file or a symlink; for the marker commands, `<dir>/.koan` is not a directory), and with `case-mismatch` (a part of the path is on disk only in another case: `folders` holds the path as it is on disk, as far as it goes, and the message says "exists as /proj"; see [Folders](design.md#folders)).
 
 ### Warnings
 
@@ -58,12 +59,12 @@ Three `conflict` rules are shared, and are not repeated below. Any command that 
 { "kind": "dangling-reference", "message": "task 42 is blocked by 17, which does not exist", "ids": [42, 17], "paths": ["/home/paul/koan-root/@proj/@42.json"] }
 ```
 
-There are three kinds: `unusable-file` and `dangling-reference`, defined in [design.md](design.md#walking), and `id-above-counter`, from a command that issues IDs into a tree an outside change put IDs in above the counter ([IDs](design.md#ids)): its `ids` is the highest such ID, its `paths` the file that holds it, and its message says the counter was raised. A command reports each at most once per file, and only for files it reads: a write that returns identities reads no task's blockers to build a record, so it reports nothing about them.
+There are four kinds: `unusable-file` and `dangling-reference`, defined in [design.md](design.md#walking); `id-above-counter`, from a command that issues IDs into a tree an outside change put IDs in above the counter ([IDs](design.md#ids)): its `ids` is the highest such ID, its `paths` the file that holds it, and its message says the counter was raised; and `stale-marker`, from a command that found a folder by a [marker](design.md#markers) whose `path` is not the folder's now: its `ids` is the folder, its `paths` the marker, and its message gives both paths and says `marker bind` refreshes it. A command reports each at most once per file, and only for files it reads: a write that returns identities reads no task's blockers to build a record, so it reports nothing about them.
 
 ### Rules for every command
 
-- **A usable root.** Every command but `init`, `version`, and `info` fails unless the root is usable ([Root states](design.md#root-states)). `doctor` and `migrate` also run on a root that needs migration, when the binary has a conversion from its format.
-- **Reads and writes.** A write holds the tree's lock alone; a read shares it with other reads, and changes nothing. So a read never sees part of a write. Either fails with `busy` if it can't get the lock in 5 seconds. `info` and `version` take no lock.
+- **A usable root.** Every command but `init`, `version`, `info`, and `marker unbind` fails unless the root is usable ([Root states](design.md#root-states)). `doctor` and `migrate` also run on a root that needs migration, when the binary has a conversion from its format.
+- **Reads and writes.** A write holds the tree's lock alone; a read shares it with other reads, and changes nothing. So a read never sees part of a write. Either fails with `busy` if it can't get the lock in 5 seconds. `info`, `version`, and `marker unbind` take no lock.
 - **Folders are made as needed.** A command that puts something into a folder creates that folder, and any above it, when it is missing: `task create`, `batch`, `task move`, `folder move`, and `folder create`. Their results list what was created in `folders_created`. A command that only reads a folder, or removes one, fails with `not-found` when it is missing.
 - **Each folder made takes an ID.** The counter is first brought up to the highest ID in the tree, if it is below it ([IDs](design.md#ids)), then raised once for every folder and task a command makes, before any is made; folders take their IDs first, parents before children, and tasks after them. Each folder is made, then its folder file and its notes, empty unless given, are written in it. A command that fails partway leaves the folders made so far, the last perhaps without its folder file or notes ([Crashes and failures](design.md#crashes-and-failures)), and the IDs set aside for the rest unused.
 - **Asking for what already holds is not an error.** `task done` on a done task, `task block` with a blocker already there, `task move` to the folder the task is in: the command succeeds, writes nothing, and returns `changed: false`.
@@ -97,7 +98,7 @@ Every command that returns a folder's record returns it in one shape (`schemas/f
 
 A command that returns a folder's `id` or record without failing on its folder file (`folder create`, `folder move`, `folder delete`, `folder list`) gives a folder file it can't use `id` `null`, `title` `null`, and `extra` `{}`, with an `unusable-file` warning. `folder show`, `folder update`, and `where` fail with `corrupt` instead.
 
-Only `folder show`, `folder list`, `folder delete`, and `where` return folder records. Every other result names a folder by reference: `id` and `path` from a folder write, a path in a task's `folder` and in `folders_created`, and a path with its ID in `batch`'s `folders`.
+Only `folder show`, `folder list`, `folder delete`, `where`, and `context` return folder records. Every other result names a folder by reference: `id` and `path` from a folder write, a path in a task's `folder` and in `folders_created`, and a path with its ID in `batch`'s `folders`.
 
 ### References
 
@@ -158,6 +159,9 @@ Their results always carry `total`, the number of tasks or folders before `limit
 | [`task list`](#task-list) | read | Return the tasks in scope. |
 | [`task why`](#task-why) | read | Say what a task is waiting on. |
 | [`where`](#where) | read | Turn a reference into disk paths, or a disk path into a reference. |
+| [`context`](#context) | read | Return what starting work in a folder needs: the folder, those above it, its and its parent's notes, its open tasks. |
+| [`marker bind`](#marker-bind) | marker | Bind a directory outside the tree to a folder. |
+| [`marker unbind`](#marker-unbind) | marker | Remove a directory's marker. |
 | [`task claim`](#task-claim) | write | Claim a task. |
 | [`task claim-next`](#task-claim-next) | write | Claim the first ready, unclaimed task. |
 | [`task release`](#task-release) | write | End a claim. |
@@ -478,9 +482,15 @@ Turn a [reference](design.md#references) into where it is on disk, or a path on 
 - **From `file`:** the path is made clean without touching the disk: `a/../b` is `b`.
 - It must be the tree's directory or under it, as `~/koan-root` or as the directory it links to.
 - A path that is neither is tried again with the symlinks in its longest existing prefix resolved, so one reaching the tree through a link of its own (`~/k` for `~/koan-root`) is found. This reads only the path's own directories.
-- Anywhere else is `not-found`.
+- Anywhere else, the path is found by its [marker](design.md#markers), below.
 - Its leading `@` folder names lead through folders, each of which must exist. What follows names the folder itself (nothing, `@folder.json`, or `@folder.md`); a task (`@42.json` or `@42.md`, the task file existing); or material, the rest of the path, whose first entry is not named with `@`. Any other `@` entry there, a folder name on something that is not a folder included, is not one of koan's and has no reference: `not-found`.
 - The folders must exist, and a task must; material need not, and is never looked at. An ID given for material that is a task's is `not-found`, saying so.
+- **By a marker**, for a `file` outside the tree: the look starts at the path with its symlinks resolved, as far as it exists, or at its directory when that is not a directory, and goes up to `/`, stopping at the first directory holding `.koan/marker.json`, `.koan` being a directory and not a symlink.
+  - None found is `not-found`.
+  - The marker is read as the folder file is, and one koan can't use (not a regular file, not valid JSON, breaking `schemas/marker-file.json`, or in another format) fails it with `corrupt`, `paths` the marker.
+  - One whose `dir` is not the directory it is in, told by identity rather than spelling, is `not-found`: its message names the marker and the directory it was written for, and says `marker bind` binds this one.
+  - Its `id` is found as a folder given by ID is: a folder that is gone, or an ID that is a task's, is `not-found`, the message naming the marker. A `path` that is not the folder's now is a `stale-marker` warning.
+  - The result is the folder's: what is in the directory is not the folder's material, so `material` and `file` are `null`, and `ref` and `hint` the folder's. `marker` is the marker's path.
 - **Result:**
 
 | Field | Holds |
@@ -491,9 +501,69 @@ Turn a [reference](design.md#references) into where it is on disk, or a path on 
 | `task` | The task's ID, or `null`. |
 | `material` | The material part, or `null`. |
 | `file` | The absolute path of the material, or of the task's `@<id>.md`; `null` for a folder, whose record has `dir`. |
+| `marker` | The absolute path of the `marker.json` the folder was found by, or `null` for a `ref`, or a `file` in the tree. |
 
 - A folder file koan can't use fails it with `corrupt`, as for `folder show`.
 - Kept text writes `<ref> (<hint>)`: `koan where @41:docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'`.
+
+### context
+
+Return, in one call, what an agent starting work in a folder needs: the folder, the folders above it, its notes and its parent's, and its open tasks.
+
+- **Input:** exactly one of `folder`, a folder, `/` included; and `file`, an absolute path on disk.
+- **From `file`:** the folder [`where`](#where) gives for it: the folder it names, the folder holding the task or the material it names, or, outside the tree, the folder of its nearest marker. `where`'s errors and warnings for the path are `context`'s.
+- **Result:**
+
+| Field | Holds |
+|---|---|
+| `folder` | Its record. |
+| `ancestors` | The records of the folders above it, from the top, the root left out: empty for the root and a folder in it. |
+| `notes` | Its `@folder.md`, whole; `""` when there is none; `null` for the root. |
+| `parent_notes` | The same, for the folder it is in; `null` when that is the root, or it is the root. |
+| `tasks` | The records of its own open tasks, not those of the folders under it: what `task list` returns with `folder` it and `recursive` `false`. |
+| `marker` | As `where`'s: the marker the folder was found by, or `null`. |
+
+- Its folder file koan can't use fails it with `corrupt`, as for `folder show`. An ancestor's is a record with `id` `null`, `title` `null`, and `extra` `{}`, with an `unusable-file` warning, as in `folder list`.
+- Notes koan can't read (not a regular file, or refused by the operating system) are `null`, with an `unusable-file` warning saying why. koan reads notes only to return them.
+- It warns as `task list` does, for the tasks it loads.
+- It is a read, and holds the lock shared from before it finds the folder to after its last file is read.
+
+## Markers
+
+What a marker is and how one is found is in [design.md](design.md#markers). Both commands take `dir`, an absolute path, and resolve it to its real path, symlinks and all, which must be a directory: `not-found` otherwise. From then on, `dir` is that path. Both refuse `in-tree`, when `dir` is the tree's directory or under it, as `~/koan-root` or the directory it links to: a `.koan/` there is material. Directories are compared by identity, so another spelling of the tree, in another case, is the tree. Both refuse `has-material`, when `.koan/` holds anything but [koan's own files](design.md#markers), listing each other entry in `paths`, and change nothing.
+
+### marker bind
+
+Bind a directory outside the tree to a folder: write its `.koan/`, its `.gitignore`, then its `marker.json`, with the folder's ID, its path, and `dir`.
+
+- **Input:** `folder` (required, not `/`), `dir` (required), and `force` (default `false`).
+- The folder must have a folder file koan can use, since the marker holds its ID: one with none is `not-found` (`koan repair` writes one), and one it can't use `corrupt`.
+- An existing `.koan/marker.json` that koan can use, whose `dir` is `dir`, and whose `id` is another folder's that exists, binds that folder: `bound-elsewhere`, unless `force`. Any other is replaced: one for this folder, written again with its path as it is now; one whose folder is gone, or whose ID is a task's; a foreign one; one koan can't use; or none, with or without a `.koan/`.
+- `.gitignore` is written unless it already holds exactly `*` and a newline, and `marker.json` unless it already holds the marker being written. Nothing to write is not an error: `changed` is `false`.
+- A new `.gitignore` is written in place; `marker.json`, and an empty `.gitignore` left by a bind cut short, go through a temp file in `.koan/`, renamed over the old one ([Markers](design.md#markers)). A temp file left by a failure or a kill is ignored by git, and removed by `marker unbind`.
+- It changes nothing in the tree, but holds the lock alone, as a write does, from before it finds the folder to after the marker is written: two binds of one directory never both pass the `bound-elsewhere` check.
+- **Result:** `id` and `path` (the folder's), `dir`, `marker` (the absolute path of `marker.json`), and `changed`.
+- On failure, `changed_paths` lists what it wrote. Running it again is always safe: a kill leaves the old marker, the new one, or a `.koan/` with no `marker.json`, which the next `marker bind` completes.
+- **Refuses:**
+  - `in-tree` and `has-material`.
+  - `holds-tree`, when the tree is under `dir`, as `~/koan-root` or the directory it links to. That covers `$HOME` and `/`, whose marker would bind every directory outside the tree that has none of its own.
+  - `checkout`, when `dir/.git` is a directory, unless `force`: a checkout's marker would bind the worktrees inside it ([Markers](design.md#markers)).
+  - `bound-elsewhere`, unless `force`: `ids` the other folder's ID, `paths` the marker.
+  - `not-a-folder`, when `dir/.koan` is there and not a directory.
+
+### marker unbind
+
+Remove a directory's marker: its `marker.json`, then any temp file a `marker bind` left, then `.gitignore`, then `.koan/` itself, and nothing else.
+
+- **Input:** `dir` (required).
+- Only `dir` is looked in, never a directory above it. The marker is not read: a foreign one, one koan can't use, and a `.koan/` with no `marker.json` are removed like any other.
+- No `.koan/` in `dir` is not an error: `changed` is `false`.
+- It does not use the tree, so it runs whatever the root's state, and takes no lock.
+- **Result:** `dir`; `removed`, the absolute paths removed, in the order removed; and `changed`.
+- A failure partway lists what it removed before it in `changed_paths`. Running it again is always safe, and removes the rest.
+- **Refuses:**
+  - `in-tree` and `has-material`.
+  - `not-a-folder`, when `dir/.koan` is there and not a directory.
 
 ## Claims
 
