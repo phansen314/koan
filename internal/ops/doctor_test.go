@@ -296,3 +296,21 @@ func TestRepairSkipsIDsHeldByNotes(t *testing.T) {
 		t.Errorf("folder file %s, want ID 7", data)
 	}
 }
+
+// Notes whose task is gone still hold their ID: above the counter, they are
+// id-above-counter, and repair raises the counter past them.
+func TestDoctorCountsNotesAboveTheCounter(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/a"}`)
+	os.WriteFile(w.root("a/57.md"), []byte("old"), 0o644)
+	if f := w.findings(); !slices.Contains(f, "id-above-counter @a/@57.md") {
+		t.Errorf("findings %v, want id-above-counter naming the notes", f)
+	}
+	w.ok("repair", `{"kinds":["id-above-counter"]}`)
+	if n := w.counter(); n != 57 {
+		t.Errorf("last_id %v, want 57", n)
+	}
+	if id := w.ok("task create", `{"title":"x","folder":"/a"}`)["id"]; id != float64(58) {
+		t.Errorf("next ID %v, want 58", id)
+	}
+}

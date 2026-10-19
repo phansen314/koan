@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/model"
@@ -215,6 +216,13 @@ func cmdFolderMove(c *call) (any, *errs.Error) {
 	if ref.path != "" && to != "" && ref.path != to && ref.path.Holds(to) {
 		c.in.bad("/to", "may not be under the folder being moved")
 	}
+	// Changing the case of the folder's own name is the one way two paths of
+	// a move may differ only in case.
+	if ref.path != "" && to != "" && !(ref.path.Parent() == to.Parent() && model.SameButCase(ref.path.Name(), to.Name())) {
+		if i, q := model.CaseClash([]model.Folder{ref.path, to}); i >= 0 {
+			c.in.bad("/to", "differs only in case from %s: rename that folder first", q)
+		}
+	}
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
@@ -232,14 +240,23 @@ func cmdFolderMove(c *call) (any, *errs.Error) {
 	if from == to {
 		return c.made(to, false, []model.Folder{}), nil
 	}
-	if _, err := c.t.Stat(to.Rel()); err == nil {
+	// A rename to another case is the one move whose to may be the folder
+	// itself, on a filesystem that ignores case.
+	recase := from.Parent() == to.Parent() && model.SameButCase(from.Name(), to.Name())
+	if taken, e := c.t.Taken(to, from); e != nil {
+		return nil, e
+	} else if taken {
 		return nil, c.destinationExists("already exists", to)
 	}
 	created, e := c.ensure(to.Parent())
 	if e != nil {
 		return nil, e
 	}
-	taken, e := c.t.Move(from.Rel(), to.Rel())
+	move := c.t.Move
+	if recase {
+		move = c.t.MoveCase
+	}
+	taken, e := move(from.Rel(), to.Rel())
 	if e != nil {
 		return nil, e
 	}
@@ -326,7 +343,7 @@ func cmdFolderDelete(c *call) (any, *errs.Error) {
 	}
 	// The folder goes first, for the reason task delete gives.
 	if e := c.t.Discard(f.Rel()); e != nil {
-		return nil, e
+		return nil, c.discardFailed(e, res.Deleted)
 	}
 	if res.Dependents, e = c.unreference(res.Deleted); e != nil {
 		return nil, e
@@ -335,6 +352,39 @@ func cmdFolderDelete(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	return res, nil
+}
+
+// discardFailed finishes a folder delete whose removal failed partway, for
+// the tasks it did remove: their IDs leave every blocked_by and their
+// claims end, as for a removal that succeeded. It returns the removal's
+// error, naming those tasks; a failure of its own is added to the message.
+// The index still holds: nothing but the removed tasks has moved.
+func (c *call) discardFailed(e *errs.Error, deleted []model.ID) *errs.Error {
+	gone := []model.ID{}
+	for _, id := range deleted {
+		if _, err := c.t.Stat(model.TaskRel(c.x.Tasks[id], id)); errs.IsErrno(err, syscall.ENOENT) {
+			gone = append(gone, id)
+		}
+	}
+	if len(gone) == 0 {
+		return e
+	}
+	e.WithIDs(gone...)
+	e.Message += fmt.Sprintf("; it removed %d of the tasks", len(gone))
+	dependents, ce := c.unreference(gone)
+	if ce == nil {
+		ce = c.dropClaims(gone...)
+	}
+	if ce != nil {
+		e.Message += fmt.Sprintf(", and cleaning up after them failed too, which doctor finds: %s", ce.Message)
+		return e
+	}
+	others := "tasks"
+	if len(dependents) == 1 {
+		others = "task"
+	}
+	e.Message += fmt.Sprintf(", and %d other %s no longer wait on them", len(dependents), others)
+	return e
 }
 
 type folderListing struct {
@@ -467,6 +517,34 @@ func highestID(x *store.Index, folders map[model.Folder]*model.FolderFile) model
 	return highest
 }
 
+// highest is the highest ID in the tree, as highestID counts it, and a file
+// that holds it. A folder file koan can't use is a warning, as for
+// folderIDs.
+func (c *call) highest() (model.ID, string, *errs.Error) {
+	byID, e := c.folderIDs()
+	if e != nil {
+		return 0, "", e
+	}
+	var top model.ID
+	var rel string
+	for id, f := range c.x.Tasks {
+		if id > top {
+			top, rel = id, model.TaskRel(f, id)
+		}
+	}
+	for id, fs := range c.x.Notes {
+		if id > top {
+			top, rel = id, model.NotesRel(fs[0], id)
+		}
+	}
+	for id, fs := range byID {
+		if id > top {
+			top, rel = id, model.FolderFileRel(fs[0])
+		}
+	}
+	return top, rel, nil
+}
+
 // holder finds what has ID id: a task, in folder f, or folder f itself.
 // Nothing is not-found; more than one is duplicate-id.
 func (c *call) holder(id model.ID) (f model.Folder, isTask bool, e *errs.Error) {
@@ -547,6 +625,7 @@ func (c *call) plan(fs ...model.Folder) ([]model.Folder, *errs.Error) {
 // entry, with what it is made with.
 type newFolder struct {
 	folder model.Folder
+	at     string // where it is in a batch's input
 	title  *string
 	extra  map[string]any
 	notes  string

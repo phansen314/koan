@@ -43,8 +43,19 @@ func (n newTask) file(id model.ID, now string, blockers []model.ID) *model.TaskF
 	}
 }
 
-// issue takes n new IDs from the counter and saves it: the first is returned.
+// issue takes n new IDs and saves the counter: the first is returned. They
+// start above the tree's highest ID as well as the counter's, since an
+// outside change can bring in IDs the counter never issued.
 func (c *call) issue(n int) (model.ID, *errs.Error) {
+	top, rel, e := c.highest()
+	if e != nil {
+		return 0, e
+	}
+	if top > c.t.State.LastID {
+		c.warn(errs.WarnIDAboveCounter, fmt.Sprintf("the tree holds ID %d, above the counter (%d), as an outside change can leave it: the counter was raised past it", top, c.t.State.LastID),
+			[]model.ID{top}, c.t.Abs(rel))
+		c.t.State.LastID = top
+	}
 	first := c.t.State.LastID + 1
 	if first+model.ID(n)-1 > model.MaxID {
 		return 0, errs.New(errs.Internal, "the ID counter is exhausted")
@@ -194,7 +205,7 @@ func readFolderEntries(c *call) ([]newFolder, int) {
 		if !ok {
 			continue
 		}
-		n := newFolder{folder: f.folder("folder", true, "")}
+		n := newFolder{folder: f.folder("folder", true, ""), at: f.at + "/folder"}
 		n.title, _ = f.optTitle("title")
 		n.extra, _ = f.object("extra")
 		n.notes, _ = f.text("notes")
@@ -226,6 +237,15 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		}
 	}
 	tasks := make([]newTask, len(raws))
+	// Every folder path in the batch, and where it is, for the case check.
+	var paths []model.Folder
+	var pathsAt []string
+	for _, n := range entries {
+		paths, pathsAt = append(paths, n.folder), append(pathsAt, n.at)
+	}
+	if folder.id == 0 && folder.path != "" {
+		paths, pathsAt = append(paths, folder.path), append(pathsAt, "/folder")
+	}
 	refAt := map[string]int{}
 	var existing []model.ID
 	for i, raw := range raws {
@@ -245,10 +265,10 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		f.get("blocked_by", false, &blockers, "a list of task IDs and refs")
 		for j, b := range blockers {
 			bat := fmt.Sprintf("%s/blocked_by/%d", f.at, j)
-			// An ID as every command takes one; any other string, a ref.
+			// An ID as every command takes one, or a string that can be a ref.
 			id, isID := idOf(b)
 			var ref string
-			isRef := !isID && model.Decode(b, &ref) == nil && string(b) != "null"
+			isRef := !isID && model.Decode(b, &ref) == nil && model.ValidRef(ref)
 			switch {
 			case isID:
 				if slices.Contains(n.blockers, id) {
@@ -263,15 +283,21 @@ func cmdBatch(c *call) (any, *errs.Error) {
 				}
 				n.refs = append(n.refs, ref)
 			default:
-				c.in.bad(bat, "must be a task ID or a ref")
+				c.in.bad(bat, "must be a task ID, like 42 or @42, or the ref of an earlier task")
 			}
 		}
 		f.unknown("a task")
+		if f.has("folder") && n.at.id == 0 && n.at.path != "" {
+			paths, pathsAt = append(paths, n.at.path), append(pathsAt, f.at+"/folder")
+		}
 		if n.ref != "" {
 			refAt[n.ref] = i
 		}
 		existing = append(existing, n.blockers...)
 		tasks[i] = n
+	}
+	if i, q := model.CaseClash(paths); i >= 0 {
+		c.in.bad(pathsAt[i], "differs only in case from %s, earlier in the batch", q)
 	}
 	if e := c.begin(true); e != nil {
 		return nil, e
@@ -279,7 +305,11 @@ func cmdBatch(c *call) (any, *errs.Error) {
 	// A folder entry means one to make: every one already there is named.
 	var there []model.Folder
 	for _, n := range entries {
-		if _, err := c.t.Stat(n.folder.Rel()); err == nil {
+		taken, e := c.t.Taken(n.folder, "")
+		if e != nil {
+			return nil, e
+		}
+		if taken {
 			there = append(there, n.folder)
 		}
 	}

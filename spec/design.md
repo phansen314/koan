@@ -17,9 +17,9 @@ One tree per user, written from one machine. Separate bodies of work are folders
 
 ## Assumptions
 
-- **koan is the only writer of the tree and the state file.** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds.
+- **koan is the only writer of the tree and the state file.** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds. A merge of two lines of history, two machines writing one tree, or a restore of the state file, is such a change: only a single line of history, written from one machine, keeps the [invariants](#invariants) (see the README's [Keep the tree in git](../README.md#keep-the-tree-in-git)).
 - **Notes are the exception.** A task's `@<id>.md` and a folder's `@folder.md` are edited with any editor. koan never reads meaning into them.
-- **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). The one exception is a `.DS_Store`, which goes with its folder. Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
+- **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). Two kinds of entry are **disposable** instead, and go with their folder: a temp file koan left behind (`.koan-tmp-*`), which is koan's own, and a `.DS_Store`. Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
 
 ## Data model
 
@@ -69,7 +69,11 @@ A folder name is 1–64 ASCII letters, digits, and hyphens, not starting or endi
 ^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$
 ```
 
-Names are case-sensitive: koan compares them byte for byte, so `Proj` and `proj` are two folders. That holds on Linux. macOS filesystems usually ignore case, so there the two are one directory, and a tree that has both on Linux cannot be copied to a Mac intact. koan does not check for this; a tree that moves between the two should not hold names that differ only in case.
+Names are compared byte for byte, but koan never lets two names in one folder differ only in case, on any platform. macOS filesystems usually ignore case, so there `Proj` and `proj` would be one directory; refusing the pair everywhere means a tree made on Linux always moves to a Mac intact.
+
+- **A path names a folder only in its exact case.** When a part of a path matches no entry in its folder exactly but matches one ignoring case, the command fails with `conflict` (`case-mismatch`), naming the path as it is on disk. So `/Proj` never reaches `/proj`, on a Mac or elsewhere, and a new folder is never made beside one whose name differs from it only in case.
+- **One input never names two paths that differ only in case** in the same part (`/Proj/a` and `/proj/b`): `invalid-input`. The one exception is `folder move` renaming a folder to the same name in another case.
+- A tree that already holds such a pair, made by hand or by an older koan, still works on Linux: an exact match always wins.
 
 A **folder path** names a folder from the root: `/` is the root, `/proj/travel` is `travel` inside `proj`. Leading `/`, no trailing `/`, no empty segment, no `.` or `..`. Paths never carry the `@`: `/proj/travel` is `@proj/@travel` on disk, so a name is at most 65 characters there.
 
@@ -122,6 +126,8 @@ An ID is a positive integer of at most 15 digits, unique across the whole tree, 
 
 The counter is outside the tree on purpose, so that restoring or merging the tree's files can never lower it. That is also why one machine writes a tree: two machines creating tasks in copies of it would issue the same IDs.
 
+The counter knows the IDs that are gone; only the tree knows the IDs an outside change brought in (a clone, a merge, a restore). So **a command that issues IDs starts above both**: it walks the tree, reads every folder file, and takes the highest ID in any task file's or notes file's name or in any folder file, and issues from above that or `last_id`, whichever is higher. When the tree was ahead, the counter is raised past it and the command warns `id-above-counter`. A folder file koan can't read can't be counted: it is an `unusable-file` warning, and the command carries on.
+
 ### References
 
 A **reference** names a task, a folder, or material in a folder, in commands and in anything kept outside koan: notes, prompts, commit messages.
@@ -158,7 +164,7 @@ Every tree that only koan has written satisfies these, and koan refuses any chan
 1. **Acyclic.** No task waits on itself, directly or through other tasks, whether they are open or done.
 2. **No dangling references.** Every ID in a `blocked_by` names an existing task. Deleting a task removes its ID from every `blocked_by`.
 3. **Unique IDs.** No two task files or folder files have the same ID.
-4. **IDs within the counter.** No task's or folder's ID is above `last_id`.
+4. **IDs within the counter.** No ID in a task file's or notes file's name, and no folder's ID, is above `last_id`. An outside change can break this one; the next command that issues IDs, or `init`, restores it.
 
 ### `@koan.json`
 
@@ -215,7 +221,7 @@ koan writes JSON with two-space indentation, keys in schema order, `blocked_by` 
 | Needs migration, or too new | See [Formats](#formats). | `migration-pending`, `unsupported-format`. |
 | Usable | Otherwise. | — |
 
-`init` creates whatever is missing and changes nothing that is there. A state file it creates beside an existing tree starts `last_id` at the highest ID in any filename in the tree. That is how a tree cloned onto a new machine is attached, and how a lost state file is replaced; in the second case an ID whose task was deleted can be issued again.
+`init` creates whatever is missing, and changes nothing that is there but a counter that is too low. A state file it creates beside an existing tree starts `last_id` at the highest ID in the tree. That is how a tree cloned onto a new machine is attached, and how a lost state file is replaced; in the second case an ID whose task was deleted can be issued again. A state file already there whose `last_id` is below the tree's highest ID is raised to it: that is how a tree cloned, copied, or restored onto a machine that already has a state file is attached.
 
 ### Walking
 
@@ -243,7 +249,7 @@ Several processes may use one tree at once, with no coordinator between them.
 
 ### Crashes and failures
 
-A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `folder delete` cut short shows up as some of these, in what is left of it: run `folder delete` again to finish.
+A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `folder delete` cut short shows up as some of these, in what is left of it: run `folder delete` again to finish. A `folder delete` that fails partway, rather than being killed, cleans up after itself: the tasks it did remove leave every `blocked_by`, and their claims end.
 
 koan keeps no journal and takes no idempotency keys. After an unclear outcome, look (`task show`, `task list`, `doctor`), then decide. The task commands that set a state (`done`, `reopen`, `block`, `unblock`, `update`, `release`) are safe to run again; `task create` and `batch` make new tasks each time, and `task claim-next` a new claim.
 
@@ -268,7 +274,7 @@ A **claim** reserves a task: once it is claimed, no other `task claim` of it suc
 | Finding | `repair` |
 |---|---|
 | `temp-leftover`: a temp file koan left behind | Removes it. |
-| `id-above-counter`: a task or folder ID above `last_id` | Raises `last_id`. |
+| `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name or in a folder file | Raises `last_id`. |
 | `dangling-reference`: a `blocked_by` ID with no task | Removes the ID, when asked for by name. |
 | `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name. |
 | `orphan-notes`: a `@<id>.md` with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes. Otherwise leaves it. |
@@ -290,10 +296,10 @@ Every failure has one **kind**:
 | `not-initialized`, `corrupt`, `unsupported-format`, `migration-pending` | The root is not usable (see [Root states](#root-states)); or, for `corrupt` and `unsupported-format`, a task file the command needs is not. |
 | `busy` | The lock was held against the command for 5 seconds. |
 | `not-found` | A task or folder named in the input does not exist. |
-| `conflict` | The input is valid but the tree's state refuses it; a `rule` says which: `duplicate-id`, `claimed`, `cycle`, and the commands' own. |
+| `conflict` | The input is valid but the tree's state refuses it; a `rule` says which: `duplicate-id`, `case-mismatch`, `claimed`, `cycle`, and the commands' own. |
 | `io` | The operating system refused something. |
 | `internal` | A bug in koan. |
 
 A command reports one error. Input is checked first, then the root's state, then `busy`; among errors after that, which one is reported is not specified.
 
-A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file` and `dangling-reference`.
+A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file`, `dangling-reference`, and `id-above-counter` (see [IDs](#ids)).

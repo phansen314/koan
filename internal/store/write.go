@@ -3,8 +3,10 @@ package store
 import (
 	"cmp"
 	"io/fs"
+	"os"
 	"path"
 	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
@@ -147,27 +149,73 @@ func (t *Tree) SaveState() *errs.Error {
 
 // Missing lists the folders on the path to f, f included, that are not
 // there, outermost first. Something on the path that is not a folder is a
-// not-a-folder conflict.
+// not-a-folder conflict, and a part there only in another case a
+// case-mismatch conflict.
 func (t *Tree) Missing(f model.Folder) ([]model.Folder, *errs.Error) {
 	var missing []model.Folder
 	cur := model.Root
 	for _, seg := range f.Segments() {
+		parent := cur
 		cur = cur.Join(seg)
 		if len(missing) > 0 {
 			missing = append(missing, cur)
 			continue
 		}
-		fi, err := t.root.Lstat(cur.Rel())
+		ent, other, e := t.lookup(parent, seg)
 		switch {
-		case errs.IsErrno(err, syscall.ENOENT):
+		case e != nil:
+			return nil, e
+		case other != "":
+			return nil, caseMismatch(t, cur, parent.Join(other))
+		case ent == nil:
 			missing = append(missing, cur)
-		case err != nil:
-			return nil, errs.FromOS(t.Abs(cur.Rel()), err)
-		case !fi.IsDir():
+		case !ent.IsDir():
 			return nil, notAFolder(t, cur)
 		}
 	}
 	return missing, nil
+}
+
+// Taken reports whether anything is at folder path f, found as Missing
+// finds a part: by its exact name, a name there only in another case being
+// a case-mismatch conflict. That name is no conflict when it is self's, in
+// the same folder: a folder renamed to another case.
+func (t *Tree) Taken(f, self model.Folder) (bool, *errs.Error) {
+	missing, e := t.Missing(f.Parent())
+	if e != nil || len(missing) > 0 {
+		return false, e
+	}
+	ent, other, e := t.lookup(f.Parent(), f.Name())
+	if e == nil && other != "" && f.Parent().Join(other) != self {
+		e = caseMismatch(t, f, f.Parent().Join(other))
+	}
+	return ent != nil, e
+}
+
+// lookup finds folder name seg in folder dir by its exact name, in a
+// listing of dir, since on a filesystem that ignores case an Lstat of @Proj
+// finds @proj. Without an exact match, other is the folder name of an @
+// entry that has seg's name ignoring case.
+func (t *Tree) lookup(dir model.Folder, seg string) (ent fs.DirEntry, other string, e *errs.Error) {
+	ents, err := t.root.ReadDir(dir.Rel())
+	if err != nil {
+		return nil, "", errs.FromOS(t.Abs(dir.Rel()), err)
+	}
+	name := model.FolderDir(seg)
+	for _, en := range ents {
+		switch {
+		case en.Name() == name:
+			return en, "", nil
+		case other == "" && model.SameButCase(en.Name(), name):
+			other = strings.TrimPrefix(en.Name(), "@")
+		}
+	}
+	return nil, other, nil
+}
+
+func caseMismatch(t *Tree, f, there model.Folder) *errs.Error {
+	return errs.NewConflict(errs.RuleCaseMismatch, "%s exists as %s: a folder's name is matched in its exact case", f, there).
+		WithFolders(string(there)).WithPaths(t.Abs(there.Rel()))
 }
 
 // MakeFolder creates folder f, whose parent is there, then writes its folder
@@ -216,12 +264,18 @@ func notAFolder(t *Tree, f model.Folder) *errs.Error {
 		WithFolders(string(f)).WithPaths(t.Abs(f.Rel()))
 }
 
+// mustBeFolder checks what is at f, which mkdir found there: a folder by
+// f's exact name, or a conflict.
 func (t *Tree) mustBeFolder(f model.Folder) *errs.Error {
-	fi, err := t.root.Lstat(f.Rel())
-	if err != nil {
-		return errs.FromOS(t.Abs(f.Rel()), err)
-	}
-	if !fi.IsDir() {
+	ent, other, e := t.lookup(f.Parent(), f.Name())
+	switch {
+	case e != nil:
+		return e
+	case other != "":
+		return caseMismatch(t, f, f.Parent().Join(other))
+	case ent == nil:
+		return errs.New(errs.IO, "%s was there and is gone", t.Abs(f.Rel())).WithPaths(t.Abs(f.Rel()))
+	case !ent.IsDir():
 		return notAFolder(t, f)
 	}
 	return nil
@@ -248,6 +302,26 @@ func (t *Tree) Move(oldRel, newRel string) (exists bool, e *errs.Error) {
 		return true, nil
 	}
 	return false, errs.FromOS(t.Abs(oldRel), err)
+}
+
+// MoveCase renames a folder to its own name in another case. Where the
+// filesystem ignores case the two names are one entry, which the no-replace
+// rename refuses; it is renamed with plain rename(2), which can replace
+// nothing, since it is the same entry and the lock is held. Elsewhere it is
+// Move.
+func (t *Tree) MoveCase(oldRel, newRel string) (exists bool, e *errs.Error) {
+	a, errA := t.root.Lstat(oldRel)
+	b, errB := t.root.Lstat(newRel)
+	if errA != nil || errB != nil || !os.SameFile(a, b) {
+		return t.Move(oldRel, newRel)
+	}
+	if err := t.root.Rename(oldRel, newRel); err != nil {
+		return false, errs.FromOS(t.Abs(oldRel), err)
+	}
+	t.root.SyncDir(path.Dir(newRel))
+	t.note(oldRel)
+	t.note(newRel)
+	return false, nil
 }
 
 // Remove removes one file. A file already gone is not an error.

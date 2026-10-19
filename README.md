@@ -37,7 +37,7 @@ jq -n '{folder: "/work/api", tasks: [              # a plan in one call: refs na
 
 A write returns what it changed, by ID (`.result.id`); a read returns the whole record. A task's notes are a plain file, edited with any editor: `koan task show 4 | jq -r .result.task.notes_path` says where.
 
-Folder names use letters, digits, and hyphens, up to 64 characters, and are case-sensitive (`/work` does not find `/Work`; avoid names that differ only in case if the tree may move to a Mac). Tags are lowercase only, so matching one is always exact. See [Folders](spec/design.md#folders).
+Folder names use letters, digits, and hyphens, up to 64 characters, and a path matches a folder only in its exact case: with `/work` there, `/Work` is refused as `case-mismatch` on every platform, so a tree made on Linux always moves to a Mac intact. `koan folder move /work --to /Work` changes a folder's case. Tags are lowercase only, so matching one is always exact. See [Folders](spec/design.md#folders).
 
 ## Use it from Claude Code and OpenCode
 
@@ -86,7 +86,19 @@ koan repair --kinds dangling-reference,stale-claim   # remove blockers and claim
 
 ## Keep the tree in git
 
-koan keeps no trash and no history; git is the way back. `git init` in `~/koan-root` and commit now and then. Every file koan writes is safe to commit and restore, because the ID counter is kept outside the tree, where nothing git does can set it back. A crash can leave a `.koan-tmp-*` file; a root `.gitignore` with `.koan-tmp-*` keeps one out of a commit.
+koan keeps no trash and no history; git is the way back. Git carries the tree as one straight line of snapshots: one branch, committed from the one machine that writes the tree, and pushed, if at all, to a private remote as a backup. It is for undo, history, and moving to a new machine, never for merging work on the tree.
+
+`git init` in `~/koan-root` and commit now and then. koan doesn't commit for you: do it by hand, or from a cron job or shell hook of your own:
+
+```sh
+git -C ~/koan-root add -A && git -C ~/koan-root commit -q -m "koan $(date -u +%FT%TZ)"
+```
+
+A crash can leave a `.koan-tmp-*` file; a root `.gitignore` with `.koan-tmp-*` keeps one out of a commit. A commit doesn't wait for koan's lock, so one taken while a command is writing can catch a change half done; restoring it leaves what a crash leaves, which `koan doctor` finds.
+
+- **Don't check out other branches at `~/koan-root`, or merge into it.** IDs come from a counter outside the tree, so branches on one machine never repeat one, but merging them brings conflicts on task files, `blocked_by` naming tasks deleted on the other branch, and claims for tasks the checked-out branch doesn't have. `koan doctor` finds these, but can't resolve them.
+- **Don't work on a checkout of the tree anywhere else.** koan only ever reads and writes `~/koan-root`; a clone or `git worktree` elsewhere is invisible to it.
+- **Don't put `~/.config/koan/state.json` in git, a dotfiles repo, or a sync tool.** Putting back an older copy lowers the counter, and the IDs of tasks deleted since are issued again, to new tasks: restoring a deleted task from git, or a `@57` written in notes, then names the wrong one. It also puts back old claims. This is the one way a restore can break IDs on a single machine.
 
 ### Undoing a delete
 
@@ -113,7 +125,7 @@ git restores only what it tracked:
 
 A tree is written from one machine, and a machine has one tree; keep separate bodies of work as top-level folders (`/work`, `/home`).
 
-To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`: it starts that machine's ID counter at the highest ID it finds. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve.
+To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`: it brings the counter up to the highest ID in the tree, whether it makes the state file or finds one there. Commands that issue IDs also start above the highest ID in the tree, so a restore can't make koan issue an ID that is already in use. After the move, write the tree from the new machine only. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve. A sync tool between two machines that both write the tree is the same thing, so use one only as a backup.
 
 ## Upgrading
 

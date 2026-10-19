@@ -5,7 +5,7 @@
   "required": ["kind", "message", "ids", "paths"],
   "properties": {
     "kind": {
-      "enum": ["unusable-file", "dangling-reference"]
+      "enum": ["unusable-file", "dangling-reference", "id-above-counter"]
     },
     "message": { "type": "string" },
     "ids": {

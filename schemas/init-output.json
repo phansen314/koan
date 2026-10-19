@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "init-output",
   "type": "object",
-  "required": ["root", "state_path", "created"],
+  "required": ["root", "state_path", "created", "counter_raised"],
   "properties": {
     "root": { "type": "string" },
     "state_path": { "type": "string" },
@@ -10,7 +10,8 @@
       "type": "array",
       "items": { "enum": ["root", "metadata", "state"] },
       "uniqueItems": true
-    }
+    },
+    "counter_raised": { "type": "boolean", "description": "Whether init raised the last_id of a state file that was already there to the tree's highest ID." }
   },
   "additionalProperties": false
 }

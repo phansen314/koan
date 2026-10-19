@@ -30,7 +30,7 @@ Every command writes one envelope:
 - success: `{"ok":true,"result":{…},"warnings":[…]}`
 - failure: `{"ok":false,"error":{"kind":"…","rule":…,"message":"…","ids":[…],"folders":[…],"paths":[…],"problems":[…],"changed_paths":[…]},"warnings":[…]}`
 
-Branch on `.error.kind`, not the exit code. **Always tell the user about any `warnings`** (`unusable-file`, `dangling-reference`): they mean the tree needs attention.
+Branch on `.error.kind`, not the exit code. **Always tell the user about any `warnings`** (`unusable-file`, `dangling-reference`, `id-above-counter`): they mean the tree needs attention. `id-above-counter` means something outside koan (a clone, a merge, a restore) brought in IDs above this machine's counter; koan already issued past them, so nothing needs fixing, but the user should know.
 
 | Exit | Meaning | What to do |
 |---|---|---|
@@ -51,6 +51,7 @@ Error kinds worth handling:
   - `not-empty` — `folder delete` without `--contents` on a folder that holds anything. Don't add `--contents` on your own: ask the user.
   - `has-material` — `folder delete --contents` on a folder holding the user's own files (material), hidden ones such as `.git` or `.env` included; `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good.
   - `destination-exists` — `folder move`'s `--to` already exists (folders are never merged), or `task move` would overwrite a `@<id>.md` with text in the target folder; show it to the user.
+  - `case-mismatch` — a folder path names a folder that exists only in another case; `.error.folders` has the path as it is on disk. Use that path. Don't rename the folder to match unless the user asks (`folder move /work --to /Work` changes its case).
   - `not-a-folder` — something on a folder path is a file or a symlink.
   - `claimed` — someone has claimed the task; `.error.message` says since when and with what `extra`. See Claims.
   - `task-done` — `task claim` on a done task; `task reopen` it first if the user wants it worked on again.
@@ -250,7 +251,8 @@ koan folder delete /proj/old --contents            # .result.folder: as it was; 
 
 ## Hard rules
 
-- **Never** hand-edit, create, rename, or delete anything under `~/koan-root` named with `@`, except a task's notes `@<id>.md` and a folder's `@folder.md` — use `task move`, `folder move`, `task delete`, and `folder delete`. Task files, folder files, and `@koan.json` belong to koan; a hand edit can break invariants no command will repair. Anything not named with `@` is the user's material, which koan never reads: a `docs/` beside a folder's tasks is fine, but a folder made by hand is material, not a koan folder (`koan folder create` makes one). The same goes for `~/.config/koan/state.json`.
+- **Never** hand-edit, create, rename, or delete anything under `~/koan-root` named with `@`, except a task's notes `@<id>.md` and a folder's `@folder.md` — use `task move`, `folder move`, `task delete`, and `folder delete`. Task files, folder files, and `@koan.json` belong to koan; a hand edit can break invariants no command will repair. Anything not named with `@` is the user's material, which koan never reads: a `docs/` beside a folder's tasks is fine, but a folder made by hand is material, not a koan folder (`koan folder create` makes one). The same goes for `~/.config/koan/state.json`, which you also never restore.
+- **Never run git commands that switch, merge, rebase, or reset in `~/koan-root`** (`checkout`, `switch`, `merge`, `pull`, `rebase`, `reset`, `stash`): the tree is one line of history, and koan's counter and claims are outside it. Committing is the user's business: commit in the tree only when asked. Restoring a deleted task's files, as the user asks, is fine; see the README's "Undoing a delete".
 - Don't pass `--input` unless building input from other JSON, or for `batch`, which takes nothing else; flags are clearer.
 - Don't create tasks the user didn't ask for. When a follow-up turns up during other work, offer it: "Want me to add a task for X?"
 

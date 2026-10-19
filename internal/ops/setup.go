@@ -12,13 +12,15 @@ import (
 )
 
 type initResult struct {
-	Root      string   `json:"root"`
-	StatePath string   `json:"state_path"`
-	Created   []string `json:"created"`
+	Root          string   `json:"root"`
+	StatePath     string   `json:"state_path"`
+	Created       []string `json:"created"`
+	CounterRaised bool     `json:"counter_raised"`
 }
 
 // cmdInit creates whatever is missing of the root, its @koan.json, and the
-// state file, and changes nothing that is there.
+// state file, raises a counter below the tree's highest ID, and changes
+// nothing else that is there.
 func cmdInit(c *call) (any, *errs.Error) {
 	if e := c.checked(); e != nil {
 		return nil, e
@@ -62,24 +64,35 @@ func cmdInit(c *call) (any, *errs.Error) {
 		}
 		res.Created = append(res.Created, store.PartMeta)
 	}
-	if cond.State == nil {
-		// Duplicated IDs don't matter to the counter, but a folder that
-		// can't be listed does: an ID in it would be issued again.
-		x, e := t.Walk(true)
-		if e != nil {
-			return nil, e
-		}
-		if len(x.Unlistable) > 0 {
-			p := t.Abs(x.Unlistable[0])
-			return nil, errs.New(errs.IO, "%s can't be listed, so the highest ID in the tree is not known", p).WithPaths(p)
-		}
-		// A folder file that can't be read is doctor's.
-		folders, _ := loadFolderFiles(t, x)
-		t.State = &model.State{Schema: model.FileFormat, LastID: highestID(x, folders), Claims: map[string]model.Claim{}}
+	// Duplicated IDs don't matter to the counter, but a folder that can't
+	// be listed does: an ID in it would be issued again.
+	x, e := t.Walk(true)
+	if e != nil {
+		return nil, e
+	}
+	if len(x.Unlistable) > 0 {
+		p := t.Abs(x.Unlistable[0])
+		return nil, errs.New(errs.IO, "%s can't be listed, so the highest ID in the tree is not known", p).WithPaths(p)
+	}
+	// A folder file that can't be read is doctor's.
+	folders, _ := loadFolderFiles(t, x)
+	top := highestID(x, folders)
+	switch {
+	case cond.State == nil:
+		t.State = &model.State{Schema: model.FileFormat, LastID: top, Claims: map[string]model.Claim{}}
 		if e := t.SaveState(); e != nil {
 			return nil, e
 		}
 		res.Created = append(res.Created, store.PartState)
+	case cond.State.LastID < top:
+		// A tree cloned, copied, or restored beside a state file of this
+		// machine's: raising the counter never harms.
+		t.State = cond.State
+		t.State.LastID = top
+		if e := t.SaveState(); e != nil {
+			return nil, e
+		}
+		res.CounterRaised = true
 	}
 	return res, nil
 }

@@ -37,6 +37,7 @@ const (
 	RuleClaimed           = "claimed"
 	RuleNoConversion      = "no-conversion"
 	RuleHasMaterial       = "has-material"
+	RuleCaseMismatch      = "case-mismatch"
 )
 
 // Problem is one thing wrong with an input or a file.
@@ -127,6 +128,7 @@ func IsErrno(err error, errnos ...syscall.Errno) bool {
 const (
 	WarnUnusableFile      = "unusable-file"
 	WarnDanglingReference = "dangling-reference"
+	WarnIDAboveCounter    = "id-above-counter"
 )
 
 // Warning is a problem that did not stop the command.
