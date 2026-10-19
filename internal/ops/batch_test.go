@@ -23,6 +23,20 @@ func TestBatchRefsPointBackwards(t *testing.T) {
 	}
 }
 
+// Only a string that can be a ref is told it must be an earlier task's;
+// anything else is told what an entry may be.
+func TestBatchBlockedByReasons(t *testing.T) {
+	w := ready(t)
+	earlier := "must be the ref of an earlier task in the batch"
+	either := "must be a task ID, like 42 or @42, or the ref of an earlier task"
+	for entry, want := range map[string]string{`"later"`: earlier, `"@x"`: either, `"@0"`: either, `"0"`: either, `"x y"`: either, `true`: either} {
+		e := w.fail("batch", `{"tasks":[{"title":"a","blocked_by":[`+entry+`]}]}`, errs.InvalidInput, "")
+		if got := []errs.Problem{{Field: "/tasks/0/blocked_by/0", Reason: want}}; !slices.Equal(e.Problems, got) {
+			t.Errorf("blocked_by %s: problems %v, want %v", entry, e.Problems, got)
+		}
+	}
+}
+
 // A field no entry has is reported at its own pointer, as the top level's
 // are.
 func TestBatchUnknownFields(t *testing.T) {

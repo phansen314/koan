@@ -225,7 +225,7 @@ func TestIDsOfTheOtherKind(t *testing.T) {
 		t.Errorf("batch: message %q", e.Message)
 	}
 	w.fail("batch", `{"tasks":[{"title":"b","blocked_by":["@9"]}]}`, errs.NotFound, "")
-	if e := w.fail("batch", `{"tasks":[{"title":"b","blocked_by":[null]}]}`, errs.InvalidInput, ""); !strings.Contains(e.Message, "task ID or a ref") {
+	if e := w.fail("batch", `{"tasks":[{"title":"b","blocked_by":[null]}]}`, errs.InvalidInput, ""); !strings.Contains(e.Message, "or the ref of an earlier task") {
 		t.Errorf("null blocker: message %q", e.Message)
 	}
 

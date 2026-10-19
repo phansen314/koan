@@ -256,10 +256,10 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		f.get("blocked_by", false, &blockers, "a list of task IDs and refs")
 		for j, b := range blockers {
 			bat := fmt.Sprintf("%s/blocked_by/%d", f.at, j)
-			// An ID as every command takes one; any other string, a ref.
+			// An ID as every command takes one, or a string that can be a ref.
 			id, isID := idOf(b)
 			var ref string
-			isRef := !isID && model.Decode(b, &ref) == nil && string(b) != "null"
+			isRef := !isID && model.Decode(b, &ref) == nil && model.ValidRef(ref)
 			switch {
 			case isID:
 				if slices.Contains(n.blockers, id) {
@@ -274,7 +274,7 @@ func cmdBatch(c *call) (any, *errs.Error) {
 				}
 				n.refs = append(n.refs, ref)
 			default:
-				c.in.bad(bat, "must be a task ID or a ref")
+				c.in.bad(bat, "must be a task ID, like 42 or @42, or the ref of an earlier task")
 			}
 		}
 		f.unknown("a task")

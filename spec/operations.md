@@ -345,6 +345,7 @@ Create folders, and open tasks in them, in one write, where later tasks may wait
 | `blocked_by` | A mix of existing tasks' IDs, in any form (`42`, `"42"`, `"@42"`), and the `ref`s of **earlier** tasks in the batch. |
 
 - Refs are global to the batch, and may only point backwards, so a batch cannot contain a cycle.
+- A `blocked_by` string that is a valid ref but names no earlier task is `invalid-input` saying so; any other string that is not an ID is `invalid-input` saying what an entry may be: a task ID, like `42` or `@42`, or the ref of an earlier task.
 - Every folder is checked before an ID is used: each folder entry, that nothing is at its `folder`; each task's folder given by path, that it can be made; one given by ID, that it exists; and the batch's `folder`, the same way, even when no task falls back to it.
 - A folder entry's missing parents, and a task's missing folder, are made as needed, with no title, as by any command.
 - **IDs**: the folders the batch makes take theirs first, in tree order, parents before children, entries and folders made as needed alike; then the tasks, consecutively, in input order. Every task gets the same `created_at`.
