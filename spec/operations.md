@@ -17,15 +17,15 @@ An unknown input field, a missing required one, or a value of the wrong type is 
 
 A command that changes the tree returns **identities**, which go straight into the next command; a command that reads returns **records**. A record is exact only as of the call; an identity can always be looked up again, with `task show` or `folder show`.
 
-- **A write** returns `id`, and `path` for a folder; `changed`; and, where the command can have them, `folders_created` and `dependents` (the other tasks whose `blocked_by` it changed). A folder's `id` is `null` where its [record](#folder)'s is.
+- **A write** returns `id`, and `path` for a folder; `changed`; and, where the command can have them, `folders_created` and `dependents` (the other tasks and folders whose `blocked_by` it changed). A folder's `id` is `null` where its [record](#folder)'s is.
 - **A read** returns [task](#task) and [folder](#folder) records.
 - **The exceptions:**
   - `task delete` and `folder delete` return the record as it was, since there is nothing left to show: its `notes_path`, and a folder's `dir`, name paths that are gone. `task delete` returns the `id` beside it, since a task file it can't use gives no record.
   - `task claim-next` returns the record of the task it claimed, which the caller doesn't know yet.
   - `batch` returns the identities of everything it made.
-  - `where`, `context`, `task why`, and the commands of [setup and diagnosis](#setup-and-diagnosis) are reports, with shapes of their own.
+  - `where`, `context`, `task why`, `folder why`, and the commands of [setup and diagnosis](#setup-and-diagnosis) are reports, with shapes of their own.
   - `marker bind` and `marker unbind`, of the kind `marker` in the table below, write only outside the tree, and return what they wrote or removed there.
-- **Inside a record**, a field naming another task or folder holds a reference: a task's `blocked_by` and `open_blockers` hold IDs, and its `folder` a path.
+- **Inside a record**, a field naming another task or folder holds a reference: `blocked_by` and `open_blockers` hold IDs, a task's `folder` and an `inherited` entry's `folder` a path.
 
 ### Errors
 
@@ -47,8 +47,8 @@ A command that changes the tree returns **identities**, which go straight into t
 | `kind` | One of the kinds in [design.md](design.md#errors). |
 | `rule` | For `conflict`, which rule refused the input; each command lists its own. `null` for every other kind. |
 | `message` | One sentence for a person. Not for parsing. |
-| `ids`, `folders`, `paths` | The tasks, folder paths, and files the error is about. `not-found` lists everything missing at once. |
-| `problems` | For `invalid-input`: one `{field, reason}` per problem, `field` a JSON pointer into the input. For `corrupt`: one per rule the file breaks. |
+| `ids`, `folders`, `paths` | The tasks, folder paths, and files the error is about. `not-found` lists everything missing at once, across every field of the input: IDs in `ids`, folder paths in `folders`. |
+| `problems` | For `invalid-input`: one `{field, reason}` per problem, `field` a JSON pointer into the input. For `corrupt`: one per rule the file breaks. For `cycle`: the input's entries that close the cycle (see [Cycles](#cycles)). |
 | `changed_paths` | Files and folders the command created, rewrote, or removed before it failed. Empty means nothing changed. |
 
 Three `conflict` rules are shared, and are not repeated below. Any command that walks the tree can fail with `duplicate-id` (`ids`: the ID; `paths`: every copy). Any command given a folder path can fail with `not-a-folder` (something on the path is a file or a symlink; for the marker commands, `<dir>/.koan` is not a directory), and with `case-mismatch` (a part of the path is on disk only in another case: `folders` holds the path as it is on disk, as far as it goes, and the message says "exists as /proj"; see [Folders](design.md#folders)).
@@ -59,7 +59,7 @@ Three `conflict` rules are shared, and are not repeated below. Any command that 
 { "kind": "dangling-reference", "message": "task 42 is blocked by 17, which does not exist", "ids": [42, 17], "paths": ["/home/paul/koan-root/@proj/@42.json"] }
 ```
 
-There are four kinds: `unusable-file` and `dangling-reference`, defined in [design.md](design.md#walking); `id-above-counter`, from a command that issues IDs into a tree an outside change put IDs in above the counter ([IDs](design.md#ids)): its `ids` is the highest such ID, its `paths` the file that holds it, and its message says the counter was raised; and `stale-marker`, from a command that found a folder by a [marker](design.md#markers) whose `path` is not the folder's now: its `ids` is the folder, its `paths` the marker, and its message gives both paths and says `marker bind` refreshes it. A command reports each at most once per file, and only for files it reads: a write that returns identities reads no task's blockers to build a record, so it reports nothing about them.
+There are four kinds: `unusable-file` and `dangling-reference`, defined in [design.md](design.md#walking); `id-above-counter`, from a command that issues IDs into a tree an outside change put IDs in above the counter ([IDs](design.md#ids)): its `ids` is the highest such ID, its `paths` the file that holds it, and its message says the counter was raised; and `stale-marker`, from a command that found a folder by a [marker](design.md#markers) whose `path` is not the folder's now: its `ids` is the folder, its `paths` the marker, and its message gives both paths and says `marker bind` refreshes it. A command reports each at most once per file, and only for files it reads: a write that returns identities reads no task's blockers to build a record, so it reports nothing about them; a cycle check reads the files its search reaches, and reports what it finds in them as any read does. Every folder file is read for the folder index, but a dangling ID in one is reported only by a command that evaluates that folder's blockers. A folder with no folder file is an `unusable-file` warning whose `paths` is the folder's directory. While a folder file can't be used, a `dangling-reference` message says the ID may be held by it, and names its path. A command that fails on a folder file it can't use has that file among its `unusable-file` warnings too, since the folder index read it first.
 
 ### Rules for every command
 
@@ -67,25 +67,28 @@ There are four kinds: `unusable-file` and `dangling-reference`, defined in [desi
 - **Reads and writes.** A write holds the tree's lock alone; a read shares it with other reads, and changes nothing. So a read never sees part of a write. Either fails with `busy` if it can't get the lock in 5 seconds. `info`, `version`, and `marker unbind` take no lock.
 - **Folders are made as needed.** A command that puts something into a folder creates that folder, and any above it, when it is missing: `task create`, `batch`, `task move`, `folder move`, and `folder create`. Their results list what was created in `folders_created`. A command that only reads a folder, or removes one, fails with `not-found` when it is missing.
 - **Each folder made takes an ID.** The counter is first brought up to the highest ID in the tree, if it is below it ([IDs](design.md#ids)), then raised once for every folder and task a command makes, before any is made; folders take their IDs first, parents before children, and tasks after them. Each folder is made, then its folder file and its notes, empty unless given, are written in it. A command that fails partway leaves the folders made so far, the last perhaps without its folder file or notes ([Crashes and failures](design.md#crashes-and-failures)), and the IDs set aside for the rest unused.
-- **Asking for what already holds is not an error.** `task done` on a done task, `task block` with a blocker already there, `task move` to the folder the task is in: the command succeeds, writes nothing, and returns `changed: false`.
+- **Asking for what already holds is not an error.** `task done` on a done task, `task block` or `folder block` with a blocker already there, `task move` to the folder the task is in: the command succeeds, writes nothing, and returns `changed: false`.
 - **`updated_at`** is set to the command's time whenever a command changes a field of a task file, and only then.
 - **One time per command.** Every timestamp a command writes is the same instant.
 
 ### Task
 
-Every command that returns a task's record returns it in one shape (`schemas/task.json`): the task file's fields but `schema`, plus five derived ones.
+Every command that returns a task's record returns it in one shape (`schemas/task.json`): the task file's fields but `schema`, plus six derived ones.
 
 | Field | Holds |
 |---|---|
 | `folder` | The folder path of the folder holding the task. |
 | `notes_path` | The absolute filesystem path of its `@<id>.md`, for an editor. Notes are never returned inline. |
-| `readiness` | `ready`, `blocked`, or `done`. |
-| `open_blockers` | The IDs in `blocked_by` that block it now: open, missing, or unusable. Ascending; empty unless `readiness` is `blocked`. |
+| `readiness` | `ready`, `blocked`, or `done` ([Dependencies](design.md#dependencies)). |
+| `open_blockers` | Every ID that blocks it now, its own and those it inherits from the folders above it: open tasks, folders not done, and IDs missing or unusable. Ascending, each once; empty unless `readiness` is `blocked`. |
+| `inherited` | One `{folder, ids}` for each folder above that blocks it now, outermost first: the folder's path, and the IDs in its `blocked_by` that block now, ascending (they are in `open_blockers` too). `ids` is `null` when the folder's file is missing or can't be used, so its blockers are unknown. Empty unless `readiness` is `blocked`. |
 | `claim` | `{claimed_at, extra}`, or `null` when the task is unclaimed or done. |
+
+A task is `blocked` exactly when `open_blockers` is non-empty or an `inherited` entry has `ids` `null`. So a task whose own `blocked_by` is empty says, in `inherited`, which folder holds it back.
 
 ### Folder
 
-Every command that returns a folder's record returns it in one shape (`schemas/folder.json`): the folder file's fields, and where it is.
+Every command that returns a folder's record returns it in one shape (`schemas/folder.json`): the folder file's fields, where it is, and its state.
 
 | Field | Holds |
 |---|---|
@@ -93,10 +96,17 @@ Every command that returns a folder's record returns it in one shape (`schemas/f
 | `path` | The folder path. |
 | `dir` | The absolute filesystem path of its directory, `@`s and all. |
 | `title` | Its title, or `null`. |
+| `blocked_by` | Its `blocked_by`; `[]` for the root; `null` for a folder with no folder file or one koan can't use. |
 | `extra` | Its `extra`; `{}` for the root. |
 | `notes_path` | The absolute filesystem path of its `@folder.md`, for an editor; `null` for the root, which has none. |
+| `readiness` | `done` when every task under it is; else `blocked` when something it waits on blocks or is unknown, else `ready` ([Dependencies](design.md#dependencies)). The root is never `blocked`. |
+| `open_blockers` | As in a [task](#task)'s record: every ID that blocks it now, in its own `blocked_by` and in those of the folders above it. Empty unless `readiness` is `blocked`. |
+| `inherited` | As in a [task](#task)'s record, for the folders above it; never the folder itself, whose own blockers are in `open_blockers`. Empty unless `readiness` is `blocked`. |
+| `empty` | Whether it holds no task file at any depth, usable or not. An empty folder is `done`. |
 
-A command that returns a folder's `id` or record without failing on its folder file (`folder create`, `folder move`, `folder delete`, `folder list`) gives a folder file it can't use `id` `null`, `title` `null`, and `extra` `{}`, with an `unusable-file` warning. `folder show`, `folder update`, and `where` fail with `corrupt` instead.
+A folder that is not done is `blocked` exactly when `open_blockers` is non-empty, an `inherited` entry has `ids` `null`, or its own `blocked_by` is `null`, since its folder file is missing or can't be used.
+
+A command that returns a folder's `id` or record without failing on its folder file (`folder create`, `folder move`, `folder delete`, `folder list`) gives a folder file it can't use `id` `null`, `title` `null`, `blocked_by` `null`, and `extra` `{}`, with an `unusable-file` warning. `folder show`, `folder update`, `folder why`, and `where` fail with `corrupt` instead, or `unsupported-format` for a folder file in a later format. `folder move` answers so only when it makes no [cycle](#cycles) search, for a rename or a move to the top level: a move into another folder fails with that file's error, since a cycle through the folder's unknown blockers can't be ruled out.
 
 Only `folder show`, `folder list`, `folder delete`, `where`, and `context` return folder records. Every other result names a folder by reference: `id` and `path` from a folder write, a path in a task's `folder` and in `folders_created`, and a path with its ID in `batch`'s `folders`.
 
@@ -104,11 +114,25 @@ Only `folder show`, `folder list`, `folder delete`, `where`, and `context` retur
 
 Inputs take [references](design.md#references) wherever they name a task or a folder that exists:
 
-- **A task**, in every `id`, `blocked_by`, and `blocks`: an integer, or a string `"42"` or `"@42"`.
+- **A task**, in every `id`: an integer, or a string `"42"` or `"@42"`.
+- **A task or a folder**, in every `blocked_by` and `blocks` (`schemas/item-ref.json`): an ID in any of those forms, whichever kind has it, or a folder's path. A path is resolved to the folder's ID, and only the ID is stored. A path with no ID to store is refused: `/` is `invalid-input`, since the root has no ID; a path to nothing is `not-found`, since a blocker is never made as needed (a `batch` may name a folder it makes); a folder with no folder file is `not-found`, saying `koan repair` writes one; and a folder file koan can't use is `corrupt`. In `task unblock` and `folder unblock` an ID need not exist, but a path must resolve.
 - **A folder**, in every `folder` and in `task move`'s `to`: a path, or an ID as an integer or a string `"41"` or `"@41"`. A folder given by ID must exist, `not-found` otherwise, and is never made as needed; one given by path is made as needed where the command says so.
 - **Paths only** where the folder is new: `folder create`'s `folder`, a `batch` folder entry's `folder`, and `folder move`'s `to`.
 
 JSON results use the plain forms: an ID is an integer. Only `where`'s `ref` writes a reference, `@` and all. A `not-found` for an ID lists it in `ids`, and its message says when the ID is the other kind's. Giving a folder by ID can also fail with `duplicate-id`, and warns `unusable-file` for each folder file koan can't use, since any of them might have held the ID.
+
+### Cycles
+
+A command that adds to a `blocked_by` or changes what is in a folder (`task create` and `folder create` with `blocked_by` or `blocks`, `task block`, `folder block`, `batch`, `task move`, `folder move`) refuses anything that would break the [acyclic invariant](design.md#invariants), with `conflict` (`cycle`). It checks in two steps, before it writes anything:
+
+1. **Containment**, by comparing paths: nothing may be blocked by a folder that contains it, and no folder by anything under it, or by itself. The error's `ids` are the two, the one that would wait first, whatever the command changed (one, for a folder blocked by itself), `folders` their folders' paths, and its message says which contains which (`/proj contains /proj/phase2`, `/proj contains /proj`).
+2. **The graph**: a search for a path back, over the [graph](design.md#invariants) with the change made. The error's `ids` are the tasks and folders of one such cycle, in order, each waiting on the next and the last on the first: by its `blocked_by`, by being in a folder whose blockers it inherits, or, for a folder, by holding what it waits on to be done. A folder's wait and done nodes next to each other in the cycle are one entry; a folder the cycle passes at two places is listed at each. A folder with no ID is left out of `ids`. `folders` lists the paths of the cycle's folders in the same order, and the message gives each step in words, naming a step through a task not added yet as such ("a task added to /proj would wait on itself").
+
+In a move, the two may be a folder above the destination and something under what is moved, and the message names them.
+
+In the graph step, the cycle starts at what the command changed: the task or folder blocked, or the one moved. A task or folder the command would make has no ID yet, so it is left out of `ids`, and the cycle starts at it all the same: a folder by its path in `folders`, a task in the message by its `ref`, or else its title in quotes. In a `batch`, the cycle starts at the first of its entries in it, folder entries before task entries, each in input order. `problems` holds one `{field, reason}` for each input field that adds an edge of the cycle, `field` its JSON pointer (`/blocked_by/0`, `/blocks/1`, `/to`, `/tasks/3/blocked_by/0`, `/tasks/3/folder`), so a caller can tell which entry to drop.
+
+The search loads only the files it reaches. A cycle through a task file or folder file that can't be used can't be ruled out, so a search that meets one fails with that file's error, `corrupt` or `unsupported-format`. A folder with no folder file has no blockers to follow, and the search passes through it on the edges its place in the tree gives it. A plain `task create` into a folder, with no `blocked_by` or `blocks`, never closes a cycle, so it makes no search; nor does a change that adds no edge to the graph: a rename, which keeps a folder's parent, or a move to the top level, since the root has no nodes.
 
 ### Orders
 
@@ -145,6 +169,9 @@ Their results always carry `total`, the number of tasks or folders before `limit
 | [`folder move`](#folder-move) | write | Move or rename a folder. |
 | [`folder delete`](#folder-delete) | write | Remove a folder and everything in it. |
 | [`folder list`](#folder-list) | read | Return the folders under a folder. |
+| [`folder block`](#folder-block) | write | Add blockers to a folder. |
+| [`folder unblock`](#folder-unblock) | write | Remove blockers from a folder. |
+| [`folder why`](#folder-why) | read | Say what a folder is waiting on to be done. |
 | [`task create`](#task-create) | write | Create a task. |
 | [`batch`](#batch) | write | Create folders, and tasks that may wait on each other, in one write. |
 | [`task show`](#task-show) | read | Return one task. |
@@ -217,11 +244,12 @@ Report every [finding](design.md#doctor-and-repair) in the tree. It holds the lo
 |---|---|
 | `kind` | A finding kind. |
 | `message` | What is wrong and what to do about it. |
-| `paths`, `ids` | The files and tasks involved. |
+| `paths`, `ids` | The files, and the tasks and folders, involved. |
 | `repairable` | Whether `repair` can fix it: by default, or, for `dangling-reference` and a `stale-claim` on a task that is gone, when asked for by name. |
 
-- For `cycle`, `ids` is one cycle, each task blocked by the next and the last by the first. For `unusable-file`, `message` says why the file can't be used.
-- **Order:** by kind, in the order [design.md](design.md#doctor-and-repair) lists them, then tree order.
+- For `cycle`, one finding per group of tasks and folders that wait on each other: `ids` is one cycle in the group, as a `cycle` error gives it ([Cycles](#cycles)), starting at its lowest ID; `paths` holds the directories of the cycle's folders, in the same order, so a folder with no ID is still named; and `message` gives each step, saying whether tasks are stuck now or only a task added to a folder would be. For `unusable-file`, `message` says why the file can't be used.
+- `dangling-reference` is not `repairable` while any folder file can't be used, and its message says why ([Doctor and repair](design.md#doctor-and-repair)).
+- **Order:** by kind, in the order [design.md](design.md#doctor-and-repair) lists them, then tree order; but `duplicate-id` and `cycle` findings, which name several places, by their lowest ID.
 - **Refuses:** `no-conversion`, on a tree in a format this binary has no conversion from.
 
 ### repair
@@ -249,10 +277,13 @@ Convert every file in an earlier format to this binary's, then record the format
 
 Create a folder, with any missing folders above it, each with its folder file and notes: empty but for the folder asked for, which gets `notes`.
 
-- **Input:** `folder` (required, a path), and, for the folder itself, `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`): its folder file's fields and its notes. The folders above it get none of them.
-- A folder already there is not an error, and is left as it is, when none of `title`, `extra`, and `notes` is given: `changed` is `false`.
-- **Result:** `id`, `path`, `changed`, and `folders_created`, empty when it already existed.
-- **Refuses:** `destination-exists`, when the folder is already there and `title`, `extra`, or `notes` is given, even one that appeared while it was being made: they are set with `folder update`, and notes edited in the `@folder.md`.
+- **Input:** `folder` (required, a path), and, for the folder itself, `title` (default `null`), `extra` (default `{}`), `notes` (default `""`), `blocked_by` (default `[]`), and `blocks` (default `[]`). The first four are its folder file's fields and its notes; `blocks` names existing tasks and folders that wait on the new folder, which is added to each one's `blocked_by`. The folders above it get none of them.
+- `blocked_by` and `blocks` take [tasks and folders](#references), as `task create`'s do, and are checked the same way: every one is read before an ID is used, and a [cycle](#cycles) is refused before an ID is used. Only `blocked_by` and `blocks` can close one, since a new folder holds nothing yet, but the new folder also inherits the blockers of the folders above it, and they hold it. So it closes one when something in `blocks` is above the new folder or is in `blocked_by` too; when something in `blocked_by`, or that a folder above already waits on, waits, directly or through other tasks and folders, on something in `blocks`; or when something in `blocked_by` waits on a folder above the new one being done.
+- A folder already there is not an error, and is left as it is, when none of `title`, `extra`, `notes`, `blocked_by`, and `blocks` is present in the input, whatever its value: `changed` is `false`. The root is always there, so `folder create /` is such a success, with `id` `null`, or `destination-exists` with any of those fields.
+- Written as `task create` writes, but with what is in `blocks` before the folders: the counter, then each task and folder in `blocks`, ascending, then the folders, the new one last with its folder file and notes. A kill between leaves those in `blocks` waiting on an ID with no folder, a dangling reference `doctor` finds, and, if the folder was made, a `missing-folder-file`. `repair` gives that folder a new ID, so those in `blocks` still wait on the old one: point them at it with `task block` or `folder block`.
+- A failure after those in `blocks` are rewritten says what it left, as `task create`'s does. When the new folder was not made, the error's `ids` lists those rewritten, which wait on an ID nothing holds. When it was made without its folder file, `ids` lists those rewritten, `folders` the folder, and the message says `repair` gives it a new ID that they don't wait on. When only its notes failed, the folder is made, with its ID, and what is in `blocks` waits on it: `ids` is the new folder's ID.
+- **Result:** `id`, `path`, `changed`, `folders_created`, empty when it already existed, and `dependents`: the IDs in `blocks`, ascending.
+- **Refuses:** `destination-exists`, when the folder is already there and `title`, `extra`, `notes`, `blocked_by`, or `blocks` is present in the input, even one that appeared while it was being made: they are set with `folder update` and `folder block`, and notes edited in the `@folder.md`. `cycle`.
 
 ### folder show
 
@@ -282,10 +313,11 @@ Move a folder, with everything under it, to a new path. Renaming is moving to a 
 
 - **Input:** `folder` (required), and `to` (required): the folder's new path, not a folder to put it into, so a path only.
 - Neither may be `/`, and `to` may not be under `folder`: `invalid-input`. For a `folder` given by ID, the second is known only once the tree is read, so it is reported after the root's state and `busy`.
-- No file is rewritten: a task's folder is where its file is, and the folder's own files move with it, its ID included.
+- No file is rewritten: a task's folder is where its file is, and the folder's own files move with it, its ID included, so every `blocked_by` naming it still does.
+- Under its new parents the folder and everything in it inherit their blockers, and they hold it, so the move is checked for a [cycle](#cycles) before anything is changed. That takes a walk, every folder file, and the files the search reaches. A rename, which keeps the folder's parent, changes nothing a folder inherits or holds: it is not checked, and makes no walk but to find a folder given by ID.
 - **A rename that changes only case** (`/proj` to `/Proj`: same parent, names equal ignoring case) is allowed on every platform. It is the one way to fix a folder's case, and on a filesystem that ignores case `to` is the folder itself, so it can't be refused as `destination-exists` there.
 - **Result:** `id`, `path` (the new one), `changed`, `folders_created`.
-- **Refuses:** `destination-exists` when anything is at `to` other than the folder itself.
+- **Refuses:** `destination-exists` when anything is at `to` other than the folder itself; `cycle`.
 
 ### folder delete
 
@@ -294,9 +326,9 @@ Remove a folder and everything under it, for good. koan keeps no trash; undo is 
 - **Input:** `folder` (required, not `/`), `contents` (default `false`), and `force` (default `false`).
 - Without `contents`, the folder must hold nothing but its folder file, empty notes, and **disposable** entries: temp files koan left, and a `.DS_Store`.
 - With `contents`, everything under it is removed. **Material blocks it unless `force` is given**: koan never deletes what it didn't write without being told to. Material here is every entry in the folder or in a folder under it that is not koan's and not disposable: an entry named with `@` that is not one of koan's, and hidden entries (`.git`, `.gitignore`, `.env`, `.venv`), included. A hidden entry may be something git can't restore, untracked or ignored, or another repository's history. Finding material takes a listing of each folder, never a look inside the material.
-- Every task outside the folder loses the removed tasks' IDs from its `blocked_by`, and the removed tasks' claims end. The folder is removed first, as [`task delete`](#task-delete) removes its task first.
-- **A removal that fails partway** (a file the operating system won't remove, say in a read-only directory of material) still finishes the rest for the tasks it did remove: those whose task file is gone leave every remaining task's `blocked_by`, and their claims end. Then it fails with the removal's error: `ids` lists the tasks removed, ascending, the message says how many other tasks were rewritten, and `changed_paths` lists the folder and every task file rewritten. Tasks it did not remove are left as they were, and their references with them; running `folder delete` again, once the cause is fixed, removes the rest. If the cleanup itself fails, the error is still the removal's, with the cleanup's failure added to its message, and `doctor` finds the references left (`dangling-reference`, `stale-claim`).
-- **Result:** `folder` (its record, as it was), `deleted` (IDs of the tasks removed), and `dependents` (IDs of the tasks whose `blocked_by` changed).
+- Every task and folder outside the folder loses from its `blocked_by` the IDs of the removed tasks, of the folder, and of every folder under it; and the removed tasks' claims end. The folder is removed first, as [`task delete`](#task-delete) removes its task first. A folder among them whose folder file can't be used has no ID koan can read, so references to it stay, as dangling references `doctor` finds.
+- **A removal that fails partway** (a file the operating system won't remove, say in a read-only directory of material) still finishes the rest for the tasks and folders it did remove: those whose task file or folder file is gone leave every remaining `blocked_by`, in task files and folder files, and the tasks' claims end. Then it fails with the removal's error: `ids` lists the tasks removed, ascending, the message says how many other tasks and folders were rewritten, and `changed_paths` lists the folder and every task file and folder file rewritten. Tasks it did not remove are left as they were, and their references with them; running `folder delete` again, once the cause is fixed, removes the rest. If the cleanup itself fails, the error is still the removal's, with the cleanup's failure added to its message, and `doctor` finds the references left (`dangling-reference`, `stale-claim`).
+- **Result:** `folder` (its record, as it was), `deleted` (IDs of the tasks removed), and `dependents` (IDs of the tasks and folders whose `blocked_by` changed).
 - **Refuses:** `not-empty`, without `contents`; `has-material`, with `contents` and without `force`, listing in `paths` each material entry found, not what is inside it.
 
 ### folder list
@@ -307,6 +339,34 @@ Return the folders under a folder.
 - Without `recursive`, only the folders directly in `folder`. The folder itself is not in the list: `folder show` returns it.
 - **Result:** `folders`, `total`, `truncated`.
 - **Order:** tree order.
+- Every record carries its `readiness` and `empty`, so `folder list` loads every task file under `folder`, besides every folder file, and the files of the blockers each folder waits on, its own and inherited, with the task files under those that are folders. `fields` cuts down what is returned, not what is loaded.
+
+### folder block
+
+Add blockers to a folder: everything in it, at any depth, then waits on them too. All of them are checked before anything is written.
+
+- **Input:** `folder` (required, not `/`, which has no folder file), and `blocked_by` (required): one or more [tasks and folders](#references), open or done, to add to its `blocked_by`.
+- Blockers already there are ignored.
+- A folder with no folder file, or one koan can't use, fails it, as for `folder update`.
+- **Result:** `id`, `path`, `changed`.
+- **Refuses:** `cycle`, as [Cycles](#cycles) says: a new blocker that is the folder itself, in whatever form it is named (`/proj contains /proj`), that contains the folder or is under it, or that already waits, directly or through other tasks and folders, on the folder being done or on anything under it.
+
+### folder unblock
+
+Remove blockers from a folder.
+
+- **Input:** `folder` (required, not `/`), and `blocked_by` (required): one or more IDs to remove from its `blocked_by`, which need not exist and need not be there, or paths, which must resolve.
+- A folder with no folder file, or one koan can't use, fails it, as for `folder update`.
+- **Result:** `id`, `path`, `changed`.
+
+### folder why
+
+Say what a folder is waiting on to be done, by following its open tasks, at any depth, as [`task why`](#task-why) follows a task.
+
+- **Input:** `folder` (required).
+- **Result:** as `task why`'s: `readiness` (the folder's own), `ready` (the IDs of the ready tasks under it, and of the ready tasks those under it wait on, in work order: working on these is what makes it done), `stuck`, and `stuck_folders`.
+- A done folder, an empty one included, has every list empty. A folder not done has at least one of them non-empty.
+- A folder file koan can't use fails it, as for `folder show`. A folder with no folder file is answered, and is in its own `stuck_folders` unless it is done.
 
 ## Tasks
 
@@ -322,43 +382,46 @@ Create an open task.
 | `folder` | `/` | Where the task goes. |
 | `priority` | `null` | |
 | `tags` | `[]` | |
-| `blocked_by` | `[]` | IDs of existing tasks, open or done. |
-| `blocks` | `[]` | IDs of existing tasks, open or done, that wait on the new task: it is added to each one's `blocked_by`. |
+| `blocked_by` | `[]` | Existing [tasks and folders](#references), open or done. |
+| `blocks` | `[]` | Existing [tasks and folders](#references), open or done, that wait on the new task: it is added to each one's `blocked_by`. A folder in `blocks` holds back everything in it until the new task is done. |
 | `extra` | `{}` | |
 | `notes` | `""` | The initial content of the `@<id>.md`. |
 
 - The new ID is the next one above both the counter and the tree's highest ID ([IDs](design.md#ids)), after the IDs of any folders made for it. A failure after the counter is raised uses up the ID.
-- The new task never exists without every task in `blocks` waiting on it. A kill partway can instead leave some of them waiting on an ID with no task, a dangling reference `doctor` finds, as [`task delete`](#task-delete) can leave one.
+- The new task never exists without everything in `blocks` waiting on it. A kill partway can instead leave some of them waiting on an ID with no task, a dangling reference `doctor` finds, as [`task delete`](#task-delete) can leave one.
 - A failure writing the notes leaves the task created without them: the error's `ids` is the new task, and its `changed_paths` what was written. The `@<id>.md` is always written, empty when no notes are given, and never over a file already there: when one is, `task create` fails with `io`, and the new task has that file as its notes.
 - The folder's path is checked before an ID is used, so `not-a-folder` changes nothing.
-- A new task closes a cycle only through `blocks`: when a task in `blocks` is in `blocked_by` too, or one in `blocked_by` already waits on one in `blocks`, directly or through other tasks. That is refused, as `task block` refuses a cycle, before an ID is used.
-- Every task in `blocks` is read before an ID is used, so one that can't be used refuses the command with its error, and changes nothing. Only an I/O error after one is rewritten can leave tasks waiting on the new one when it was not created: the error's `ids` then lists the tasks rewritten, in ascending order, its `message` names them, and its `changed_paths` what was written. Rewritten tasks that wait on a task never created are a dangling reference: create it again and point them at it with `task block`, or remove the reference with `task unblock`.
-- **Result:** `id`, `changed` (always `true`), `folders_created`, and `dependents`: the IDs of the tasks in `blocks`, ascending.
-- **Refuses:** `cycle`; `ids` is the existing tasks of one such cycle, from a task in `blocked_by` along `blocked_by` to the task in `blocks` it reaches (the new task, which closes it, has no ID yet). As for `task block`, a cycle through a task file that can't be read can't be ruled out, and fails with that file's error.
+- A new task closes a [cycle](#cycles) only through its `blocked_by` and `blocks`: when one of them contains its folder or is it (`blocked_by` naming its own folder, `blocks` naming a folder above it), when something in `blocks` is in `blocked_by` too, when something in `blocked_by` already waits, directly or through other tasks and folders, on something in `blocks` or on the new task's folder being done, or when its folder or a folder above it already waits on something in `blocks`, since the new task inherits their blockers. That is refused before an ID is used. With neither, a task created in any folder closes none.
+- Everything in `blocks` is read before an ID is used, so a task file or folder file that can't be used refuses the command with its error, and changes nothing. Only an I/O error after one is rewritten can leave tasks and folders waiting on the new one when it was not created: the error's `ids` then lists those rewritten, in ascending order, its `message` names them, and its `changed_paths` what was written. Rewritten ones that wait on a task never created are a dangling reference: create it again and point them at it with `task block` or `folder block`, or remove the reference with `task unblock` or `folder unblock`.
+- **Result:** `id`, `changed` (always `true`), `folders_created`, and `dependents`: the IDs in `blocks`, ascending.
+- **Refuses:** `cycle`, as [Cycles](#cycles) says; the new task, which has no ID yet, is left out of `ids` and named by its title in the message.
 
 ### batch
 
 Create folders, and open tasks in them, in one write, where later tasks may wait on earlier ones: a piece of work laid out whole. Everything is checked before anything is written.
 
 - **Input:** `folders` (default `[]`), the folders to make; `folder` (default `/`), the folder of every task that names none; and `tasks` (default `[]`), each with `task create`'s fields but `blocks`. The two lists hold 1–1000 entries between them.
-- **A folder entry** has `folder create`'s fields: `folder` (required, a path, not `/`), `title` (default `null`), `extra` (default `{}`), and `notes` (default `""`). No two entries have one path. A task goes into a folder of the batch by naming its path in its own `folder`, as into any other.
+- **No `blocks`**, in folder entries or task entries: inside a batch every edge is a `blocked_by`. Making something already in the tree wait on something new stays with `task create --blocks` and `folder create --blocks`, or `task block` and `folder block` after the batch.
+- **A folder entry** has `folder create`'s fields but `blocks`: `folder` (required, a path, not `/`), `title` (default `null`), `extra` (default `{}`), `notes` (default `""`), and `blocked_by` (default `[]`). No two entries have one path. A task goes into a folder of the batch by naming its path in its own `folder`, as into any other.
+- **A folder entry's `blocked_by`** holds IDs of existing tasks and folders, in any form, and folder paths: of folders already there, or of any folder the batch makes, as an entry or as needed. Not refs: the folders are made before the tasks.
 - **A task entry** has, besides `task create`'s fields:
 
 | Field | Holds |
 |---|---|
 | `ref` | A name for this task within the batch, following the tag rule, with at least one letter, so that no ref reads as an ID. Unique in the batch. Never stored. |
-| `blocked_by` | A mix of existing tasks' IDs, in any form (`42`, `"42"`, `"@42"`), and the `ref`s of **earlier** tasks in the batch. |
+| `blocked_by` | A mix of existing tasks' and folders' IDs, in any form (`42`, `"42"`, `"@42"`); folder paths, as for a folder entry; and the `ref`s of **earlier** tasks in the batch. |
 
-- Refs are global to the batch, and may only point backwards, so a batch cannot contain a cycle.
-- A `blocked_by` string that is a valid ref but names no earlier task is `invalid-input` saying so; any other string that is not an ID is `invalid-input` saying what an entry may be: a task ID, like `42` or `@42`, or the ref of an earlier task.
-- No two folder paths in the batch, among its folder entries, its tasks' folders, and its `folder`, differ only in case ([Folders](design.md#folders)): `invalid-input`, before the tree is read.
+- Refs are global to the batch, and may only point backwards. The three forms can't be mistaken for each other: a ref has a letter in it, a path starts with `/`, and an ID is digits.
+- A batch can close a cycle: two folder entries that wait on each other, a task waiting on a folder that holds it, or, through refs alone, a task waiting on an earlier one whose folder waits, in the tree, on the later one's folder being done. So a batch is checked for [cycles](#cycles) as a whole, with the tree, before an ID is used. Its new tasks and folders have no IDs yet: the error names them as [Cycles](#cycles) says, a task by its `ref` or else its title, and points into the input at the entries that close the cycle.
+- A `blocked_by` string that is a valid ref but names no earlier task is `invalid-input` saying so; any other string that is not an ID or a folder path is `invalid-input` saying what an entry may be: an ID, like `42` or `@42`, a folder path, like `/proj/research`, or the ref of an earlier task. A path that names no folder of the tree or of the batch is `not-found`, before an ID is used.
+- No two folder paths in the batch, among its folder entries, its tasks' folders, its `blocked_by` entries, and its `folder`, differ only in case ([Folders](design.md#folders)): `invalid-input`, before the tree is read.
 - Every folder is checked before an ID is used: each folder entry, that nothing is at its `folder`; each task's folder given by path, that it can be made; one given by ID, that it exists; and the batch's `folder`, the same way, even when no task falls back to it.
 - A folder entry's missing parents, and a task's missing folder, are made as needed, with no title, as by any command.
 - **IDs**: the folders the batch makes take theirs first, in tree order, parents before children, entries and folders made as needed alike; then the tasks, consecutively, in input order. Every task gets the same `created_at`.
-- A folder entry is made with its fields and notes.
+- A folder entry is made with its fields and notes, its `blocked_by` holding IDs: a path names its folder's ID, set aside before anything is written, so a folder may name one the batch makes after it.
 - A failure partway leaves the folders made so far, parents first, and the first tasks of the batch, and not the rest: the error's `folders` lists the folders made, in tree order, the last perhaps without its folder file, its `ids` the tasks created, in input order, and `changed_paths` everything written. To finish, drop the folders and tasks made from the input, replace each `ref` to a task made with its ID, and run the rest. The IDs set aside for what was not made are not reused.
 - **Result:** `ids` (the tasks', in input order), `refs` (each `ref` and the ID it got), `folders` (each folder the batch made, by path, and the ID it got), and `folders_created` (their paths, in tree order).
-- **Refuses:** `destination-exists`, when something is at a folder entry's `folder`, listing every such path in `folders` and `paths`: a folder entry means one to make. To put tasks into a folder already there, name it in their `folder`; to set its fields, use `folder update`. A folder entry that appears while the batch runs, only by an outside change, is refused the same way, after the folders before it are made: then it is named in the message and `paths`, and `folders` lists those made, as for any failure partway.
+- **Refuses:** `cycle`; and `destination-exists`, when something is at a folder entry's `folder`, listing every such path in `folders` and `paths`: a folder entry means one to make. To put tasks into a folder already there, name it in their `folder`; to set its fields, use `folder update`. A folder entry that appears while the batch runs, only by an outside change, is refused the same way, after the folders before it are made: then it is named in the message and `paths`, and `folders` lists those made, as for any failure partway.
 
 ### task show
 
@@ -404,17 +467,16 @@ Make a done task open again: `completed_at` becomes `null`. The task starts uncl
 
 Add blockers to a task. All of them are checked before anything is written.
 
-- **Input:** `id` (required), and `blocked_by` (required): one or more IDs of existing tasks, open or done, not including `id`, to add to its `blocked_by`.
+- **Input:** `id` (required), and `blocked_by` (required): one or more existing [tasks and folders](#references), open or done, not including `id`, to add to its `blocked_by`.
 - Blockers already there are ignored.
 - **Result:** `id`, `changed`.
-- **Refuses:** `cycle`, when a new blocker already waits on `id`, directly or through other tasks. `ids` is one such cycle: `id`, the blocker, and the tasks from it back to `id`.
-- A cycle through a task file that can't be read can't be ruled out, so when the search from a new blocker meets one, `task block` fails with that file's error, `corrupt` or `unsupported-format`.
+- **Refuses:** `cycle`, as [Cycles](#cycles) says: a new blocker that is a folder holding the task, or that already waits on `id`, directly or through other tasks and folders.
 
 ### task unblock
 
 Remove blockers from a task.
 
-- **Input:** `id` (required), and `blocked_by` (required): one or more IDs to remove from its `blocked_by`. They need not exist, which is how a dangling reference is cleared by hand, and need not be there.
+- **Input:** `id` (required), and `blocked_by` (required): one or more IDs to remove from its `blocked_by`, or folder paths. IDs need not exist, which is how a dangling reference is cleared by hand, and need not be there; a path must name a folder with an ID ([References](#references)).
 - **Result:** `id`, `changed`.
 
 ### task move
@@ -423,23 +485,24 @@ Move a task, with its notes, to another folder. Nothing in the task file changes
 
 - **Input:** `id` (required), and `to` (required): the folder to move it into.
 - The task file moves first, then the notes.
+- In `to` the task inherits new blockers, and `to` and the folders above it hold it, so the move is checked for a [cycle](#cycles) first: one is closed when the task waits, directly or through other tasks and folders, on `to` or a folder above it being done (as when it is blocked by one of them), or when `to` or a folder above it already waits on the task. That takes a walk, every folder file, and the files the search reaches.
 - **Result:** `id`, `changed`, `folders_created`.
-- **Refuses:** `destination-exists`, when `to` already holds a non-empty `@<id>.md` with the task's name. An empty one is replaced.
+- **Refuses:** `destination-exists`, when `to` already holds a non-empty `@<id>.md` with the task's name. An empty one is replaced. `cycle`.
 
 ### task delete
 
-Remove a task and its notes, for good, and remove its ID from every other task's `blocked_by`. Its claim ends. Tasks that waited only on it become ready, as if it had been done.
+Remove a task and its notes, for good, and remove its ID from every other task's and every folder's `blocked_by`. Its claim ends. What waited only on it becomes ready, as if it had been done.
 
 - **Input:** `id` (required).
 - The task file need not be usable: `task delete` goes by its filename, which makes it the way to remove a broken task. Its record is then `null`, with an `unusable-file` warning.
-- A kill partway leaves either the task, perhaps without its notes, and `task delete` can be run again; or the task gone and other tasks still waiting on it, a dangling reference `doctor` finds. It never leaves the other tasks freed with the task still there, nor notes without their task.
-- **Result:** `id`, `task` (its record, as it was), and `dependents` (IDs of the tasks whose `blocked_by` changed).
+- A kill partway leaves either the task, perhaps without its notes, and `task delete` can be run again; or the task gone and other tasks or folders still waiting on it, a dangling reference `doctor` finds. It never leaves them freed with the task still there, nor notes without their task.
+- **Result:** `id`, `task` (its record, as it was), and `dependents` (IDs of the tasks and folders whose `blocked_by` changed).
 
 ## Queries
 
 ### task frontier
 
-Return the tasks that are ready and unclaimed: what can be taken now. It is exactly what [`task claim-next`](#task-claim-next) draws from. A ready task that is claimed is not here; `task list` with `readiness: ["ready"]` shows those too, and with `claimed: true` shows what is out.
+Return the tasks that are ready and unclaimed: what can be taken now. It returns tasks only; folders change it only through readiness. It is exactly what [`task claim-next`](#task-claim-next) draws from. A ready task that is claimed is not here; `task list` with `readiness: ["ready"]` shows those too, and with `claimed: true` shows what is out.
 
 - **Input:** `folder` (default `/`), `recursive` (default `true`), and the [narrowing](#narrowing) fields.
 - **Result:** `tasks`, `total`, `truncated`.
@@ -460,7 +523,7 @@ Return the tasks in scope, whatever their readiness.
 
 ### task why
 
-Say what a task is waiting on, by following its blockers, and theirs, through open tasks.
+Say what a task is waiting on, by following what blocks it, its own blockers and inherited ones, and what blocks those, through open tasks and folders not done. A folder is followed into the open tasks under it, at any depth, since they are what it waits on to be done.
 
 - **Input:** `id` (required).
 - **Result:**
@@ -468,10 +531,11 @@ Say what a task is waiting on, by following its blockers, and theirs, through op
 | Field | Holds |
 |---|---|
 | `readiness` | The task's own. |
-| `ready` | The IDs of the ready tasks it waits on, in work order: working on these is what moves it. Just the task itself when it is ready. |
-| `stuck` | The IDs no work will clear, ascending: blockers that are missing or unusable, and tasks that block each other. |
+| `ready` | The IDs of the ready tasks it waits on, in work order: working on these is what moves it. Just the task itself when it is ready. Always tasks, never folders. |
+| `stuck` | The IDs no work will clear, ascending: blockers that are missing or unusable, tasks whose files are unusable under a folder it follows (they keep the folder from being done), and tasks and folders that wait on each other. |
+| `stuck_folders` | The paths of folders it reaches whose blockers are unknown, since their folder file is missing or can't be used, in tree order. `koan repair` or a person clears these, not work. |
 
-- A done task has both lists empty. An open task has at least one of them non-empty.
+- A done task has every list empty. An open task has at least one of them non-empty.
 
 ### where
 

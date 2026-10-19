@@ -193,9 +193,10 @@ func cmdList(c *call) (any, *errs.Error) {
 }
 
 type whyResult struct {
-	Readiness model.Readiness `json:"readiness"`
-	Ready     []model.ID      `json:"ready"`
-	Stuck     []model.ID      `json:"stuck"`
+	Readiness    model.Readiness `json:"readiness"`
+	Ready        []model.ID      `json:"ready"`
+	Stuck        []model.ID      `json:"stuck"`
+	StuckFolders []model.Folder  `json:"stuck_folders"`
 }
 
 func cmdWhy(c *call) (any, *errs.Error) {
@@ -207,6 +208,9 @@ func cmdWhy(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	ready, stuck := graph.Why(id, c.look)
-	return whyResult{Readiness: c.task(f, tf).Readiness, Ready: ready, Stuck: stuck}, nil
+	res := whyResult{Readiness: c.task(f, tf).Readiness, Ready: []model.ID{}, Stuck: []model.ID{}, StuckFolders: []model.Folder{}}
+	if res.Readiness != model.Done {
+		res.Ready, res.Stuck, res.StuckFolders = c.graph().Why([]model.ID{id}, nil)
+	}
+	return res, nil
 }

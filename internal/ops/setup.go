@@ -79,7 +79,7 @@ func cmdInit(c *call) (any, *errs.Error) {
 	top := highestID(x, folders)
 	switch {
 	case cond.State == nil:
-		t.State = &model.State{Schema: model.FileFormat, LastID: top, Claims: map[string]model.Claim{}}
+		t.State = &model.State{Schema: model.StateFormat, LastID: top, Claims: map[string]model.Claim{}}
 		if e := t.SaveState(); e != nil {
 			return nil, e
 		}
@@ -289,7 +289,7 @@ func convert(t *store.Tree, rel string, from int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for v := from; v < model.FileFormat; v++ {
+	for v := from; v < model.TaskFormat; v++ {
 		step, ok := conversions[v]
 		if !ok {
 			return nil, errs.New(errs.Internal, "no conversion from format %d", v)

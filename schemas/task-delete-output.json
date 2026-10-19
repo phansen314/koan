@@ -13,7 +13,7 @@
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" },
       "uniqueItems": true,
-      "description": "The tasks whose blocked_by changed."
+      "description": "The tasks and folders whose blocked_by changed. Ascending."
     }
   },
   "additionalProperties": false

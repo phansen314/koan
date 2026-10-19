@@ -61,14 +61,21 @@ const (
 	text     kind = iota // a string
 	integer              // an integer
 	boolean              // true, or =false
-	ids                  // comma-separated task IDs, repeatable
+	ids                  // comma-separated task and folder IDs and folder paths, repeatable
 	names                // comma-separated strings, repeatable
 	keys                 // one string per occurrence
 	object               // one JSON value
 	priority             // an integer, or null
 	nullText             // a string, or null
 	diskPath             // a path on disk, made absolute from the working directory
+	readFrom             // a file koan reads, or - for stdin
 )
+
+// shown is the name help gives each kind's value.
+var shown = map[kind]string{
+	text: "string", integer: "int", boolean: "bool", ids: "ids", names: "list", keys: "key",
+	object: "json", priority: "int", nullText: "string", diskPath: "path", readFrom: "file",
+}
 
 type option struct {
 	name  string // the option, and in snake_case the input field
@@ -82,13 +89,14 @@ type command struct {
 	short   string
 	subject string // the input field the one positional argument sets; "" for none
 	subjKin kind
-	subjOpt bool // the subject may be left out, for an option that stands in for it
+	subjOpt bool   // the subject may be left out, for an option that stands in for it
+	needs   string // the required options, as the usage line names them
 	options []option
 	cwd     string // the input field set to the working directory when neither the subject nor that option is given
 }
 
 var scopeOptions = []option{
-	{"folder", text, "look only in this folder (default /)", ""},
+	{"folder", text, "look only in this folder, by path or ID (default /)", ""},
 	{"recursive", boolean, "include the folders under it (default true)", ""},
 	{"tags-any", names, "only tasks with at least one of these tags", ""},
 	{"tags-all", names, "only tasks with all of these tags", ""},
@@ -119,32 +127,39 @@ var commands = []command{
 		{"title", nullText, "the folder's title", ""},
 		{"extra", object, "a JSON object stored with the folder", ""},
 		{"notes", text, "the initial notes", ""},
-		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
+		{"notes-file", readFrom, "read the initial notes from a file, or - for stdin", ""},
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, that everything in it waits on", ""},
+		{"blocks", ids, "tasks and folders, by ID or folder path, that wait on it", ""}}},
 	{name: "folder show", short: "Return one folder", subject: "folder"},
 	{name: "folder update", short: "Change a folder's title or extra", subject: "folder", options: []option{
 		{"title", nullText, "the new title, or null to clear it", ""},
 		{"extra-merge", object, "a JSON object of keys to set", ""},
-		{"extra-remove", keys, "a key to delete (repeatable)", ""},
+		{"extra-remove", keys, "a key to delete", ""},
 		{"extra-replace-all", object, "the whole new extra object", ""}}},
-	{name: "folder move", short: "Move or rename a folder", subject: "folder", options: []option{
+	{name: "folder move", short: "Move or rename a folder", subject: "folder", needs: "--to <folder>", options: []option{
 		{"to", text, "the folder's new path (required)", ""}}},
 	{name: "folder delete", short: "Remove a folder and everything in it", subject: "folder", options: []option{
 		{"contents", boolean, "remove a folder that is not empty", ""},
 		{"force", boolean, "with --contents, remove material too: files and folders koan did not make", ""}}},
 	{name: "folder list", short: "Return the folders under a folder", options: []option{
-		{"folder", text, "the folders under this one (default /)", ""},
+		{"folder", text, "the folders under this one, by path or ID (default /)", ""},
 		{"recursive", boolean, "include the folders under those (default true)", ""},
 		{"limit", integer, "return at most this many", ""},
 		{"fields", names, "return only these fields of each folder", ""}}},
+	{name: "folder block", short: "Add blockers to a folder", subject: "folder", needs: "--blocked-by <blockers>", options: []option{
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, for everything in it to wait on (required)", ""}}},
+	{name: "folder unblock", short: "Remove blockers from a folder", subject: "folder", needs: "--blocked-by <blockers>", options: []option{
+		{"blocked-by", ids, "IDs or folder paths to stop waiting on (required)", ""}}},
+	{name: "folder why", short: "Say what a folder is waiting on to be done", subject: "folder"},
 	{name: "task create", short: "Create a task", subject: "title", options: []option{
-		{"folder", text, "where the task goes (default /)", ""},
+		{"folder", text, "where the task goes, by path or ID (default /)", ""},
 		{"priority", priority, "an integer; higher is more important", ""},
 		{"tags", names, "tags", ""},
-		{"blocked-by", ids, "IDs of the tasks it waits on", ""},
-		{"blocks", ids, "IDs of the tasks that wait on it", ""},
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, that it waits on", ""},
+		{"blocks", ids, "tasks and folders, by ID or folder path, that wait on it", ""},
 		{"extra", object, "a JSON object stored with the task", ""},
 		{"notes", text, "the initial notes", ""},
-		{"notes-file", text, "read the initial notes from a file, or - for stdin", ""}}},
+		{"notes-file", readFrom, "read the initial notes from a file, or - for stdin", ""}}},
 	{name: "batch", short: "Create folders, and tasks that may wait on each other, in one write (input only)"},
 	{name: "task show", short: "Return one task", subject: "id", subjKin: integer},
 	{name: "task update", short: "Change a task's title, priority, tags, or extra", subject: "id", subjKin: integer, options: []option{
@@ -154,16 +169,16 @@ var commands = []command{
 		{"tags-remove", names, "tags to remove", ""},
 		{"tags-replace-all", names, "the whole new set of tags", ""},
 		{"extra-merge", object, "a JSON object of keys to set", ""},
-		{"extra-remove", keys, "a key to delete (repeatable)", ""},
+		{"extra-remove", keys, "a key to delete", ""},
 		{"extra-replace-all", object, "the whole new extra object", ""}}},
 	{name: "task done", short: "Mark a task done", subject: "id", subjKin: integer},
 	{name: "task reopen", short: "Make a done task open again", subject: "id", subjKin: integer},
-	{name: "task block", short: "Add blockers to a task", subject: "id", subjKin: integer, options: []option{
-		{"blocked-by", ids, "IDs of the tasks to wait on (required)", ""}}},
-	{name: "task unblock", short: "Remove blockers from a task", subject: "id", subjKin: integer, options: []option{
-		{"blocked-by", ids, "IDs to stop waiting on (required)", ""}}},
-	{name: "task move", short: "Move a task to another folder", subject: "id", subjKin: integer, options: []option{
-		{"to", text, "the folder to move it into (required)", ""}}},
+	{name: "task block", short: "Add blockers to a task", subject: "id", subjKin: integer, needs: "--blocked-by <blockers>", options: []option{
+		{"blocked-by", ids, "tasks and folders, by ID or folder path, to wait on (required)", ""}}},
+	{name: "task unblock", short: "Remove blockers from a task", subject: "id", subjKin: integer, needs: "--blocked-by <blockers>", options: []option{
+		{"blocked-by", ids, "IDs or folder paths to stop waiting on (required)", ""}}},
+	{name: "task move", short: "Move a task to another folder", subject: "id", subjKin: integer, needs: "--to <folder>", options: []option{
+		{"to", text, "the folder to move it into, by path or ID (required)", ""}}},
 	{name: "task delete", short: "Remove a task", subject: "id", subjKin: integer},
 	{name: "task frontier", short: "Return the ready, unclaimed tasks, in work order", options: narrowOptions},
 	{name: "task list", short: "Return the tasks in scope", options: append(append([]option{}, narrowOptions...),
@@ -290,10 +305,12 @@ func newRoot(env Env, result **ops.Envelope) *cobra.Command {
 	root.SetHelpCommand(&cobra.Command{Use: "help", Hidden: true, Args: cobra.ArbitraryArgs,
 		RunE: func(*cobra.Command, []string) error { return usagef(`unknown command "help": use --help`) }})
 	root.Flags().SortFlags = false
+	root.SetUsageTemplate(usageTemplate(root.UsageTemplate()))
+	root.DisableFlagsInUseLine = true
 	parents := map[string]*cobra.Command{"": root}
 	for _, g := range groups {
 		group := &cobra.Command{Use: g.name + " <command>", Short: g.short, Args: noCommand,
-			RunE: func(*cobra.Command, []string) error { return nil }}
+			DisableFlagsInUseLine: true, RunE: func(*cobra.Command, []string) error { return nil }}
 		root.AddCommand(group)
 		parents[g.name] = group
 	}
@@ -305,6 +322,29 @@ func newRoot(env Env, result **ops.Envelope) *cobra.Command {
 		parents[group].AddCommand(newCommand(c, env, result))
 	}
 	return root
+}
+
+// note adds n to an option's usage, inside the parentheses it ends with if
+// it has them.
+func note(usage, n string) string {
+	if strings.HasSuffix(usage, ")") {
+		return strings.TrimSuffix(usage, ")") + "; " + n + ")"
+	}
+	return usage + " (" + n + ")"
+}
+
+// usageTemplate is cobra's usage template, t, without the help command,
+// which koan answers as an unknown command (spec/cli.md, Output), without
+// a second usage line for a command's subcommands, which its own names,
+// and saying options for flags, as spec/cli.md does.
+func usageTemplate(t string) string {
+	return strings.NewReplacer(
+		`(or .IsAvailableCommand (eq .Name "help"))`, ".IsAvailableCommand",
+		"{{if .HasAvailableSubCommands}}\n  {{.CommandPath}} [command]{{end}}", "",
+		"[command] --help", "<command> --help",
+		"Global Flags:", "Global Options:",
+		"Flags:", "Options:",
+	).Replace(t)
 }
 
 // noCommand answers the root or a group run without one of its commands:
@@ -324,6 +364,9 @@ func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
 	case c.subject != "":
 		use += " <" + c.subject + ">"
 	}
+	if c.needs != "" {
+		use += " " + c.needs
+	}
 	cmd := &cobra.Command{
 		Use:                   use + " [options]",
 		Short:                 c.short,
@@ -333,19 +376,23 @@ func newCommand(c command, env Env, result **ops.Envelope) *cobra.Command {
 	fs := cmd.Flags()
 	fs.SortFlags = false
 	for _, o := range c.options {
+		// Text underneath, whatever the kind, so that a value that is not
+		// what it should be reaches the command, as it would through
+		// --input; help names the kind.
+		v := &value{list: o.kind == ids || o.kind == names || o.kind == keys, kind: shown[o.kind]}
+		usage := o.usage
 		switch o.kind {
-		case boolean:
-			// A string underneath, so that a value that is not true or
-			// false reaches the command, as it would through --input.
-			fs.StringP(o.name, o.short, "", o.usage)
+		case ids, names:
+			usage = note(usage, "comma-separated, repeatable")
+		case keys:
+			usage = note(usage, "repeatable")
+		}
+		fs.VarP(v, o.name, o.short, usage)
+		if o.kind == boolean {
 			fs.Lookup(o.name).NoOptDefVal = "true"
-		case ids, names, keys:
-			fs.StringArray(o.name, nil, o.usage)
-		default:
-			fs.String(o.name, "", o.usage)
 		}
 	}
-	fs.StringP("input", "i", "", "read the whole input as one JSON object from a file, or - for stdin")
+	fs.VarP(&value{kind: shown[readFrom]}, "input", "i", "read the whole input as one JSON object from a file, or - for stdin")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		raw, err := buildInput(c, cmd, args, env)
 		if err != nil {
@@ -366,8 +413,7 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 		if len(args) > 0 || fs.NFlag() > 1 {
 			return nil, usagef("--input takes the whole input: give no other argument or option with it")
 		}
-		name, _ := fs.GetString("input")
-		return readFile(name, env)
+		return readFile(valueOf(fs, "input").text(), env)
 	}
 	in := map[string]any{}
 	switch {
@@ -390,8 +436,7 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 		field := strings.ReplaceAll(o.name, "-", "_")
 		switch o.kind {
 		case boolean:
-			s, _ := fs.GetString(o.name)
-			in[field] = scalar(boolean, s)
+			in[field] = scalar(boolean, valueOf(fs, o.name).text())
 		case ids:
 			list := []any{}
 			for _, v := range split(fs, o.name) {
@@ -401,9 +446,9 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 		case names:
 			in[field] = split(fs, o.name)
 		case keys:
-			in[field], _ = fs.GetStringArray(o.name)
+			in[field] = valueOf(fs, o.name).vals
 		case object:
-			s, _ := fs.GetString(o.name)
+			s := valueOf(fs, o.name).text()
 			dec := json.NewDecoder(strings.NewReader(s))
 			dec.UseNumber()
 			var v any
@@ -412,8 +457,9 @@ func buildInput(c command, cmd *cobra.Command, args []string, env Env) ([]byte, 
 			}
 			in[field] = v
 		default:
-			s, _ := fs.GetString(o.name)
-			if o.name == "notes-file" {
+			s := valueOf(fs, o.name).text()
+			// --notes-file, the one option that reads a file, sets notes.
+			if o.kind == readFrom {
 				data, err := readFile(s, env)
 				if err != nil {
 					return nil, err
@@ -473,15 +519,38 @@ func scalar(k kind, s string) any {
 // split is a list option's values: every occurrence, each split at commas.
 // An empty value gives an empty list.
 func split(fs *pflag.FlagSet, name string) []string {
-	vals, _ := fs.GetStringArray(name)
 	out := []string{}
-	for _, v := range vals {
+	for _, v := range valueOf(fs, name).vals {
 		if v != "" {
 			out = append(out, strings.Split(v, ",")...)
 		}
 	}
 	return out
 }
+
+// value is an option's text, as typed: every occurrence for a list, the
+// last for anything else. Help shows kind as the type of value it takes.
+type value struct {
+	vals []string
+	list bool
+	kind string
+}
+
+func (v *value) Set(s string) error {
+	if !v.list {
+		v.vals = nil
+	}
+	v.vals = append(v.vals, s)
+	return nil
+}
+
+func (v *value) String() string { return strings.Join(v.vals, ",") }
+func (v *value) Type() string   { return v.kind }
+
+// text is a single option's value.
+func (v *value) text() string { return v.String() }
+
+func valueOf(fs *pflag.FlagSet, name string) *value { return fs.Lookup(name).Value.(*value) }
 
 // readFile reads a file an option names, or stdin for -.
 func readFile(name string, env Env) ([]byte, error) {

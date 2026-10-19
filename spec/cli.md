@@ -35,7 +35,7 @@ Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 - **A command is its operation's name**, `koan task create` running `task create`, and an option is named after the input field it sets, in kebab-case: `blocked_by` is `--blocked-by`.
 - **The one subject is positional**: the task's ID, the folder (its path, or its ID where it must exist), the new task's title, `where`'s reference. It is required, but for `where`, which takes `--file` in its place, and `context`, which takes `--file` or nothing. `marker unbind` has none: its directory is `--dir`, as `marker bind`'s is. Everything else is an option, so a bare word has one meaning.
 - **Folder paths are exact**: always from the root, with a leading `/`. koan never completes one or derives one from the working directory. (`context` with no subject is no exception: it takes the working directory as a path on disk, `file`, and finds the folder from where that is in the tree or from its [marker](design.md#markers).)
-- **References**: wherever an input takes a [reference](design.md#references), the command line does too: `koan task show 42`, `koan task block @42 --blocked-by 17,@18`, `koan task list --folder 41`, with or without the `@`. An ID without `@` in a task position is passed to the operation as an integer; everything else as the string typed.
+- **References**: wherever an input takes a [reference](design.md#references), the command line does too: `koan task show 42`, `koan task block @42 --blocked-by 17,@18`, `koan task list --folder 41`, with or without the `@`. An ID without `@` in a task position is passed to the operation as an integer; everything else as the string typed. A list of blockers mixes IDs and folder paths: `--blocked-by 17,/proj/research`, an ID without `@` passed as an integer and every other item as the string typed (a folder name has no comma).
 - **Booleans**: `--recursive` is `true`, `--recursive=false` is `false`.
 - **Lists** are comma-separated, and the option may be repeated: `--tags travel,urgent` or `--tags travel --tags urgent`. The exception is `--extra-remove`, which takes one key per occurrence, since a key may contain a comma.
 - **`null`** is written `null`: `--priority null` clears a priority.
@@ -55,20 +55,23 @@ Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 | `koan doctor` | |
 | `koan repair` | `--kinds` |
 | `koan migrate` | `--dry-run` |
-| `koan folder create <folder>` | `--title`, `--extra`, `--notes`, `--notes-file` |
+| `koan folder create <folder>` | `--title`, `--extra`, `--notes`, `--notes-file`, `--blocked-by`, `--blocks` |
 | `koan folder show <folder>` | |
 | `koan folder update <folder>` | `--title`, `--extra-merge`, `--extra-remove`, `--extra-replace-all` |
 | `koan folder move <folder> --to <folder>` | |
 | `koan folder delete <folder>` | `--contents`, `--force` |
 | `koan folder list` | `--folder`, `--recursive`, `--limit`, `--fields` |
+| `koan folder block <folder> --blocked-by <blockers>` | |
+| `koan folder unblock <folder> --blocked-by <blockers>` | |
+| `koan folder why <folder>` | |
 | `koan task create <title>` | `--folder`, `--priority`, `--tags`, `--blocked-by`, `--blocks`, `--extra`, `--notes`, `--notes-file` |
 | `koan batch -i <file>` | |
 | `koan task show <id>` | |
 | `koan task update <id>` | `--title`, `--priority`, `--tags-add`, `--tags-remove`, `--tags-replace-all`, `--extra-merge`, `--extra-remove`, `--extra-replace-all` |
 | `koan task done <id>` | |
 | `koan task reopen <id>` | |
-| `koan task block <id> --blocked-by <ids>` | |
-| `koan task unblock <id> --blocked-by <ids>` | |
+| `koan task block <id> --blocked-by <blockers>` | |
+| `koan task unblock <id> --blocked-by <blockers>` | |
 | `koan task move <id> --to <folder>` | |
 | `koan task delete <id>` | |
 | `koan task frontier` | `--folder`, `--recursive`, `--tags-any`, `--tags-all`, `--limit`, `--fields` |
@@ -82,7 +85,7 @@ Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 | `koan task claim-next` | `--folder`, `--recursive`, `--tags-any`, `--tags-all`, `--extra` |
 | `koan task release <id>` | |
 
-Every command also takes `-i, --input <file>` and `-h, --help`. `--to` is required, as is `--blocked-by` on `task block` and `task unblock`; they are named because a second bare word would not say what it is.
+Every command also takes `-i, --input <file>` and `-h, --help`. `--to` is required, as is `--blocked-by` on `task block`, `task unblock`, `folder block`, and `folder unblock`; they are named because a second bare word would not say what it is.
 
 `koan where` takes either its reference or `--file <path>`: neither or both is `invalid-input`, as through `--input`. `koan context` takes its folder, `--file <path>`, or neither; both is `invalid-input`.
 
@@ -118,6 +121,8 @@ koan marker unbind --dir "$worktree"
 
 koan task update 42 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'
 koan task block 42 --blocked-by 17,18
+koan folder create /proj/phase2 --blocked-by /proj/phase1
+koan folder why /proj/phase1 | jq '.result.ready'
 koan task move 42 --to /archive
 koan task done 42
 

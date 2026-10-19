@@ -64,6 +64,7 @@ var commands = map[string]command{
 	"doctor": cmdDoctor, "repair": cmdRepair, "migrate": cmdMigrate,
 	"folder create": cmdFolderCreate, "folder show": cmdFolderShow, "folder update": cmdFolderUpdate,
 	"folder move": cmdFolderMove, "folder delete": cmdFolderDelete, "folder list": cmdFolderList,
+	"folder block": cmdFolderBlock, "folder unblock": cmdFolderUnblock, "folder why": cmdFolderWhy,
 	"task create": cmdCreate, "batch": cmdBatch, "task show": cmdShow, "task update": cmdUpdate,
 	"task done": cmdDone, "task reopen": cmdReopen, "task block": cmdBlock, "task unblock": cmdUnblock,
 	"task move": cmdMove, "task delete": cmdDelete,
@@ -96,6 +97,11 @@ func Run(env store.Env, name string, raw []byte) Envelope {
 	}
 	c := &call{env: env, in: in, now: model.Stamp(env.Now()), warned: map[string]bool{}}
 	result, e := cmd(c)
+	// A duplicated ID met as a blocker fails the command, though what it
+	// was asked for did not name it.
+	if e == nil && c.bt != nil && c.bt.err != nil {
+		e = c.bt.err
+	}
 	if c.t != nil {
 		if e != nil {
 			e.WithChanged(c.t.Changed()...)
@@ -115,7 +121,10 @@ type call struct {
 	now      string // the one time every timestamp of this command is
 	t        *store.Tree
 	x        *store.Index
-	byID     map[model.ID][]model.Folder // the folders with each ID, once read
+	fx       *folderIndex // every folder file, once read
+	g        *graph.Graph // the graph of the tree as it is
+	bt       *baseTree    // g's view of the tree
+	light    bool         // a command that reads no folder file: it needs no readiness, ID, or cycle check
 	warnings []errs.Warning
 	warned   map[string]bool
 }
@@ -148,7 +157,8 @@ func (c *call) checked() *errs.Error {
 	return nil
 }
 
-// index walks the tree, once.
+// index walks the tree, once, and then reads every folder file, but in a
+// light command.
 func (c *call) index() (*store.Index, *errs.Error) {
 	if c.x != nil {
 		return c.x, nil
@@ -158,6 +168,11 @@ func (c *call) index() (*store.Index, *errs.Error) {
 		return nil, e
 	}
 	c.x = x
+	if !c.light {
+		if _, e := c.folders(); e != nil {
+			return nil, e
+		}
+	}
 	return x, nil
 }
 
@@ -198,11 +213,16 @@ func (c *call) find(id model.ID) (model.Folder, *model.TaskFile, *errs.Error) {
 func (c *call) notFoundTasks(ids ...model.ID) *errs.Error {
 	e := notFoundTask(ids...)
 	var folders []string
-	eachFolderFile(c.t, c.x, func(f model.Folder, ff *model.FolderFile, _ *errs.Error) {
-		if ff != nil && slices.Contains(ids, ff.ID) {
-			folders = append(folders, fmt.Sprintf("%d is the ID of folder %s", ff.ID, f))
+	if c.fx == nil {
+		c.folders()
+	}
+	if c.fx != nil {
+		for _, id := range ids {
+			for _, f := range c.fx.byID[id] {
+				folders = append(folders, fmt.Sprintf("%d is the ID of folder %s", id, f))
+			}
 		}
-	})
+	}
 	if len(folders) > 0 {
 		e.Message += ": " + strings.Join(folders, ", ")
 	}
@@ -233,38 +253,19 @@ func (c *call) pass(id model.ID) *model.TaskFile {
 	return l.File
 }
 
-// look is the graph's view of a task. It needs the index. Each blocker of
-// the task that does not exist is reported as a dangling reference.
-func (c *call) look(id model.ID) (graph.Node, bool) {
-	tf := c.pass(id)
-	if tf == nil {
-		return graph.Node{}, false
-	}
-	var gone []model.ID
-	for _, b := range tf.BlockedBy {
-		if _, ok := c.x.Tasks[b]; !ok {
-			gone = append(gone, b)
-		}
-	}
-	if len(gone) > 0 {
-		c.warn(errs.WarnDanglingReference,
-			fmt.Sprintf("task %d is blocked by %v, which do not exist", id, gone),
-			append([]model.ID{id}, gone...), c.t.Abs(model.TaskRel(c.x.Tasks[id], id)))
-	}
-	return graph.Node{Open: tf.Open(), Priority: tf.Priority, BlockedBy: tf.BlockedBy}, true
-}
-
-// task builds the shape every command returns a task in. It needs the index.
+// task builds the shape every command returns a task in. It needs the
+// index.
 func (c *call) task(f model.Folder, tf *model.TaskFile) model.Task {
-	node, _ := c.look(tf.ID)
-	readiness, open := graph.Readiness(node, c.look)
+	c.dangling(fmt.Sprintf("task %d", tf.ID), tf.ID, tf.BlockedBy, c.t.Abs(model.TaskRel(f, tf.ID)))
+	st := c.graph().TaskState(graph.Node{Open: tf.Open(), Priority: tf.Priority, BlockedBy: tf.BlockedBy}, f)
 	t := model.Task{
 		ID: tf.ID, Title: tf.Title, Priority: tf.Priority, CreatedAt: tf.CreatedAt, CompletedAt: tf.CompletedAt,
 		UpdatedAt: tf.UpdatedAt, BlockedBy: tf.BlockedBy, Tags: tf.Tags, Extra: tf.Extra,
 		Folder:       f,
 		NotesPath:    c.t.Abs(model.NotesRel(f, tf.ID)),
-		Readiness:    readiness,
-		OpenBlockers: open,
+		Readiness:    st.Readiness,
+		OpenBlockers: st.Open,
+		Inherited:    st.Inherited,
 	}
 	if tf.Open() {
 		t.Claim = c.t.Claim(tf.ID)

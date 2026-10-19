@@ -54,28 +54,43 @@ func ClaimKey(id ID) string { return strconv.FormatInt(id, 10) }
 // FolderFile is a folder file's content. Field order is the order koan
 // writes.
 type FolderFile struct {
-	Schema int64          `json:"schema"`
-	ID     ID             `json:"id"`
-	Title  *string        `json:"title"`
-	Extra  map[string]any `json:"extra"`
+	Schema    int64          `json:"schema"`
+	ID        ID             `json:"id"`
+	Title     *string        `json:"title"`
+	BlockedBy []ID           `json:"blocked_by"`
+	Extra     map[string]any `json:"extra"`
 }
 
 // FolderRecord is a folder as every command that returns one returns it.
+// BlockedBy is nil, written null, for a folder with no usable folder file.
 type FolderRecord struct {
-	ID        *ID            `json:"id"`
-	Path      Folder         `json:"path"`
-	Dir       string         `json:"dir"`
-	Title     *string        `json:"title"`
-	Extra     map[string]any `json:"extra"`
-	NotesPath *string        `json:"notes_path"`
+	ID           *ID            `json:"id"`
+	Path         Folder         `json:"path"`
+	Dir          string         `json:"dir"`
+	Title        *string        `json:"title"`
+	BlockedBy    []ID           `json:"blocked_by"`
+	Extra        map[string]any `json:"extra"`
+	NotesPath    *string        `json:"notes_path"`
+	Readiness    Readiness      `json:"readiness"`
+	OpenBlockers []ID           `json:"open_blockers"`
+	Inherited    []Inherited    `json:"inherited"`
+	Empty        bool           `json:"empty"`
+}
+
+// Inherited is one folder above a task or folder that blocks it now: the
+// IDs in its blocked_by that block, or nil, written null, when its folder
+// file is missing or can't be used.
+type Inherited struct {
+	Folder Folder `json:"folder"`
+	IDs    []ID   `json:"ids"`
 }
 
 // NewFolderFile is the folder file of a new folder.
 func NewFolderFile(id ID) *FolderFile {
-	return &FolderFile{Schema: FileFormat, ID: id, Extra: map[string]any{}}
+	return &FolderFile{Schema: FolderFormat, ID: id, BlockedBy: []ID{}, Extra: map[string]any{}}
 }
 
-var folderKeys = []string{"schema", "id", "title", "extra"}
+var folderKeys = []string{"schema", "id", "title", "blocked_by", "extra"}
 
 // DecodeFolderFile reads a folder file in this binary's format and checks
 // every rule. A nil error and no problems means the file is usable.
@@ -98,8 +113,8 @@ func DecodeFolderFile(data []byte) (*FolderFile, []Problem, error) {
 func (f *FolderFile) Check() []Problem {
 	var ps []Problem
 	bad := func(field, reason string) { ps = append(ps, prob(field, reason)) }
-	if f.Schema != FileFormat {
-		bad("/schema", fmt.Sprintf("is not %d", FileFormat))
+	if f.Schema != FolderFormat {
+		bad("/schema", fmt.Sprintf("is not %d", FolderFormat))
 	}
 	if !ValidID(f.ID) {
 		bad("/id", "is not an ID")
@@ -111,6 +126,38 @@ func (f *FolderFile) Check() []Problem {
 			bad("/title", "has leading or trailing whitespace")
 		}
 	}
+	ps = append(ps, checkBlockedBy(f.BlockedBy, f.ID, "the folder's own ID")...)
+	return ps
+}
+
+// Normalize puts the folder file's set in the order koan writes it.
+func (f *FolderFile) Normalize() {
+	if f.BlockedBy == nil {
+		f.BlockedBy = []ID{}
+	}
+	if f.Extra == nil {
+		f.Extra = map[string]any{}
+	}
+	slices.Sort(f.BlockedBy)
+}
+
+// checkBlockedBy lists the rules a file's blocked_by breaks: each entry an
+// ID, not own, and none twice.
+func checkBlockedBy(bs []ID, own ID, ownIs string) []Problem {
+	var ps []Problem
+	seen := map[ID]bool{}
+	for i, b := range bs {
+		f := fmt.Sprintf("/blocked_by/%d", i)
+		switch {
+		case !ValidID(b):
+			ps = append(ps, prob(f, "is not an ID"))
+		case b == own:
+			ps = append(ps, prob(f, "is "+ownIs))
+		case seen[b]:
+			ps = append(ps, prob(f, "is repeated"))
+		}
+		seen[b] = true
+	}
 	return ps
 }
 
@@ -120,7 +167,7 @@ type Meta struct {
 }
 
 // Task is a task as every command returns it: the file's fields but schema,
-// and five derived ones.
+// and six derived ones.
 type Task struct {
 	ID           ID             `json:"id"`
 	Title        string         `json:"title"`
@@ -135,18 +182,19 @@ type Task struct {
 	NotesPath    string         `json:"notes_path"`
 	Readiness    Readiness      `json:"readiness"`
 	OpenBlockers []ID           `json:"open_blockers"`
+	Inherited    []Inherited    `json:"inherited"`
 	Claim        *Claim         `json:"claim"`
 }
 
 // TaskFields are the names of a Task's fields, in the order they are written.
 var TaskFields = []string{
 	"id", "title", "priority", "created_at", "completed_at", "updated_at",
-	"blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "open_blockers", "claim",
+	"blocked_by", "tags", "extra", "folder", "notes_path", "readiness", "open_blockers", "inherited", "claim",
 }
 
 // FolderFields are the names of a FolderRecord's fields, in the order they
 // are written.
-var FolderFields = []string{"id", "path", "dir", "title", "extra", "notes_path"}
+var FolderFields = []string{"id", "path", "dir", "title", "blocked_by", "extra", "notes_path", "readiness", "open_blockers", "inherited", "empty"}
 
 // Encode writes v as koan writes every file: two-space indentation, map keys
 // sorted, no HTML escaping, and a trailing newline.
@@ -251,8 +299,8 @@ func DecodeTaskFile(data []byte) (*TaskFile, []Problem, error) {
 func (t *TaskFile) Check() []Problem {
 	var ps []Problem
 	bad := func(field, reason string) { ps = append(ps, prob(field, reason)) }
-	if t.Schema != FileFormat {
-		bad("/schema", fmt.Sprintf("is not %d", FileFormat))
+	if t.Schema != TaskFormat {
+		bad("/schema", fmt.Sprintf("is not %d", TaskFormat))
 	}
 	if !ValidID(t.ID) {
 		bad("/id", "is not a task ID")
@@ -274,19 +322,7 @@ func (t *TaskFile) Check() []Problem {
 	if !ValidStamp(t.UpdatedAt) {
 		bad("/updated_at", "is not a timestamp")
 	}
-	seen := map[ID]bool{}
-	for i, b := range t.BlockedBy {
-		f := fmt.Sprintf("/blocked_by/%d", i)
-		switch {
-		case !ValidID(b):
-			bad(f, "is not a task ID")
-		case b == t.ID:
-			bad(f, "is the task's own ID")
-		case seen[b]:
-			bad(f, "is repeated")
-		}
-		seen[b] = true
-	}
+	ps = append(ps, checkBlockedBy(t.BlockedBy, t.ID, "the task's own ID")...)
 	tags := map[string]bool{}
 	for i, tag := range t.Tags {
 		f := fmt.Sprintf("/tags/%d", i)
@@ -342,8 +378,8 @@ func DecodeState(data []byte) (*State, []Problem, error) {
 	if ps != nil {
 		return nil, ps, nil
 	}
-	if s.Schema != FileFormat {
-		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", FileFormat)))
+	if s.Schema != StateFormat {
+		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", StateFormat)))
 	}
 	if s.LastID < 0 || s.LastID > MaxID {
 		ps = append(ps, prob("/last_id", "is out of range"))

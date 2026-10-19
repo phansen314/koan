@@ -15,11 +15,15 @@ import (
 
 // Format is the one tree format this binary reads and writes: the tree's
 // layout, and what @koan.json records.
-const Format = 2
+const Format = 3
 
-// FileFormat is the format of the task files, folder files, and state file
-// this binary writes.
-const FileFormat = 1
+// The format of each kind of file this binary reads and writes. Each kind is
+// numbered apart, so no kind shares a constant with another.
+const (
+	TaskFormat   = 1
+	FolderFormat = 2
+	StateFormat  = 1
+)
 
 // Mark starts the name of every entry koan owns in the tree.
 const Mark = "@"

@@ -7,7 +7,7 @@
     "id": { "$ref": "task-ref" },
     "blocked_by": {
       "type": "array",
-      "items": { "$ref": "task-ref" },
+      "items": { "$ref": "item-ref" },
       "uniqueItems": true,
       "minItems": 1
     }

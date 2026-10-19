@@ -60,7 +60,7 @@ func TestFoldersAndMove(t *testing.T) {
 	w.ok("task create", `{"title":"outside","blocked_by":[3]}`)
 	w.ok("task claim", `{"id":3}`)
 	got = w.ok("folder delete", `{"folder":"/z","contents":true}`)
-	if r := w.record(got); r != `{"dir":"~/@z","extra":{},"id":6,"notes_path":"~/@z/@folder.md","path":"/z","title":null}` {
+	if r := w.record(got); r != `{"blocked_by":[],"dir":"~/@z","empty":false,"extra":{},"id":6,"inherited":[],"notes_path":"~/@z/@folder.md","open_blockers":[],"path":"/z","readiness":"ready","title":null}` {
 		t.Errorf("folder delete: %s", r)
 	}
 	wantIDs(t, "deleted", got["deleted"], 3)
@@ -77,7 +77,7 @@ func TestFoldersAndMove(t *testing.T) {
 func TestFolderMetadata(t *testing.T) {
 	w := ready(t)
 	w.ok("folder create", `{"folder":"/p/q","title":" Research ","extra":{"kind":"phase"},"notes":"n"}`)
-	want := `{"dir":"~/@p/@q","extra":{"kind":"phase"},"id":2,"notes_path":"~/@p/@q/@folder.md","path":"/p/q","title":"Research"}`
+	want := `{"blocked_by":[],"dir":"~/@p/@q","empty":true,"extra":{"kind":"phase"},"id":2,"inherited":[],"notes_path":"~/@p/@q/@folder.md","open_blockers":[],"path":"/p/q","readiness":"done","title":"Research"}`
 	if r := w.record(w.ok("folder show", `{"folder":"/p/q"}`)); r != want {
 		t.Errorf("folder create: %s, want %s", r, want)
 	}
@@ -85,10 +85,10 @@ func TestFolderMetadata(t *testing.T) {
 		t.Errorf("notes %q", n)
 	}
 	// The folders above it get none of it.
-	if r := w.record(w.ok("folder show", `{"folder":"/p"}`)); r != `{"dir":"~/@p","extra":{},"id":1,"notes_path":"~/@p/@folder.md","path":"/p","title":null}` {
+	if r := w.record(w.ok("folder show", `{"folder":"/p"}`)); r != `{"blocked_by":[],"dir":"~/@p","empty":true,"extra":{},"id":1,"inherited":[],"notes_path":"~/@p/@folder.md","open_blockers":[],"path":"/p","readiness":"done","title":null}` {
 		t.Errorf("folder show /p: %s", r)
 	}
-	if r := w.record(w.ok("folder show", `{"folder":"/"}`)); r != `{"dir":"~","extra":{},"id":null,"notes_path":null,"path":"/","title":null}` {
+	if r := w.record(w.ok("folder show", `{"folder":"/"}`)); r != `{"blocked_by":[],"dir":"~","empty":true,"extra":{},"id":null,"inherited":[],"notes_path":null,"open_blockers":[],"path":"/","readiness":"done","title":null}` {
 		t.Errorf("folder show /: %s", r)
 	}
 	w.fail("folder show", `{"folder":"/nope"}`, errs.NotFound, "")
@@ -129,7 +129,7 @@ func TestFolderMetadata(t *testing.T) {
 
 	// A moved folder keeps its fields.
 	w.ok("folder move", `{"folder":"/p","to":"/r"}`)
-	if r := w.record(w.ok("folder show", `{"folder":"/r"}`)); r != `{"dir":"~/@r","extra":{},"id":1,"notes_path":"~/@r/@folder.md","path":"/r","title":null}` {
+	if r := w.record(w.ok("folder show", `{"folder":"/r"}`)); r != `{"blocked_by":[],"dir":"~/@r","empty":true,"extra":{},"id":1,"inherited":[],"notes_path":"~/@r/@folder.md","open_blockers":[],"path":"/r","readiness":"done","title":null}` {
 		t.Errorf("folder move: %s", r)
 	}
 
@@ -143,12 +143,16 @@ func TestFolderMetadata(t *testing.T) {
 	w.fail("folder show", `{"folder":"/r/q"}`, errs.Corrupt, "")
 	w.fail("folder update", `{"folder":"/r/q","title":"x"}`, errs.Corrupt, "")
 	// folder list shows each folder's fields; the folder with no folder
-	// file has no ID, and no warning (doctor reports it); the unusable one,
-	// a warning. So do the folder writes that return its ID.
-	for _, c := range [][2]string{{"folder list", `{}`}, {"folder create", `{"folder":"/r/q"}`}} {
-		env := w.run(c[0], c[1])
-		if len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
-			t.Errorf("%s: warnings %+v", c[0], env.Warnings)
+	// file has no ID, and the unusable one none either: each is a warning,
+	// since their blockers are unknown. A folder write that returns the ID
+	// warns about the one it reads; with nothing to make, it walks nothing.
+	for _, c := range []struct {
+		name, input string
+		n           int
+	}{{"folder list", `{}`, 2}, {"folder create", `{"folder":"/r/q"}`, 1}} {
+		env := w.run(c.name, c.input)
+		if len(env.Warnings) != c.n || slices.ContainsFunc(env.Warnings, func(w errs.Warning) bool { return w.Kind != errs.WarnUnusableFile }) {
+			t.Errorf("%s: warnings %+v", c.name, env.Warnings)
 		}
 	}
 	w.ok("folder update", `{"folder":"/r","title":"R"}`)
@@ -170,8 +174,8 @@ func TestFolderFilesAndIDs(t *testing.T) {
 	w.ok("task create", `{"title":"a","folder":"/p"}`) // /p is 1, the task 2
 	w.ok("folder create", `{"folder":"/q"}`)           // 3
 	w.ok("folder create", `{"folder":"/r"}`)           // 4
-	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":1,"id":2,"title":null,"extra":{}}`), 0o644)
-	os.WriteFile(w.root("r/folder.json"), []byte(`{"schema":1,"id":4}`), 0o644)
+	os.WriteFile(w.root("q/folder.json"), []byte(`{"schema":2,"id":2,"title":null,"blocked_by":[],"extra":{}}`), 0o644)
+	os.WriteFile(w.root("r/folder.json"), []byte(`{"schema":2,"id":4}`), 0o644)
 	want := []string{"duplicate-id @p/@2.json,@q/@folder.json", "unusable-file @r/@folder.json"}
 	if fs := w.findings(); !slices.Equal(fs, want) {
 		t.Errorf("findings %v, want %v", fs, want)
@@ -328,5 +332,95 @@ func TestDeleteFolderRefusesMaterial(t *testing.T) {
 	wantIDs(t, "deleted", got["deleted"], 6)
 	if _, err := os.Stat(w.disk("@p")); !os.IsNotExist(err) {
 		t.Errorf("the folder is still there: %v", err)
+	}
+}
+
+// folder create with blocks, failing after what is in blocks waits on the
+// new folder's ID, says what it left (spec/operations.md, folder create).
+func TestFolderCreateBlocksFailing(t *testing.T) {
+	for _, c := range []struct {
+		what    string
+		fail    func(op fsys.Op) bool
+		ids     []int64
+		folders []string
+		message string
+		id      any // the folder's ID afterwards, nil when it has none
+	}{
+		{"the folder", func(op fsys.Op) bool { return op.Name == fsys.OpMkdir && op.Path == "@c" }, []int64{1}, []string{}, "[1] wait on folder 2, which was not made", nil},
+		{"its folder file", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "@c/@folder.json" }, []int64{1}, []string{"/c"}, "/c was made without its @folder.json", nil},
+		{"its notes", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "@c/@folder.md" }, []int64{2}, []string{}, "/c was made without its notes", float64(2)},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			w := ready(t)
+			w.ok("task create", `{"title":"a"}`) // 1
+			w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
+				if c.fail(op) {
+					return syscall.ENOSPC
+				}
+				return nil
+			}}
+			env := w.run("folder create", `{"folder":"/c","blocks":[1]}`)
+			w.env.FS = fsys.FS{}
+			if env.OK {
+				t.Fatalf("got %+v", env)
+			}
+			e := env.Error
+			if !slices.Equal(e.IDs, c.ids) || !slices.Equal(e.Folders, c.folders) || !strings.HasPrefix(e.Message, c.message) {
+				t.Errorf("ids %v folders %v message %q", e.IDs, e.Folders, e.Message)
+			}
+			if c.id != nil {
+				if id, _ := w.holderOf("/c"); id != c.id {
+					t.Errorf("/c has ID %v, want %v", id, c.id)
+				}
+			}
+			wantIDs(t, "task 1's blocked_by", task(w.ok("task show", `{"id":1}`))["blocked_by"], 2)
+		})
+	}
+}
+
+// The root is always there: folder create / is a success with nothing to
+// make, and destination-exists with anything to set.
+func TestFolderCreateRoot(t *testing.T) {
+	w := ready(t)
+	if got := w.ok("folder create", `{"folder":"/"}`); got["id"] != nil || got["changed"] != false {
+		t.Errorf("folder create /: %v", got)
+	}
+	w.fail("folder create", `{"folder":"/","title":"x"}`, errs.Conflict, errs.RuleDestinationExists)
+}
+
+// A folder delete failing partway takes the IDs of the folders it did
+// remove out of every blocked_by, and leaves those of the folders left.
+func TestDeleteFolderFailingPartwayUnreferencesFolders(t *testing.T) {
+	w := ready(t)
+	// /d is 1, /d/x 2, /d/y 3, /out 4; then a 5 in /d/x, b 6 in /d/y, and 7
+	// waiting on both folders.
+	w.ok("batch", `{"tasks":[{"title":"a","folder":"/d/x"},{"title":"b","folder":"/d/y"},`+
+		`{"title":"t","folder":"/out","blocked_by":["/d/x","/d/y"]}]}`)
+	// Fail the removal of the second task file: the folder of the first is
+	// gone with it, the other left.
+	var removed []int64
+	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
+		name := path.Base(op.Path)
+		if op.Name != fsys.OpRemove || !strings.HasSuffix(name, ".json") || name == "@folder.json" {
+			return nil
+		}
+		if len(removed) == 1 {
+			return syscall.EACCES
+		}
+		id, _ := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(name, "@"), ".json"), 10, 64)
+		removed = append(removed, id)
+		return nil
+	}}
+	w.fail("folder delete", `{"folder":"/d","contents":true}`, errs.IO, "")
+	w.env.FS = fsys.FS{}
+	left := int64(2)
+	if removed[0] == 5 {
+		left = 3
+	}
+	if got := task(w.ok("task show", `{"id":7}`))["blocked_by"]; !slices.Equal(ids(got), []int64{left}) {
+		t.Errorf("7 is blocked by %v, want only the folder left, %d", got, left)
+	}
+	if f := w.findings(); len(f) != 0 {
+		t.Errorf("findings %v", f)
 	}
 }

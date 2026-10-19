@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-unblock-input",
+  "type": "object",
+  "required": ["folder", "blocked_by"],
+  "properties": {
+    "folder": { "$ref": "folder-ref", "description": "Not the root, which has no folder file." },
+    "blocked_by": {
+      "type": "array",
+      "items": { "$ref": "item-ref" },
+      "uniqueItems": true,
+      "minItems": 1,
+      "description": "To remove from the folder's blocked_by: IDs, which need not exist, and paths, which must."
+    }
+  },
+  "additionalProperties": false
+}

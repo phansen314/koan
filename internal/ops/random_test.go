@@ -18,8 +18,9 @@ import (
 // and, after every one, compares what koan says with a small model of what
 // the specs promise: which commands succeed and how the others fail, every
 // task's folder, readiness, blockers, and claim, the frontier's order, the
-// folders, and that IDs are never reused. doctor must stay healthy
-// throughout.
+// folders, their IDs, blockers, and readiness, and that IDs are never
+// reused. The model has its own cycle check, a search of the whole graph of
+// spec/design.md (Invariants). doctor must stay healthy throughout.
 //
 // KOAN_RANDOM_SEED reruns one seed; KOAN_RANDOM_STEPS sets the length.
 func TestRandomCommands(t *testing.T) {
@@ -57,19 +58,210 @@ type mtask struct {
 type expected struct {
 	tasks   map[int64]*mtask
 	folders map[string]bool
+	fids    map[string]int64   // each folder's ID, the root aside
+	fblock  map[string][]int64 // each folder's blocked_by
 	lastID  int64
 }
 
-// addFolder records folder f and those above it: each one that is new
-// takes an ID.
-func (m *expected) addFolder(f string) {
-	for ; f != "/"; f = parent(f) {
-		if !m.folders[f] {
-			m.folders[f] = true
-			m.lastID++
+// addFolder records folders fs and those above them: each one that is new
+// takes an ID, in tree order.
+func (m *expected) addFolder(fs ...string) {
+	var missing []string
+	for _, f := range fs {
+		for ; f != "/"; f = parent(f) {
+			if !m.folders[f] && !slices.Contains(missing, f) {
+				missing = append(missing, f)
+			}
 		}
 	}
+	slices.SortFunc(missing, treeOrder)
+	for _, g := range missing {
+		m.folders[g] = true
+		m.lastID++
+		m.fids[g] = m.lastID
+	}
 	m.folders["/"] = true
+}
+
+// treeOrder sorts a parent before its children, and siblings by name, byte
+// for byte.
+func treeOrder(a, b string) int {
+	return slices.Compare(strings.Split(strings.Trim(a, "/"), "/"), strings.Split(strings.Trim(b, "/"), "/"))
+}
+
+// clone is a copy of the model, to try a change on.
+func (m *expected) clone() *expected {
+	c := &expected{tasks: map[int64]*mtask{}, folders: map[string]bool{}, fids: map[string]int64{}, fblock: map[string][]int64{}, lastID: m.lastID}
+	for id, t := range m.tasks {
+		tc := *t
+		tc.blockers = slices.Clone(t.blockers)
+		c.tasks[id] = &tc
+	}
+	for f := range m.folders {
+		c.folders[f] = true
+	}
+	for f, id := range m.fids {
+		c.fids[f] = id
+	}
+	for f, bs := range m.fblock {
+		c.fblock[f] = slices.Clone(bs)
+	}
+	return c
+}
+
+// folderWith is the folder with ID id, or "".
+func (m *expected) folderWith(id int64) string {
+	for f, fid := range m.fids {
+		if fid == id {
+			return f
+		}
+	}
+	return ""
+}
+
+// exists reports whether a task or a folder has ID id.
+func (m *expected) exists(id int64) bool { return m.tasks[id] != nil || m.folderWith(id) != "" }
+
+// done reports whether every task under folder f is done.
+func (m *expected) done(f string) bool {
+	for _, t := range m.tasks {
+		if holds(f, t.folder) && t.open {
+			return false
+		}
+	}
+	return true
+}
+
+// wait makes the task or folder with ID id wait on blocker too.
+func (m *expected) wait(id, blocker int64) {
+	if t := m.tasks[id]; t != nil {
+		if !slices.Contains(t.blockers, blocker) {
+			t.blockers = append(t.blockers, blocker)
+		}
+	} else if f := m.folderWith(id); f != "" && !slices.Contains(m.fblock[f], blocker) {
+		m.fblock[f] = append(m.fblock[f], blocker)
+	}
+}
+
+// blocks reports whether the blocker id blocks now.
+func (m *expected) blocks(id int64) bool {
+	if t := m.tasks[id]; t != nil {
+		return t.open
+	}
+	if f := m.folderWith(id); f != "" {
+		return !m.done(f)
+	}
+	return true
+}
+
+// above lists the folders from the root's child down to f, f included.
+func above(f string) []string {
+	var fs []string
+	for ; f != "/"; f = parent(f) {
+		fs = append(fs, f)
+	}
+	slices.Reverse(fs)
+	return fs
+}
+
+// waitOn is what is in folder f waits on now: the blocking IDs in the
+// blocked_by of f and every folder above it.
+func (m *expected) waitOn(f string, own []int64) []int64 {
+	out := []int64{}
+	add := func(bs []int64) {
+		for _, b := range bs {
+			if m.blocks(b) && !slices.Contains(out, b) {
+				out = append(out, b)
+			}
+		}
+	}
+	add(own)
+	for _, g := range above(f) {
+		add(m.fblock[g])
+	}
+	slices.Sort(out)
+	return out
+}
+
+// folderReadiness is a folder's readiness: done, or blocked by its own and
+// its parents' blockers, or ready.
+func (m *expected) folderReadiness(f string) string {
+	switch {
+	case m.done(f):
+		return "done"
+	case f != "/" && len(m.waitOn(parent(f), m.fblock[f])) > 0:
+		return "blocked"
+	}
+	return "ready"
+}
+
+// acyclic reports whether the graph of spec/design.md (Invariants) has no
+// cycle: a node per task, and a wait and a done node per folder.
+func (m *expected) acyclic() bool {
+	target := func(b int64) string {
+		if m.tasks[b] != nil {
+			return fmt.Sprint("t", b)
+		}
+		if f := m.folderWith(b); f != "" {
+			return "d" + f
+		}
+		return ""
+	}
+	edges := map[string][]string{}
+	add := func(from string, to ...string) {
+		for _, t := range to {
+			if t != "" {
+				edges[from] = append(edges[from], t)
+			}
+		}
+	}
+	for id, t := range m.tasks {
+		n := fmt.Sprint("t", id)
+		for _, b := range t.blockers {
+			add(n, target(b))
+		}
+		if t.folder != "/" {
+			add(n, "w"+t.folder)
+			add("d"+t.folder, n)
+		}
+	}
+	for f := range m.folders {
+		if f == "/" {
+			continue
+		}
+		for _, b := range m.fblock[f] {
+			add("w"+f, target(b))
+		}
+		add("d"+f, "w"+f)
+		if p := parent(f); p != "/" {
+			add("w"+f, "w"+p)
+			add("d"+p, "d"+f)
+		}
+	}
+	state := map[string]int{} // 1 on the stack, 2 done
+	var visit func(string) bool
+	visit = func(n string) bool {
+		switch state[n] {
+		case 1:
+			return false
+		case 2:
+			return true
+		}
+		state[n] = 1
+		for _, m := range edges[n] {
+			if !visit(m) {
+				return false
+			}
+		}
+		state[n] = 2
+		return true
+	}
+	for n := range edges {
+		if !visit(n) {
+			return false
+		}
+	}
+	return true
 }
 
 func parent(f string) string {
@@ -128,17 +320,10 @@ func (m *expected) ids() []int64 {
 }
 
 func (m *expected) openBlockers(t *mtask) []int64 {
-	out := []int64{}
 	if !t.open {
-		return out // a done task waits on nothing
+		return []int64{} // a done task waits on nothing
 	}
-	for _, b := range t.blockers {
-		if m.tasks[b].open {
-			out = append(out, b)
-		}
-	}
-	slices.Sort(out)
-	return out
+	return m.waitOn(t.folder, t.blockers)
 }
 
 func (m *expected) readiness(t *mtask) string {
@@ -149,28 +334,6 @@ func (m *expected) readiness(t *mtask) string {
 		return "blocked"
 	}
 	return "ready"
-}
-
-// waitsOn reports whether task `from` waits on `to`, directly or not.
-func (m *expected) waitsOn(from, to int64) bool {
-	seen := map[int64]bool{}
-	var walk func(int64) bool
-	walk = func(n int64) bool {
-		if n == to {
-			return true
-		}
-		if seen[n] {
-			return false
-		}
-		seen[n] = true
-		for _, b := range m.tasks[n].blockers {
-			if walk(b) {
-				return true
-			}
-		}
-		return false
-	}
-	return walk(from)
 }
 
 // frontier is the ready, unclaimed tasks in work order.
@@ -196,12 +359,18 @@ func (m *expected) frontier() []int64 {
 	return out
 }
 
+// remove takes the IDs in gone, of tasks and folders, out of the model and
+// out of every blocked_by.
 func (m *expected) remove(gone []int64) {
 	for _, id := range gone {
 		delete(m.tasks, id)
 	}
+	isGone := func(b int64) bool { return slices.Contains(gone, b) }
 	for _, t := range m.tasks {
-		t.blockers = slices.DeleteFunc(t.blockers, func(b int64) bool { return slices.Contains(gone, b) })
+		t.blockers = slices.DeleteFunc(t.blockers, isGone)
+	}
+	for f, bs := range m.fblock {
+		m.fblock[f] = slices.DeleteFunc(bs, isGone)
 	}
 }
 
@@ -216,7 +385,7 @@ type random struct {
 
 func runRandom(t *testing.T, seed int64, steps int) {
 	r := &random{t: t, w: ready(t), rng: rand.New(rand.NewSource(seed)),
-		m: &expected{tasks: map[int64]*mtask{}, folders: map[string]bool{"/": true}}}
+		m: &expected{tasks: map[int64]*mtask{}, folders: map[string]bool{"/": true}, fids: map[string]int64{}, fblock: map[string][]int64{}}}
 	for i := 0; i < steps && !t.Failed(); i++ {
 		r.step()
 		r.compare()
@@ -275,18 +444,69 @@ func (r *random) id() int64 {
 	return ids[r.rng.Intn(len(ids))]
 }
 
-func (r *random) someIDs(max int) []int64 {
-	out := []int64{}
+func (r *random) missing(ids ...int64) bool {
+	return slices.ContainsFunc(ids, func(id int64) bool { return r.m.tasks[id] == nil })
+}
+
+// blocker is a blocker as an input names it, and the ID it stands for; 0
+// for a path that names no folder.
+type blocker struct {
+	value any
+	id    int64
+}
+
+// someBlockers picks up to max tasks and folders: by task ID, by folder ID,
+// or by folder path, sometimes one that names nothing.
+func (r *random) someBlockers(max int) []blocker {
+	var out []blocker
 	for n := r.rng.Intn(max + 1); n > 0; n-- {
-		if id := r.id(); !slices.Contains(out, id) {
-			out = append(out, id)
+		var b blocker
+		switch k := r.rng.Intn(3); {
+		case k == 0 || len(r.m.fids) == 0:
+			b.id = r.id()
+			b.value = b.id
+		case k == 1:
+			b.id = r.m.fids[r.existingFolder()]
+			if b.id == 0 {
+				b.id = r.id()
+			}
+			b.value = b.id
+		default:
+			f := r.existingFolder()
+			if f == "/" {
+				continue
+			}
+			b = blocker{value: f, id: r.m.fids[f]}
+		}
+		if !slices.ContainsFunc(out, func(o blocker) bool { return o.id == b.id && b.id != 0 || js(o.value) == js(b.value) }) {
+			out = append(out, b)
 		}
 	}
 	return out
 }
 
-func (r *random) missing(ids ...int64) bool {
-	return slices.ContainsFunc(ids, func(id int64) bool { return r.m.tasks[id] == nil })
+// values are the blockers as the input names them.
+func values(bs []blocker) []any {
+	out := []any{}
+	for _, b := range bs {
+		out = append(out, b.value)
+	}
+	return out
+}
+
+// blockerWant is how naming blockers fails, or "": a path that names no
+// folder, or an ID that names nothing.
+func (r *random) blockerWant(bs []blocker) string {
+	want := ""
+	for _, b := range bs {
+		switch {
+		case b.id == 0 && r.m.caseMismatch(b.value.(string), ""):
+			want = either(want, "conflict/case-mismatch|not-found")
+		case b.id == 0 || !r.m.exists(b.id):
+			want = either(want, "not-found")
+		}
+	}
+	return want
 }
 
 func js(v any) string {
@@ -336,19 +556,37 @@ func cond(c bool, a, b string) string {
 
 func (r *random) step() {
 	m := r.m
-	switch n := r.rng.Intn(100); {
+	switch n := r.rng.Intn(114); {
 	case n < 18: // create
-		folder, blockers := r.folder(), r.someIDs(2)
+		folder, bs, ds := r.folder(), r.someBlockers(2), r.someBlockers(1)
 		var pri *int64
 		if r.rng.Intn(2) == 0 {
 			p := int64(r.rng.Intn(5) - 1)
 			pri = &p
 		}
-		want := either(cond(r.missing(blockers...), "not-found", ""), cond(m.caseMismatch(folder, ""), "conflict/case-mismatch", ""))
-		res := r.do("task create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": blockers, "priority": pri}), want)
+		var blockers []int64
+		for _, b := range bs {
+			blockers = append(blockers, b.id)
+		}
+		want := either(r.blockerWant(append(slices.Clone(bs), ds...)), cond(m.caseMismatch(folder, ""), "conflict/case-mismatch", ""))
+		if want == "" {
+			try := m.clone()
+			try.addFolder(folder)
+			id := try.lastID + 1
+			try.tasks[id] = &mtask{folder: folder, open: true, blockers: blockers}
+			for _, d := range ds {
+				try.wait(d.id, id)
+			}
+			want = cond(try.acyclic(), "", "conflict/cycle")
+		}
+		res := r.do("task create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": values(bs), "blocks": values(ds), "priority": pri}), want)
 		if res != nil {
 			m.addFolder(folder)
-			r.created(int64(res["id"].(float64)), &mtask{folder: folder, open: true, blockers: blockers, priority: pri})
+			id := int64(res["id"].(float64))
+			for _, d := range ds {
+				m.wait(d.id, id)
+			}
+			r.created(id, &mtask{folder: folder, open: true, blockers: blockers, priority: pri})
 		}
 	case n < 24: // batch: a chain of three in two folders
 		f1, f2 := r.folder(), r.folder()
@@ -358,6 +596,16 @@ func (r *random) step() {
 			want = "invalid-input"
 		case m.caseMismatch(f1, "") || m.caseMismatch(f2, ""):
 			want = "conflict/case-mismatch"
+		default:
+			// Refs alone close a cycle where folders order the tasks: y,
+			// waiting on x, in a folder that what holds x waits on.
+			try := m.clone()
+			try.addFolder(f1, f2)
+			x := try.lastID + 1
+			try.tasks[x] = &mtask{folder: f1, open: true}
+			try.tasks[x+1] = &mtask{folder: f2, open: true, blockers: []int64{x}}
+			try.tasks[x+2] = &mtask{folder: f1, open: true, blockers: []int64{x, x + 1}}
+			want = cond(try.acyclic(), "", "conflict/cycle")
 		}
 		res := r.do("batch", js(map[string]any{"folder": f1, "tasks": []any{
 			map[string]any{"ref": "x", "title": "x"},
@@ -366,8 +614,7 @@ func (r *random) step() {
 		}}), want)
 		if res != nil {
 			got := ids(res["ids"])
-			m.addFolder(f1) // folders take their IDs before every task
-			m.addFolder(f2)
+			m.addFolder(f1, f2) // folders take their IDs before every task
 			r.created(got[0], &mtask{folder: f1, open: true})
 			r.created(got[1], &mtask{folder: f2, open: true, blockers: []int64{got[0]}})
 			r.created(got[2], &mtask{folder: f1, open: true, blockers: []int64{got[0], got[1]}})
@@ -390,46 +637,93 @@ func (r *random) step() {
 			m.tasks[id].open = true
 		}
 	case n < 54: // block
-		id, bs := r.id(), r.someIDs(2)
-		bs = slices.DeleteFunc(bs, func(b int64) bool { return b == id })
+		id, bs := r.id(), r.someBlockers(2)
+		bs = slices.DeleteFunc(bs, func(b blocker) bool { return b.id == id })
 		if len(bs) == 0 {
 			return
 		}
-		want := ""
-		switch {
-		case r.missing(append([]int64{id}, bs...)...):
-			want = "not-found"
-		case slices.ContainsFunc(bs, func(b int64) bool {
-			return !slices.Contains(m.tasks[id].blockers, b) && m.waitsOn(b, id)
-		}):
-			want = "conflict/cycle"
-		}
-		if r.do("task block", js(map[string]any{"id": id, "blocked_by": bs}), want) != nil {
+		want := either(cond(r.missing(id), "not-found", ""), r.blockerWant(bs))
+		if want == "" {
+			try := m.clone()
 			for _, b := range bs {
-				if !slices.Contains(m.tasks[id].blockers, b) {
-					m.tasks[id].blockers = append(m.tasks[id].blockers, b)
+				if !slices.Contains(try.tasks[id].blockers, b.id) {
+					try.tasks[id].blockers = append(try.tasks[id].blockers, b.id)
+				}
+			}
+			want = cond(try.acyclic(), "", "conflict/cycle")
+		}
+		if r.do("task block", js(map[string]any{"id": id, "blocked_by": values(bs)}), want) != nil {
+			for _, b := range bs {
+				if !slices.Contains(m.tasks[id].blockers, b.id) {
+					m.tasks[id].blockers = append(m.tasks[id].blockers, b.id)
 				}
 			}
 		}
 	case n < 58: // unblock
-		id, bs := r.id(), r.someIDs(2)
+		id, bs := r.id(), r.someBlockers(2)
 		if len(bs) == 0 {
 			return
 		}
-		if r.do("task unblock", js(map[string]any{"id": id, "blocked_by": bs}), cond(r.missing(id), "not-found", "")) != nil {
-			m.tasks[id].blockers = slices.DeleteFunc(m.tasks[id].blockers, func(b int64) bool { return slices.Contains(bs, b) })
+		paths := slices.DeleteFunc(slices.Clone(bs), func(b blocker) bool { _, isPath := b.value.(string); return !isPath })
+		want := either(cond(r.missing(id), "not-found", ""), r.blockerWant(paths))
+		if r.do("task unblock", js(map[string]any{"id": id, "blocked_by": values(bs)}), want) != nil {
+			m.tasks[id].blockers = slices.DeleteFunc(m.tasks[id].blockers, func(b int64) bool {
+				return slices.ContainsFunc(bs, func(x blocker) bool { return x.id == b })
+			})
 		}
 	case n < 66: // move
 		id, to := r.id(), r.folder()
 		want := either(cond(r.missing(id), "not-found", ""), cond(m.caseMismatch(to, ""), "conflict/case-mismatch", ""))
+		if want == "" && m.tasks[id].folder != to {
+			try := m.clone()
+			try.addFolder(to)
+			try.tasks[id].folder = to
+			want = cond(try.acyclic(), "", "conflict/cycle")
+		}
 		if r.do("task move", js(map[string]any{"id": id, "to": to}), want) != nil {
 			m.tasks[id].folder = to
 			m.addFolder(to)
 		}
-	case n < 70: // folder create
+	case n < 70: // folder create, sometimes with blockers and blocks
 		f := r.folder()
-		if r.do("folder create", js(map[string]any{"folder": f}), cond(m.caseMismatch(f, ""), "conflict/case-mismatch", "")) != nil {
+		in := map[string]any{"folder": f}
+		var bs, ds []blocker
+		if f != "/" && r.rng.Intn(2) == 0 {
+			if bs, ds = r.someBlockers(2), r.someBlockers(1); len(bs) > 0 {
+				in["blocked_by"] = values(bs)
+			}
+			if len(ds) > 0 {
+				in["blocks"] = values(ds)
+			}
+		}
+		// It creates the folder with blockers and dependents.
+		make := func(m *expected) int64 {
 			m.addFolder(f)
+			id := m.fids[f]
+			for _, b := range bs {
+				m.wait(id, b.id)
+			}
+			for _, d := range ds {
+				m.wait(d.id, id)
+			}
+			return id
+		}
+		want := cond(m.caseMismatch(f, ""), "conflict/case-mismatch", "")
+		switch {
+		case want != "":
+		case m.folders[f]:
+			want = cond(len(in) > 1, "conflict/destination-exists", "")
+		default:
+			if want = r.blockerWant(append(slices.Clone(bs), ds...)); want == "" && len(in) > 1 {
+				try := m.clone()
+				make(try)
+				want = cond(try.acyclic(), "", "conflict/cycle")
+			}
+		}
+		if res := r.do("folder create", js(in), want); res != nil && !m.folders[f] {
+			if id := make(m); res["id"] != float64(id) {
+				r.failf("folder %s created with ID %v, want %d", f, res["id"], id)
+			}
 		}
 	case n < 77: // folder move
 		from, to := r.existingFolder(), r.folder()
@@ -448,7 +742,7 @@ func (r *random) step() {
 		case m.folders[to]:
 			want = "conflict/destination-exists"
 		}
-		if r.do("folder move", js(map[string]any{"folder": from, "to": to}), want) != nil && from != to {
+		moveFolder := func(m *expected) {
 			rename := func(f string) string { return to + strings.TrimPrefix(f, from) }
 			var moved []string
 			for f := range m.folders {
@@ -456,18 +750,31 @@ func (r *random) step() {
 					moved = append(moved, f)
 				}
 			}
+			ids, blocks := map[string]int64{}, map[string][]int64{}
 			for _, f := range moved {
+				ids[f], blocks[f] = m.fids[f], m.fblock[f]
 				delete(m.folders, f)
+				delete(m.fids, f)
+				delete(m.fblock, f)
 			}
 			m.addFolder(parent(to)) // only the folders made above it are new
 			for _, f := range moved {
 				m.folders[rename(f)] = true
+				m.fids[rename(f)], m.fblock[rename(f)] = ids[f], blocks[f]
 			}
 			for _, t := range m.tasks {
 				if holds(from, t.folder) {
 					t.folder = rename(t.folder)
 				}
 			}
+		}
+		if want == "" && from != to {
+			try := m.clone()
+			moveFolder(try)
+			want = cond(try.acyclic(), "", "conflict/cycle")
+		}
+		if r.do("folder move", js(map[string]any{"folder": from, "to": to}), want) != nil && from != to {
+			moveFolder(m)
 		}
 	case n < 82: // delete
 		id := r.id()
@@ -498,12 +805,16 @@ func (r *random) step() {
 			want = "conflict/not-empty"
 		}
 		if r.do("folder delete", js(map[string]any{"folder": f, "contents": contents}), want) != nil {
+			gone := inside
 			for g := range m.folders {
 				if holds(f, g) {
+					gone = append(gone, m.fids[g])
 					delete(m.folders, g)
+					delete(m.fids, g)
+					delete(m.fblock, g)
 				}
 			}
-			m.remove(inside)
+			m.remove(gone)
 		}
 	case n < 91: // claim
 		id := r.id()
@@ -532,6 +843,130 @@ func (r *random) step() {
 			r.failf("claim-next gave %v, want task %d", res["task"], front[0])
 		default:
 			m.tasks[front[0]].claimed = true
+		}
+	case n < 104: // folder block
+		f, bs := r.existingFolder(), r.someBlockers(2)
+		if len(bs) == 0 {
+			return
+		}
+		want := ""
+		switch {
+		case f == "/":
+			want = "invalid-input"
+		case m.caseMismatch(f, ""):
+			want = "conflict/case-mismatch"
+		case !m.folders[f]:
+			want = "not-found"
+		default:
+			if want = r.blockerWant(bs); want == "" {
+				try := m.clone()
+				for _, b := range bs {
+					if !slices.Contains(try.fblock[f], b.id) {
+						try.fblock[f] = append(try.fblock[f], b.id)
+					}
+				}
+				want = cond(try.acyclic(), "", "conflict/cycle")
+			}
+		}
+		if r.do("folder block", js(map[string]any{"folder": f, "blocked_by": values(bs)}), want) != nil {
+			for _, b := range bs {
+				if !slices.Contains(m.fblock[f], b.id) {
+					m.fblock[f] = append(m.fblock[f], b.id)
+				}
+			}
+		}
+	case n < 106: // folder unblock
+		f, bs := r.existingFolder(), r.someBlockers(2)
+		if len(bs) == 0 || f == "/" || !m.folders[f] {
+			return
+		}
+		paths := slices.DeleteFunc(slices.Clone(bs), func(b blocker) bool { _, isPath := b.value.(string); return !isPath })
+		if r.do("folder unblock", js(map[string]any{"folder": f, "blocked_by": values(bs)}), r.blockerWant(paths)) != nil {
+			m.fblock[f] = slices.DeleteFunc(m.fblock[f], func(b int64) bool {
+				return slices.ContainsFunc(bs, func(x blocker) bool { return x.id == b })
+			})
+		}
+	case n < 114: // batch: two folder entries, one waiting on the other, and a task
+		f1, f2 := path.Join(r.folder(), "p"), path.Join(r.folder(), "q")
+		tf := []string{f1, f2, r.folder()}[r.rng.Intn(3)]
+		// A blocker path the batch makes as needed is a folder of the batch.
+		made := func(b blocker) bool {
+			p, isPath := b.value.(string)
+			return isPath && b.id == 0 && (holds(p, f1) || holds(p, f2) || holds(p, tf))
+		}
+		b1, b2 := slices.DeleteFunc(r.someBlockers(1), made), slices.DeleteFunc(r.someBlockers(1), made)
+		on1 := r.rng.Intn(2) == 0
+		e2 := values(b2)
+		if on1 {
+			e2 = append(e2, f1)
+		}
+		var tb []any
+		if r.rng.Intn(2) == 0 {
+			tb = []any{[]string{f1, f2}[r.rng.Intn(2)]}
+		}
+		paths := []string{f1, f2, tf}
+		for _, b := range append(slices.Clone(b1), b2...) {
+			if p, isPath := b.value.(string); isPath {
+				paths = append(paths, p)
+			}
+		}
+		if slices.ContainsFunc(paths, func(p string) bool { return m.caseMismatch(p, "") }) {
+			return // the case rules are tried elsewhere
+		}
+		want := ""
+		for i, a := range paths {
+			for _, b := range paths[i+1:] {
+				if clash(a, b) {
+					want = "invalid-input"
+				}
+			}
+		}
+		// It makes the batch: the folders, then the task.
+		make := func(m *expected) int64 {
+			m.addFolder(f1, f2, tf)
+			for _, b := range b1 {
+				m.wait(m.fids[f1], b.id)
+			}
+			for _, b := range b2 {
+				m.wait(m.fids[f2], b.id)
+			}
+			if on1 {
+				m.wait(m.fids[f2], m.fids[f1])
+			}
+			t := &mtask{folder: tf, open: true, tags: []string{}}
+			for _, p := range tb {
+				t.blockers = append(t.blockers, m.fids[p.(string)])
+			}
+			m.lastID++
+			m.tasks[m.lastID] = t
+			return m.lastID
+		}
+		switch {
+		case want != "":
+		case f1 == f2:
+			want = "invalid-input"
+		case m.folders[f1] || m.folders[f2]:
+			want = "conflict/destination-exists"
+		default:
+			if want = r.blockerWant(append(slices.Clone(b1), b2...)); want == "" {
+				try := m.clone()
+				make(try)
+				want = cond(try.acyclic(), "", "conflict/cycle")
+			}
+		}
+		res := r.do("batch", js(map[string]any{
+			"folders": []any{map[string]any{"folder": f1, "blocked_by": values(b1)}, map[string]any{"folder": f2, "blocked_by": e2}},
+			"tasks":   []any{map[string]any{"title": "x", "folder": tf, "blocked_by": append([]any{}, tb...)}},
+		}), want)
+		if res != nil {
+			if id := make(m); !slices.Equal(ids(res["ids"]), []int64{id}) {
+				r.failf("batch made task %v, want %d", res["ids"], id)
+			}
+			for f, id := range res["folders"].(map[string]any) {
+				if m.fids[f] != int64(id.(float64)) {
+					r.failf("batch made %s with ID %v, want %d", f, id, m.fids[f])
+				}
+			}
 		}
 	default: // release
 		id := r.id()
@@ -572,9 +1007,7 @@ func (r *random) compare() {
 	for f := range m.folders {
 		want = append(want, f)
 	}
-	slices.SortFunc(want, func(a, b string) int {
-		return slices.Compare(strings.Split(strings.Trim(a, "/"), "/"), strings.Split(strings.Trim(b, "/"), "/"))
-	})
+	slices.SortFunc(want, treeOrder)
 	got := []string{"/"}
 	for _, f := range r.w.ok("folder list", `{}`)["folders"].([]any) {
 		got = append(got, f.(map[string]any)["path"].(string))
@@ -612,6 +1045,15 @@ func (r *random) compare() {
 			!slices.Equal(ids(tk["blocked_by"]), blockers) || !slices.Equal(ids(tk["open_blockers"]), m.openBlockers(mt)) ||
 			js(tk["tags"]) != js(tags) {
 			r.failf("task %d is %v\n  the model has %+v, readiness %s, open blockers %v", id, tk, *mt, m.readiness(mt), m.openBlockers(mt))
+		}
+	}
+	for _, x := range r.w.ok("folder list", `{}`)["folders"].([]any) {
+		fr := x.(map[string]any)
+		f := fr["path"].(string)
+		blockers := slices.Clone(m.fblock[f])
+		slices.Sort(blockers)
+		if fr["id"] != float64(m.fids[f]) || !slices.Equal(ids(fr["blocked_by"]), blockers) || fr["readiness"] != m.folderReadiness(f) {
+			r.failf("folder %s is %v\n  the model has ID %d, blocked_by %v, readiness %s", f, fr, m.fids[f], blockers, m.folderReadiness(f))
 		}
 	}
 

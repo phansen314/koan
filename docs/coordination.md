@@ -23,11 +23,11 @@ The coordinator closes both, by deciding who may do what.
 
 | Action | Coordinator | Worker |
 |---|---|---|
-| Read: `task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `where`, `context` | yes | yes |
+| Read: `task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `folder why`, `where`, `context` | yes | yes |
 | `task claim-next`, `task claim`, `task release` | yes | no |
 | `task create`, `batch`, `task update`, `task done`, `task reopen` | yes | no |
 | `task block`, `task unblock`, `task move`, `task delete` | yes | no |
-| `folder create`, `folder update`, `folder move`, `folder delete` | yes | no |
+| `folder create`, `folder update`, `folder block`, `folder unblock`, `folder move`, `folder delete` | yes | no |
 | `marker bind`, `marker unbind` | yes | no |
 | Edit the `@<id>.md` of its own task | no | yes |
 | Edit any other file in the tree | no | no |
@@ -44,17 +44,19 @@ koan task claim-next --folder /proj --extra '{"worker":"w3"}'
 # 2. Start worker w3 with the task's id, title, and notes_path.
 #    The worker reads what it likes, edits that one .md, and reports back.
 
-# 3. Record the outcome.
+# 3. Record the outcome, once koan task show 42 says it is still ready.
 koan task done 42                 # finished: this also ends the claim
 koan task release 42              # not finished: the task goes back to the frontier
 
-# 4. Add whatever the worker found.
+# 4. Add whatever the worker found, phased work laid out whole.
 koan batch -i followups.json
 ```
 
 - **Workers report, the coordinator writes.** A worker that finds follow-up work, or wants a tag or a priority changed, says so in its report. It does not run the command itself.
 - **Start as many workers as there are tasks claimed.** Each `task claim-next` returns a different task, so the workers' notes files never overlap.
 - **Don't move or delete a task that is out.** `task move` and `folder move` change its `notes_path` under the worker.
+- **Check a task before marking it done.** Ordering between folders is continuous: a task added to a folder that the task's folder waits on, a reopen, or a `folder block` makes a task that was handed out blocked again, and koan does not say so to anyone. `koan task show 42` before step 3: when `readiness` is `blocked`, `inherited` says which folder holds it back. Tell the user, and decide whether its work stands.
+- **Lay out phased work in one `batch`.** An empty folder is done, so a task waiting on a phase whose tasks aren't made yet is ready, and `task claim-next` hands it out. A batch makes the folders, their `blocked_by`, and their tasks in one write, so nothing is ever ready early: `{"folders": [{"folder": "/proj/phase1"}, {"folder": "/proj/phase2", "blocked_by": ["/proj/phase1"]}], "tasks": [...]}`.
 
 ## Seeing what is out
 
@@ -97,7 +99,7 @@ You are given one koan task: its ID, its title, and the path of its notes file.
 
 - Do the task. Write what you did and what you found to the notes file you were given.
 - In `~/koan-root`, that notes file is the only file you may change.
-- You may run `koan task show`, `koan task list`, `koan task frontier`, `koan task why`, `koan folder show`, `koan folder list`, `koan where`, and `koan context`. Run no other koan command.
+- You may run `koan task show`, `koan task list`, `koan task frontier`, `koan task why`, `koan folder show`, `koan folder list`, `koan folder why`, `koan where`, and `koan context`. Run no other koan command.
 - When something else in the tree should change (a new task, a tag, a blocker, this task being done), say so in your final report. The coordinator makes the change.
 ```
 
@@ -126,7 +128,7 @@ Bash)
 '
     for sub in $subs; do
         case "$sub" in
-        "task show"|"task list"|"task frontier"|"task why"|"folder show"|"folder list"|where|context) ;;
+        "task show"|"task list"|"task frontier"|"task why"|"folder show"|"folder list"|"folder why"|where|context) ;;
         *) deny "workers may not run 'koan $sub': report it to the coordinator" ;;
         esac
     done

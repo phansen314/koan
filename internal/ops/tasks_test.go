@@ -182,7 +182,7 @@ func TestListAndFrontier(t *testing.T) {
 		t.Errorf("folder list limit and fields: %v", got)
 	}
 	w.fail("folder list", `{"folder":"/nope"}`, errs.NotFound, "")
-	w.fail("folder list", `{"fields":["readiness"]}`, errs.InvalidInput, "")
+	w.fail("folder list", `{"fields":["claim"]}`, errs.InvalidInput, "")
 	w.fail("task list", `{"folder":"/nope"}`, errs.NotFound, "")
 	w.fail("task frontier", `{"claimed":false}`, errs.InvalidInput, "")
 	w.fail("task frontier", `{"fields":["nope"],"limit":0}`, errs.InvalidInput, "")
@@ -335,16 +335,16 @@ func TestCreateBlocks(t *testing.T) {
 	if id := w.ok("task create", `{"title":"e"}`)["id"]; id != float64(4) {
 		t.Errorf("a refused create used an ID: next is %v", id)
 	}
-	// A folder's ID is not a task's, and the error says so, naming every ID.
+	// blocks takes folders as well, and names every ID that is neither.
 	w.ok("folder create", `{"folder":"/f"}`) // 5
-	if e := w.fail("task create", `{"title":"g","blocks":[5,99]}`, errs.NotFound, ""); e.Message != "tasks [5 99] do not exist: 5 is the ID of folder /f" {
-		t.Errorf("message %q", e.Message)
+	if e := w.fail("task create", `{"title":"g","blocks":[5,99,98]}`, errs.NotFound, ""); !slices.Equal(e.IDs, []int64{99, 98}) {
+		t.Errorf("ids %v", e.IDs)
 	}
 	if e := w.fail("task show", `{"id":5}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /f") {
 		t.Errorf("show: message %q", e.Message)
 	}
-	if e := w.fail("task create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle); !strings.Contains(e.Message, "both") {
-		t.Errorf("message %q", e.Message)
+	if e := w.fail("task create", `{"title":"d","blocked_by":[3],"blocks":[3]}`, errs.Conflict, errs.RuleCycle); !slices.Equal(e.IDs, []int64{3}) || !strings.Contains(e.Message, `the new task "d" waits on task 3`) {
+		t.Errorf("cycle %v: message %q", e.IDs, e.Message)
 	}
 
 	// A done task can be blocked, as block allows.
@@ -427,5 +427,50 @@ func TestCreateBlocksNotesFail(t *testing.T) {
 	}
 	if f := w.findings(); len(f) != 0 {
 		t.Errorf("findings %v", f)
+	}
+}
+
+// not-found names everything missing at once, across every field of the
+// input: IDs in ids, folder paths in folders.
+func TestNotFoundAcrossFields(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"a"}`) // 1
+	for _, c := range []struct {
+		name, input string
+		ids         []int64
+		folders     []string
+	}{
+		{"task create", `{"title":"x","blocked_by":[98],"blocks":[99]}`, []int64{98, 99}, []string{}},
+		{"task create", `{"title":"x","blocked_by":[98,"/nope"]}`, []int64{98}, []string{"/nope"}},
+		{"task block", `{"id":1,"blocked_by":[98,"/nope"]}`, []int64{98}, []string{"/nope"}},
+		{"task block", `{"id":97,"blocked_by":[98,"/nope"]}`, []int64{97, 98}, []string{"/nope"}},
+		{"task unblock", `{"id":97,"blocked_by":["/nope"]}`, []int64{97}, []string{"/nope"}},
+		{"folder block", `{"folder":"/gone","blocked_by":[98,"/nope"]}`, []int64{98}, []string{"/gone", "/nope"}},
+		{"folder unblock", `{"folder":"@96","blocked_by":["/nope"]}`, []int64{96}, []string{"/nope"}},
+		{"folder create", `{"folder":"/f","blocked_by":["/nope"],"blocks":[99]}`, []int64{99}, []string{"/nope"}},
+		{"batch", `{"folders":[{"folder":"/f","blocked_by":["/nope"]}],"tasks":[{"title":"a","blocked_by":[98]},{"title":"b","blocked_by":[99]}]}`, []int64{98, 99}, []string{"/nope"}},
+	} {
+		e := w.fail(c.name, c.input, errs.NotFound, "")
+		if !slices.Equal(e.IDs, c.ids) || !slices.Equal(e.Folders, c.folders) {
+			t.Errorf("%s %s: ids %v folders %v", c.name, c.input, e.IDs, e.Folders)
+		}
+	}
+	// A folder with no folder file has no ID to wait on: it is missing
+	// beside the rest, with the folder file's path.
+	w.ok("folder create", `{"folder":"/nf"}`) // 2
+	os.Remove(w.root("nf/folder.json"))
+	for _, c := range [][2]string{
+		{"task create", `{"title":"x","blocked_by":[98,"/nf"],"blocks":["/nope"]}`},
+		{"task unblock", `{"id":1,"blocked_by":[98,"/nf","/nope"]}`},
+	} {
+		e := w.fail(c[0], c[1], errs.NotFound, "")
+		wantIDs := []int64{98}
+		if c[0] == "task unblock" {
+			wantIDs = []int64{} // an ID need not exist there
+		}
+		if !slices.Equal(e.IDs, wantIDs) || !slices.Equal(e.Folders, []string{"/nf", "/nope"}) ||
+			!slices.Equal(e.Paths, []string{w.root("nf/folder.json")}) || !strings.Contains(e.Message, "koan repair") {
+			t.Errorf("%s %s: ids %v folders %v paths %v message %q", c[0], c[1], e.IDs, e.Folders, e.Paths, e.Message)
+		}
 	}
 }

@@ -93,9 +93,9 @@ func TestFilesInOtherShapes(t *testing.T) {
 	w.fail("task show", `{"id":1} {"id":1}`, errs.InvalidInput, "")
 
 	// A @koan.json from a newer koan is that, whatever else it holds.
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3, "name": "x"}`), 0o644)
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 4, "name": "x"}`), 0o644)
 	w.fail("task show", `{"id":1}`, errs.UnsupportedFormat, "")
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 2, "name": "x"}`), 0o644)
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 3, "name": "x"}`), 0o644)
 	w.fail("task show", `{"id":1}`, errs.Corrupt, "")
 }
 

@@ -25,6 +25,7 @@ func cmdClaim(c *call) (any, *errs.Error) {
 	in := c.in.top()
 	id := in.id("id", true)
 	extra, _ := in.object("extra")
+	c.light = true
 	if e := c.begin(true); e != nil {
 		return nil, e
 	}
@@ -55,6 +56,9 @@ func cmdClaimNext(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	tasks, e := c.tasks(&s, available)
+	if e == nil {
+		e = c.met()
+	}
 	if e != nil {
 		return nil, e
 	}

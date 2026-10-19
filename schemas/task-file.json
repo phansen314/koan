@@ -20,7 +20,8 @@
     "blocked_by": {
       "type": "array",
       "items": { "$ref": "#/properties/id" },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "description": "IDs of the tasks and folders this one waits on. Never its own."
     },
     "tags": {
       "type": "array",

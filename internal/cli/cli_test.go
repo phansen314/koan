@@ -196,3 +196,41 @@ func specOf(name string) command {
 	}
 	return command{}
 }
+
+// Help lists no help command, which is an unknown command; names each
+// option's kind, not how it is read; and gives a command's required
+// options in its usage line.
+func TestHelp(t *testing.T) {
+	help := func(args ...string) string {
+		var out bytes.Buffer
+		if code := Run(append(args, "--help"), Env{Stdin: bytes.NewReader(nil), Stdout: &out, Stderr: new(bytes.Buffer)}); code != ExitOK {
+			t.Fatalf("koan %v --help: exit %d", args, code)
+		}
+		return out.String()
+	}
+	if h := help(); strings.Contains(h, "\n  help ") || strings.Contains(h, "[command]") || strings.Contains(h, "Flags:") {
+		t.Errorf("koan --help:\n%s", h)
+	}
+	h := help("task", "list")
+	for _, want := range []string{"--recursive  ", "--limit int ", "--fields list ", "(default ready,blocked; comma-separated, repeatable)"} {
+		if !strings.Contains(h, want) {
+			t.Errorf("koan task list --help lacks %q:\n%s", want, h)
+		}
+	}
+	if strings.Contains(h, "string[=") || strings.Contains(h, "stringArray") {
+		t.Errorf("koan task list --help names how options are read:\n%s", h)
+	}
+	// A file koan reads, or - for stdin, is a file; where's --file a path.
+	if h := help("task", "create"); !strings.Contains(h, "--notes-file file ") || !strings.Contains(h, "--input file ") {
+		t.Errorf("koan task create --help: the options that read a file:\n%s", h)
+	}
+	if h := help("where"); !strings.Contains(h, "--file path ") {
+		t.Errorf("koan where --help:\n%s", h)
+	}
+	for _, c := range [][]string{{"task", "move"}, {"folder", "move"}, {"task", "block"}, {"task", "unblock"}, {"folder", "block"}, {"folder", "unblock"}} {
+		want := map[string]string{"move": "--to <folder>", "block": "--blocked-by <blockers>", "unblock": "--blocked-by <blockers>"}[c[1]]
+		if h := help(c...); !strings.Contains(h, "koan "+strings.Join(c, " ")+" <") || !strings.Contains(h, want+" [options]") {
+			t.Errorf("koan %v --help: usage line lacks %s:\n%s", c, want, h)
+		}
+	}
+}

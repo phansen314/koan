@@ -28,7 +28,7 @@ func TestBatchRefsPointBackwards(t *testing.T) {
 func TestBatchBlockedByReasons(t *testing.T) {
 	w := ready(t)
 	earlier := "must be the ref of an earlier task in the batch"
-	either := "must be a task ID, like 42 or @42, or the ref of an earlier task"
+	either := "must be a task or folder ID, like 42 or @42, a folder path, like /proj/research, or the ref of an earlier task"
 	for entry, want := range map[string]string{`"later"`: earlier, `"@x"`: either, `"@0"`: either, `"0"`: either, `"x y"`: either, `true`: either} {
 		e := w.fail("batch", `{"tasks":[{"title":"a","blocked_by":[`+entry+`]}]}`, errs.InvalidInput, "")
 		if got := []errs.Problem{{Field: "/tasks/0/blocked_by/0", Reason: want}}; !slices.Equal(e.Problems, got) {
@@ -88,7 +88,7 @@ func TestBatchFolders(t *testing.T) {
 		t.Errorf("folders_created %s", data)
 	}
 	wantIDs(t, "ids", got["ids"], 5, 6, 7)
-	if r := w.record(w.ok("folder show", `{"folder":"/work/s"}`)); r != `{"dir":"~/@work/@s","extra":{"jira":"H-1"},"id":3,"notes_path":"~/@work/@s/@folder.md","path":"/work/s","title":"Story"}` {
+	if r := w.record(w.ok("folder show", `{"folder":"/work/s"}`)); r != `{"blocked_by":[],"dir":"~/@work/@s","empty":false,"extra":{"jira":"H-1"},"id":3,"inherited":[],"notes_path":"~/@work/@s/@folder.md","open_blockers":[],"path":"/work/s","readiness":"ready","title":"Story"}` {
 		t.Errorf("folder show: %s", r)
 	}
 	if n, _ := os.ReadFile(w.root("work/s/folder.md")); string(n) != "context" {
@@ -213,6 +213,15 @@ func TestBatchFolderEntryRaced(t *testing.T) {
 	w.env.FS = fsys.FS{Hook: raceAt(w.root("d"))}
 	if got := w.ok("folder create", `{"folder":"/d"}`); len(got["folders_created"].([]any)) != 0 {
 		t.Errorf("folder create /d: %v", got)
+	}
+	// Given only blocks, too: what is in blocks waits on the ID set aside,
+	// which the folder that appeared does not have.
+	w.env.FS = fsys.FS{}
+	w.ok("task create", `{"title":"t"}`) // 6
+	w.env.FS = fsys.FS{Hook: raceAt(w.root("e"))}
+	e = w.fail("folder create", `{"folder":"/e","blocks":[6]}`, errs.Conflict, errs.RuleDestinationExists)
+	if !slices.Equal(e.IDs, []int64{6}) || !strings.Contains(e.Message, "[6] wait on folder") {
+		t.Errorf("folder create /e: ids %v, message %q", e.IDs, e.Message)
 	}
 }
 

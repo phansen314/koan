@@ -112,9 +112,10 @@ func TestFolderIDsReadEveryFolderFile(t *testing.T) {
 	if !env.OK || len(env.Warnings) != 1 || env.Warnings[0].Kind != errs.WarnUnusableFile {
 		t.Errorf("folder show @1: %+v", env)
 	}
-	// By path, no folder file is read but the one asked for.
-	if env := w.run("folder show", `{"folder":"/p"}`); len(env.Warnings) != 0 {
-		t.Errorf("folder show /p warned: %+v", env.Warnings)
+	// By path too: every command that reads a folder reads every folder
+	// file, once.
+	if env := w.run("folder show", `{"folder":"/p"}`); len(env.Warnings) != 1 {
+		t.Errorf("folder show /p warnings: %+v", env.Warnings)
 	}
 	data, _ := os.ReadFile(w.root("p/folder.json"))
 	os.WriteFile(w.root("q/folder.json"), data, 0o644)
@@ -221,9 +222,8 @@ func TestIDsOfTheOtherKind(t *testing.T) {
 	if e := w.fail("task delete", `{"id":1}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
 		t.Errorf("delete: message %q", e.Message)
 	}
-	if e := w.fail("batch", `{"tasks":[{"title":"b","blocked_by":["@1"]}]}`, errs.NotFound, ""); !strings.Contains(e.Message, "folder /p") {
-		t.Errorf("batch: message %q", e.Message)
-	}
+	// A blocker may be either kind.
+	w.ok("batch", `{"tasks":[{"title":"b","blocked_by":["@1"]}]}`)
 	w.fail("batch", `{"tasks":[{"title":"b","blocked_by":["@9"]}]}`, errs.NotFound, "")
 	if e := w.fail("batch", `{"tasks":[{"title":"b","blocked_by":[null]}]}`, errs.InvalidInput, ""); !strings.Contains(e.Message, "or the ref of an earlier task") {
 		t.Errorf("null blocker: message %q", e.Message)
