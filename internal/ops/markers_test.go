@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/phansen314/koan/internal/errs"
+	"github.com/phansen314/koan/internal/fsys"
 )
 
 // outside is a new directory outside the tree, at its real path.
@@ -325,4 +327,188 @@ func TestContext(t *testing.T) {
 	w.fail("context", `{"folder":"/nope"}`, errs.NotFound, "")
 	w.fail("context", `{"folder":4}`, errs.NotFound, "")
 	w.fail("context", in("file", outside(t)), errs.NotFound, "")
+}
+
+// A .koan holding what koan did not write is never touched: not by bind,
+// not by unbind.
+func TestMarkerLeavesWhatIsNotKoans(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/p"}`)
+	for _, c := range []struct {
+		name  string
+		setup func(koan string)
+		other string // the entry reported, relative to .koan
+	}{
+		{"its own .gitignore", func(k string) { os.WriteFile(k+"/.gitignore", []byte("!keep\n"), 0o644) }, ".gitignore"},
+		{"a file", func(k string) { os.WriteFile(k+"/keep", []byte("hi"), 0o644) }, "keep"},
+		{"a directory as marker.json", func(k string) { os.MkdirAll(k+"/marker.json/x", 0o755) }, "marker.json"},
+		{"a symlink as .gitignore", func(k string) { os.Symlink("/etc/hostname", k+"/.gitignore") }, ".gitignore"},
+	} {
+		d := outside(t)
+		os.Mkdir(d+"/.koan", 0o755)
+		c.setup(d + "/.koan")
+		before := snapshotDir(t, d)
+		for _, cmd := range []string{"marker bind", "marker unbind"} {
+			input := in("dir", d)
+			if cmd == "marker bind" {
+				input = bind("/p", d)
+			}
+			e := w.fail(cmd, input, errs.Conflict, errs.RuleHasMaterial)
+			if !slices.Equal(e.Paths, []string{filepath.Join(d, ".koan", c.other)}) || len(e.ChangedPaths) != 0 {
+				t.Errorf("%s, %s: paths %v, changed %v", c.name, cmd, e.Paths, e.ChangedPaths)
+			}
+		}
+		if after := snapshotDir(t, d); after != before {
+			t.Errorf("%s: changed:\n%s\n%s", c.name, before, after)
+		}
+	}
+
+	// An empty .gitignore, as a first bind cut short leaves it, is koan's.
+	d := outside(t)
+	os.Mkdir(d+"/.koan", 0o755)
+	os.WriteFile(d+"/.koan/.gitignore", nil, 0o644)
+	w.ok("marker bind", bind("/p", d))
+	if data, _ := os.ReadFile(d + "/.koan/.gitignore"); string(data) != "*\n" {
+		t.Errorf(".gitignore: %q", data)
+	}
+	os.WriteFile(d+"/.koan/.gitignore", nil, 0o644)
+	w.ok("marker unbind", in("dir", d))
+}
+
+// snapshotDir lists what is under d, with each file's content.
+func snapshotDir(t *testing.T, d string) string {
+	t.Helper()
+	var b strings.Builder
+	filepath.WalkDir(d, func(p string, ent os.DirEntry, err error) error {
+		data, _ := os.ReadFile(p)
+		fmt.Fprintf(&b, "%s %v %q\n", p, ent.Type(), data)
+		return nil
+	})
+	return b.String()
+}
+
+// A marker whose folder is gone binds nothing, and is replaced without
+// force; so is one naming a task.
+func TestMarkerBindReplacesAGoneFolder(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/p"}`) // 1
+	w.ok("folder create", `{"folder":"/q"}`) // 2
+	w.ok("task create", `{"title":"t"}`)     // 3
+	d := outside(t)
+	w.ok("marker bind", bind("/q", d))
+	w.ok("folder delete", `{"folder":"/q"}`)
+	if e := w.fail("where", in("file", d), errs.NotFound, ""); !strings.Contains(e.Message, "names folder 2") {
+		t.Errorf("after delete: %s", e.Message)
+	}
+	if e := w.fail("context", in("file", d), errs.NotFound, ""); !strings.Contains(e.Message, "names folder 2") {
+		t.Errorf("context after delete: %s", e.Message)
+	}
+	if got := w.ok("marker bind", bind("/p", d)); got["id"] != 1.0 || got["changed"] != true {
+		t.Errorf("rebind: %v", got)
+	}
+	os.WriteFile(d+"/.koan/marker.json", fmt.Appendf(nil, `{"schema":1,"id":3,"path":"/x","dir":%q}`, d), 0o644)
+	w.ok("marker bind", bind("/p", d))
+}
+
+func TestMarkerLookupMore(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/p/q"}`) // 1, 2
+	wt := outside(t)
+	os.MkdirAll(wt+"/src", 0o755)
+	w.ok("marker bind", bind("/p/q", wt))
+
+	// Through a link to the directory, the marker is the directory's own.
+	link := filepath.Join(outside(t), "link")
+	os.Symlink(wt, link)
+	if got := w.ok("where", in("file", link+"/src/x.go")); got["ref"] != "@2" || got["marker"] != wt+"/.koan/marker.json" {
+		t.Errorf("through a link: %v", got)
+	}
+
+	// A .koan that is a link to a marker elsewhere is passed over.
+	outer := outside(t)
+	inner := filepath.Join(outer, "inner")
+	os.Mkdir(inner, 0o755)
+	w.ok("marker bind", bind("/p", outer))
+	os.Symlink(wt+"/.koan", inner+"/.koan")
+	if got := w.ok("where", in("file", inner)); got["ref"] != "@1" {
+		t.Errorf("a linked .koan: %v", got)
+	}
+	w.fail("marker bind", bind("/p", inner), errs.Conflict, errs.RuleNotAFolder)
+	w.fail("marker unbind", in("dir", inner), errs.Conflict, errs.RuleNotAFolder)
+
+	// context goes by the same marker: stale after a move, copied, gone.
+	w.ok("folder move", `{"folder":"/p/q","to":"/p/r"}`)
+	env := w.run("context", in("file", wt+"/src"))
+	if !env.OK || env.Result.(contextResult).Folder.Path != "/p/r" || !slices.Equal(kinds(env), []string{errs.WarnStaleMarker}) {
+		t.Errorf("context, stale: %+v", env)
+	}
+	copied := outside(t)
+	os.CopyFS(copied+"/.koan", os.DirFS(wt+"/.koan"))
+	w.fail("context", in("file", copied), errs.NotFound, "")
+
+	// unbind looks only in the directory it is given.
+	if got := w.ok("marker unbind", in("dir", wt+"/src")); got["changed"] != false {
+		t.Errorf("unbind below: %v", got)
+	}
+	if _, err := os.Stat(wt + "/.koan/marker.json"); err != nil {
+		t.Errorf("the marker above went: %v", err)
+	}
+}
+
+// With ~/koan-root a link, the tree is both where the link is and where it
+// leads.
+func TestMarkerBindAgainstALinkedTree(t *testing.T) {
+	w := newWorld(t)
+	real := outside(t)
+	os.Mkdir(real+"/tree", 0o755)
+	os.Symlink(real+"/tree", w.env.RootPath())
+	w.ok("init", `{}`)
+	w.ok("folder create", `{"folder":"/p"}`)
+	w.fail("marker bind", bind("/p", real+"/tree/@p"), errs.Conflict, errs.RuleInTree)
+	w.fail("marker bind", bind("/p", real), errs.Conflict, errs.RuleHoldsTree)
+	w.fail("marker bind", bind("/p", w.env.Home), errs.Conflict, errs.RuleHoldsTree)
+	w.ok("marker bind", bind("/p", outside(t)))
+}
+
+// A bind that fails partway says what it wrote.
+func TestMarkerBindFailsPartway(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/p"}`)
+	d := outside(t)
+	w.env.FS.Hook = fsys.ErrnoAt(fsys.OpRename, "", 1, syscall.ENOSPC)
+	e := w.fail("marker bind", bind("/p", d), errs.IO, "")
+	w.env.FS.Hook = nil
+	if want := []string{d + "/.koan", d + "/.koan/.gitignore"}; !slices.Equal(e.ChangedPaths, want) {
+		t.Errorf("changed_paths %v, want %v", e.ChangedPaths, want)
+	}
+	w.ok("marker bind", bind("/p", d))
+	w.env.FS.Hook = fsys.ErrnoAt(fsys.OpRemove, "", 2, syscall.EACCES)
+	e = w.fail("marker unbind", in("dir", d), errs.IO, "")
+	w.env.FS.Hook = nil
+	if want := []string{d + "/.koan/marker.json"}; !slices.Equal(e.ChangedPaths, want) {
+		t.Errorf("unbind changed_paths %v, want %v", e.ChangedPaths, want)
+	}
+	w.ok("marker unbind", in("dir", d))
+}
+
+// Notes that are not a regular file, or can't be read, are null.
+func TestContextNotesKoanCantRead(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/p/q"}`)
+	os.Remove(w.root("p/q/folder.md"))
+	if err := syscall.Mkfifo(w.root("p/q/folder.md"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := w.run("context", `{"folder":"/p/q"}`)
+	if !env.OK || env.Result.(contextResult).Notes != nil || !slices.Equal(kinds(env), []string{errs.WarnUnusableFile}) {
+		t.Errorf("a FIFO: %+v", env)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any file")
+	}
+	os.Chmod(w.root("p/folder.md"), 0)
+	env = w.run("context", `{"folder":"/p/q"}`)
+	if !env.OK || env.Result.(contextResult).ParentNotes != nil || len(env.Warnings) != 2 {
+		t.Errorf("unreadable: %+v", env)
+	}
 }

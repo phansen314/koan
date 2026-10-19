@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -96,6 +97,7 @@ func TestMarkersInAWorktree(t *testing.T) {
 // new one, or no marker at all, never part of one; the next bind completes
 // it, and unbind removes everything.
 func TestMarkerBindCrashes(t *testing.T) {
+	git, _ := exec.LookPath("git")
 	for _, fresh := range []bool{true, false} {
 		home := newHome(t)
 		ok(t, home, "folder", "create", "/a") // 1
@@ -116,14 +118,26 @@ func TestMarkerBindCrashes(t *testing.T) {
 		}
 		for k := 1; k <= steps; k++ {
 			dir := realDir(t)
+			if git != "" {
+				gitIn(t, git, dir, "init", "-q", ".")
+			}
 			if !fresh {
-				ok(t, home, "marker", "bind", "/a", "--dir", dir)
+				ok(t, home, "marker", "bind", "/a", "--force", "--dir", dir)
 			}
 			r := koan(t, home, "", []string{fmt.Sprintf("KOAN_E2E_CRASH_BEFORE=%d", k)}, append(bind, dir)...)
 			if !r.killed {
 				t.Fatalf("fresh=%v k=%d: not killed: %s", fresh, k, r.stdout)
 			}
 			what := fmt.Sprintf("fresh=%v, killed before change %d", fresh, k)
+			// git sees nothing of .koan, but for the one step design.md
+			// names: an empty .gitignore, created and not yet written.
+			if git != "" {
+				status := gitIn(t, git, dir, "status", "--porcelain")
+				ignore, _ := os.ReadFile(filepath.Join(dir, ".koan", ".gitignore"))
+				if status != "" && (status != "?? .koan/\n" || len(ignore) != 0) {
+					t.Errorf("%s: git status %q, .gitignore %q", what, status, ignore)
+				}
+			}
 			w := koan(t, home, "", nil, "where", "--file", dir)
 			switch {
 			case w.exit == 0 && (w.result()["ref"] == "@2" || (!fresh && w.result()["ref"] == "@1")):
@@ -140,6 +154,51 @@ func TestMarkerBindCrashes(t *testing.T) {
 			if _, err := os.Lstat(filepath.Join(dir, ".koan")); !os.IsNotExist(err) {
 				t.Errorf("%s: .koan left: %v", what, err)
 			}
+		}
+	}
+}
+
+// gitIn runs git in dir, with an identity of its own.
+func gitIn(t *testing.T, git, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(git, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+// Two binds of one directory to different folders never both succeed.
+func TestRacingBinds(t *testing.T) {
+	home := newHome(t)
+	ok(t, home, "folder", "create", "/a")
+	ok(t, home, "folder", "create", "/b")
+	for i := 0; i < 20; i++ {
+		dir := realDir(t)
+		var wg sync.WaitGroup
+		runs := make([]run, 2)
+		for j, f := range []string{"/a", "/b"} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				runs[j] = koan(t, home, "", nil, "marker", "bind", f, "--dir", dir)
+			}()
+		}
+		wg.Wait()
+		won := 0
+		for _, r := range runs {
+			switch {
+			case r.exit == 0:
+				won++
+			case r.err()["rule"] != "bound-elsewhere":
+				t.Errorf("round %d: %s", i, r.stdout)
+			}
+		}
+		if won != 1 {
+			t.Errorf("round %d: %d binds succeeded", i, won)
 		}
 	}
 }

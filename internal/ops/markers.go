@@ -2,7 +2,6 @@ package ops
 
 import (
 	"path"
-	"strings"
 	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
@@ -26,7 +25,9 @@ func cmdMarkerBind(c *call) (any, *errs.Error) {
 	}
 	dir := readDir(c, in)
 	force := in.boolean("force", false)
-	if e := c.begin(false); e != nil {
+	// It writes nothing in the tree, but takes the lock alone, so that two
+	// binds of one directory can't both pass the bound-elsewhere check.
+	if e := c.begin(true); e != nil {
 		return nil, e
 	}
 	real, e := c.boundDir(dir)
@@ -34,9 +35,14 @@ func cmdMarkerBind(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	for _, root := range c.treeDirs() {
-		if real == "/" || strings.HasPrefix(root, real+"/") {
-			return nil, errs.NewConflict(errs.RuleHoldsTree, "%s holds the tree, %s: its marker would bind every directory outside the tree that has none of its own", real, root).
-				WithPaths(real)
+		for a := path.Dir(root); ; a = path.Dir(a) {
+			if store.SameDir(c.env, a, real) {
+				return nil, errs.NewConflict(errs.RuleHoldsTree, "%s holds the tree, %s: its marker would bind every directory outside the tree that has none of its own", real, root).
+					WithPaths(real)
+			}
+			if a == "/" {
+				break
+			}
 		}
 	}
 	f, e := c.resolve(ref)
@@ -67,11 +73,17 @@ func cmdMarkerBind(c *call) (any, *errs.Error) {
 			return nil, errs.NewConflict(errs.RuleCheckout, "%s is a checkout, whose marker would bind every worktree inside it: bind each worktree instead, or give force", real).
 				WithPaths(real)
 		}
-		// A marker koan can't use, or one copied here, binds nothing, and
-		// is replaced.
-		if old, _ := b.ReadMarker(); old != nil && old.Dir == real && old.ID != ff.ID {
-			return nil, errs.NewConflict(errs.RuleBoundElsewhere, "%s is bound to folder %d (%s): give force to bind it to %s instead", real, old.ID, old.Path, f).
-				WithIDs(old.ID).WithPaths(b.MarkerPath())
+		// A marker koan can't use, one copied here, and one whose folder
+		// is gone bind nothing, and are replaced.
+		if old, _ := b.ReadMarker(); old != nil && old.ID != ff.ID && store.SameDir(c.env, old.Dir, real) {
+			byID, e := c.folderIDs()
+			if e != nil {
+				return nil, e
+			}
+			if len(byID[old.ID]) > 0 {
+				return nil, errs.NewConflict(errs.RuleBoundElsewhere, "%s is bound to folder %d (%s): give force to bind it to %s instead", real, old.ID, byID[old.ID][0], f).
+					WithIDs(old.ID).WithPaths(b.MarkerPath())
+			}
 		}
 	}
 	m := &model.Marker{Schema: model.MarkerFormat, ID: ff.ID, Path: f, Dir: real}
@@ -128,9 +140,28 @@ func (c *call) boundDir(dir string) (string, *errs.Error) {
 	if err != nil {
 		return "", errs.FromOS(dir, err)
 	}
-	if _, ok := c.inTree(real); ok {
+	if c.underTree(real) {
 		return "", errs.NewConflict(errs.RuleInTree, "%s is in the tree, where a .koan is material: markers are for directories outside it", real).
 			WithPaths(real)
 	}
 	return real, nil
+}
+
+// underTree reports whether directory real is the tree's or under it, by
+// identity rather than by spelling, which a filesystem that ignores case
+// does not make unique. The tree is ~/koan-root as it resolves: with no
+// tree, nothing is under it.
+func (c *call) underTree(real string) bool {
+	tree, err := c.env.FS.EvalSymlinks(c.env.RootPath())
+	if err != nil {
+		return false
+	}
+	for a := real; ; a = path.Dir(a) {
+		if store.SameDir(c.env, a, tree) {
+			return true
+		}
+		if a == "/" {
+			return false
+		}
+	}
 }

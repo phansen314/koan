@@ -181,6 +181,21 @@ func (r *Root) CreateTemp(dir string, perm fs.FileMode) (f *File, name string, e
 	return &File{f: of, r: r, name: name}, name, nil
 }
 
+// Create creates a new, empty file at name, exclusively: it fails with
+// EEXIST rather than open one that is there. It is for a file written in
+// place, which a reader may see before it is whole: a marker's .gitignore,
+// which has nothing to publish over.
+func (r *Root) Create(name string, perm fs.FileMode) (*File, error) {
+	if err := r.before(Op{Name: OpCreate, Path: name, Mutating: true}); err != nil {
+		return nil, err
+	}
+	of, err := r.r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return nil, err
+	}
+	return &File{f: of, r: r, name: name}, nil
+}
+
 // Link publishes a new file: it fails with EEXIST rather than replace one.
 func (r *Root) Link(oldname, newname string) error {
 	if err := r.before(Op{Name: OpLink, Path: oldname, NewPath: newname, Mutating: true}); err != nil {

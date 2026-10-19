@@ -15,7 +15,7 @@
     "tasks": {
       "type": "array",
       "items": { "$ref": "task" },
-      "description": "Its own open tasks, in tree order."
+      "description": "Its own open tasks, as task list returns them with recursive false."
     },
     "marker": { "type": ["string", "null"], "description": "The absolute path of the marker the folder was found by, or null." }
   },

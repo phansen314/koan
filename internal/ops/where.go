@@ -215,7 +215,7 @@ func (c *call) fromMarker(p string) (target, *errs.Error) {
 		return target{}, e
 	case m == nil:
 		return target{}, errs.New(errs.NotFound, "%s is gone", mp).WithPaths(p, mp)
-	case m.Dir != d:
+	case !store.SameDir(c.env, m.Dir, d):
 		return target{}, errs.New(errs.NotFound, "%s was written for %s, and binds nothing here: it was copied or moved; koan marker bind binds this directory", mp, m.Dir).
 			WithPaths(mp)
 	}

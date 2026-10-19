@@ -28,6 +28,7 @@ The coordinator closes both, by deciding who may do what.
 | `task create`, `batch`, `task update`, `task done`, `task reopen` | yes | no |
 | `task block`, `task unblock`, `task move`, `task delete` | yes | no |
 | `folder create`, `folder update`, `folder move`, `folder delete` | yes | no |
+| `marker bind`, `marker unbind` | yes | no |
 | Edit the `@<id>.md` of its own task | no | yes |
 | Edit any other file in the tree | no | no |
 

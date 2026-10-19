@@ -6,8 +6,8 @@
   "properties": {
     "schema": { "const": 1, "description": "The format this file is in." },
     "id": { "$ref": "task-file#/properties/id", "description": "The ID of the folder bound." },
-    "path": { "$ref": "folder-path", "description": "The folder's path when it was bound: a hint." },
-    "dir": { "type": "string", "pattern": "^/", "description": "The absolute real path of the directory holding .koan/." }
+    "path": { "$ref": "folder-path", "not": { "const": "/" }, "description": "The folder's path when it was bound: a hint. Never the root, which has no ID." },
+    "dir": { "type": "string", "pattern": "^(?:/|(?:/(?:[^\\x00/.][^\\x00/]*|\\.[^\\x00/.][^\\x00/]*|\\.\\.[^\\x00/]+))+)$", "description": "The absolute real path of the directory holding .koan/, clean: no empty, ., or .. segment, and no trailing /." }
   },
   "additionalProperties": false,
   "description": ".koan/marker.json, in a directory outside the tree bound to a folder."

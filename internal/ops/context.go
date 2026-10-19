@@ -82,16 +82,29 @@ func (c *call) notes(f model.Folder) *string {
 		return nil
 	}
 	rel := model.FolderNotesRel(f)
-	data, err := c.t.ReadRaw(rel)
+	p := c.t.Abs(rel)
+	unusable := func(msg string) *string {
+		c.warn(errs.WarnUnusableFile, msg, []model.ID{}, p)
+		return nil
+	}
+	// The type is looked at first: a read gives a FIFO or a device as
+	// empty, which would pass for no notes.
+	fi, err := c.t.Stat(rel)
 	switch {
 	case errs.IsErrno(err, syscall.ENOENT):
-		data = nil
-	case errs.IsErrno(err, syscall.ELOOP, syscall.EISDIR):
-		c.warn(errs.WarnUnusableFile, c.t.Abs(rel)+" is not a regular file", []model.ID{}, c.t.Abs(rel))
-		return nil
+		s := ""
+		return &s
 	case err != nil:
-		c.warn(errs.WarnUnusableFile, errs.FromOS(c.t.Abs(rel), err).Message, []model.ID{}, c.t.Abs(rel))
-		return nil
+		return unusable(errs.FromOS(p, err).Message)
+	case !fi.Mode().IsRegular():
+		return unusable(p + " is not a regular file")
+	}
+	data, err := c.t.ReadRaw(rel)
+	if errs.IsErrno(err, syscall.ENOENT) {
+		data, err = nil, nil
+	}
+	if err != nil {
+		return unusable(errs.FromOS(p, err).Message)
 	}
 	s := string(data)
 	return &s
