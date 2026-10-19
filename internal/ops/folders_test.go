@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -196,6 +197,75 @@ func TestDeleteFolderRemovesTheFolderFirst(t *testing.T) {
 	fs := w.ok("doctor", `{}`)["findings"].([]any)
 	if len(fs) != 1 || fs[0].(map[string]any)["kind"] != "dangling-reference" {
 		t.Errorf("doctor: %v", fs)
+	}
+}
+
+// A removal that fails partway still takes the tasks it did remove out of
+// every blocked_by, and ends their claims; the tasks it left keep theirs.
+func TestDeleteFolderFailingPartwayCleansUp(t *testing.T) {
+	w := ready(t)
+	// /d is 1, /d/x 2, /d/y 3, /out 4; then a 5, b 6, and 7 waiting on both.
+	w.ok("batch", `{"tasks":[{"ref":"a","title":"a","folder":"/d/x"},{"ref":"b","title":"b","folder":"/d/y"},`+
+		`{"title":"t","folder":"/out","blocked_by":["a","b"]}]}`)
+	w.ok("task claim", `{"id":5}`)
+	w.ok("task claim", `{"id":6}`)
+	// Fail the removal of the second task file, whichever folder goes
+	// first: the first task is gone, the other left.
+	var removed []int64
+	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
+		name := path.Base(op.Path)
+		if op.Name != fsys.OpRemove || !strings.HasSuffix(name, ".json") || name == "@folder.json" {
+			return nil
+		}
+		if len(removed) == 1 {
+			return syscall.EACCES
+		}
+		id, _ := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(name, "@"), ".json"), 10, 64)
+		removed = append(removed, id)
+		return nil
+	}}
+	e := w.fail("folder delete", `{"folder":"/d","contents":true}`, errs.IO, "")
+	w.env.FS = fsys.FS{}
+	gone, left := removed[0], 11-removed[0]
+	if !slices.Equal(e.IDs, []int64{gone}) || !slices.Contains(e.ChangedPaths, w.root("out/7.json")) || !strings.Contains(e.Message, "1 other task") {
+		t.Errorf("error %+v: want ids [%d], the rewritten 7 in changed_paths, and the count in the message", e, gone)
+	}
+	if got := task(w.ok("task show", `{"id":7}`))["blocked_by"]; !slices.Equal(ids(got), []int64{left}) {
+		t.Errorf("7 is blocked by %v, want only %d", got, left)
+	}
+	if got := w.ok("task list", `{"claimed":true,"fields":["id"]}`)["tasks"].([]any); len(got) != 1 || got[0].(map[string]any)["id"] != float64(left) {
+		t.Errorf("claimed %v, want only %d", got, left)
+	}
+	if f := w.findings(); len(f) != 0 {
+		t.Errorf("findings %v", f)
+	}
+	// Once the cause is gone, running it again removes the rest.
+	r := w.ok("folder delete", `{"folder":"/d","contents":true}`)
+	if !slices.Equal(ids(r["deleted"]), []int64{left}) || !slices.Equal(ids(r["dependents"]), []int64{7}) {
+		t.Errorf("second delete: %v", r)
+	}
+}
+
+// A cleanup that fails too does not hide the removal's error.
+func TestDeleteFolderCleanupFailing(t *testing.T) {
+	w := ready(t)
+	// /d is 1, /out 2; a 3 in /d, and 4 waiting on it.
+	w.ok("batch", `{"tasks":[{"ref":"a","title":"a","folder":"/d"},{"title":"t","folder":"/out","blocked_by":["a"]}]}`)
+	// The removal fails at /d's folder file, after the task; the rewrite of
+	// 4 then fails at its temp file.
+	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
+		if (op.Name == fsys.OpRemove && op.Path == "@d/@folder.json") || op.Name == fsys.OpCreateTemp {
+			return syscall.EACCES
+		}
+		return nil
+	}}
+	e := w.fail("folder delete", `{"folder":"/d","contents":true}`, errs.IO, "")
+	w.env.FS = fsys.FS{}
+	if !slices.Equal(e.Paths, []string{w.root("d")}) || !slices.Equal(e.IDs, []int64{3}) || !strings.Contains(e.Message, "cleaning up after them failed") {
+		t.Errorf("error %+v: want the removal's, naming 3 and the failed cleanup", e)
+	}
+	if f := w.findings(); !slices.Contains(f, "dangling-reference @out/@4.json") {
+		t.Errorf("findings %v, want the reference left", f)
 	}
 }
 

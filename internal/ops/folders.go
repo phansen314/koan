@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/model"
@@ -326,7 +327,7 @@ func cmdFolderDelete(c *call) (any, *errs.Error) {
 	}
 	// The folder goes first, for the reason task delete gives.
 	if e := c.t.Discard(f.Rel()); e != nil {
-		return nil, e
+		return nil, c.discardFailed(e, res.Deleted)
 	}
 	if res.Dependents, e = c.unreference(res.Deleted); e != nil {
 		return nil, e
@@ -335,6 +336,39 @@ func cmdFolderDelete(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	return res, nil
+}
+
+// discardFailed finishes a folder delete whose removal failed partway, for
+// the tasks it did remove: their IDs leave every blocked_by and their
+// claims end, as for a removal that succeeded. It returns the removal's
+// error, naming those tasks; a failure of its own is added to the message.
+// The index still holds: nothing but the removed tasks has moved.
+func (c *call) discardFailed(e *errs.Error, deleted []model.ID) *errs.Error {
+	gone := []model.ID{}
+	for _, id := range deleted {
+		if _, err := c.t.Stat(model.TaskRel(c.x.Tasks[id], id)); errs.IsErrno(err, syscall.ENOENT) {
+			gone = append(gone, id)
+		}
+	}
+	if len(gone) == 0 {
+		return e
+	}
+	e.WithIDs(gone...)
+	e.Message += fmt.Sprintf("; it removed %d of the tasks", len(gone))
+	dependents, ce := c.unreference(gone)
+	if ce == nil {
+		ce = c.dropClaims(gone...)
+	}
+	if ce != nil {
+		e.Message += fmt.Sprintf(", and cleaning up after them failed too, which doctor finds: %s", ce.Message)
+		return e
+	}
+	others := "tasks"
+	if len(dependents) == 1 {
+		others = "task"
+	}
+	e.Message += fmt.Sprintf(", and %d other %s no longer wait on them", len(dependents), others)
+	return e
 }
 
 type folderListing struct {
