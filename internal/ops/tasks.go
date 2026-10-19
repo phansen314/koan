@@ -205,7 +205,7 @@ func cmdBlock(c *call) (any, *errs.Error) {
 			return nil
 		}
 		o := c.overlay()
-		o.block(id, idsOf(added)...)
+		o.blockTask(id, idsOf(added)...)
 		k := c.newCheck(o)
 		k.changed = []graph.Ref{graph.TaskRef(id)}
 		for _, b := range added {
@@ -315,6 +315,9 @@ func cmdDelete(c *call) (any, *errs.Error) {
 	if tf := c.pass(id); tf != nil {
 		t := c.task(f, tf)
 		record = &t
+	}
+	if e := c.met(); e != nil {
+		return nil, e
 	}
 	// The task goes before its dependents are rewritten: a kill after that
 	// leaves references to a task that is gone, which doctor finds. The other

@@ -120,6 +120,15 @@ func (d dependent) ref() graph.Ref {
 	return graph.WaitOf(d.folder)
 }
 
+// waitIn makes the dependent wait on id in the overlay o.
+func (d dependent) waitIn(o *overlay, id model.ID) {
+	if d.task != nil {
+		o.blockTask(d.id, id)
+		return
+	}
+	o.blockFolder(d.folder, d.id, id)
+}
+
 // dependents reads everything in a blocks, ascending, before an ID is used:
 // each is rewritten, so a file that can't be used refuses the command.
 func (c *call) dependents(rs []resolved) ([]dependent, *errs.Error) {

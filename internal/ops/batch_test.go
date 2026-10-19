@@ -214,6 +214,15 @@ func TestBatchFolderEntryRaced(t *testing.T) {
 	if got := w.ok("folder create", `{"folder":"/d"}`); len(got["folders_created"].([]any)) != 0 {
 		t.Errorf("folder create /d: %v", got)
 	}
+	// Given only blocks, too: what is in blocks waits on the ID set aside,
+	// which the folder that appeared does not have.
+	w.env.FS = fsys.FS{}
+	w.ok("task create", `{"title":"t"}`) // 6
+	w.env.FS = fsys.FS{Hook: raceAt(w.root("e"))}
+	e = w.fail("folder create", `{"folder":"/e","blocks":[6]}`, errs.Conflict, errs.RuleDestinationExists)
+	if !slices.Equal(e.IDs, []int64{6}) || !strings.Contains(e.Message, "[6] wait on folder") {
+		t.Errorf("folder create /e: ids %v, message %q", e.IDs, e.Message)
+	}
 }
 
 // A failure in writing the tasks names the folders made, the tasks

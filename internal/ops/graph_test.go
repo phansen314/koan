@@ -195,8 +195,18 @@ func TestCycleErrors(t *testing.T) {
 	}
 	// In a batch, a new task is named by its ref, and the entry pointed at.
 	e = w.fail("batch", `{"folders":[{"folder":"/c","blocked_by":["/d"]},{"folder":"/d"}],"tasks":[{"ref":"t","title":"t","folder":"/d","blocked_by":["/c"]}]}`, errs.Conflict, errs.RuleCycle)
-	if !strings.Contains(e.Message, "the new task t") || len(e.IDs) != 0 || len(e.Problems) == 0 {
-		t.Errorf("batch cycle: %q %v %v", e.Message, e.IDs, e.Problems)
+	if !strings.HasPrefix(e.Message, "this would make a cycle: everything in /c waits on /d being done") ||
+		!strings.Contains(e.Message, "the new task t") || len(e.IDs) != 0 || !slices.Equal(e.Folders, []string{"/c", "/d"}) {
+		t.Errorf("batch cycle: %q %v %v", e.Message, e.IDs, e.Folders)
+	}
+	if want := []errs.Problem{{Field: "/folders/0/blocked_by/0", Reason: "closes a cycle"}, {Field: "/tasks/0/folder", Reason: "closes a cycle"}, {Field: "/tasks/0/blocked_by/0", Reason: "closes a cycle"}}; !slices.Equal(e.Problems, want) {
+		t.Errorf("batch cycle problems %v", e.Problems)
+	}
+	// A cycle that enters a folder entry only at its done node starts at
+	// the entry all the same, folder entries before task entries.
+	e = w.fail("batch", `{"folders":[{"folder":"/e"}],"tasks":[{"ref":"u","title":"u","blocked_by":["/e"]},{"ref":"v","title":"v","folder":"/e","blocked_by":["u"]}]}`, errs.Conflict, errs.RuleCycle)
+	if !strings.HasPrefix(e.Message, "this would make a cycle: /e holds the new task v") || !slices.Equal(e.Folders, []string{"/e"}) {
+		t.Errorf("batch cycle through a done node: %q %v", e.Message, e.Folders)
 	}
 	if id := w.ok("task create", `{"title":"next"}`)["id"]; id != float64(4) {
 		t.Errorf("a refused batch used IDs: next is %v", id)
@@ -364,4 +374,52 @@ func TestDuplicateBlocker(t *testing.T) {
 	w.fail("task block", `{"id":1,"blocked_by":[3]}`, errs.Conflict, errs.RuleDuplicateID)
 	os.WriteFile(w.root("1.json"), []byte(strings.Replace(w.file("1.json"), `"blocked_by": []`, `"blocked_by": [3]`, 1)), 0o644)
 	w.fail("task show", `{"id":1}`, errs.Conflict, errs.RuleDuplicateID)
+}
+
+// A write that evaluates readiness checks for a duplicated blocker before
+// it writes anything: it never fails with duplicate-id having written.
+func TestDuplicateBlockerBeforeWrites(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"a"}`)                      // 1
+	w.ok("task create", `{"title":"b","blocked_by":[1]}`)     // 2
+	w.ok("folder create", `{"folder":"/f","blocked_by":[1]}`) // 3
+	w.ok("task create", `{"title":"c","folder":"/f"}`)        // 4
+	w.ok("folder create", `{"folder":"/g"}`)                  // 5
+	os.WriteFile(w.root("g/folder.json"), []byte(`{"schema":2,"id":1,"title":null,"blocked_by":[],"extra":{}}`), 0o644)
+	for _, c := range [][2]string{{"task delete", `{"id":2}`}, {"folder delete", `{"folder":"/f","contents":true}`}} {
+		if e := w.fail(c[0], c[1], errs.Conflict, errs.RuleDuplicateID); len(e.ChangedPaths) != 0 {
+			t.Errorf("%s: changed %v", c[0], e.ChangedPaths)
+		}
+	}
+	if e := w.fail("task claim-next", `{}`, errs.Conflict, errs.RuleDuplicateID); len(e.ChangedPaths) != 0 {
+		t.Errorf("task claim-next: changed %v", e.ChangedPaths)
+	}
+}
+
+// The task or folder a block changes is not looked up as a blocker: an ID
+// a folder file holds too fails only what meets it as one.
+func TestBlockingADuplicatedID(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"a"}`)     // 1
+	w.ok("folder create", `{"folder":"/f"}`) // 2
+	w.ok("task create", `{"title":"b"}`)     // 3
+	os.WriteFile(w.root("f/folder.json"), []byte(`{"schema":2,"id":3,"title":null,"blocked_by":[],"extra":{}}`), 0o644)
+	if got := w.ok("task block", `{"id":3,"blocked_by":[1]}`); got["changed"] != true {
+		t.Errorf("task block: %v", got)
+	}
+	w.fail("task block", `{"id":1,"blocked_by":[3]}`, errs.Conflict, errs.RuleDuplicateID)
+}
+
+// folder why of a folder with no folder file names it in its own
+// stuck_folders, though only an unusable task file keeps it from done.
+func TestFolderWhyWithNoFolderFile(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"a","folder":"/f"}`) // /f 1, task 2
+	os.Remove(w.root("f/folder.json"))
+	os.WriteFile(w.root("f/2.json"), []byte("{"), 0o644)
+	why := w.ok("folder why", `{"folder":"/f"}`)
+	if data, _ := json.Marshal(why["stuck_folders"]); string(data) != `["/f"]` {
+		t.Errorf("folder why: %v", why)
+	}
+	wantIDs(t, "stuck", why["stuck"], 2)
 }

@@ -144,7 +144,7 @@ func cmdFolderCreate(c *call) (any, *errs.Error) {
 			k.wait(graph.WaitOf(f), b.id, b.at)
 		}
 		for _, d := range deps {
-			o.block(d.id, id)
+			d.waitIn(o, id)
 			k.wait(d.ref(), id, d.at)
 		}
 		if p := f.Parent(); p != model.Root {
@@ -168,9 +168,10 @@ func cmdFolderCreate(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	// A folder with nothing to set may appear meanwhile without harm.
+	// A folder with nothing to set may appear meanwhile without harm; one
+	// given blocks may not, since what is in blocks now waits on its ID.
 	var want []newFolder
-	if hasTitle || hasExtra || hasNotes || len(bs) > 0 {
+	if asked {
 		want = append(want, newFolder{folder: f, title: title, extra: extra, notes: notes, blockedBy: idsOf(bs)})
 	}
 	created, e := c.makeFolders(missing, first, want...)
@@ -499,6 +500,9 @@ func cmdFolderDelete(c *call) (any, *errs.Error) {
 		}
 	}
 	res := deleteFolderResult{Folder: c.passFolder(f), Deleted: []model.ID{}}
+	if e := c.met(); e != nil {
+		return nil, e
+	}
 	for _, id := range x.IDs() {
 		if f.Holds(x.Tasks[id]) {
 			res.Deleted = append(res.Deleted, id)
@@ -618,7 +622,7 @@ func cmdFolderBlock(c *call) (any, *errs.Error) {
 		return folderWritten{ID: &ff.ID, Path: f, Changed: false}, nil
 	}
 	o := c.overlay()
-	o.block(ff.ID, idsOf(added)...)
+	o.blockFolder(f, ff.ID, idsOf(added)...)
 	k := c.newCheck(o)
 	k.changed = []graph.Ref{graph.WaitOf(f)}
 	for _, b := range added {
@@ -682,6 +686,12 @@ func cmdFolderWhy(c *call) (any, *errs.Error) {
 	res := whyResult{Readiness: g.FolderState(f).Readiness, Ready: []model.ID{}, Stuck: []model.ID{}, StuckFolders: []model.Folder{}}
 	if res.Readiness != model.Done {
 		res.Ready, res.Stuck, res.StuckFolders = g.Why(nil, []model.Folder{f})
+		// One with no folder file is in its own, though no open task under
+		// it is followed there: its blockers are unknown all the same.
+		if f != model.Root && fx.at[f].file == nil && !slices.Contains(res.StuckFolders, f) {
+			res.StuckFolders = append(res.StuckFolders, f)
+			slices.SortFunc(res.StuckFolders, model.TreeOrder)
+		}
 	}
 	return res, nil
 }

@@ -134,7 +134,7 @@ func cmdCreate(c *call) (any, *errs.Error) {
 			k.wait(graph.TaskRef(id), b.id, b.at)
 		}
 		for _, d := range deps {
-			o.block(d.id, id)
+			d.waitIn(o, id)
 			k.wait(d.ref(), id, d.at)
 		}
 		if n.folder != model.Root {
@@ -390,8 +390,8 @@ func cmdBatch(c *call) (any, *errs.Error) {
 			taskBlockers[i] = append(taskBlockers[i], resolved{base + model.ID(refAt[ref]), n.refsAt[j]})
 		}
 	}
-	// Folder paths can close a cycle, as refs alone can't: the batch is
-	// checked as a whole, with the tree.
+	// Refs and folder paths can each close a cycle, with the tree: the batch
+	// is checked as a whole.
 	if slices.ContainsFunc(entryBlockers, func(rs []resolved) bool { return len(rs) > 0 }) ||
 		slices.ContainsFunc(taskBlockers, func(rs []resolved) bool { return len(rs) > 0 }) {
 		o := c.overlay()
@@ -401,7 +401,9 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		}
 		for i, n := range entries {
 			o.folders[n.folder].blockedBy = n.blockedBy
-			k.changed = append(k.changed, graph.WaitOf(n.folder))
+			// Both of its nodes: a cycle may enter it at its done node and
+			// leave by a task in it, never passing its wait node.
+			k.changed = append(k.changed, graph.WaitOf(n.folder), graph.DoneOf(n.folder))
 			for _, b := range entryBlockers[i] {
 				k.wait(graph.WaitOf(n.folder), b.id, b.at)
 			}

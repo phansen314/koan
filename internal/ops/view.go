@@ -102,6 +102,16 @@ func (c *call) graph() *graph.Graph {
 	return c.g
 }
 
+// met is the duplicated ID the graph has met as a blocker, if any. Run
+// fails the command with it only once the command returns, so a write that
+// evaluates readiness checks it before its first write.
+func (c *call) met() *errs.Error {
+	if c.bt == nil {
+		return nil
+	}
+	return c.bt.err
+}
+
 func (b *baseTree) Resolve(id model.ID) graph.Item {
 	f, isTask := b.c.x.Tasks[id]
 	folders := b.fx.byID[id]
@@ -263,27 +273,30 @@ func (o *overlay) addTask(id model.ID, f model.Folder, blockedBy []model.ID, nam
 	o.tasks[id] = &taskEdit{folder: f, node: graph.Node{Open: true, BlockedBy: blockedBy}, made: true, name: name}
 }
 
-// block makes the existing task or folder with ID id wait on blockers too.
-func (o *overlay) block(id model.ID, blockers ...model.ID) {
+// blockTask makes the existing task id wait on blockers too. The caller
+// knows id is a task's, so it is never resolved: a folder file that holds
+// it too fails only a command that meets it as a blocker.
+func (o *overlay) blockTask(id model.ID, blockers ...model.ID) {
 	if te, ok := o.tasks[id]; ok {
 		te.node.BlockedBy = union(te.node.BlockedBy, blockers)
 		return
 	}
-	it := o.base.Resolve(id)
-	switch it.Kind {
-	case graph.TaskKind:
-		n, _ := o.base.Task(id)
-		n.BlockedBy = union(n.BlockedBy, blockers)
-		o.tasks[id] = &taskEdit{folder: o.now(it.Folder), node: n}
-	case graph.FolderKind:
-		f := o.now(it.Folder)
-		if fe, ok := o.folders[f]; ok {
-			fe.blockedBy = union(fe.blockedBy, blockers)
-			return
-		}
-		bs, _, _ := o.base.Blockers(it.Folder)
-		o.folders[f] = &folderEdit{id: id, blockedBy: union(bs, blockers)}
+	f, _ := o.TaskFolder(id)
+	n, _ := o.base.Task(id)
+	n.BlockedBy = union(n.BlockedBy, blockers)
+	o.tasks[id] = &taskEdit{folder: f, node: n}
+}
+
+// blockFolder makes the existing folder at path f, with ID id, wait on
+// blockers too.
+func (o *overlay) blockFolder(f model.Folder, id model.ID, blockers ...model.ID) {
+	now := o.now(f)
+	if fe, ok := o.folders[now]; ok {
+		fe.blockedBy = union(fe.blockedBy, blockers)
+		return
 	}
+	bs, _, _ := o.base.Blockers(f)
+	o.folders[now] = &folderEdit{id: id, blockedBy: union(bs, blockers)}
 }
 
 // moveTask puts the existing task id in folder f.

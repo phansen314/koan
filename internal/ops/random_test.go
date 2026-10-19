@@ -132,6 +132,17 @@ func (m *expected) done(f string) bool {
 	return true
 }
 
+// wait makes the task or folder with ID id wait on blocker too.
+func (m *expected) wait(id, blocker int64) {
+	if t := m.tasks[id]; t != nil {
+		if !slices.Contains(t.blockers, blocker) {
+			t.blockers = append(t.blockers, blocker)
+		}
+	} else if f := m.folderWith(id); f != "" && !slices.Contains(m.fblock[f], blocker) {
+		m.fblock[f] = append(m.fblock[f], blocker)
+	}
+}
+
 // blocks reports whether the blocker id blocks now.
 func (m *expected) blocks(id int64) bool {
 	if t := m.tasks[id]; t != nil {
@@ -545,9 +556,9 @@ func cond(c bool, a, b string) string {
 
 func (r *random) step() {
 	m := r.m
-	switch n := r.rng.Intn(108); {
+	switch n := r.rng.Intn(114); {
 	case n < 18: // create
-		folder, bs := r.folder(), r.someBlockers(2)
+		folder, bs, ds := r.folder(), r.someBlockers(2), r.someBlockers(1)
 		var pri *int64
 		if r.rng.Intn(2) == 0 {
 			p := int64(r.rng.Intn(5) - 1)
@@ -557,17 +568,25 @@ func (r *random) step() {
 		for _, b := range bs {
 			blockers = append(blockers, b.id)
 		}
-		want := either(r.blockerWant(bs), cond(m.caseMismatch(folder, ""), "conflict/case-mismatch", ""))
+		want := either(r.blockerWant(append(slices.Clone(bs), ds...)), cond(m.caseMismatch(folder, ""), "conflict/case-mismatch", ""))
 		if want == "" {
 			try := m.clone()
 			try.addFolder(folder)
-			try.tasks[try.lastID+1] = &mtask{folder: folder, open: true, blockers: blockers}
+			id := try.lastID + 1
+			try.tasks[id] = &mtask{folder: folder, open: true, blockers: blockers}
+			for _, d := range ds {
+				try.wait(d.id, id)
+			}
 			want = cond(try.acyclic(), "", "conflict/cycle")
 		}
-		res := r.do("task create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": values(bs), "priority": pri}), want)
+		res := r.do("task create", js(map[string]any{"title": "t", "folder": folder, "blocked_by": values(bs), "blocks": values(ds), "priority": pri}), want)
 		if res != nil {
 			m.addFolder(folder)
-			r.created(int64(res["id"].(float64)), &mtask{folder: folder, open: true, blockers: blockers, priority: pri})
+			id := int64(res["id"].(float64))
+			for _, d := range ds {
+				m.wait(d.id, id)
+			}
+			r.created(id, &mtask{folder: folder, open: true, blockers: blockers, priority: pri})
 		}
 	case n < 24: // batch: a chain of three in two folders
 		f1, f2 := r.folder(), r.folder()
@@ -665,10 +684,46 @@ func (r *random) step() {
 			m.tasks[id].folder = to
 			m.addFolder(to)
 		}
-	case n < 70: // folder create
+	case n < 70: // folder create, sometimes with blockers and blocks
 		f := r.folder()
-		if r.do("folder create", js(map[string]any{"folder": f}), cond(m.caseMismatch(f, ""), "conflict/case-mismatch", "")) != nil {
+		in := map[string]any{"folder": f}
+		var bs, ds []blocker
+		if f != "/" && r.rng.Intn(2) == 0 {
+			if bs, ds = r.someBlockers(2), r.someBlockers(1); len(bs) > 0 {
+				in["blocked_by"] = values(bs)
+			}
+			if len(ds) > 0 {
+				in["blocks"] = values(ds)
+			}
+		}
+		// It creates the folder with blockers and dependents.
+		make := func(m *expected) int64 {
 			m.addFolder(f)
+			id := m.fids[f]
+			for _, b := range bs {
+				m.wait(id, b.id)
+			}
+			for _, d := range ds {
+				m.wait(d.id, id)
+			}
+			return id
+		}
+		want := cond(m.caseMismatch(f, ""), "conflict/case-mismatch", "")
+		switch {
+		case want != "":
+		case m.folders[f]:
+			want = cond(len(in) > 1, "conflict/destination-exists", "")
+		default:
+			if want = r.blockerWant(append(slices.Clone(bs), ds...)); want == "" && len(in) > 1 {
+				try := m.clone()
+				make(try)
+				want = cond(try.acyclic(), "", "conflict/cycle")
+			}
+		}
+		if res := r.do("folder create", js(in), want); res != nil && !m.folders[f] {
+			if id := make(m); res["id"] != float64(id) {
+				r.failf("folder %s created with ID %v, want %d", f, res["id"], id)
+			}
 		}
 	case n < 77: // folder move
 		from, to := r.existingFolder(), r.folder()
@@ -830,6 +885,88 @@ func (r *random) step() {
 			m.fblock[f] = slices.DeleteFunc(m.fblock[f], func(b int64) bool {
 				return slices.ContainsFunc(bs, func(x blocker) bool { return x.id == b })
 			})
+		}
+	case n < 114: // batch: two folder entries, one waiting on the other, and a task
+		f1, f2 := path.Join(r.folder(), "p"), path.Join(r.folder(), "q")
+		tf := []string{f1, f2, r.folder()}[r.rng.Intn(3)]
+		// A blocker path the batch makes as needed is a folder of the batch.
+		made := func(b blocker) bool {
+			p, isPath := b.value.(string)
+			return isPath && b.id == 0 && (holds(p, f1) || holds(p, f2) || holds(p, tf))
+		}
+		b1, b2 := slices.DeleteFunc(r.someBlockers(1), made), slices.DeleteFunc(r.someBlockers(1), made)
+		on1 := r.rng.Intn(2) == 0
+		e2 := values(b2)
+		if on1 {
+			e2 = append(e2, f1)
+		}
+		var tb []any
+		if r.rng.Intn(2) == 0 {
+			tb = []any{[]string{f1, f2}[r.rng.Intn(2)]}
+		}
+		paths := []string{f1, f2, tf}
+		for _, b := range append(slices.Clone(b1), b2...) {
+			if p, isPath := b.value.(string); isPath {
+				paths = append(paths, p)
+			}
+		}
+		if slices.ContainsFunc(paths, func(p string) bool { return m.caseMismatch(p, "") }) {
+			return // the case rules are tried elsewhere
+		}
+		want := ""
+		for i, a := range paths {
+			for _, b := range paths[i+1:] {
+				if clash(a, b) {
+					want = "invalid-input"
+				}
+			}
+		}
+		// It makes the batch: the folders, then the task.
+		make := func(m *expected) int64 {
+			m.addFolder(f1, f2, tf)
+			for _, b := range b1 {
+				m.wait(m.fids[f1], b.id)
+			}
+			for _, b := range b2 {
+				m.wait(m.fids[f2], b.id)
+			}
+			if on1 {
+				m.wait(m.fids[f2], m.fids[f1])
+			}
+			t := &mtask{folder: tf, open: true, tags: []string{}}
+			for _, p := range tb {
+				t.blockers = append(t.blockers, m.fids[p.(string)])
+			}
+			m.lastID++
+			m.tasks[m.lastID] = t
+			return m.lastID
+		}
+		switch {
+		case want != "":
+		case f1 == f2:
+			want = "invalid-input"
+		case m.folders[f1] || m.folders[f2]:
+			want = "conflict/destination-exists"
+		default:
+			if want = r.blockerWant(append(slices.Clone(b1), b2...)); want == "" {
+				try := m.clone()
+				make(try)
+				want = cond(try.acyclic(), "", "conflict/cycle")
+			}
+		}
+		res := r.do("batch", js(map[string]any{
+			"folders": []any{map[string]any{"folder": f1, "blocked_by": values(b1)}, map[string]any{"folder": f2, "blocked_by": e2}},
+			"tasks":   []any{map[string]any{"title": "x", "folder": tf, "blocked_by": append([]any{}, tb...)}},
+		}), want)
+		if res != nil {
+			if id := make(m); !slices.Equal(ids(res["ids"]), []int64{id}) {
+				r.failf("batch made task %v, want %d", res["ids"], id)
+			}
+			for f, id := range res["folders"].(map[string]any) {
+				if m.fids[f] != int64(id.(float64)) {
+					r.failf("batch made %s with ID %v, want %d", f, id, m.fids[f])
+				}
+			}
 		}
 	default: // release
 		id := r.id()

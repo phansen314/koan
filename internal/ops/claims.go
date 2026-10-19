@@ -56,6 +56,9 @@ func cmdClaimNext(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	tasks, e := c.tasks(&s, available)
+	if e == nil {
+		e = c.met()
+	}
 	if e != nil {
 		return nil, e
 	}
