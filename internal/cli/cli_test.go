@@ -114,7 +114,7 @@ func TestBuildInput(t *testing.T) {
 	os.WriteFile(empty, []byte(`{}`), 0o644)
 	// context, and the marker commands' --dir, take the working directory
 	// when given nothing in its place; --input is taken as it is.
-	for _, c := range []struct {
+	cases = append(cases, []struct {
 		args []string
 		want string
 	}{
@@ -130,9 +130,7 @@ func TestBuildInput(t *testing.T) {
 		{[]string{"marker", "unbind", "x"}, ""},
 		{[]string{"marker"}, ""},
 		{[]string{"marker", "unbind", "--input", empty}, `{}`},
-	} {
-		cases = append(cases, c)
-	}
+	}...)
 	for _, c := range cases {
 		var got []byte
 		var failed error
