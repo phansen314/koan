@@ -2,16 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "info-output",
   "type": "object",
-  "required": ["root", "state_path", "state", "missing", "format", "last_id", "claims", "error"],
+  "required": ["root", "tree", "archive", "state_path", "state", "missing", "format", "last_id", "claims", "error"],
   "properties": {
     "root": { "type": "string" },
+    "tree": { "type": "string", "description": "The root folder's directory." },
+    "archive": { "type": "string", "description": "The archive's directory, there or not." },
     "state_path": { "type": "string" },
     "state": {
       "enum": ["not-initialized", "unusable", "needs-migration", "too-new", "usable"]
     },
     "missing": {
       "type": "array",
-      "items": { "enum": ["root", "metadata", "state"] },
+      "items": { "enum": ["root", "metadata", "tree", "state"] },
       "uniqueItems": true,
       "description": "When not-initialized, what is missing; otherwise empty."
     },

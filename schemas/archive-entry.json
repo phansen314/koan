@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "archive-entry",
+  "type": "object",
+  "required": ["schema", "id", "kind", "title", "path", "archived", "archived_at", "ids"],
+  "properties": {
+    "schema": { "const": 1 },
+    "id": { "$ref": "task-file#/properties/id" },
+    "kind": { "enum": ["task", "folder"] },
+    "title": { "type": ["string", "null"], "description": "Its title; a folder's may be null." },
+    "path": { "$ref": "folder-path", "description": "The folder path it was at: a folder's own, a task's folder's." },
+    "archived": { "type": "string", "minLength": 1, "description": "Where it is, relative to archived/: the folder's directory, or the task file." },
+    "archived_at": {
+      "anyOf": [{ "$ref": "task-file#/$defs/timestamp" }, { "type": "null" }],
+      "description": "When it was archived; null in a line repair wrote."
+    },
+    "ids": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "minItems": 1,
+      "description": "Every task and folder ID it took out of the tree, its own included. Ascending."
+    }
+  },
+  "additionalProperties": false,
+  "description": "One line of archived/@index.jsonl: one item archived."
+}

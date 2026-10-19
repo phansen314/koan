@@ -60,6 +60,7 @@ Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 | `koan folder update <folder>` | `--title`, `--extra-merge`, `--extra-remove`, `--extra-replace-all` |
 | `koan folder move <folder> --to <folder>` | |
 | `koan folder delete <folder>` | `--contents`, `--force` |
+| `koan folder archive <folder>` | |
 | `koan folder list` | `--folder`, `--recursive`, `--limit`, `--fields` |
 | `koan folder block <folder> --blocked-by <blockers>` | |
 | `koan folder unblock <folder> --blocked-by <blockers>` | |
@@ -74,6 +75,7 @@ Parsing is cobra's GNU-style parsing; these are the rules koan adds.
 | `koan task unblock <id> --blocked-by <blockers>` | |
 | `koan task move <id> --to <folder>` | |
 | `koan task delete <id>` | |
+| `koan task archive <id>` | |
 | `koan task frontier` | `--folder`, `--recursive`, `--tags-any`, `--tags-all`, `--limit`, `--fields` |
 | `koan task list` | `task frontier`'s, and `--claimed`, `--readiness` |
 | `koan task why <id>` | |
@@ -123,8 +125,10 @@ koan task update 42 --priority null --tags-add urgent --extra-merge '{"status":"
 koan task block 42 --blocked-by 17,18
 koan folder create /proj/phase2 --blocked-by /proj/phase1
 koan folder why /proj/phase1 | jq '.result.ready'
-koan task move 42 --to /archive
+koan task move 42 --to /proj/later
 koan task done 42
+koan task archive 42
+koan folder archive /work/HOME-12345                # once everything in it is done
 
 koan task claim-next --folder /proj --extra '{"agent":"shingi-3"}' | jq '.result.task.id'
 koan task release 42

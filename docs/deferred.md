@@ -8,14 +8,10 @@ Turn a koan folder or task back into plain files, leaving the work itself in pla
 
 - `forget-folder` removes the folder's `@folder.json` and the `@` from its name; `@folder.md` becomes `folder.md`, refused when one is there.
 - It refuses a folder holding tasks (`has-tasks`) unless `--force`, and one holding folders (`has-children`).
-- To weigh when the task question is settled: it could let a finished folder be archived in place rather than deleted. As material, which koan never walks, it would cost nothing and stay browsable (say, moved under `~/koan-root/archive/2026/`), if its tasks' notes survive as plain files. Until then, a finished folder is committed and deleted (the README's "Keeping the tree small").
 
-## `archive`
+## Unarchive
 
-Move done folders and tasks out of the active tree into `~/koan-root/archived/`, with the active tree moving to `~/koan-root/tree/`. What its IDs need, now that the counter is in `@koan.json` (2026-10-19):
-
-- IDs stay integers. Keep `@koan.json`, and with it the counter, above both `tree/` and `archived/`, so archived IDs are never issued again and need no walk or manifest.
-- When `init` rebuilds a lost `@koan.json`, and when `doctor` looks for IDs above the counter, they count `archived/` too, by name.
+`folder archive` and `task archive` are one way. Bringing an item back would be safe for IDs, which the archive keeps and the counter never issues again: rename it back (to a `--to`, when its path is taken), drop its index line, and report `blocked_by` entries in it that name what is gone. The links that pointed at it from the tree were removed when it was archived, and are not restored. Only if remaking work from the archive turns out to be a burden in real use.
 
 ## Shell completion
 

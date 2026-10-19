@@ -161,7 +161,7 @@ It lets a worker do anything outside the tree. Inside it, it allows an edit only
 
 ```text
 Use the koan-worker agent for task 42, "Book flights".
-Its notes file is /home/paul/koan-root/@proj/@travel/@42.md.
+Its notes file is /home/paul/koan-root/tree/@proj/@travel/@42.md.
 ```
 
 Two limits to know about:

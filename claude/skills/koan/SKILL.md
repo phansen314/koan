@@ -5,7 +5,7 @@ description: Track and work through the user's tasks with the koan CLI — a loc
 
 # koan
 
-`koan` keeps the user's tasks as files under `~/koan-root`. Tasks live in folders, tasks and folders can block each other, and each has a notes file. Every command prints **one line of JSON** and nothing else.
+`koan` keeps the user's tasks as files under `~/koan-root/tree`, and finished work they archived under `~/koan-root/archived`. Tasks live in folders, tasks and folders can block each other, and each has a notes file. Every command prints **one line of JSON** and nothing else.
 
 ## Before the first command
 
@@ -48,6 +48,7 @@ Error kinds worth handling:
 - `invalid-input` — `.error.problems[]` lists every bad field.
 - `conflict` — `.error.rule` says which rule refused it:
   - `cycle` — the change would make tasks and folders wait on each other, now or once a task is added to a folder; `.error.message` gives each step, `.error.ids` and `.error.folders` the tasks and folders in it, and `.error.problems` the input fields that close it. Nothing may wait on a folder that holds it (`/proj contains /proj/phase2`). Tell the user rather than rearranging their blockers. (A `corrupt` from a block, a create with blockers, or a move means the check met a task file or folder file it can't read: report it, as below. A folder whose own `@folder.json` can't be used can still be renamed or moved to the top level, but not into another folder.)
+  - `not-done` — `folder archive` or `task archive` on something with open work; `.error.ids` lists the open tasks. Ask the user; don't mark them done to get past it.
   - `not-empty` — `folder delete` without `--contents` on a folder that holds anything. Don't add `--contents` on your own: ask the user.
   - `has-material` — `folder delete --contents` on a folder holding the user's own files (material), hidden ones such as `.git` or `.env` included; `.error.paths` lists them. Don't add `--force` on your own: show the user the list and ask. `--force` deletes those files for good. From `marker bind` or `marker unbind`, a `.koan/` holding files koan didn't write: show the user `.error.paths`; there is no `--force` for it.
   - `destination-exists` — `folder move`'s `--to` already exists (folders are never merged), `task move` would overwrite a `@<id>.md` with text in the target folder, `folder create` was given a title, `extra`, notes, or blockers for a folder already there (use `folder update` and `folder block`), or a `batch` folder entry names a folder already there; show it to the user.
@@ -277,33 +278,34 @@ Rules the commands enforce:
 
 ```sh
 koan task move 42 --to /proj/api                   # a task into a folder
-koan folder move /proj/api --to /archive/api       # --to is the folder's new path, never a folder to put it into
+koan folder move /proj/api --to /later/api         # --to is the folder's new path, never a folder to put it into
 koan task delete 42                                # .result.task: the task as it was; .result.dependents: the tasks it no longer blocks
 koan folder delete /proj/old --contents            # .result.folder: as it was; .result.deleted: the tasks that went
+koan folder archive /proj/shipped                  # done work out of the tree, kept: .result.archived, .result.ids
+koan task archive 42
 ```
 
 - Moving never changes a `blocked_by`: tasks and folders are named by ID, not location. But what is moved inherits its new folders' blockers, so it may become blocked, and a move that would close a cycle is refused with `cycle`. Notes move with the task.
 - **Don't move or delete a task someone has claimed** without the user saying so: its `notes_path` changes under whoever is working on it.
 - **Deleting is permanent.** koan keeps no trash; the only undo is git, if the user keeps the tree in a repo, and only back to their last commit. So:
   - **Always confirm with the user before `task delete` or `folder delete`**, naming what goes (for a folder, list its tasks first, done ones too: `koan task list --folder /x --readiness ready,blocked,done --limit 50 --fields id,title,readiness,claim`). Never delete to tidy up on your own initiative.
-  - Prefer cancelling (below) when the user just means "won't do": it keeps the record.
+  - Prefer cancelling (below) when the user just means "won't do", and archiving when the work is finished: both keep the record.
   - A deleted task's or folder's ID is removed from its dependents' blockers, tasks and folders alike, so they may become ready: deleting a phase frees the next. Tell the user which (`dependents` in the output).
   - Deleting a claimed task ends its claim without asking anyone. Say so when a task to be deleted has one.
 
 ### Clearing out a finished folder
 
-The tree is kept small by letting finished work leave it, with git keeping it (the README's "Keeping the tree small"): commit, then delete.
+The tree is kept small by archiving finished work (the README's "Keeping the tree small"): `koan folder archive` moves a done folder, everything in it and its material included, to `~/koan-root/archived/`, and `koan task archive` one done task. There is no unarchive.
 
-- **When the last open task in a folder is done**, or the user says its work has shipped, offer to clear it out, and say what that does: "Nothing in /work/HOME-12345 is open now. Want me to commit the whole tree and remove the folder?" First check that nothing under it is open: `koan task list --folder /work/HOME-12345 --limit 1 --fields id | jq '.result.total'` must be `0`. It counts the folders under it, and a claimed task is an open one, so this also rules out a folder anyone is working in.
-- **Never clear one out on your own initiative.** Only on a yes, which is the user asking for the commit, and in this order, never the other:
-  1. `git -C ~/koan-root add -A && git -C ~/koan-root commit -q -m "Before removing /work/HOME-12345"`. If `~/koan-root` is not a git repository, stop: the delete could not be undone, so say so, and go on only if the user says to.
-  2. `koan folder delete /work/HOME-12345 --contents`.
-- **On `has-material`**, show the user `.error.paths`, and what of it git doesn't have, which `--force` loses for good: ignored files (`git -C ~/koan-root status --short --ignored -- "$(koan folder show /work/HOME-12345 | jq -r .result.folder.dir)"`), and any `.git` in the list, a repository of its own that the tree's history only points to. Add `--force` only when they say so.
-- A worktree bound to the folder names nothing once it is gone: mention it, so the user can remove the worktree.
+- **When the last open task in a folder is done**, or the user says its work has shipped, offer to archive it: "Nothing in /work/HOME-12345 is open now. Want me to archive it?" Never archive on your own initiative.
+- Only what is done can be archived; otherwise it fails `not-done`, with the open tasks in `.error.ids`. Don't mark them done to get past it: ask the user.
+- `.result.dependents` lists tasks and folders that named what was archived; their readiness doesn't change. `.result.archived` is where it went.
+- A worktree bound to the folder names nothing once it is archived: mention it, so the user can remove the worktree.
+- **Finding archived work.** A command given an archived ID or folder path fails `not-found`, and `.error.paths` says where it went. Search the archive with `rg ~/koan-root/archived`, or the index, one JSON line per item archived: `jq -c 'select(.path | startswith("/work/HOME-12345"))' ~/koan-root/archived/@index.jsonl`. Read archived files; never change them. To pick the work up again, create new tasks from what you find.
 
 ## Hard rules
 
-- **Never** hand-edit, create, rename, or delete anything under `~/koan-root` named with `@`, except a task's notes `@<id>.md` and a folder's `@folder.md` — use `task move`, `folder move`, `task delete`, and `folder delete`. Task files, folder files, and `@koan.json` belong to koan; a hand edit can break invariants no command will repair. Anything not named with `@` is the user's material, which koan never reads: a `docs/` beside a folder's tasks is fine, but a folder made by hand is material, not a koan folder (`koan folder create` makes one). The same goes for `~/.config/koan/state.json`, which you also never restore.
+- **Never** hand-edit, create, rename, or delete anything under `~/koan-root` named with `@`, except a task's notes `@<id>.md` and a folder's `@folder.md` in the tree — use `task move`, `folder move`, `task delete`, `folder delete`, and the archive commands. Nothing in `~/koan-root/archived` is edited or moved by hand. Task files, folder files, and `@koan.json` belong to koan; a hand edit can break invariants no command will repair. Anything not named with `@` is the user's material, which koan never reads: a `docs/` beside a folder's tasks is fine, but a folder made by hand is material, not a koan folder (`koan folder create` makes one). The same goes for `~/.config/koan/state.json`, which you also never restore.
 - **Never run git commands that switch, merge, rebase, or reset in `~/koan-root`** (`checkout`, `switch`, `merge`, `pull`, `rebase`, `reset`, `stash`): the tree is one line of history, and koan's claims are outside it. Committing is the user's business: commit in the tree only when asked. Restoring a deleted task's files, as the user asks, is fine; see the README's "Undoing a delete".
 - Don't pass `--input` unless building input from other JSON, or for `batch`, which takes nothing else; flags are clearer.
 - Don't create tasks the user didn't ask for. When a follow-up turns up during other work, offer it: "Want me to add a task for X?"

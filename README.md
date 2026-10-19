@@ -17,7 +17,7 @@ GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest   # any
 koan init                                                                  # this machine's task tree
 ```
 
-The tree is always at `~/koan-root`, its ID counter in its `@koan.json`, and this machine's claims at `~/.config/koan/state.json`. To keep the tree somewhere else, make `~/koan-root` a symlink to it before running `init`.
+Everything is under `~/koan-root`: the tree of work in use in `tree/`, finished work that was archived in `archived/`, and the ID counter in `@koan.json`. This machine's claims are at `~/.config/koan/state.json`. To keep it all somewhere else, make `~/koan-root` a symlink to it before running `init`.
 
 ## A taste
 
@@ -120,7 +120,7 @@ A crash can leave a `.koan-tmp-*` file; a root `.gitignore` with `.koan-tmp-*` k
 `koan task delete` and `koan folder delete` remove files for good. With the tree in git, a delete can be undone back to the last commit:
 
 ```sh
-cd ~/koan-root
+cd ~/koan-root/tree
 git log --diff-filter=D --oneline -- '*/@42.json' '@42.json'     # the commit that removed task 42, if committed
 git restore -- @proj/@42.json @proj/@42.md                        # not yet committed: from the last commit
 git restore --source=<commit>^ -- @proj/@42.json @proj/@42.md     # committed: from the commit before
@@ -146,23 +146,25 @@ To move a tree to another machine, clone or copy it to `~/koan-root` there and r
 
 ## Keeping the tree small
 
-koan has no index: a command walks the folders it needs, so the tree's size is its speed. Rather than keep finished work in it, let a body of work leave the tree when it is done (a story shipped, a trip taken): git keeps it.
+koan has no index: a command walks the folders it needs, so the tree's size is its speed. Rather than keep finished work in it, archive a body of work when it is done (a story shipped, a trip taken):
 
 ```sh
-git -C ~/koan-root add -A && git -C ~/koan-root commit -q -m "Before removing /work/HOME-12345"   # 1. the whole tree, the folder in it
-koan folder delete /work/HOME-12345 --contents                                                   # 2. the folder, and every folder under it
+koan folder archive /work/HOME-12345     # the folder, everything under it, its material included
+koan task archive 42                     # one done task, out of a folder still in use
 ```
 
-Always commit first. Removing a finished folder changes no task's readiness, since done tasks never block; other tasks lose its tasks' IDs from `blocked_by`, and git still has them. To bring it back, see [Undoing a delete](#undoing-a-delete).
+Only what is done is archived: a folder when every task under it is. It moves, as it is, to `~/koan-root/archived/`, where no command looks again, under the path it had: `archived/work/@41_HOME-12345/` for folder 41, `archived/work/HOME-777/@42.json` for a task. The ID on the archived item keeps a folder made again at the same path, and archived again, from colliding with the first. Other tasks lose its IDs from `blocked_by`, which changes no readiness, since done tasks never block.
 
-- **Check what git doesn't have.** `folder delete` refuses a folder holding material (`has-material`), listing it, and removes it only with `--force`. Most of that list is in the commit. What isn't is gone for good: ignored files, which `git -C ~/koan-root status --short --ignored -- "$(koan folder show /work/HOME-12345 | jq -r .result.folder.dir)"` lists, and a directory with its own `.git` ([Undoing a delete](#undoing-a-delete)).
-- **A worktree bound to the folder** names nothing once the folder is gone: remove the worktree first.
-
-A folder is finished when nothing under it is open. `task list` returns only open tasks unless told otherwise, and counts the folders under it too; an empty folder passes as well:
+There is no unarchive. To work on it again, make new tasks from what the archive holds. To find something archived, search the files, or the index, one JSON line per item archived:
 
 ```sh
-koan task list --folder /work/HOME-12345 --limit 1 --fields id | jq '.result.total == 0'
+rg -l 'HOME-12345' ~/koan-root/archived
+jq -c 'select(.ids | index(57))' ~/koan-root/archived/@index.jsonl     # where task or folder 57 went
 ```
+
+A command given an archived ID, or the path of an archived folder, fails `not-found`, saying where it went. A worktree bound to an archived folder names nothing: remove the worktree first.
+
+`koan folder delete` still removes a folder for good, for work not worth keeping; commit first, since git is the only way back ([Undoing a delete](#undoing-a-delete)).
 
 ## Upgrading
 
