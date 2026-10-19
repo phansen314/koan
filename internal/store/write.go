@@ -95,16 +95,16 @@ func (t *Tree) WriteNotes(f model.Folder, id model.ID, notes string) *errs.Error
 	return errs.FromOS(t.Abs(rel), err)
 }
 
-// WriteMeta writes @koan.json with the given format.
-func (t *Tree) WriteMeta(schema int64, create bool) *errs.Error {
-	data, err := model.Encode(model.Meta{Schema: schema})
+// WriteMeta writes @koan.json: the tree's format and its ID counter.
+func (t *Tree) WriteMeta(m model.Meta, create bool) *errs.Error {
+	data, err := model.Encode(m)
 	if err != nil {
 		return errs.New(errs.Internal, "encode %s: %v", model.MetaName, err)
 	}
 	if e := t.put(model.MetaName, data, !create); e != nil {
 		return e
 	}
-	t.Meta = &model.Meta{Schema: schema}
+	t.Meta = &m
 	return nil
 }
 

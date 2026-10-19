@@ -2,9 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "root-file",
   "type": "object",
-  "required": ["schema"],
+  "required": ["schema", "last_id"],
   "properties": {
-    "schema": { "type": "integer", "minimum": 1, "description": "The tree's format." }
+    "schema": { "type": "integer", "minimum": 1, "description": "The tree's format." },
+    "last_id": { "type": "integer", "minimum": 0, "maximum": 999999999999999, "description": "The highest ID ever issued in this tree." }
   },
   "additionalProperties": false,
   "description": "@koan.json, in the root of the tree."

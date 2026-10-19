@@ -217,13 +217,13 @@ func TestWhatChangesUpdatedAt(t *testing.T) {
 	}
 }
 
-// A new task's notes never replace a file already there, and a state file
+// A new task's notes never replace a file already there, and a @koan.json
 // rebuilt by init counts notes that lost their task.
 func TestCreateNeverOverwritesNotes(t *testing.T) {
 	w := ready(t)
 	w.ok("batch", `{"tasks":[{"title":"a"},{"title":"b"}]}`)
 	os.WriteFile(w.root("3.md"), []byte("someone's"), 0o644)
-	os.Remove(w.env.StatePath())
+	os.Remove(w.root("koan.json"))
 	w.ok("init", `{}`)
 	if id := w.ok("task create", `{"title":"c"}`)["id"]; id != float64(4) {
 		t.Errorf("new ID %v, want 4: 3 is taken by the orphan notes", id)
@@ -231,11 +231,12 @@ func TestCreateNeverOverwritesNotes(t *testing.T) {
 	if w.file("3.md") != "someone's" {
 		t.Errorf("the orphan notes were overwritten: %q", w.file("3.md"))
 	}
-	// And when the counter is behind anyway, create starts above the notes.
+	// And when the counter is behind anyway, the task is made with the notes
+	// already there, and the error says so.
 	os.WriteFile(w.root("5.md"), []byte("also someone's"), 0o644)
-	env := w.run("task create", `{"title":"d"}`)
-	if !env.OK || result(env)["id"] != float64(6) || !aboveCounter(env, 5) || w.file("5.md") != "also someone's" {
-		t.Errorf("create beside notes 5: %+v, notes %q", env, w.file("5.md"))
+	w.fail("task create", `{"title":"d"}`, errs.IO, "")
+	if w.file("5.md") != "also someone's" {
+		t.Errorf("the notes were overwritten: %q", w.file("5.md"))
 	}
 }
 

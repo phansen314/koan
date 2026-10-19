@@ -180,7 +180,7 @@ func TestFolderFilesAndIDs(t *testing.T) {
 	if fs := w.findings(); !slices.Equal(fs, want) {
 		t.Errorf("findings %v, want %v", fs, want)
 	}
-	os.Remove(w.env.StatePath())
+	os.Remove(w.root("koan.json"))
 	w.ok("init", `{}`)
 	if n := w.ok("info", `{}`)["last_id"]; n != float64(2) {
 		t.Errorf("last_id %v, want 2: /r's file can't be read", n)

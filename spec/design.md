@@ -8,8 +8,8 @@ Linux and macOS only.
 
 | What | Path | Travels with git or sync |
 |---|---|---|
-| **Tree**: folders, tasks, and `@koan.json` | `~/koan-root` | Yes |
-| **State file**: the ID counter and the claims | `~/.config/koan/state.json` | No: it is this machine's |
+| **Tree**: folders, tasks, and `@koan.json`, which holds the ID counter | `~/koan-root` | Yes |
+| **State file**: the claims | `~/.config/koan/state.json` | No: it is this machine's |
 | **Markers**: which folder a directory outside the tree is for | `.koan/` in each directory bound to one | No: git ignores them |
 
 The tree's and the state file's paths are fixed, on both platforms, and are found from `HOME`, which must be an absolute path. There is no config file. To keep the tree somewhere else, make `~/koan-root` a symlink to it: koan resolves that one link, and follows no symlink inside the tree.
@@ -18,7 +18,7 @@ One tree per user, written from one machine. Separate bodies of work are folders
 
 ## Assumptions
 
-- **koan is the only writer of the tree, the state file, and the [markers](#markers).** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds. A merge of two lines of history, two machines writing one tree, or a restore of the state file, is such a change: only a single line of history, written from one machine, keeps the [invariants](#invariants) (see the README's [Keep the tree in git](../README.md#keep-the-tree-in-git)).
+- **koan is the only writer of the tree, the state file, and the [markers](#markers).** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds. A merge of two lines of history, two machines writing one tree, or putting back an older `@koan.json` without the files beside it, is such a change: only a single line of history, written from one machine, keeps the [invariants](#invariants) (see the README's [Keep the tree in git](../README.md#keep-the-tree-in-git)).
 - **Notes are the exception.** A task's `@<id>.md` and a folder's `@folder.md` are edited with any editor. koan never reads meaning into them.
 - **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). Two kinds of entry are **disposable** instead, and go with their folder: a temp file koan left behind (`.koan-tmp-*`), which is koan's own, and a `.DS_Store`. Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
 
@@ -125,15 +125,17 @@ Integers are within ±(2^53 − 1), and written without a fraction or an exponen
 
 ### IDs
 
-An ID is a positive integer of at most 15 digits, unique across the whole tree, since `blocked_by` names tasks and folders by ID alone. Tasks and folders draw from one counter, so an ID names exactly one task or one folder. IDs come from the counter `last_id` in the state file, which only goes up: an ID is never issued twice, even after its task or folder is deleted. Gaps are normal.
+An ID is a positive integer of at most 15 digits, unique across the whole tree, since `blocked_by` names tasks and folders by ID alone. Tasks and folders draw from one counter, so an ID names exactly one task or one folder. IDs come from the counter `last_id` in [`@koan.json`](#koanjson), which only goes up: an ID is never issued twice, even after its task or folder is deleted. Gaps are normal.
 
-The counter is outside the tree on purpose, so that restoring or merging the tree's files can never lower it. That is also why one machine writes a tree: two machines creating tasks in copies of it would issue the same IDs.
+**The counter is in the tree**, so it travels with it: a clone, a copy, or a restore of the whole tree carries the counter that matches its files. A command that issues IDs reads `last_id` and nothing else, with no walk for the highest ID, and raises it once, before it writes anything else.
 
-The counter knows the IDs that are gone; only the tree knows the IDs an outside change brought in (a clone, a merge, a restore). So **a command that issues IDs starts above both**: it walks the tree, reads every folder file, and takes the highest ID in any task file's or notes file's name or in any folder file, and issues from above that or `last_id`, whichever is higher. When the tree was ahead, the counter is raised past it and the command warns `id-above-counter`. A folder file koan can't read can't be counted: it is an `unusable-file` warning, and the command carries on.
+- **Restoring the whole tree** to an earlier commit lowers the counter with it, and the IDs issued since can be issued again. Within the tree that is harmless, since the restore took away what held them; only a reference kept outside it can come to name something else, which is why kept text names things by path ([References](#references)).
+- **One machine writes a tree**: two machines creating tasks in copies of it issue the same IDs. Kept in git, the two copies change the same line of `@koan.json`, so merging them is a conflict, not a quiet duplicate.
+- **An ID above the counter** can only come from an outside change, such as files copied in from another tree. `doctor` finds it, and `repair` raises the counter past it ([Doctor and repair](#doctor-and-repair)).
 
 ### References
 
-A **reference** names a task, a folder, or material in a folder, in commands and in anything kept outside koan: notes, prompts, commit messages.
+A **reference** names a task, a folder, or material in a folder, in commands, in notes, and in prompts.
 
 | Written | Names | Holds |
 |---|---|---|
@@ -143,8 +145,9 @@ A **reference** names a task, a folder, or material in a folder, in commands and
 | `/proj/travel:docs/plan.md` | material in a folder, by path | until a move |
 | `41:docs/plan.md` or `@41:docs/plan.md` | material in folder 41 | while the file stays |
 
-- **The `@` is optional on input**, and koan always writes it, in `where`'s `ref` and in the convention below (JSON results carry IDs as plain integers): `@41` stands out as a reference in prose, and in `git log --grep '@41'`, where a bare `41` does not.
-- **A reference by ID is stable**: IDs never change, so it survives moves and renames. A path is readable. Kept text writes both, the reference and its path as a hint: `@41 (/proj/travel)`, `@41:docs/plan.md (/proj/travel:docs/plan.md)`. Reading one, the reference wins; a hint that no longer matches has gone stale. koan never reads notes, so this is a convention, not a format; [`where`](operations.md#where) gives both forms.
+- **The `@` is optional on input**, and koan always writes it, in `where`'s `ref` and in the convention below (JSON results carry IDs as plain integers): `@41` stands out as a reference in prose, where a bare `41` does not.
+- **A reference by ID is stable**: IDs never change, so it survives moves and renames. A path is readable. Notes and prompts write both, the reference and its path as a hint: `@41 (/proj/travel)`, `@41:docs/plan.md (/proj/travel:docs/plan.md)`. Reading one, the reference wins; a hint that no longer matches has gone stale. koan never reads notes, so this is a convention, not a format; [`where`](operations.md#where) gives both forms.
+- **Text kept outside the tree names things by path**, or a task by its title: commit messages, pull requests, other repositories' documents. An ID means something only in its tree, and after a restore can name something else ([IDs](#ids)).
 - **An ID** names a task or a folder, whichever has it, since they share the counter. `blocked_by` and `blocks` take either kind, and a folder by path as well, which is stored as its ID. Where only one kind is taken, the other is `not-found`, with a message saying what the ID is. The root has no ID, and is only `/`.
 - **The part after `:`** is a path to material, from the folder: segments separated by `/`, none empty, `.`, or `..`, and the first not starting with `@`, which would name one of koan's own entries. Further down is inside material, where `@` means nothing (`@41:node_modules/@types/x`). So a file has one reference per folder form. The colon can't occur in a folder path, so the first one splits the two; the material part may hold more.
 - A material reference says where a file is or would be; the file need not exist, and koan never looks.
@@ -181,33 +184,35 @@ Every tree that only koan has written satisfies these, and koan refuses any chan
     The nodes are a way of reasoning about the tree, and nothing about them is stored. The root has no nodes: it has no blockers, and can't be named. The edge from a folder's done node to its own wait node stands for a task that might be added to it later: with it, adding a task to a folder never closes a cycle. In words, nothing may be blocked by a folder that contains it, no folder by anything under it, and no chain of blockers may lead from what is in a folder back to the folder.
 2. **No dangling references.** Every ID in a `blocked_by`, in a task file or a folder file, names an existing task or folder. Deleting a task removes its ID from every `blocked_by`, and deleting a folder removes its ID and those of the folders and tasks under it.
 3. **Unique IDs.** No two task files or folder files have the same ID.
-4. **IDs within the counter.** No ID in a task file's or notes file's name, and no folder's ID, is above `last_id`. An outside change can break this one; the next command that issues IDs, or `init`, restores it.
+4. **IDs within the counter.** No ID in a task file's or notes file's name, and no folder's ID, is above `last_id`. Only an outside change can break this one; `repair` restores it.
 
 ### `@koan.json`
 
-The root holds one metadata file, which marks the directory as a tree and records its format:
+The root holds one metadata file, which marks the directory as a tree, records its format, and holds the ID counter: `last_id`, the highest ID ever issued in the tree ([IDs](#ids)). It is written only under the [lock](#concurrency).
 
 ```json
-{"schema": 3}
+{
+  "schema": 4,
+  "last_id": 57
+}
 ```
 
 ### The state file
 
 ```json
 {
-  "schema": 1,
-  "last_id": 57,
+  "schema": 2,
   "claims": {
     "42": {"claimed_at": "2026-10-10T14:02:11Z", "extra": {"agent": "shingi-3"}}
   }
 }
 ```
 
-`last_id` is the highest ID ever issued, and `claims` has one entry per [claimed](#claims) task, keyed by ID. It is written only under the [lock](#concurrency).
+`claims` has one entry per [claimed](#claims) task, keyed by ID. It is written only under the [lock](#concurrency). Format 1 held the ID counter too, which `migrate` moves into `@koan.json`.
 
 ### Formats
 
-`schema` in `@koan.json` is the **tree format**: the tree's layout, what is named how, and the formats of the files in it. `schema` in a task file or a folder file is that **file's format**. They are numbered apart: format 3 of the tree holds task files in format 1 and folder files in format 2. The tree format goes up whenever the format of any kind of file in the tree does, so `@koan.json` alone says whether a tree is current. A binary reads and writes exactly one tree format, N, and one format of each kind of file; the table is about the tree format.
+`schema` in `@koan.json` is the **tree format**: the tree's layout, what is named how, and the formats of the files in it. `schema` in a task file or a folder file is that **file's format**. They are numbered apart: format 4 of the tree holds task files in format 1 and folder files in format 2. The tree format goes up whenever the format of any kind of file in the tree does, so `@koan.json` alone says whether a tree is current. A binary reads and writes exactly one tree format, N, and one format of each kind of file; the table is about the tree format.
 
 | `@koan.json` says | Then |
 |---|---|
@@ -223,6 +228,7 @@ The root holds one metadata file, which marks the directory as a tree and record
 - **Before the first release, a format may change without a conversion.** On a tree in a format the binary has no conversion from, `migrate` and `doctor` fail with `conflict` (`no-conversion`) as well: move the tree aside and start a new one with `init`.
 - Format 2 (the `@` names, folder files, and `@koan.json`) has no conversion from format 1. A format-1 tree has no `@koan.json`, so this binary finds it not initialized; `init` there adopts it as any folder, and everything format 1 wrote is material.
 - Format 3 (folder files in format 2, with `blocked_by`) has no conversion from format 2: start a new tree with `init`.
+- Format 4 moves the ID counter from the state file into `@koan.json`. `migrate` converts a format-3 tree by writing `@koan.json` with a `last_id` above both the state file's and every ID in the tree, as a format-3 command would have issued; no task file or folder file changes. Until then, `doctor` and `info` read a format-3 tree's counter from the state file. The state file goes to format 2 the next time a claim changes.
 
 ### Written files
 
@@ -239,7 +245,7 @@ koan writes JSON with two-space indentation, keys in schema order, `blocked_by` 
 | Needs migration, or too new | See [Formats](#formats). | `migration-pending`, `unsupported-format`. |
 | Usable | Otherwise. | — |
 
-`init` creates whatever is missing, and changes nothing that is there but a counter that is too low. A state file it creates beside an existing tree starts `last_id` at the highest ID in the tree. That is how a tree cloned onto a new machine is attached, and how a lost state file is replaced; in the second case an ID whose task was deleted can be issued again. A state file already there whose `last_id` is below the tree's highest ID is raised to it: that is how a tree cloned, copied, or restored onto a machine that already has a state file is attached.
+`init` creates whatever is missing, and changes nothing that is there. A tree cloned onto a new machine brings its counter, and `init` gives it a state file with no claims; a lost state file is replaced the same way, losing only its claims. A `@koan.json` it creates beside an existing tree, as when one was lost, starts `last_id` at the highest ID in the tree; an ID whose task was deleted can then be issued again.
 
 ### Walking
 
@@ -330,7 +336,7 @@ A **claim** reserves a task: once it is claimed, no other `task claim` of it suc
 | Finding | `repair` |
 |---|---|
 | `temp-leftover`: a temp file koan left behind | Removes it. |
-| `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name or in a folder file | Raises `last_id`. |
+| `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name or in a folder file, as only an outside change leaves | Raises `last_id`. |
 | `dangling-reference`: a `blocked_by` ID, in a task file or a folder file, with no task or folder | Removes the ID, when asked for by name. Not while any folder file can't be used: the ID may be that folder's, and removing it would lose the link once the file is fixed. |
 | `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name. |
 | `orphan-notes`: a `@<id>.md` with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes. Otherwise leaves it. |
@@ -358,4 +364,4 @@ Every failure has one **kind**:
 
 A command reports one error. Input is checked first, then the root's state, then `busy`; among errors after that, which one is reported is not specified.
 
-A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file`, `dangling-reference`, `id-above-counter` (see [IDs](#ids)), and `stale-marker` (see [Markers](#markers)).
+A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file`, `dangling-reference`, and `stale-marker` (see [Markers](#markers)).

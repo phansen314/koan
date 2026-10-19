@@ -97,6 +97,11 @@ func Inspect(env Env, root *fsys.Root, openErr error) Condition {
 	if bad == nil {
 		bad = stErr
 	}
+	// Until format 4 the counter was the state file's: doctor and migrate
+	// read a format-3 tree's from there.
+	if c.Meta != nil && c.Meta.Schema == 3 && st != nil {
+		c.Meta.LastID = st.OldLastID
+	}
 	switch {
 	case bad != nil:
 		c.Status, c.Err = Unusable, bad

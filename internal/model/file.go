@@ -44,8 +44,10 @@ type Claim struct {
 // State is the state file's content.
 type State struct {
 	Schema int64            `json:"schema"`
-	LastID ID               `json:"last_id"`
 	Claims map[string]Claim `json:"claims"`
+	// OldLastID is the counter a format-1 state file held, which migrate
+	// moves into @koan.json. It is never written.
+	OldLastID ID `json:"-"`
 }
 
 // ClaimKey is the key of a task's claim in State.Claims.
@@ -164,6 +166,7 @@ func checkBlockedBy(bs []ID, own ID, ownIs string) []Problem {
 // Meta is @koan.json's content.
 type Meta struct {
 	Schema int64 `json:"schema"`
+	LastID ID    `json:"last_id"`
 }
 
 // Task is a task as every command returns it: the file's fields but schema,
@@ -352,17 +355,39 @@ func (t *TaskFile) Normalize() {
 	slices.Sort(t.Tags)
 }
 
-// DecodeState reads a state file and checks it.
+// stateV1 is a state file in format 1, which also held the counter.
+type stateV1 struct {
+	Schema int64            `json:"schema"`
+	LastID ID               `json:"last_id"`
+	Claims map[string]Claim `json:"claims"`
+}
+
+// DecodeState reads a state file, in this format or format 1, and checks
+// it. A format-1 file reads as this format, its counter in OldLastID.
 func DecodeState(data []byte) (*State, []Problem, error) {
 	m, err := Keys(data)
 	if err != nil {
 		return nil, nil, err
 	}
-	if ps := missing(m, []string{"schema", "last_id", "claims"}); ps != nil {
+	keys := []string{"schema", "claims"}
+	v1 := string(m["schema"]) == "1"
+	if v1 {
+		keys = []string{"schema", "last_id", "claims"}
+	}
+	if ps := missing(m, keys); ps != nil {
 		return nil, ps, nil
 	}
 	var s State
-	if err := Decode(data, &s); err != nil {
+	if v1 {
+		var old stateV1
+		if err := Decode(data, &old); err != nil {
+			return nil, []Problem{prob("", err.Error())}, nil
+		}
+		if old.LastID < 0 || old.LastID > MaxID {
+			return nil, []Problem{prob("/last_id", "is out of range")}, nil
+		}
+		s = State{Schema: StateFormat, Claims: old.Claims, OldLastID: old.LastID}
+	} else if err := Decode(data, &s); err != nil {
 		return nil, []Problem{prob("", err.Error())}, nil
 	}
 	var ps []Problem
@@ -379,10 +404,7 @@ func DecodeState(data []byte) (*State, []Problem, error) {
 		return nil, ps, nil
 	}
 	if s.Schema != StateFormat {
-		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d", StateFormat)))
-	}
-	if s.LastID < 0 || s.LastID > MaxID {
-		ps = append(ps, prob("/last_id", "is out of range"))
+		ps = append(ps, prob("/schema", fmt.Sprintf("is not %d or 1", StateFormat)))
 	}
 	for _, k := range slices.Sorted(maps.Keys(s.Claims)) {
 		c := s.Claims[k]
@@ -414,10 +436,17 @@ func DecodeMeta(data []byte) (*Meta, []Problem, error) {
 		return &Meta{Schema: n}, nil, nil
 	}
 	m, _ := Keys(data)
-	if ps := missing(m, []string{"schema"}); ps != nil {
+	if ps := missing(m, []string{"schema", "last_id"}); ps != nil {
 		return nil, ps, nil
 	}
-	return &Meta{Schema: n}, nil, nil
+	var meta Meta
+	if err := Decode(data, &meta); err != nil {
+		return nil, []Problem{prob("", err.Error())}, nil
+	}
+	if meta.LastID < 0 || meta.LastID > MaxID {
+		return nil, []Problem{prob("/last_id", "is out of range")}, nil
+	}
+	return &meta, nil, nil
 }
 
 // Marker is a marker's content, .koan/marker.json in a directory outside
