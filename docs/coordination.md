@@ -23,7 +23,7 @@ The coordinator closes both, by deciding who may do what.
 
 | Action | Coordinator | Worker |
 |---|---|---|
-| Read: `task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `where` | yes | yes |
+| Read: `task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `where`, `context` | yes | yes |
 | `task claim-next`, `task claim`, `task release` | yes | no |
 | `task create`, `batch`, `task update`, `task done`, `task reopen` | yes | no |
 | `task block`, `task unblock`, `task move`, `task delete` | yes | no |
@@ -96,7 +96,7 @@ You are given one koan task: its ID, its title, and the path of its notes file.
 
 - Do the task. Write what you did and what you found to the notes file you were given.
 - In `~/koan-root`, that notes file is the only file you may change.
-- You may run `koan task show`, `koan task list`, `koan task frontier`, `koan task why`, `koan folder show`, `koan folder list`, and `koan where`. Run no other koan command.
+- You may run `koan task show`, `koan task list`, `koan task frontier`, `koan task why`, `koan folder show`, `koan folder list`, `koan where`, and `koan context`. Run no other koan command.
 - When something else in the tree should change (a new task, a tag, a blocker, this task being done), say so in your final report. The coordinator makes the change.
 ```
 
@@ -125,7 +125,7 @@ Bash)
 '
     for sub in $subs; do
         case "$sub" in
-        "task show"|"task list"|"task frontier"|"task why"|"folder show"|"folder list"|where) ;;
+        "task show"|"task list"|"task frontier"|"task why"|"folder show"|"folder list"|where|context) ;;
         *) deny "workers may not run 'koan $sub': report it to the coordinator" ;;
         esac
     done

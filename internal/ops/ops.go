@@ -68,6 +68,7 @@ var commands = map[string]command{
 	"task done": cmdDone, "task reopen": cmdReopen, "task block": cmdBlock, "task unblock": cmdUnblock,
 	"task move": cmdMove, "task delete": cmdDelete,
 	"task frontier": cmdFrontier, "task list": cmdList, "task why": cmdWhy, "where": cmdWhere,
+	"context": cmdContext, "marker bind": cmdMarkerBind, "marker unbind": cmdMarkerUnbind,
 	"task claim": cmdClaim, "task claim-next": cmdClaimNext, "task release": cmdRelease,
 }
 

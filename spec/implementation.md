@@ -17,7 +17,7 @@ Everything but `main` is under `internal/`: koan's contract is the JSON its CLI 
 cmd/koan            main: signals, run(), os.Exit
 internal/cli        cobra commands, command line to input, envelope to stdout, exit codes
 internal/ops        the commands, grouped by kind: decode and check input, do the work, build the result
-internal/store      root states, the lock wait, writing and moving files, the walk, the state file
+internal/store      root states, the lock wait, writing and moving files, the walk, the state file, markers
 internal/graph      readiness, the cycle check, why: pure functions, no I/O
 internal/model      Task, the state file, names, IDs, timestamps, and their validation
 internal/errs       error, warning, and finding types
@@ -100,6 +100,14 @@ A command that changes several files orders its writes so that a kill between an
 
 Every command reads the state file after taking the lock, never before.
 
+## Markers
+
+- **A real path, once.** `marker bind` and `marker unbind` resolve `dir` with `filepath.EvalSymlinks`, then open it as a root handle as the tree is, `/.` appended, and do all their work in `.koan/` through that handle: the marker's `dir` is the directory written to, even if a link on the way is repointed.
+- **Against the tree, by real paths.** `in-tree` and `holds-tree` compare `dir` with `~/koan-root` and with its real path, segment by segment, so `/a/bc` is not under `/a/b`.
+- **Files as the tree's.** `.gitignore` and `marker.json` are written by temp file, flush, and `rename`, then the directory flush, as any replaced file is (above); the temp files are `.koan-tmp-<random>`, which `marker unbind` removes. `.koan/` is made with `mkdir`, `0755`.
+- **The checkout test** is one `Lstat` of `dir/.git`: a directory is a checkout; a file, a missing entry, or anything else is not. A symlink is not followed, and is not a checkout.
+- **The look up from a path** in `where` and `context` uses plain paths, outside any root handle, since it may cross any directory: from the starting directory to `/`, an `Lstat` of each `<d>/.koan/marker.json`, stopping at the first entry there of any type. A `.koan` that is not a directory, or that has no `marker.json`, gives `ENOTDIR` or `ENOENT`, and the look goes on up. The directory a marker is in is compared with its `dir` as a string: both are real paths.
+
 ## Walking the tree
 
 There is no index on disk; a command that needs one builds it.
@@ -145,6 +153,7 @@ The files in `schemas/` are written by hand and are the contract. The binary con
 - **Unit tests** per package. `ops` tests run against a real temp directory, with `HOME` pointed at it and the clock fixed.
 - **End-to-end tests** in `e2e/` run the built binary, with `HOME` set per test.
 - **The lock**, in `e2e/` on both platforms: a second write, and a read, get `busy` while a write is held; every `task list` run while tasks and folders are moved returns every task; a holder killed with `SIGKILL` leaves nothing to clean up; 16 processes creating 50 tasks each produce 800 distinct IDs; two opposite `task block`s racing never both succeed.
+- **Markers.** `marker bind` killed before each step leaves the old marker, the new one, or a `.koan/` without `marker.json`, perhaps with a temp file: the next `where` finds no marker or a whole one, the next `marker bind` completes it, and `marker unbind` removes it all. `where` and `context` from a nested directory, under a marker copied elsewhere, under one that can't be used with a usable one above it, after the folder's move (`stale-marker`) and its delete. `git status` in a bound worktree is clean, and `git worktree remove` succeeds without `--force`, run with git where CI has it.
 - **Crashes.** For every write command and every step that changes the disk, the process is killed just before that step. Afterwards the next write must succeed, `doctor` must report nothing but the kinds [design.md](design.md#crashes-and-failures) names, and `repair`, then `repair` of the kinds it fixes only when asked by name, followed by `doctor`, must leave only findings a person has to resolve. The same steps with an injected errno must fail with `changed_paths` matching what took effect. A kill or failure between making a folder and writing its folder file leaves `missing-folder-file`, which `repair` fixes.
 - **Case.** The case rule is the same on every platform, so its tests run everywhere: an alias refused as `case-mismatch` by every command that takes a folder path, a case-only `folder move` that keeps the folder's ID, and the input checks. On macOS, whose filesystem ignores case, the same tests go through the other paths: an `Lstat` that finds the folder in another case, and the case-only rename by plain `rename(2)`. The one test that needs a filesystem telling the cases apart, an existing pair where the exact match wins, finds out by creating a file and an `Lstat` of its name in upper case, and skips on macOS. The randomized test uses folder names that differ only in case on every platform.
 - **CI** runs on Linux amd64 and macOS arm64: `gofmt`, `go vet`, `go test ./...`, a race-detector run over everything but `e2e/`, `staticcheck`, and `govulncheck`.

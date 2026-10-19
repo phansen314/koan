@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "marker-bind-input",
+  "type": "object",
+  "required": ["folder", "dir"],
+  "properties": {
+    "folder": { "$ref": "folder-ref", "description": "The folder to bind; not /." },
+    "dir": { "type": "string", "pattern": "^/", "description": "The directory to bind, an absolute path, outside the tree." },
+    "force": { "type": "boolean", "description": "Bind a checkout, or a directory bound to another folder. Default false." }
+  },
+  "additionalProperties": false
+}

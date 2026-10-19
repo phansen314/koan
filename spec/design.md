@@ -10,6 +10,7 @@ Linux and macOS only.
 |---|---|---|
 | **Tree**: folders, tasks, and `@koan.json` | `~/koan-root` | Yes |
 | **State file**: the ID counter and the claims | `~/.config/koan/state.json` | No: it is this machine's |
+| **Markers**: which folder a directory outside the tree is for | `.koan/` in each directory bound to one | No: git ignores them |
 
 Both paths are fixed, on both platforms, and are found from `HOME`, which must be an absolute path. There is no config file. To keep the tree somewhere else, make `~/koan-root` a symlink to it: koan resolves that one link, and follows no symlink inside the tree.
 
@@ -17,7 +18,7 @@ One tree per user, written from one machine. Separate bodies of work are folders
 
 ## Assumptions
 
-- **koan is the only writer of the tree and the state file.** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds. A merge of two lines of history, two machines writing one tree, or a restore of the state file, is such a change: only a single line of history, written from one machine, keeps the [invariants](#invariants) (see the README's [Keep the tree in git](../README.md#keep-the-tree-in-git)).
+- **koan is the only writer of the tree, the state file, and the [markers](#markers).** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds. A merge of two lines of history, two machines writing one tree, or a restore of the state file, is such a change: only a single line of history, written from one machine, keeps the [invariants](#invariants) (see the README's [Keep the tree in git](../README.md#keep-the-tree-in-git)).
 - **Notes are the exception.** A task's `@<id>.md` and a folder's `@folder.md` are edited with any editor. koan never reads meaning into them.
 - **koan owns what is named with `@`.** Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). Two kinds of entry are **disposable** instead, and go with their folder: a temp file koan left behind (`.koan-tmp-*`), which is koan's own, and a `.DS_Store`. Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
 
@@ -235,13 +236,48 @@ There is no index: a command that looks a task up by ID walks the tree.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.
 - **A dangling reference** counts as blocking, and is reported as a warning.
 
+## Markers
+
+A **marker** binds a directory outside the tree, usually a git worktree, to a folder, so that [`where`](operations.md#where) and [`context`](operations.md#context) find the folder from anywhere in that directory. It is a `.koan/` directory in it, written by [`marker bind`](operations.md#marker-bind):
+
+```text
+<dir>/.koan/.gitignore     *: git ignores the directory, the .gitignore included
+<dir>/.koan/marker.json    the folder it is bound to
+```
+
+```json
+{
+  "schema": 1,
+  "id": 41,
+  "path": "/work/HOME-12345",
+  "dir": "/home/paul/repos/foo/.claude/worktrees/HOME-12345"
+}
+```
+
+Every key is required and no other key is allowed.
+
+| Field | Rule |
+|---|---|
+| `schema` | The format this file is in. |
+| `id` | The folder's ID: what the marker binds. A folder with no ID (the root, or one with no folder file) can't be bound. |
+| `path` | The folder's path when it was bound: a hint, as in a [reference](#references). |
+| `dir` | The absolute real path of the directory holding `.koan/`. A marker found in any other directory was copied there, or moved with its directory (`git worktree move`), and binds nothing. |
+
+- **The nearest marker is the one.** A path outside the tree is in the folder of the nearest marker at or above it, as a `.git` or an `.editorconfig` works, so a worktree's subdirectories are its folder's too. The look stops at the first `.koan/marker.json`, whatever its state: one that can't be used is never passed over for one further up, which may be another folder's. A `.koan/` with no `marker.json`, left by a `marker bind` cut short, is not a marker, and is passed over.
+- **Inside the tree, markers are never looked at.** Where a path is in the tree already says which folder it is in, and a `.koan/` there is material.
+- **The ID decides; the path is a hint.** A marker binds the folder with its ID, wherever the folder is now, so it survives moves and renames. A `path` that no longer matches is a `stale-marker` warning, and binding again refreshes it. A marker whose folder is gone binds nothing.
+- **Reads never write a marker.** Only `marker bind` and `marker unbind` do, and nothing keeps a list of them: koan can't find a folder's markers, so `folder delete` leaves them, and they say the folder is gone when next read.
+- **Out of git's way.** git reads a `.gitignore` in every directory, and `*` matches everything in `.koan/`, its `.gitignore` included: `git status` never shows it, `git add -A` never stages it, and `git worktree remove` needs no `--force`, since ignored files leave a worktree clean. Removing a worktree removes its marker. koan runs no git, and reads one thing of git's (below).
+- **Bind worktrees, not checkouts.** A marker binds every directory under it that has no nearer one, so one in a checkout would hand its folder to every worktree inside it (`.claude/worktrees/`) that was never bound. `marker bind` refuses a directory whose `.git` is a directory, a checkout, unless forced. A worktree's `.git` is a file, and a directory with no `.git` binds like any other.
+- **Written whole.** A marker's files are written as the tree's are, by a temp file renamed into place, `.gitignore` before `marker.json`: a reader sees the old marker or the new one, and never a marker without its `.gitignore`.
+
 ## Concurrency
 
 Several processes may use one tree at once, with no coordinator between them.
 
 - **One lock**: a `flock` on the root directory itself. There is no lock file, and the lock is gone when its holder exits, however it exits.
 - **Writes are serialized.** A write holds the lock alone, from before it reads anything to after its last change.
-- **A read sees the tree between writes**, never part of one. Reads share the lock: any number run at once, a read waits for a write to finish, and a write for the reads before it. `info` and `version` take no lock.
+- **A read sees the tree between writes**, never part of one. Reads share the lock: any number run at once, a read waits for a write to finish, and a write for the reads before it. `info`, `version`, and `marker unbind` take no lock.
 - **Input is checked before the lock is taken.** A command that finds the lock held against it waits up to 5 seconds, then fails with `busy`, which is always safe to retry.
 - **A write decides on current state**: everything it depends on is read after it has the lock. So two writes to one task both take effect, and no write breaks an [invariant](#invariants).
 - **Files are replaced atomically**: written to a hidden temp file, flushed, then renamed. A reader never sees half a file koan wrote.
@@ -302,4 +338,4 @@ Every failure has one **kind**:
 
 A command reports one error. Input is checked first, then the root's state, then `busy`; among errors after that, which one is reported is not specified.
 
-A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file`, `dangling-reference`, and `id-above-counter` (see [IDs](#ids)).
+A problem that does not stop the command is a **warning**, returned beside the result: `unusable-file`, `dangling-reference`, `id-above-counter` (see [IDs](#ids)), and `stale-marker` (see [Markers](#markers)).
