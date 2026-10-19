@@ -7,7 +7,17 @@
     "folder": { "$ref": "folder-path" },
     "title": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null },
     "extra": { "type": "object", "default": {} },
-    "notes": { "type": "string", "default": "" }
+    "notes": { "type": "string", "default": "" },
+    "blocked_by": {
+      "type": "array", "items": { "$ref": "item-ref" }, "uniqueItems": true,
+      "default": [],
+      "description": "Existing tasks and folders that everything in the new folder waits on. Not with a folder already there."
+    },
+    "blocks": {
+      "type": "array", "items": { "$ref": "item-ref" }, "uniqueItems": true,
+      "default": [],
+      "description": "Existing tasks and folders that wait on the new folder. Not with a folder already there."
+    }
   },
   "additionalProperties": false
 }

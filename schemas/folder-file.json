@@ -2,11 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "folder-file",
   "type": "object",
-  "required": ["schema", "id", "title", "extra"],
+  "required": ["schema", "id", "title", "blocked_by", "extra"],
   "properties": {
-    "schema": { "const": 1, "description": "The format this file is in." },
+    "schema": { "const": 2, "description": "The format this file is in." },
     "id": { "$ref": "task-file#/properties/id", "description": "The folder's identity, from the same counter as task IDs." },
     "title": { "anyOf": [{ "$ref": "task-file#/properties/title" }, { "type": "null" }] },
+    "blocked_by": { "$ref": "task-file#/properties/blocked_by", "description": "IDs of the tasks and folders everything in this folder waits on, at any depth. Never its own." },
     "extra": { "type": "object", "description": "Any JSON object; koan stores it and never interprets it." }
   },
   "additionalProperties": false,

@@ -14,7 +14,7 @@
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" },
       "uniqueItems": true,
-      "description": "The tasks in blocks, which now wait on the new one. Ascending."
+      "description": "The tasks and folders in blocks, which now wait on the new one. Ascending."
     }
   },
   "additionalProperties": false

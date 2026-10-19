@@ -12,13 +12,14 @@
       "default": []
     },
     "blocked_by": {
-      "type": "array", "items": { "$ref": "task-ref" }, "uniqueItems": true,
-      "default": []
+      "type": "array", "items": { "$ref": "item-ref" }, "uniqueItems": true,
+      "default": [],
+      "description": "Existing tasks and folders the new task waits on."
     },
     "blocks": {
-      "type": "array", "items": { "$ref": "task-ref" }, "uniqueItems": true,
+      "type": "array", "items": { "$ref": "item-ref" }, "uniqueItems": true,
       "default": [],
-      "description": "IDs of existing tasks that wait on the new one."
+      "description": "Existing tasks and folders that wait on the new one."
     },
     "extra": {
       "$ref": "task-file#/properties/extra",

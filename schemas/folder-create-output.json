@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "folder-create-output",
   "type": "object",
-  "required": ["id", "path", "changed", "folders_created"],
+  "required": ["id", "path", "changed", "folders_created", "dependents"],
   "properties": {
     "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for the root, and for a folder with no usable folder file." },
     "path": { "$ref": "folder-path" },
@@ -10,6 +10,12 @@
     "folders_created": {
       "type": "array",
       "items": { "$ref": "folder-path" }
+    },
+    "dependents": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "description": "The tasks and folders in blocks, which now wait on the new folder. Ascending."
     }
   },
   "additionalProperties": false

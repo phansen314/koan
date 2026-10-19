@@ -7,7 +7,7 @@
       "type": "array",
       "default": [],
       "maxItems": 1000,
-      "items": { "type": "object", "required": ["folder"], "properties": { "folder": { "$ref": "folder-path", "not": { "const": "/" } }, "title": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null }, "extra": { "type": "object", "default": {} }, "notes": { "type": "string", "default": "", "description": "The initial content of the @folder.md." } }, "additionalProperties": false },
+      "items": { "type": "object", "required": ["folder"], "properties": { "folder": { "$ref": "folder-path", "not": { "const": "/" } }, "title": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null }, "extra": { "type": "object", "default": {} }, "notes": { "type": "string", "default": "", "description": "The initial content of the @folder.md." }, "blocked_by": { "type": "array", "uniqueItems": true, "default": [], "items": { "$ref": "item-ref" }, "description": "IDs of existing tasks and folders, in any form, and paths of folders, existing or made by the batch. No refs." } }, "additionalProperties": false },
       "description": "The folders to make: no path twice, and none already there."
     },
     "folder": { "$ref": "folder-ref", "default": "/" },
@@ -15,7 +15,7 @@
       "type": "array",
       "default": [],
       "maxItems": 1000,
-      "items": { "type": "object", "required": ["title"], "properties": { "ref": { "$ref": "#/$defs/ref", "description": "A name for this task within the batch. Never stored." }, "title": { "type": "string", "description": "Trimmed, then checked against the title rule." }, "folder": { "$ref": "folder-ref", "description": "Defaults to the batch's folder." }, "priority": { "$ref": "task-file#/properties/priority", "default": null }, "tags": { "$ref": "task-file#/properties/tags", "default": [] }, "blocked_by": { "type": "array", "uniqueItems": true, "default": [], "items": { "anyOf": [{ "$ref": "task-ref" }, { "$ref": "#/$defs/ref" }] }, "description": "IDs of existing tasks, in any form, and refs of earlier tasks in the batch." }, "extra": { "$ref": "task-file#/properties/extra", "default": {} }, "notes": { "type": "string", "default": "", "description": "The initial content of the .md." } }, "additionalProperties": false }
+      "items": { "type": "object", "required": ["title"], "properties": { "ref": { "$ref": "#/$defs/ref", "description": "A name for this task within the batch. Never stored." }, "title": { "type": "string", "description": "Trimmed, then checked against the title rule." }, "folder": { "$ref": "folder-ref", "description": "Defaults to the batch's folder." }, "priority": { "$ref": "task-file#/properties/priority", "default": null }, "tags": { "$ref": "task-file#/properties/tags", "default": [] }, "blocked_by": { "type": "array", "uniqueItems": true, "default": [], "items": { "anyOf": [{ "$ref": "item-ref" }, { "$ref": "#/$defs/ref" }] }, "description": "IDs of existing tasks and folders, in any form, paths of folders, existing or made by the batch, and refs of earlier tasks in the batch." }, "extra": { "$ref": "task-file#/properties/extra", "default": {} }, "notes": { "type": "string", "default": "", "description": "The initial content of the .md." } }, "additionalProperties": false }
     }
   },
   "additionalProperties": false,

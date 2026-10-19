@@ -41,9 +41,10 @@ The folder file holds the folder's fields:
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "id": 57,
   "title": null,
+  "blocked_by": [41],
   "extra": {}
 }
 ```
@@ -55,11 +56,12 @@ Every key is required and no other key is allowed.
 | `schema` | The format this file is in (see [Formats](#formats)). |
 | `id` | The folder's identity, from the same counter as task IDs (see [IDs](#ids)). Never changes: moving or renaming the folder keeps it. |
 | `title` | `null`, or a title by the task rule. |
+| `blocked_by` | The set of IDs of the tasks and folders that everything in this folder waits on, at any depth (see [Dependencies](#dependencies)). Never its own. |
 | `extra` | Any JSON object. koan stores it and never interprets it. |
 
-`folder create`, `folder update`, and a `batch` folder entry set `title` and `extra`; a folder made as needed by another command gets `null` and `{}`.
+`folder create`, `folder update`, and a `batch` folder entry set `title` and `extra`; `folder create`, `folder block` and `folder unblock`, and a `batch` folder entry set `blocked_by`. A folder made as needed by another command gets `null`, `[]`, and `{}`.
 
-A folder exists when its directory does. A missing `@folder.md` reads as empty notes. A folder with no folder file is still a folder, whose tasks and folders count as usual; it has no ID until one is written, and `doctor` reports it.
+A folder exists when its directory does. A missing `@folder.md` reads as empty notes. A folder with no folder file is still a folder, whose tasks and folders count as usual; it has no ID until one is written, and `doctor` reports it. Its `blocked_by` is unknown, so everything in it is held back (see [Dependencies](#dependencies)).
 
 The **root** is the folder `/`. It holds `@koan.json` in place of a folder file, and has no ID.
 
@@ -114,7 +116,7 @@ Every key is required and no other key is allowed.
 | `created_at` | When the task was created. Never changes. |
 | `completed_at` | `null` while the task is **open**; a timestamp once it is **done**. This alone is the task's state. Done covers every way a task ends, cancelled included. |
 | `updated_at` | When koan last changed a field of this file. Moving a task or editing its notes does not count. |
-| `blocked_by` | The set of IDs of the tasks this one waits on, never its own. |
+| `blocked_by` | The set of IDs of the tasks and folders this one waits on, never its own. |
 | `tags` | A set of labels, each following the folder-name rule but lowercase only: `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`. |
 | `extra` | Any JSON object. koan stores it and returns it, and never interprets it. A workflow `status` goes here: one key holds one value, where tags could hold two. |
 
@@ -122,7 +124,7 @@ Integers are within ±(2^53 − 1), and written without a fraction or an exponen
 
 ### IDs
 
-An ID is a positive integer of at most 15 digits, unique across the whole tree, since `blocked_by` names tasks by ID alone. Tasks and folders draw from one counter, so an ID names exactly one task or one folder. IDs come from the counter `last_id` in the state file, which only goes up: an ID is never issued twice, even after its task or folder is deleted. Gaps are normal.
+An ID is a positive integer of at most 15 digits, unique across the whole tree, since `blocked_by` names tasks and folders by ID alone. Tasks and folders draw from one counter, so an ID names exactly one task or one folder. IDs come from the counter `last_id` in the state file, which only goes up: an ID is never issued twice, even after its task or folder is deleted. Gaps are normal.
 
 The counter is outside the tree on purpose, so that restoring or merging the tree's files can never lower it. That is also why one machine writes a tree: two machines creating tasks in copies of it would issue the same IDs.
 
@@ -142,27 +144,41 @@ A **reference** names a task, a folder, or material in a folder, in commands and
 
 - **The `@` is optional on input**, and koan always writes it, in `where`'s `ref` and in the convention below (JSON results carry IDs as plain integers): `@41` stands out as a reference in prose, and in `git log --grep '@41'`, where a bare `41` does not.
 - **A reference by ID is stable**: IDs never change, so it survives moves and renames. A path is readable. Kept text writes both, the reference and its path as a hint: `@41 (/proj/travel)`, `@41:docs/plan.md (/proj/travel:docs/plan.md)`. Reading one, the reference wins; a hint that no longer matches has gone stale. koan never reads notes, so this is a convention, not a format; [`where`](operations.md#where) gives both forms.
-- **An ID** names a task or a folder, whichever has it, since they share the counter. Where only one kind is taken, the other is `not-found`, with a message saying what the ID is. The root has no ID, and is only `/`.
+- **An ID** names a task or a folder, whichever has it, since they share the counter. `blocked_by` and `blocks` take either kind, and a folder by path as well, which is stored as its ID. Where only one kind is taken, the other is `not-found`, with a message saying what the ID is. The root has no ID, and is only `/`.
 - **The part after `:`** is a path to material, from the folder: segments separated by `/`, none empty, `.`, or `..`, and the first not starting with `@`, which would name one of koan's own entries. Further down is inside material, where `@` means nothing (`@41:node_modules/@types/x`). So a file has one reference per folder form. The colon can't occur in a folder path, so the first one splits the two; the material part may hold more.
 - A material reference says where a file is or would be; the file need not exist, and koan never looks.
 - **Finding folder 41** takes a walk that reads every folder file, since a folder's ID is only in its folder file. Two folder files with the ID, or a folder file and a task file, is `duplicate-id`. A folder whose folder file is missing or can't be used has no ID to be found by.
 
 ### Dependencies
 
-`blocked_by` makes a graph, with an edge from a task to each task it waits on. Folders play no part in it.
+`blocked_by` orders tasks and folders. A task's `blocked_by` names what the task waits on; a folder's names what everything in the folder waits on.
 
-- An open task is **ready** when every task in its `blocked_by` is done, and **blocked** otherwise. A blocker that does not exist, or whose file is unusable, counts as blocking.
-- A done task is neither.
-- Blockers constrain readiness, not completion: a task can be marked done at any time.
+- **What something waits on**, a task or a folder: its own `blocked_by`, and the `blocked_by` of every folder above it, up to the root. A folder's blockers apply to everything in it at any depth, without being copied into any file.
+- **Done.** A task is done when its `completed_at` is set. A folder is **done** when every task and every folder directly in it is done: when every task under it, at any depth, is done. An empty folder is done. A task file that can't be used counts as not done.
+- **Done-ness ignores blockers.** A task can be marked done at any time, blocked or not, so a folder can be done while what it waits on is still open. Blockers constrain readiness, not completion.
+- **A blocker blocks** while it is an open task, a folder that is not done, or an ID that names nothing or a task or folder whose file is unusable.
+- **Unknown blockers hold back.** A folder whose folder file is missing or can't be used has unknown blockers, so everything in it counts as blocked: where koan can't tell, it holds back.
+- An open task is **ready** when nothing it waits on blocks, and **blocked** otherwise. A done task is neither.
+- A folder is `done`, or else `blocked` when something it waits on blocks or is unknown, or else `ready`. The root has no blockers, so it is never blocked.
 
-Readiness is derived when read, and never stored.
+Readiness and done-ness are derived when read, and never stored, so they follow the tree as it changes. A task added to a done folder makes it not done again, and what is open and waits on the folder is blocked again; a done task that waited on it stays done, since `completed_at` is history. Nothing is ever reopened. **Ordering is continuous**: "B after A" holds whenever A has open work, work added after B started included.
+
+An empty folder is done, so what waits on a folder not filled yet is ready. Whoever lays out the work fills the blockers first, or lays out the whole of it in one `batch` ([docs/coordination.md](../docs/coordination.md)).
 
 ### Invariants
 
 Every tree that only koan has written satisfies these, and koan refuses any change that would break one:
 
-1. **Acyclic.** No task waits on itself, directly or through other tasks, whether they are open or done.
-2. **No dangling references.** Every ID in a `blocked_by` names an existing task. Deleting a task removes its ID from every `blocked_by`.
+1. **Acyclic.** Nothing waits on itself, directly or through other tasks and folders, whether they are open or done; and nothing would, whatever tasks were added to any folder. Exactly: the **graph** below has no cycle.
+
+    | Node | Has an edge to |
+    |---|---|
+    | Each task | each ID in its `blocked_by`, a folder's being that folder's done node; and its folder's wait node, unless its folder is the root |
+    | A folder's **wait** node: what its contents wait on | each ID in its `blocked_by`, as for a task; and its parent's wait node, unless its parent is the root |
+    | A folder's **done** node: what it waits on to be done | each task directly in it; the done node of each folder directly in it; and its own wait node |
+
+    The nodes are a way of reasoning about the tree, and nothing about them is stored. The root has no nodes: it has no blockers, and can't be named. The edge from a folder's done node to its own wait node stands for a task that might be added to it later: with it, adding a task to a folder never closes a cycle. In words, nothing may be blocked by a folder that contains it, no folder by anything under it, and no chain of blockers may lead from what is in a folder back to the folder.
+2. **No dangling references.** Every ID in a `blocked_by`, in a task file or a folder file, names an existing task or folder. Deleting a task removes its ID from every `blocked_by`, and deleting a folder removes its ID and those of the folders and tasks under it.
 3. **Unique IDs.** No two task files or folder files have the same ID.
 4. **IDs within the counter.** No ID in a task file's or notes file's name, and no folder's ID, is above `last_id`. An outside change can break this one; the next command that issues IDs, or `init`, restores it.
 
@@ -171,7 +187,7 @@ Every tree that only koan has written satisfies these, and koan refuses any chan
 The root holds one metadata file, which marks the directory as a tree and records its format:
 
 ```json
-{"schema": 2}
+{"schema": 3}
 ```
 
 ### The state file
@@ -190,7 +206,7 @@ The root holds one metadata file, which marks the directory as a tree and record
 
 ### Formats
 
-`schema` in `@koan.json` is the **tree format**: the tree's layout, what is named how. `schema` in a task file or a folder file is that **file's format**. The two are numbered apart, and change apart: format 2 of the tree holds task files and folder files in format 1. A binary reads and writes exactly one tree format, N, and one format of each kind of file; the table is about the tree format.
+`schema` in `@koan.json` is the **tree format**: the tree's layout, what is named how, and the formats of the files in it. `schema` in a task file or a folder file is that **file's format**. They are numbered apart: format 3 of the tree holds task files in format 1 and folder files in format 2. The tree format goes up whenever the format of any kind of file in the tree does, so `@koan.json` alone says whether a tree is current. A binary reads and writes exactly one tree format, N, and one format of each kind of file; the table is about the tree format.
 
 | `@koan.json` says | Then |
 |---|---|
@@ -205,6 +221,7 @@ The root holds one metadata file, which marks the directory as a tree and record
 - The state file is not in the tree, so `migrate` does not cover it: a binary reads every earlier format of it, and writes the current one.
 - **Before the first release, a format may change without a conversion.** On a tree in a format the binary has no conversion from, `migrate` and `doctor` fail with `conflict` (`no-conversion`) as well: move the tree aside and start a new one with `init`.
 - Format 2 (the `@` names, folder files, and `@koan.json`) has no conversion from format 1. A format-1 tree has no `@koan.json`, so this binary finds it not initialized; `init` there adopts it as any folder, and everything format 1 wrote is material.
+- Format 3 (folder files in format 2, with `blocked_by`) has no conversion from format 2: start a new tree with `init`.
 
 ### Written files
 
@@ -231,8 +248,9 @@ There is no index: a command that looks a task up by ID walks the tree.
 - An entry named with `@` that is none of these, a symlink, or of the wrong type (a directory named `@42.json`) is skipped too, and `doctor` reports it.
 - A walk lists entries by name only; folder files are read only by the commands that need them ([implementation.md](implementation.md)).
 - A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
-- **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`). koan never picks a copy. `doctor` lists the copies, for a person to resolve.
+- **A duplicated ID fails any command that meets it**, with `conflict` (`duplicate-id`): one that looks the ID up, as a task, a folder, or a blocker, and finds two files holding it. koan never picks a copy. `doctor` lists the copies, for a person to resolve.
 - **An unusable task file** (unreadable, not valid JSON, breaking the schema, or in another format) fails a command that was asked for that task. A command that only passes it, or finds it as a blocker, reports an `unusable-file` warning and carries on.
+- **An unusable or missing folder file** fails a command that was asked for that folder's fields. A command that only reads it, for readiness, an ID, or a cycle check, reports an `unusable-file` warning and carries on: the folder has no ID, and its blockers are unknown.
 - **A dangling reference** counts as blocking, and is reported as a warning.
 
 ## Concurrency
@@ -249,7 +267,7 @@ Several processes may use one tree at once, with no coordinator between them.
 
 ### Crashes and failures
 
-A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `folder delete` cut short shows up as some of these, in what is left of it: run `folder delete` again to finish. A `folder delete` that fails partway, rather than being killed, cleans up after itself: the tasks it did remove leave every `blocked_by`, and their claims end.
+A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task or folder that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `folder delete` cut short shows up as some of these, in what is left of it: run `folder delete` again to finish. A `folder delete` that fails partway, rather than being killed, cleans up after itself: the tasks and folders it did remove leave every `blocked_by`, in task files and folder files, and the tasks' claims end.
 
 koan keeps no journal and takes no idempotency keys. After an unclear outcome, look (`task show`, `task list`, `doctor`), then decide. The task commands that set a state (`done`, `reopen`, `block`, `unblock`, `update`, `release`) are safe to run again; `task create` and `batch` make new tasks each time, and `task claim-next` a new claim.
 
@@ -275,13 +293,13 @@ A **claim** reserves a task: once it is claimed, no other `task claim` of it suc
 |---|---|
 | `temp-leftover`: a temp file koan left behind | Removes it. |
 | `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name or in a folder file | Raises `last_id`. |
-| `dangling-reference`: a `blocked_by` ID with no task | Removes the ID, when asked for by name. |
+| `dangling-reference`: a `blocked_by` ID, in a task file or a folder file, with no task or folder | Removes the ID, when asked for by name. |
 | `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name. |
 | `orphan-notes`: a `@<id>.md` with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes. Otherwise leaves it. |
-| `missing-folder-file`: a folder with no `@folder.json` | Writes one, with a new ID. |
+| `missing-folder-file`: a folder with no `@folder.json` | Writes one, with a new ID and an empty `blocked_by`. A `blocked_by` that named the folder's old ID then dangles, and the finding's message says so: re-point such references with `task block` or `folder block` before repairing `dangling-reference`. |
 | `duplicate-id`: several task files or folder files with one ID | — |
-| `cycle`: tasks that block each other | — |
-| `unusable-file`: a task file or folder file that can't be used, with the reason, a folder file in another format included (there is one folder file format yet) | — |
+| `cycle`: tasks and folders that wait on each other, or would once a task were added to a folder (see [Invariants](#invariants)) | — |
+| `unusable-file`: a task file or folder file that can't be used, with the reason, one in another format included | — |
 | `old-format`: a task file in an earlier format | — (`migrate` converts it) |
 | `skipped-entry`: an entry named with `@` that is not one of koan's, a symlink or wrong-typed entry so named (a folder file is `unusable-file` instead), or a folder that can't be listed | — |
 

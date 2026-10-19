@@ -3,7 +3,7 @@
   "$id": "folder",
   "description": "A folder as every command that returns one returns it.",
   "$ref": "#/$defs/partial",
-  "required": ["id", "path", "dir", "title", "extra", "notes_path"],
+  "required": ["id", "path", "dir", "title", "blocked_by", "extra", "notes_path", "readiness", "open_blockers", "inherited", "empty"],
   "$defs": {
     "partial": {
       "type": "object",
@@ -13,14 +13,19 @@
         "path": { "$ref": "folder-path" },
         "dir": { "type": "string", "description": "The absolute filesystem path of the folder's directory." },
         "title": { "$ref": "folder-file#/properties/title" },
+        "blocked_by": { "anyOf": [{ "$ref": "task-file#/properties/blocked_by" }, { "type": "null" }], "description": "Its folder file's; [] for the root; null for a folder with no usable folder file." },
         "extra": { "type": "object" },
-        "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for the root." }
+        "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for the root." },
+        "readiness": { "enum": ["ready", "blocked", "done"], "description": "done when every task under it, at any depth, is done; else blocked or ready by its own and inherited blockers. The root is never blocked." },
+        "open_blockers": { "$ref": "task#/$defs/partial/properties/open_blockers" },
+        "inherited": { "$ref": "task#/$defs/inherited" },
+        "empty": { "type": "boolean", "description": "Whether it holds no task at any depth. An empty folder is done." }
       },
       "additionalProperties": false,
       "description": "A folder cut down by `fields`: id, path, and the fields asked for."
     },
     "field": {
-      "enum": ["id", "path", "dir", "title", "extra", "notes_path"]
+      "enum": ["id", "path", "dir", "title", "blocked_by", "extra", "notes_path", "readiness", "open_blockers", "inherited", "empty"]
     }
   }
 }

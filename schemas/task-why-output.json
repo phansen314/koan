@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "task-why-output",
   "type": "object",
-  "required": ["readiness", "ready", "stuck"],
+  "required": ["readiness", "ready", "stuck", "stuck_folders"],
   "properties": {
     "readiness": {
       "enum": ["ready", "blocked", "done"]
@@ -10,13 +10,19 @@
     "ready": {
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" },
-      "description": "IDs of the ready tasks it waits on, in work order."
+      "description": "IDs of the ready tasks it waits on, in work order: a folder it waits on is followed into the open tasks under it."
     },
     "stuck": {
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" },
       "uniqueItems": true,
       "description": "IDs no work will clear. Ascending."
+    },
+    "stuck_folders": {
+      "type": "array",
+      "items": { "$ref": "folder-path" },
+      "uniqueItems": true,
+      "description": "Folders whose blockers are unknown, since their folder file is missing or can't be used. Tree order."
     }
   },
   "additionalProperties": false

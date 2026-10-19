@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-why-output",
+  "type": "object",
+  "required": ["readiness", "ready", "stuck", "stuck_folders"],
+  "properties": {
+    "readiness": {
+      "enum": ["ready", "blocked", "done"],
+      "description": "The folder's own."
+    },
+    "ready": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "description": "IDs of the ready tasks under the folder, and of the ready tasks those under it wait on: working on these is what makes it done. In work order."
+    },
+    "stuck": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "description": "IDs no work will clear. Ascending."
+    },
+    "stuck_folders": {
+      "type": "array",
+      "items": { "$ref": "folder-path" },
+      "uniqueItems": true,
+      "description": "Folders whose blockers are unknown, since their folder file is missing or can't be used. Tree order."
+    }
+  },
+  "additionalProperties": false,
+  "description": "What a folder waits on to be done: its open tasks, at any depth, followed as task why follows a task."
+}

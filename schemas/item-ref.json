@@ -1,0 +1,1 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "item-ref", "oneOf": [{ "$ref": "folder-path" }, { "$ref": "task-file#/properties/id" }, { "type": "string", "pattern": "^@?[1-9][0-9]{0,14}$" }], "description": "A task or a folder, by its ID: 42, \"42\", or \"@42\"; or a folder by path. A path is resolved to the folder's ID, and only the ID is stored." }

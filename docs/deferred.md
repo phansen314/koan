@@ -23,9 +23,22 @@ Turn a koan folder or task back into plain files, leaving the work itself in pla
 
 The rest of the shingi absorption is done and koan's skill covers it. The plugin can go once nothing uses shingi's `bind`, so this waits on worktree markers.
 
-## Gates
+## Latched ordering
 
-Not designed yet. A gate would be a start or done task per folder, letting folders be ordered against each other. Before designing them, try `task create --blocks` (the new task blocks the tasks named) in real use, and see whether gates are needed at all. Until then, `@folder.json` stays `schema`, `id`, `title`, `extra`, with no `start` or `done`; and `batch` entries take no `blocks`: inside a batch every edge is a `blocked_by`, and making an existing task wait on a new one stays with `task create --blocks`.
+Ordering between folders is continuous: "B after A" holds whenever A has open work, work added after B started included. A latched order would let a folder count as started once any task in it has been claimed or completed (derivable from what is stored), so that later additions upstream don't hold it back. Only if continuous ordering gets in the way in real use.
+
+## Splice on delete
+
+If A blocks B and B blocks C, deleting B makes C ready while A is still open. Folders make it more visible: deleting a middle phase frees the next. The option: on delete, give each dependent the deleted task's or folder's blockers. It would apply to tasks and folders alike.
+
+## Reporting what a write blocks again
+
+A task created or moved into a done folder, a task reopened, or a `task block` or `folder block`, can make open tasks that were ready blocked again, claimed ones included. A result field (`reblocked`), and a warning for a claimed one, were considered and left out:
+
+- Finding them needs a reverse lookup, everything that names the folder or a folder above it, which means loading every task file on `task create`, `task move`, and `task reopen`, where today they load a few.
+- The warning would reach the caller that made the change, not the holder of the claim, who is the one that needs it.
+
+Meanwhile the coordinator checks `task show` (`readiness`, `inherited`) before marking a claimed task done ([coordination.md](coordination.md)).
 
 ## Cycles without Tarjan
 
