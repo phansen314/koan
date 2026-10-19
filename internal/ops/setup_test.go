@@ -19,10 +19,10 @@ func TestInit(t *testing.T) {
 		t.Errorf("info before init: %v", got)
 	}
 	got := w.ok("init", `{}`)
-	if c := got["created"].([]any); len(c) != 3 {
-		t.Errorf("created %v, want all three", c)
+	if c := got["created"].([]any); len(c) != 4 {
+		t.Errorf("created %v, want all four", c)
 	}
-	schematest.Must(t, "root-file", readJSON(t, w.root("koan.json")))
+	schematest.Must(t, "root-file", readJSON(t, w.top("@koan.json")))
 	if c := w.ok("init", `{}`)["created"].([]any); len(c) != 0 {
 		t.Errorf("second init created %v", c)
 	}
@@ -57,7 +57,7 @@ func TestInitRefuses(t *testing.T) {
 	w.fail("init", `{}`, errs.Conflict, errs.RuleNotAFolder)
 	os.Remove(w.env.RootPath())
 	w.ok("init", `{}`)
-	os.WriteFile(w.root("koan.json"), []byte("{"), 0o644)
+	os.WriteFile(w.top("@koan.json"), []byte("{"), 0o644)
 	w.fail("init", `{}`, errs.Corrupt, "")
 	if got := w.ok("info", `{}`); got["state"] != "unusable" || got["error"] == nil {
 		t.Errorf("info on a corrupt root: %v", got)
@@ -65,7 +65,7 @@ func TestInitRefuses(t *testing.T) {
 }
 
 func TestInitReportsWhatItCreated(t *testing.T) {
-	for k, want := range map[int]int{1: 1, 5: 2} { // the 1st and 5th changes after the root is made
+	for k, want := range map[int]int{1: 2, 5: 3} { // the 1st and 5th changes after the root and the tree are made
 		w := newWorld(t)
 		seen := 0
 		w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
@@ -94,9 +94,9 @@ func TestInitNeedsTheWholeTree(t *testing.T) {
 	os.Chmod(w.root("locked"), 0)
 	defer os.Chmod(w.root("locked"), 0o755)
 	w.ok("init", `{}`)
-	os.Remove(w.root("koan.json"))
+	os.Remove(w.top("@koan.json"))
 	w.fail("init", `{}`, errs.IO, "")
-	if _, err := os.Stat(w.root("koan.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(w.top("@koan.json")); !os.IsNotExist(err) {
 		t.Error("init made a @koan.json without having seen the whole tree")
 	}
 }
@@ -105,7 +105,7 @@ func TestInitNeedsTheWholeTree(t *testing.T) {
 func TestInitCountsFolderIDs(t *testing.T) {
 	w := ready(t)
 	w.ok("folder create", `{"folder":"/a/b/c"}`)
-	os.Remove(w.root("koan.json"))
+	os.Remove(w.top("@koan.json"))
 	w.ok("init", `{}`)
 	if n := w.ok("info", `{}`)["last_id"]; n != float64(3) {
 		t.Errorf("last_id %v, want 3", n)
@@ -116,9 +116,9 @@ func TestInitCountsFolderIDs(t *testing.T) {
 // up, and init adopts it with everything in it as material.
 func TestATreeInFormatOneIsMaterial(t *testing.T) {
 	w := newWorld(t)
-	os.MkdirAll(w.disk("proj"), 0o755)
-	os.WriteFile(w.disk("koan.json"), []byte(`{"schema": 1}`), 0o644)
-	os.WriteFile(w.disk("proj", "1.json"), []byte("{}"), 0o644)
+	os.MkdirAll(w.top("proj"), 0o755)
+	os.WriteFile(w.top("koan.json"), []byte(`{"schema": 1}`), 0o644)
+	os.WriteFile(w.top("proj", "1.json"), []byte("{}"), 0o644)
 	if got := w.ok("info", `{}`); got["state"] != "not-initialized" {
 		t.Errorf("info: %v", got)
 	}
@@ -134,19 +134,19 @@ func TestATreeInFormatOneIsMaterial(t *testing.T) {
 func TestFormats(t *testing.T) {
 	w := ready(t)
 	w.ok("task create", `{"title":"a"}`)
-	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(4) {
+	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(5) {
 		t.Errorf("migrate on a current tree: %v", got)
 	}
 
-	// Formats 1 and 2 have no conversion: migrate and doctor refuse them.
-	for _, old := range []string{"1", "2"} {
-		os.WriteFile(w.root("koan.json"), []byte(`{"schema": `+old+`}`), 0o644)
+	// Formats 1 to 4 have no conversion: migrate and doctor refuse them.
+	for _, old := range []string{"1", "2", "3", "4"} {
+		os.WriteFile(w.top("@koan.json"), []byte(`{"schema": `+old+`}`), 0o644)
 		w.fail("task show", `{"id":1}`, errs.MigrationPending, "")
 		w.fail("migrate", `{}`, errs.Conflict, errs.RuleNoConversion)
 		w.fail("doctor", `{}`, errs.Conflict, errs.RuleNoConversion)
 	}
 
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 5}`), 0o644)
+	os.WriteFile(w.top("@koan.json"), []byte(`{"schema": 6}`), 0o644)
 	w.fail("task show", `{"id":1}`, errs.UnsupportedFormat, "")
 	w.fail("migrate", `{}`, errs.UnsupportedFormat, "")
 	w.fail("doctor", `{}`, errs.UnsupportedFormat, "")
@@ -171,7 +171,7 @@ func TestPrecedence(t *testing.T) {
 	w.env.Home = home
 
 	// The root's state comes before busy, for init too.
-	os.WriteFile(w.root("koan.json"), []byte("{"), 0o644)
+	os.WriteFile(w.top("@koan.json"), []byte("{"), 0o644)
 	held, e := store.OpenLocked(w.env)
 	if e != nil {
 		t.Fatal(e)

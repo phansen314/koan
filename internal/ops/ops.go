@@ -63,11 +63,11 @@ var commands = map[string]command{
 	"init": cmdInit, "version": cmdVersion, "info": cmdInfo,
 	"doctor": cmdDoctor, "repair": cmdRepair, "migrate": cmdMigrate,
 	"folder create": cmdFolderCreate, "folder show": cmdFolderShow, "folder update": cmdFolderUpdate,
-	"folder move": cmdFolderMove, "folder delete": cmdFolderDelete, "folder list": cmdFolderList,
+	"folder move": cmdFolderMove, "folder delete": cmdFolderDelete, "folder archive": cmdFolderArchive, "folder list": cmdFolderList,
 	"folder block": cmdFolderBlock, "folder unblock": cmdFolderUnblock, "folder why": cmdFolderWhy,
 	"task create": cmdCreate, "batch": cmdBatch, "task show": cmdShow, "task update": cmdUpdate,
 	"task done": cmdDone, "task reopen": cmdReopen, "task block": cmdBlock, "task unblock": cmdUnblock,
-	"task move": cmdMove, "task delete": cmdDelete,
+	"task move": cmdMove, "task delete": cmdDelete, "task archive": cmdTaskArchive,
 	"task frontier": cmdFrontier, "task list": cmdList, "task why": cmdWhy, "where": cmdWhere,
 	"context": cmdContext, "marker bind": cmdMarkerBind, "marker unbind": cmdMarkerUnbind,
 	"task claim": cmdClaim, "task claim-next": cmdClaimNext, "task release": cmdRelease,
@@ -104,6 +104,7 @@ func Run(env store.Env, name string, raw []byte) Envelope {
 	}
 	if c.t != nil {
 		if e != nil {
+			c.whereArchived(e)
 			e.WithChanged(c.t.Changed()...)
 		}
 		c.t.Close()

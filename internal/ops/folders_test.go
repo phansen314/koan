@@ -180,7 +180,7 @@ func TestFolderFilesAndIDs(t *testing.T) {
 	if fs := w.findings(); !slices.Equal(fs, want) {
 		t.Errorf("findings %v, want %v", fs, want)
 	}
-	os.Remove(w.root("koan.json"))
+	os.Remove(w.top("@koan.json"))
 	w.ok("init", `{}`)
 	if n := w.ok("info", `{}`)["last_id"]; n != float64(2) {
 		t.Errorf("last_id %v, want 2: /r's file can't be read", n)
@@ -258,7 +258,7 @@ func TestDeleteFolderCleanupFailing(t *testing.T) {
 	// The removal fails at /d's folder file, after the task; the rewrite of
 	// 4 then fails at its temp file.
 	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
-		if (op.Name == fsys.OpRemove && op.Path == "@d/@folder.json") || op.Name == fsys.OpCreateTemp {
+		if (op.Name == fsys.OpRemove && op.Path == "tree/@d/@folder.json") || op.Name == fsys.OpCreateTemp {
 			return syscall.EACCES
 		}
 		return nil
@@ -286,7 +286,7 @@ func TestDeleteFolderRemovesFolderFilesLast(t *testing.T) {
 	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
 		if op.Name == fsys.OpRemove && path.Base(op.Path) == "@folder.json" {
 			removed++
-			if ents, _ := os.ReadDir(w.disk(path.Dir(op.Path))); len(ents) != 1 {
+			if ents, _ := os.ReadDir(w.top(path.Dir(op.Path))); len(ents) != 1 {
 				t.Errorf("%s removed before the rest of its folder: %d entries left", op.Path, len(ents))
 			}
 		}
@@ -346,9 +346,9 @@ func TestFolderCreateBlocksFailing(t *testing.T) {
 		message string
 		id      any // the folder's ID afterwards, nil when it has none
 	}{
-		{"the folder", func(op fsys.Op) bool { return op.Name == fsys.OpMkdir && op.Path == "@c" }, []int64{1}, []string{}, "[1] wait on folder 2, which was not made", nil},
-		{"its folder file", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "@c/@folder.json" }, []int64{1}, []string{"/c"}, "/c was made without its @folder.json", nil},
-		{"its notes", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "@c/@folder.md" }, []int64{2}, []string{}, "/c was made without its notes", float64(2)},
+		{"the folder", func(op fsys.Op) bool { return op.Name == fsys.OpMkdir && op.Path == "tree/@c" }, []int64{1}, []string{}, "[1] wait on folder 2, which was not made", nil},
+		{"its folder file", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "tree/@c/@folder.json" }, []int64{1}, []string{"/c"}, "/c was made without its @folder.json", nil},
+		{"its notes", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "tree/@c/@folder.md" }, []int64{2}, []string{}, "/c was made without its notes", float64(2)},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			w := ready(t)

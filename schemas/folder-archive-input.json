@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-archive-input",
+  "type": "object",
+  "required": ["folder"],
+  "properties": {
+    "folder": { "$ref": "folder-ref", "description": "A done folder; not /." }
+  },
+  "additionalProperties": false
+}

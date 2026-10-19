@@ -58,8 +58,8 @@ func TestCaseMismatch(t *testing.T) {
 	if w.file("proj/2.md") != "mine" {
 		t.Errorf("notes %q", w.file("proj/2.md"))
 	}
-	if ents, _ := os.ReadDir(w.disk()); len(ents) != 2 { // @koan.json and @proj
-		t.Errorf("root holds %d entries", len(ents))
+	if ents, _ := os.ReadDir(w.disk()); len(ents) != 1 { // @proj
+		t.Errorf("the tree holds %d entries", len(ents))
 	}
 	if f := w.findings(); len(f) != 0 {
 		t.Errorf("findings %v", f)
@@ -77,7 +77,7 @@ func TestFolderMoveChangesCase(t *testing.T) {
 	ents, _ := os.ReadDir(w.disk())
 	if !slices.ContainsFunc(ents, func(e os.DirEntry) bool { return e.Name() == "@Work" }) ||
 		slices.ContainsFunc(ents, func(e os.DirEntry) bool { return e.Name() == "@work" }) {
-		t.Errorf("root holds %v, want @Work and no @work", ents)
+		t.Errorf("the tree holds %v, want @Work and no @work", ents)
 	}
 	if id, e := w.holderOf("/Work/api"); e != nil || id != 2 {
 		t.Errorf("/Work/api: %v %v", id, e)

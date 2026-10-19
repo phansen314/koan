@@ -216,7 +216,7 @@ func TestExitCodesAndStderr(t *testing.T) {
 	}
 	// A success with warnings says so on stderr.
 	ok(t, home, "task", "create", "a")
-	os.WriteFile(filepath.Join(home, "koan-root", "@7.json"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(home, "koan-root", "tree", "@7.json"), []byte("x"), 0o644)
 	if r := koan(t, home, "", nil, "task", "list"); r.exit != 0 || r.stderr != "koan: 1 warning\n" {
 		t.Errorf("warnings: exit %d, stderr %q", r.exit, r.stderr)
 	}

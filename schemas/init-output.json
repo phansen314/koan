@@ -2,13 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "init-output",
   "type": "object",
-  "required": ["root", "state_path", "created"],
+  "required": ["root", "tree", "archive", "state_path", "created"],
   "properties": {
     "root": { "type": "string" },
+    "tree": { "type": "string", "description": "The tree's directory: the folder /." },
+    "archive": { "type": "string", "description": "The archive's directory, there or not." },
     "state_path": { "type": "string" },
     "created": {
       "type": "array",
-      "items": { "enum": ["root", "metadata", "state"] },
+      "items": { "enum": ["root", "metadata", "tree", "state"] },
       "uniqueItems": true
     }
   },

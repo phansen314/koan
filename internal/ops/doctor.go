@@ -103,11 +103,18 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	// Folder files, by folder; a folder whose file can't be used has none
 	// here, and its error in folderErrs.
 	folderFiles, folderErrs := loadFolderFiles(t, x)
-	// highest is the highest ID in the tree, or the counter if higher: what
-	// a new ID must be above.
+	// The archive, walked once: its IDs count against the counter and for
+	// duplicates, and a reference to one it holds is gone for good.
+	ar := t.WalkArchive()
+	inArchive := func(id model.ID) bool { return len(ar.Holders[id]) > 0 }
+	// highest is the highest ID in the tree and the archive, or the counter
+	// if higher: what a new ID must be above.
 	highest := max(t.Meta.LastID, highestID(x, folderFiles))
+	for id := range ar.Named {
+		highest = max(highest, id)
+	}
 
-	for _, rel := range x.Temps {
+	for _, rel := range slices.Concat(t.RootTemps(), x.Temps, ar.Temps) {
 		d.add(errs.FindingTempLeftover, "a temp file koan left behind: `koan repair` removes it", nil,
 			[]string{t.Abs(rel)}, func() (bool, *errs.Error) { return done(t.Remove(rel)) })
 	}
@@ -130,6 +137,13 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		if _, isTask := x.Tasks[id]; id > t.Meta.LastID && !isTask {
 			for _, f := range x.Notes[id] {
 				above, abovePaths = append(above, id), append(abovePaths, t.Abs(model.NotesRel(f, id)))
+			}
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(ar.Named)) {
+		if id > t.Meta.LastID {
+			for _, p := range ar.Named[id] {
+				above, abovePaths = append(above, id), append(abovePaths, p)
 			}
 		}
 	}
@@ -165,14 +179,28 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	// A dangling ID may be the ID of a folder whose file can't be used:
 	// removing it would lose the link once the file is fixed.
-	dangling := func(who string, id model.ID, gone []model.ID, p string, remove func() *errs.Error) {
+	dangling := func(who string, id model.ID, gone []model.ID, p string, remove func(gone []model.ID) *errs.Error) {
+		// What the archive holds is gone for good: removed by default,
+		// whatever else is wrong.
+		if archived := slices.DeleteFunc(slices.Clone(gone), func(b model.ID) bool { return !inArchive(b) }); len(archived) > 0 {
+			var where []string
+			for _, b := range archived {
+				where = append(where, ar.Holders[b][0])
+			}
+			d.add(errs.FindingDanglingReference, fmt.Sprintf("%s is blocked by %v, which were archived (%s): `koan repair` removes them from its blocked_by", who, archived, strings.Join(where, ", ")),
+				append([]model.ID{id}, archived...), []string{p}, func() (bool, *errs.Error) { return done(remove(archived)) })
+			gone = slices.DeleteFunc(gone, inArchive)
+			if len(gone) == 0 {
+				return
+			}
+		}
 		if len(brokenFiles) > 0 {
 			d.add(errs.FindingDanglingReference, fmt.Sprintf("%s is blocked by %v, which do not exist, unless one is the ID of a folder whose file can't be used (%s): fix that file first, and then run doctor again", who, gone, strings.Join(brokenFiles, ", ")),
 				append([]model.ID{id}, gone...), []string{p}, nil)
 			return
 		}
 		d.add(errs.FindingDanglingReference, fmt.Sprintf("%s is blocked by %v, which do not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds dangling-reference` removes them from its blocked_by", who, gone),
-			append([]model.ID{id}, gone...), []string{p}, func() (bool, *errs.Error) { return done(remove()) })
+			append([]model.ID{id}, gone...), []string{p}, func() (bool, *errs.Error) { return done(remove(gone)) })
 		d.onlyByName()
 	}
 	byFolder := map[model.Folder][]int{}
@@ -182,7 +210,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	for _, f := range x.Folders {
 		if ff := folderFiles[f]; ff != nil {
 			if gone := dt.gone(ff.BlockedBy); len(gone) > 0 {
-				dangling("folder "+string(f), ff.ID, gone, t.Abs(model.FolderFileRel(f)), func() *errs.Error {
+				dangling("folder "+string(f), ff.ID, gone, t.Abs(model.FolderFileRel(f)), func(gone []model.ID) *errs.Error {
 					ff.BlockedBy = slices.DeleteFunc(ff.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
 					return t.WriteFolderFile(f, ff, false)
 				})
@@ -194,7 +222,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 				continue
 			}
 			if gone := dt.gone(tf.BlockedBy); len(gone) > 0 {
-				dangling(fmt.Sprintf("task %d", l.id), l.id, gone, abs(l), func() *errs.Error {
+				dangling(fmt.Sprintf("task %d", l.id), l.id, gone, abs(l), func(gone []model.ID) *errs.Error {
 					tf.BlockedBy = slices.DeleteFunc(tf.BlockedBy, func(b model.ID) bool { return slices.Contains(gone, b) })
 					tf.UpdatedAt = c.now
 					return t.WriteTask(l.f, tf, false)
@@ -212,7 +240,9 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	for _, id := range claimed {
 		_, exists := x.Tasks[id]
 		msg := fmt.Sprintf("a claim on task %d, which is done: `koan repair` removes it", id)
-		if !exists {
+		if !exists && inArchive(id) {
+			msg = fmt.Sprintf("a claim on task %d, which was archived: `koan repair` removes it", id)
+		} else if !exists {
 			msg = fmt.Sprintf("a claim on task %d, which does not exist: if a folder was moved by hand, move it back first; otherwise `koan repair --kinds stale-claim` removes it", id)
 		} else if tf := usable[id]; tf == nil || tf.Open() {
 			continue
@@ -221,7 +251,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			delete(t.State.Claims, model.ClaimKey(id))
 			return done(t.SaveState())
 		})
-		if !exists {
+		if !exists && !inArchive(id) {
 			d.onlyByName()
 		}
 	}
@@ -236,7 +266,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	sortLocs(x, orphans)
 	for _, l := range orphans {
-		fix, msg := orphanFix(t, x, l.f, l.id)
+		fix, msg := orphanFix(t, x, ar, l.f, l.id)
 		d.add(errs.FindingOrphanNotes, fmt.Sprintf("notes with no task file beside them: %s", msg),
 			[]model.ID{l.id}, []string{t.Abs(model.NotesRel(l.f, l.id))}, fix)
 	}
@@ -255,7 +285,10 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			})
 	}
 
-	// Every file holding each ID: task files, every copy, and folder files.
+	diagnoseIndex(d, t, ar)
+
+	// Every file holding each ID: task files, every copy, and folder files,
+	// in the tree and the archive.
 	holders := map[model.ID][]string{}
 	for _, l := range files {
 		holders[l.id] = append(holders[l.id], abs(l))
@@ -264,6 +297,9 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 		if ff := folderFiles[f]; ff != nil {
 			holders[ff.ID] = append(holders[ff.ID], t.Abs(model.FolderFileRel(f)))
 		}
+	}
+	for id, ps := range ar.Holders {
+		holders[id] = append(holders[id], ps...)
 	}
 	for _, id := range slices.Sorted(maps.Keys(holders)) {
 		if paths := holders[id]; len(paths) > 1 {
@@ -335,6 +371,10 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			}
 		}
 	}
+	for _, p := range ar.Mismatched {
+		d.add(errs.FindingUnusableFile, p+" holds another ID than its archived folder's name: fix the file by hand",
+			nil, []string{p}, nil)
+	}
 	for i, l := range files {
 		if loaded[i].OldFormat != 0 {
 			d.add(errs.FindingOldFormat, fmt.Sprintf("a task file in format %d: `koan migrate` converts it", loaded[i].OldFormat),
@@ -356,10 +396,26 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 // orphanFix decides what repair does with a .md that has no task file beside
 // it: remove it when it is empty, move it to its task when the task is
 // elsewhere without notes, and otherwise leave it.
-func orphanFix(t *store.Tree, x *store.Index, f model.Folder, id model.ID) (fix, string) {
+func orphanFix(t *store.Tree, x *store.Index, ar *store.Archive, f model.Folder, id model.ID) (fix, string) {
 	rel := model.NotesRel(f, id)
 	if fi, err := t.Stat(rel); err == nil && fi.Size() == 0 {
 		return func() (bool, *errs.Error) { return done(t.Remove(rel)) }, "they are empty, and `koan repair` removes them"
+	}
+	// A task archive cut short leaves its notes behind.
+	if _, exists := x.Tasks[id]; !exists {
+		for _, a := range ar.Items {
+			if a.ID != id || a.Kind != model.ArchivedTask {
+				continue
+			}
+			to := model.ArchiveRel(strings.TrimSuffix(a.Archived, model.TaskSuffix) + model.NotesSuffix)
+			if _, err := t.Stat(to); err == nil {
+				break
+			}
+			return func() (bool, *errs.Error) {
+				taken, e := t.Move(rel, to)
+				return e == nil && !taken, e
+			}, fmt.Sprintf("their task was archived, and `koan repair` moves them to it, at %s", t.Abs(to))
+		}
 	}
 	home, exists := x.Tasks[id]
 	if exists && len(x.Copies[id]) == 0 && !slices.Contains(x.Notes[id], home) {

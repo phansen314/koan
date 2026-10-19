@@ -4,6 +4,7 @@
 package store
 
 import (
+	"cmp"
 	"path"
 	"slices"
 	"syscall"
@@ -34,8 +35,14 @@ const (
 	StateMode  = 0o600
 )
 
-// RootPath is the tree's path.
+// RootPath is the root's path, which holds the tree and the archive.
 func (e Env) RootPath() string { return path.Join(e.Home, "koan-root") }
+
+// TreePath is the tree's path: the folder /.
+func (e Env) TreePath() string { return path.Join(e.RootPath(), model.TreeDir) }
+
+// ArchivePath is the archive's path, there or not.
+func (e Env) ArchivePath() string { return path.Join(e.RootPath(), model.ArchiveDir) }
 
 // StateDir is the directory the state file is in.
 func (e Env) StateDir() string { return path.Join(e.Home, ".config", "koan") }
@@ -58,6 +65,7 @@ const (
 const (
 	PartRoot  = "root"
 	PartMeta  = "metadata"
+	PartTree  = "tree"
 	PartState = "state"
 )
 
@@ -82,8 +90,20 @@ func Inspect(env Env, root *fsys.Root, openErr error) Condition {
 		if c.Meta == nil && bad == nil {
 			c.Missing = append(c.Missing, PartMeta)
 		}
+		// Only a tree in this format has its tree in tree/.
+		if c.Meta == nil || c.Meta.Schema == model.Format {
+			fi, err := root.Lstat(model.TreeDir)
+			switch {
+			case errs.IsErrno(err, syscall.ENOENT):
+				c.Missing = append(c.Missing, PartTree)
+			case err != nil:
+				bad = cmp.Or(bad, errs.FromOS(env.TreePath(), err))
+			case !fi.IsDir():
+				bad = cmp.Or(bad, errs.NewConflict(errs.RuleNotAFolder, "%s is not a folder", env.TreePath()).WithPaths(env.TreePath()))
+			}
+		}
 	case errs.IsErrno(openErr, syscall.ENOENT):
-		c.Missing = append(c.Missing, PartRoot, PartMeta)
+		c.Missing = append(c.Missing, PartRoot, PartMeta, PartTree)
 	case errs.IsErrno(openErr, syscall.ENOTDIR):
 		bad = errs.NewConflict(errs.RuleNotAFolder, "%s is not a folder", env.RootPath()).WithPaths(env.RootPath())
 	default:

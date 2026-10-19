@@ -28,10 +28,10 @@ func lowCounter(t *testing.T) *world {
 func (w *world) setCounter(n int64) {
 	w.t.Helper()
 	var m map[string]any
-	json.Unmarshal([]byte(w.file("koan.json")), &m)
+	json.Unmarshal([]byte(w.fileAt(w.top("@koan.json"))), &m)
 	m["last_id"] = n
 	data, _ := json.Marshal(m)
-	if err := os.WriteFile(w.root("koan.json"), data, 0o644); err != nil {
+	if err := os.WriteFile(w.top("@koan.json"), data, 0o644); err != nil {
 		w.t.Fatal(err)
 	}
 }
@@ -74,7 +74,7 @@ func (w *world) holderOf(p string) (float64, *errs.Error) {
 func TestIssueSavesTheCounterInTheTree(t *testing.T) {
 	w := ready(t)
 	w.ok("batch", `{"tasks":[{"title":"a","folder":"/p"},{"title":"b"}]}`)
-	if got := w.file("koan.json"); got != "{\n  \"schema\": 4,\n  \"last_id\": 3\n}\n" {
+	if got := w.fileAt(w.top("@koan.json")); got != "{\n  \"schema\": 5,\n  \"last_id\": 3\n}\n" {
 		t.Errorf("@koan.json is %q", got)
 	}
 	if strings.Contains(w.stateFile(), "last_id") {
@@ -146,47 +146,35 @@ func TestInitStartsAboveTheTree(t *testing.T) {
 	w := ready(t)
 	w.ok("folder create", `{"folder":"/a"}`) // 1
 	w.ok("task create", `{"title":"t","folder":"/a"}`)
-	os.Remove(w.root("koan.json"))
+	os.Remove(w.top("@koan.json"))
 	if got := w.ok("init", `{}`); !slices.Equal(got["created"].([]any), []any{"metadata"}) || w.counter() != 2 {
 		t.Errorf("init beside task 2: %v, last_id %v", got, w.counter())
 	}
 	os.WriteFile(w.root("a/9.md"), []byte("old"), 0o644)
-	os.Remove(w.root("koan.json"))
+	os.Remove(w.top("@koan.json"))
 	if w.ok("init", `{}`); w.counter() != 9 {
 		t.Errorf("init beside notes 9: last_id %v", w.counter())
 	}
 	os.WriteFile(w.root("a/folder.json"), []byte(strings.Replace(w.file("a/folder.json"), `"id": 1`, `"id": 50`, 1)), 0o644)
-	os.Remove(w.root("koan.json"))
+	os.Remove(w.top("@koan.json"))
 	if w.ok("init", `{}`); w.counter() != 50 {
 		t.Errorf("init beside folder 50: last_id %v", w.counter())
 	}
 }
 
-// A format-3 tree kept its counter in the state file: migrate moves it into
-// @koan.json, above every ID in the tree, and keeps the claims.
-func TestMigrateMovesTheCounter(t *testing.T) {
-	w := lowCounter(t) // IDs to 10
-	w.ok("task claim", `{"id":2}`)
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema":3}`), 0o644)
-	var st map[string]any
-	json.Unmarshal([]byte(w.stateFile()), &st)
-	st["schema"], st["last_id"] = 1, 7
-	data, _ := json.Marshal(st)
-	os.WriteFile(w.env.StatePath(), data, 0o600)
-	info := w.ok("info", `{}`)
-	if info["state"] != "needs-migration" || info["last_id"] != float64(7) {
-		t.Errorf("info on format 3: %v", info)
-	}
-	if got := w.ok("migrate", `{}`); got["from"] != float64(3) || got["to"] != float64(4) {
-		t.Errorf("migrate: %v", got)
-	}
-	if got := w.file("koan.json"); got != "{\n  \"schema\": 4,\n  \"last_id\": 10\n}\n" {
-		t.Errorf("@koan.json is %q", got)
-	}
-	if got := w.ok("task show", `{"id":2}`); task(got)["claim"] == nil {
-		t.Error("migrate dropped a claim")
-	}
-	if f := w.findings(); len(f) != 0 {
-		t.Errorf("findings %v", f)
+// No earlier tree format converts to format 5, which moved the tree into
+// tree/: migrate and doctor refuse them, and the files are left alone.
+func TestMigrateRefusesEarlierFormats(t *testing.T) {
+	w := lowCounter(t)
+	for _, old := range []string{`{"schema":3}`, `{"schema":4,"last_id":10}`} {
+		os.WriteFile(w.top("@koan.json"), []byte(old), 0o644)
+		if info := w.ok("info", `{}`); info["state"] != "needs-migration" {
+			t.Errorf("info on %s: %v", old, info)
+		}
+		w.fail("migrate", `{}`, errs.Conflict, errs.RuleNoConversion)
+		w.fail("doctor", `{}`, errs.Conflict, errs.RuleNoConversion)
+		if got := w.fileAt(w.top("@koan.json")); got != old {
+			t.Errorf("@koan.json is %q", got)
+		}
 	}
 }

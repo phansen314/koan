@@ -141,6 +141,7 @@ var commands = []command{
 	{name: "folder delete", short: "Remove a folder and everything in it", subject: "folder", options: []option{
 		{"contents", boolean, "remove a folder that is not empty", ""},
 		{"force", boolean, "with --contents, remove material too: files and folders koan did not make", ""}}},
+	{name: "folder archive", short: "Move a done folder, and everything in it, into the archive", subject: "folder"},
 	{name: "folder list", short: "Return the folders under a folder", options: []option{
 		{"folder", text, "the folders under this one, by path or ID (default /)", ""},
 		{"recursive", boolean, "include the folders under those (default true)", ""},
@@ -180,6 +181,7 @@ var commands = []command{
 	{name: "task move", short: "Move a task to another folder", subject: "id", subjKin: integer, needs: "--to <folder>", options: []option{
 		{"to", text, "the folder to move it into, by path or ID (required)", ""}}},
 	{name: "task delete", short: "Remove a task", subject: "id", subjKin: integer},
+	{name: "task archive", short: "Move a done task into the archive", subject: "id", subjKin: integer},
 	{name: "task frontier", short: "Return the ready, unclaimed tasks, in work order", options: narrowOptions},
 	{name: "task list", short: "Return the tasks in scope", options: append(append([]option{}, narrowOptions...),
 		option{"claimed", boolean, "only claimed tasks, or with =false only unclaimed ones", ""},

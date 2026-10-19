@@ -4,7 +4,7 @@
   "type": "object",
   "required": ["id", "path", "changed", "folders_created"],
   "properties": {
-    "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for the root, and for a folder with no usable folder file." },
+    "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for /, and for a folder with no usable folder file." },
     "path": { "$ref": "folder-path", "description": "The new path." },
     "changed": { "type": "boolean" },
     "folders_created": {

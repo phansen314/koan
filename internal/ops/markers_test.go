@@ -459,13 +459,19 @@ func TestMarkerLookupMore(t *testing.T) {
 // leads.
 func TestMarkerBindAgainstALinkedTree(t *testing.T) {
 	w := newWorld(t)
-	real := outside(t)
-	os.Mkdir(real+"/tree", 0o755)
-	os.Symlink(real+"/tree", w.env.RootPath())
+	parent := outside(t)
+	real := parent + "/root"
+	os.Mkdir(real, 0o755)
+	os.Symlink(real, w.env.RootPath())
 	w.ok("init", `{}`)
 	w.ok("folder create", `{"folder":"/p"}`)
+	w.ok("task create", `{"title":"a","folder":"/q"}`)
+	w.ok("task done", `{"id":3}`)
+	w.ok("folder archive", `{"folder":"/q"}`)
 	w.fail("marker bind", bind("/p", real+"/tree/@p"), errs.Conflict, errs.RuleInTree)
-	w.fail("marker bind", bind("/p", real), errs.Conflict, errs.RuleHoldsTree)
+	w.fail("marker bind", bind("/p", real+"/archived/@2_q"), errs.Conflict, errs.RuleInTree)
+	w.fail("marker bind", bind("/p", real), errs.Conflict, errs.RuleInTree)
+	w.fail("marker bind", bind("/p", parent), errs.Conflict, errs.RuleHoldsTree)
 	w.fail("marker bind", bind("/p", w.env.Home), errs.Conflict, errs.RuleHoldsTree)
 	w.ok("marker bind", bind("/p", outside(t)))
 }

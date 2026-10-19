@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-archive-output",
+  "type": "object",
+  "required": ["id", "path", "changed", "archived", "dependents"],
+  "properties": {
+    "id": { "$ref": "task-file#/properties/id" },
+    "path": { "$ref": "folder-path", "description": "The path of the folder it was in." },
+    "changed": { "const": true },
+    "archived": { "type": "string", "description": "The absolute path of its task file in the archive." },
+    "dependents": {
+      "type": "array",
+      "items": { "$ref": "task-file#/properties/id" },
+      "uniqueItems": true,
+      "description": "The tasks and folders whose blocked_by changed. Ascending."
+    }
+  },
+  "additionalProperties": false
+}

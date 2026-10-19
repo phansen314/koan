@@ -26,7 +26,7 @@ func TestFolders(t *testing.T) {
 		}
 	}
 	f := Folder("/proj/travel")
-	if f.Rel() != "@proj/@travel" || Root.Rel() != "." || f.Parent() != "/proj" || Folder("/proj").Parent() != Root {
+	if f.Rel() != "tree/@proj/@travel" || Root.Rel() != "tree" || f.Parent() != "/proj" || Folder("/proj").Parent() != Root {
 		t.Error("Rel or Parent")
 	}
 	if !Folder("/proj").Holds(f) || Folder("/pro").Holds(f) || !Root.Holds(f) || !f.Holds(f) || Folder("/proj").Holds("/proj-b") {

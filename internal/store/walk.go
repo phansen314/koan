@@ -95,8 +95,7 @@ func (t *Tree) walk(x *Index, f model.Folder, tolerant bool) *errs.Error {
 		}
 		id, suffix, isTask := model.TaskFilename(name)
 		folderName, isFolder := model.FolderName(name)
-		own := f == model.Root && name == model.MetaName ||
-			f != model.Root && (name == model.FolderFileName || name == model.FolderNotesName)
+		own := f != model.Root && (name == model.FolderFileName || name == model.FolderNotesName)
 		switch {
 		case own && name == model.FolderFileName:
 			// Whatever is there, a folder file koan can't use is

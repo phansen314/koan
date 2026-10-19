@@ -9,14 +9,14 @@
       "type": "object",
       "required": ["id", "path"],
       "properties": {
-        "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for the root, and for a folder with no usable folder file." },
+        "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for /, and for a folder with no usable folder file." },
         "path": { "$ref": "folder-path" },
         "dir": { "type": "string", "description": "The absolute filesystem path of the folder's directory." },
         "title": { "$ref": "folder-file#/properties/title" },
-        "blocked_by": { "anyOf": [{ "$ref": "task-file#/properties/blocked_by" }, { "type": "null" }], "description": "Its folder file's; [] for the root; null for a folder with no usable folder file." },
+        "blocked_by": { "anyOf": [{ "$ref": "task-file#/properties/blocked_by" }, { "type": "null" }], "description": "Its folder file's; [] for /; null for a folder with no usable folder file." },
         "extra": { "type": "object" },
-        "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for the root." },
-        "readiness": { "enum": ["ready", "blocked", "done"], "description": "done when every task under it, at any depth, is done; else blocked or ready by its own and inherited blockers. The root is never blocked." },
+        "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for /." },
+        "readiness": { "enum": ["ready", "blocked", "done"], "description": "done when every task under it, at any depth, is done; else blocked or ready by its own and inherited blockers. / is never blocked." },
         "open_blockers": { "$ref": "task#/$defs/partial/properties/open_blockers", "description": "The IDs that block its contents now, in its own blocked_by and those of the folders above it. Ascending." },
         "inherited": { "$ref": "task#/$defs/inherited" },
         "empty": { "type": "boolean", "description": "Whether it holds no task file at any depth, usable or not. An empty folder is done." }

@@ -11,5 +11,5 @@
     "extra": { "type": "object", "description": "Any JSON object; koan stores it and never interprets it." }
   },
   "additionalProperties": false,
-  "description": "@folder.json, in every folder but the root."
+  "description": "@folder.json, in every folder but /."
 }

@@ -223,7 +223,7 @@ func TestCreateNeverOverwritesNotes(t *testing.T) {
 	w := ready(t)
 	w.ok("batch", `{"tasks":[{"title":"a"},{"title":"b"}]}`)
 	os.WriteFile(w.root("3.md"), []byte("someone's"), 0o644)
-	os.Remove(w.root("koan.json"))
+	os.Remove(w.top("@koan.json"))
 	w.ok("init", `{}`)
 	if id := w.ok("task create", `{"title":"c"}`)["id"]; id != float64(4) {
 		t.Errorf("new ID %v, want 4: 3 is taken by the orphan notes", id)
@@ -388,7 +388,7 @@ func TestCreateBlocksWritesDependentsFirst(t *testing.T) {
 	w.ok("task create", `{"title":"b"}`) // 2
 	// Rewriting task 2 fails, after task 1 is rewritten.
 	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
-		if op.Name == fsys.OpRename && op.NewPath == "@2.json" {
+		if op.Name == fsys.OpRename && op.NewPath == "tree/@2.json" {
 			return syscall.ENOSPC
 		}
 		return nil
@@ -413,7 +413,7 @@ func TestCreateBlocksNotesFail(t *testing.T) {
 	w := ready(t)
 	w.ok("task create", `{"title":"a"}`) // 1
 	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
-		if op.Name == fsys.OpLink && op.NewPath == "@2.md" {
+		if op.Name == fsys.OpLink && op.NewPath == "tree/@2.md" {
 			return syscall.ENOSPC
 		}
 		return nil
