@@ -184,12 +184,7 @@ func cmdBlock(c *call) (any, *errs.Error) {
 	bs, e := c.blockers(items, false)
 	// Every ID that names nothing is reported at once.
 	if _, ok := x.Tasks[id]; !ok {
-		gone := c.notFoundTasks(id)
-		if e != nil && e.Kind == errs.NotFound {
-			gone.Message += "; " + e.Message
-			gone.WithIDs(e.IDs...)
-		}
-		return nil, gone
+		return nil, alsoAbsent(c.notFoundTasks(id), e)
 	}
 	if e != nil {
 		return nil, e
@@ -225,6 +220,10 @@ func cmdUnblock(c *call) (any, *errs.Error) {
 		return nil, e
 	}
 	if _, _, e := c.find(id); e != nil {
+		if e.Kind == errs.NotFound {
+			_, be := c.blockers(items, true)
+			e = alsoAbsent(e, be)
+		}
 		return nil, e
 	}
 	bs, e := c.blockers(items, true)

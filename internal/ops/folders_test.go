@@ -334,3 +334,93 @@ func TestDeleteFolderRefusesMaterial(t *testing.T) {
 		t.Errorf("the folder is still there: %v", err)
 	}
 }
+
+// folder create with blocks, failing after what is in blocks waits on the
+// new folder's ID, says what it left (spec/operations.md, folder create).
+func TestFolderCreateBlocksFailing(t *testing.T) {
+	for _, c := range []struct {
+		what    string
+		fail    func(op fsys.Op) bool
+		ids     []int64
+		folders []string
+		message string
+		id      any // the folder's ID afterwards, nil when it has none
+	}{
+		{"the folder", func(op fsys.Op) bool { return op.Name == fsys.OpMkdir && op.Path == "@c" }, []int64{1}, []string{}, "[1] wait on folder 2, which was not made", nil},
+		{"its folder file", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "@c/@folder.json" }, []int64{1}, []string{"/c"}, "/c was made without its @folder.json", nil},
+		{"its notes", func(op fsys.Op) bool { return op.Name == fsys.OpLink && op.NewPath == "@c/@folder.md" }, []int64{2}, []string{}, "/c was made without its notes", float64(2)},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			w := ready(t)
+			w.ok("task create", `{"title":"a"}`) // 1
+			w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
+				if c.fail(op) {
+					return syscall.ENOSPC
+				}
+				return nil
+			}}
+			env := w.run("folder create", `{"folder":"/c","blocks":[1]}`)
+			w.env.FS = fsys.FS{}
+			if env.OK {
+				t.Fatalf("got %+v", env)
+			}
+			e := env.Error
+			if !slices.Equal(e.IDs, c.ids) || !slices.Equal(e.Folders, c.folders) || !strings.HasPrefix(e.Message, c.message) {
+				t.Errorf("ids %v folders %v message %q", e.IDs, e.Folders, e.Message)
+			}
+			if c.id != nil {
+				if id, _ := w.holderOf("/c"); id != c.id {
+					t.Errorf("/c has ID %v, want %v", id, c.id)
+				}
+			}
+			wantIDs(t, "task 1's blocked_by", task(w.ok("task show", `{"id":1}`))["blocked_by"], 2)
+		})
+	}
+}
+
+// The root is always there: folder create / is a success with nothing to
+// make, and destination-exists with anything to set.
+func TestFolderCreateRoot(t *testing.T) {
+	w := ready(t)
+	if got := w.ok("folder create", `{"folder":"/"}`); got["id"] != nil || got["changed"] != false {
+		t.Errorf("folder create /: %v", got)
+	}
+	w.fail("folder create", `{"folder":"/","title":"x"}`, errs.Conflict, errs.RuleDestinationExists)
+}
+
+// A folder delete failing partway takes the IDs of the folders it did
+// remove out of every blocked_by, and leaves those of the folders left.
+func TestDeleteFolderFailingPartwayUnreferencesFolders(t *testing.T) {
+	w := ready(t)
+	// /d is 1, /d/x 2, /d/y 3, /out 4; then a 5 in /d/x, b 6 in /d/y, and 7
+	// waiting on both folders.
+	w.ok("batch", `{"tasks":[{"title":"a","folder":"/d/x"},{"title":"b","folder":"/d/y"},`+
+		`{"title":"t","folder":"/out","blocked_by":["/d/x","/d/y"]}]}`)
+	// Fail the removal of the second task file: the folder of the first is
+	// gone with it, the other left.
+	var removed []int64
+	w.env.FS = fsys.FS{Hook: func(op fsys.Op) error {
+		name := path.Base(op.Path)
+		if op.Name != fsys.OpRemove || !strings.HasSuffix(name, ".json") || name == "@folder.json" {
+			return nil
+		}
+		if len(removed) == 1 {
+			return syscall.EACCES
+		}
+		id, _ := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(name, "@"), ".json"), 10, 64)
+		removed = append(removed, id)
+		return nil
+	}}
+	w.fail("folder delete", `{"folder":"/d","contents":true}`, errs.IO, "")
+	w.env.FS = fsys.FS{}
+	left := int64(2)
+	if removed[0] == 5 {
+		left = 3
+	}
+	if got := task(w.ok("task show", `{"id":7}`))["blocked_by"]; !slices.Equal(ids(got), []int64{left}) {
+		t.Errorf("7 is blocked by %v, want only the folder left, %d", got, left)
+	}
+	if f := w.findings(); len(f) != 0 {
+		t.Errorf("findings %v", f)
+	}
+}

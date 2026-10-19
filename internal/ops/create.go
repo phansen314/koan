@@ -98,12 +98,17 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	if n.folder, e = c.resolve(n.at); e != nil {
 		return nil, e
 	}
-	bs, e := c.blockers(n.blockers, false)
+	// What is missing from both is named at once.
+	var m absent
+	bs, e := c.gather(n.blockers, false, &m)
 	if e != nil {
 		return nil, e
 	}
-	ds, e := c.blockers(blocks, false)
+	ds, e := c.gather(blocks, false, &m)
 	if e != nil {
+		return nil, e
+	}
+	if e := m.err(); e != nil {
 		return nil, e
 	}
 	// Everything in blocks is rewritten, so each must be usable: found out
@@ -360,7 +365,9 @@ func cmdBatch(c *call) (any, *errs.Error) {
 	}
 	base := next + model.ID(len(missing))
 	// The blockers named by ID or by a path of the tree, and by a path of
-	// a folder the batch makes, which has the ID it will take.
+	// a folder the batch makes, which has the ID it will take. What is
+	// missing from every entry is named at once.
+	var gone absent
 	resolve := func(items []item) ([]resolved, *errs.Error) {
 		var mine []resolved
 		var theirs []item
@@ -371,7 +378,7 @@ func cmdBatch(c *call) (any, *errs.Error) {
 				theirs = append(theirs, it)
 			}
 		}
-		rs, e := c.blockers(theirs, false)
+		rs, e := c.gather(theirs, false, &gone)
 		return append(rs, mine...), e
 	}
 	entryBlockers := make([][]resolved, len(entries))
@@ -389,6 +396,9 @@ func cmdBatch(c *call) (any, *errs.Error) {
 		for j, ref := range n.refs {
 			taskBlockers[i] = append(taskBlockers[i], resolved{base + model.ID(refAt[ref]), n.refsAt[j]})
 		}
+	}
+	if e := gone.err(); e != nil {
+		return nil, e
 	}
 	// Refs and folder paths can each close a cycle, with the tree: the batch
 	// is checked as a whole.

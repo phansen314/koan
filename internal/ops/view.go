@@ -393,8 +393,9 @@ func (o *overlay) Blockers(f model.Folder) ([]model.ID, bool, bool) {
 // cycleCheck is a change to check for a cycle before it is written.
 type cycleCheck struct {
 	o       *overlay
-	changed []graph.Ref             // the nodes the change touches: every cycle it closes passes one
-	pairs   []waits                 // the new waits, for the containment check
+	changed []graph.Ref             // what the change touches, which a cycle it closes starts at
+	pairs   []waits                 // the waits, for the containment check
+	edges   []graph.Edge            // the new edges, each searched for a path back
 	fields  map[[2]graph.Ref]string // the input field that adds each new edge
 }
 
@@ -410,16 +411,26 @@ func (c *call) newCheck(o *overlay) *cycleCheck {
 	return &cycleCheck{o: o, fields: map[[2]graph.Ref]string{}}
 }
 
-// wait records that waiter waits on blocker, by the input field at field.
+// wait records that waiter newly waits on blocker, by the input field at
+// field.
 func (k *cycleCheck) wait(waiter graph.Ref, blocker model.ID, field string) {
-	k.pairs = append(k.pairs, waits{waiter, blocker, field})
+	k.contain(waiter, blocker, field)
 	if t, ok := k.o.target(blocker); ok {
-		k.fields[[2]graph.Ref{waiter, t}] = field
+		k.edge(waiter, t, field)
 	}
 }
 
+// contain records a wait the change keeps but puts in a new place, for the
+// containment check alone: it adds no edge to search from.
+func (k *cycleCheck) contain(waiter graph.Ref, blocker model.ID, field string) {
+	k.pairs = append(k.pairs, waits{waiter, blocker, field})
+}
+
 // edge records that the input field at field adds the edge from a to b.
-func (k *cycleCheck) edge(a, b graph.Ref, field string) { k.fields[[2]graph.Ref{a, b}] = field }
+func (k *cycleCheck) edge(a, b graph.Ref, field string) {
+	k.edges = append(k.edges, graph.Edge{From: a, To: b})
+	k.fields[[2]graph.Ref{a, b}] = field
+}
 
 // target is the node a blocker leads to: a task's, or a folder's done
 // node.
@@ -448,7 +459,7 @@ func (c *call) refuse(k *cycleCheck) *errs.Error {
 		}
 	}
 	g := graph.New(o)
-	cycle, broken := g.CycleThrough(k.changed)
+	cycle, broken := g.CycleThrough(k.edges, k.changed)
 	if o.base.err != nil {
 		return o.base.err
 	}

@@ -288,40 +288,79 @@ func (g *Graph) Edges(r Ref) (out []Ref, broken bool) {
 	return out, false
 }
 
-// CycleThrough finds a cycle through one of the nodes changed, the first
-// that has one: a shortest path from it back to itself, starting at it. A
-// node met whose file can't be used is returned as broken, the first one
-// met, when no cycle is found: a cycle through it can't be ruled out.
-func (g *Graph) CycleThrough(changed []Ref) (cycle []Ref, broken *Ref) {
-	for _, c := range changed {
-		parent := map[Ref]Ref{c: c}
-		queue := []Ref{c}
-		for len(queue) > 0 {
-			n := queue[0]
-			queue = queue[1:]
-			out, bad := g.Edges(n)
-			if bad && broken == nil {
-				b := n
-				broken = &b
-			}
-			for _, m := range out {
-				if m == c {
-					path := []Ref{n}
-					for n != c {
-						n = parent[n]
-						path = append(path, n)
-					}
-					slices.Reverse(path)
-					return path, nil
-				}
-				if _, seen := parent[m]; !seen {
-					parent[m] = n
-					queue = append(queue, m)
-				}
+// Edge is one edge of the cycle graph: From waits on To.
+type Edge struct{ From, To Ref }
+
+// CycleThrough finds a cycle through one of the new edges given, which the
+// graph already holds: a shortest path from an edge's To back to its From,
+// searched for each edge in turn, those from a node in starts first, so that
+// only what the new edges lead to is loaded. The cycle is the edge and the
+// path back, turned to start at the first of starts in it. A node met whose
+// file can't be used is returned as broken, the first one met, when no
+// cycle is found: a cycle through it can't be ruled out.
+func (g *Graph) CycleThrough(edges []Edge, starts []Ref) (cycle []Ref, broken *Ref) {
+	var order []Edge
+	for _, s := range starts {
+		for _, e := range edges {
+			if e.From == s && !slices.Contains(order, e) {
+				order = append(order, e)
 			}
 		}
 	}
+	for _, e := range edges {
+		if !slices.Contains(order, e) {
+			order = append(order, e)
+		}
+	}
+	for _, e := range order {
+		if path := g.pathBack(e, &broken); path != nil {
+			return turn(path, starts), nil
+		}
+	}
 	return nil, broken
+}
+
+// pathBack is a shortest cycle through edge e: e.From, then a shortest path
+// from e.To back to e.From, which it leaves out. It is nil when there is
+// none. The first node met whose file can't be used is kept in *broken.
+func (g *Graph) pathBack(e Edge, broken **Ref) []Ref {
+	parent := map[Ref]Ref{e.To: e.To}
+	queue := []Ref{e.To}
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		if n == e.From {
+			var path []Ref
+			for n != e.To {
+				n = parent[n]
+				path = append(path, n)
+			}
+			slices.Reverse(path)
+			return append([]Ref{e.From}, path...)
+		}
+		out, bad := g.Edges(n)
+		if bad && *broken == nil {
+			b := n
+			*broken = &b
+		}
+		for _, m := range out {
+			if _, seen := parent[m]; !seen {
+				parent[m] = n
+				queue = append(queue, m)
+			}
+		}
+	}
+	return nil
+}
+
+// turn rotates a cycle to start at the first of starts in it.
+func turn(cycle, starts []Ref) []Ref {
+	for _, s := range starts {
+		if i := slices.Index(cycle, s); i >= 0 {
+			return append(slices.Clone(cycle[i:]), cycle[:i]...)
+		}
+	}
+	return cycle
 }
 
 // Collapse is a cycle as its tasks and folders: a folder's two nodes next to

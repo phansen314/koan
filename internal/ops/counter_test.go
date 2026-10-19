@@ -191,3 +191,16 @@ func TestInitRerunNeedsTheWholeTree(t *testing.T) {
 	defer os.Chmod(w.root("locked"), 0o755)
 	w.fail("init", `{}`, errs.IO, "")
 }
+
+// A folder file's ID counts as much as a task's: the counter is raised past
+// it, and the warning names the folder file.
+func TestIssueCountsFolderFiles(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/a"}`) // 1
+	os.WriteFile(w.root("a/folder.json"), []byte(strings.Replace(w.file("a/folder.json"), `"id": 1`, `"id": 50`, 1)), 0o644)
+	env := w.run("task create", `{"title":"x"}`)
+	if !env.OK || result(env)["id"] != float64(51) || !aboveCounter(env, 50) ||
+		!slices.ContainsFunc(env.Warnings, func(wn errs.Warning) bool { return slices.Contains(wn.Paths, w.root("a/folder.json")) }) {
+		t.Errorf("create beside folder 50: %+v", env)
+	}
+}

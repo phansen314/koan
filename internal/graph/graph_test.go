@@ -158,9 +158,23 @@ func TestDone(t *testing.T) {
 }
 
 // cycleIn is the cycle the graph finds through changed, collapsed.
+// cycleIn is the cycle, collapsed, through any edge out of the nodes
+// changed, as though each of them were new.
 func cycleIn(tr tree, changed ...Ref) []Ref {
-	c, _ := New(tr).CycleThrough(changed)
+	g := New(tr)
+	c, _ := g.CycleThrough(edgesOut(g, changed...), changed)
 	return Collapse(c)
+}
+
+func edgesOut(g *Graph, nodes ...Ref) []Edge {
+	var es []Edge
+	for _, n := range nodes {
+		out, _ := g.Edges(n)
+		for _, m := range out {
+			es = append(es, Edge{n, m})
+		}
+	}
+	return es
 }
 
 func TestCycleThrough(t *testing.T) {
@@ -219,8 +233,21 @@ func TestCycleThrough(t *testing.T) {
 		folders: map[model.Folder]folder{},
 	}
 	tr.tasks[1] = task{folder: "/", blockedBy: []model.ID{2}}
-	if c, broken := New(tr).CycleThrough([]Ref{TaskRef(1)}); c != nil || broken == nil || *broken != TaskRef(2) {
+	g := New(tr)
+	if c, broken := g.CycleThrough(edgesOut(g, TaskRef(1)), []Ref{TaskRef(1)}); c != nil || broken == nil || *broken != TaskRef(2) {
 		t.Errorf("cycle %v, broken %v", c, broken)
+	}
+	// Only what the new edge leads to is searched: 1 already waits on 2,
+	// which can't be used, and a new edge from 1 to 3 never meets it.
+	tr.tasks[3] = task{folder: "/"}
+	if c, broken := New(tr).CycleThrough([]Edge{{TaskRef(1), TaskRef(3)}}, []Ref{TaskRef(1)}); c != nil || broken != nil {
+		t.Errorf("a new edge away from an unusable file: cycle %v, broken %v", c, broken)
+	}
+	// The cycle is the new edge and the path back, from what changed.
+	tr = tree{tasks: map[model.ID]task{1: {folder: "/", blockedBy: []model.ID{2}}, 2: {folder: "/", blockedBy: []model.ID{3}}, 3: {folder: "/", blockedBy: []model.ID{1}}}}
+	c, _ = New(tr).CycleThrough([]Edge{{TaskRef(2), TaskRef(3)}}, []Ref{TaskRef(1)})
+	if !slices.Equal(c, []Ref{TaskRef(1), TaskRef(2), TaskRef(3)}) {
+		t.Errorf("turned to start at what changed: %v", c)
 	}
 }
 

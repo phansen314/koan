@@ -314,3 +314,27 @@ func TestDoctorCountsNotesAboveTheCounter(t *testing.T) {
 		t.Errorf("next ID %v, want 58", id)
 	}
 }
+
+// Cycle findings, which name several places, come by their lowest ID, not
+// tree order: /a and /b, IDs 1 and 2, come after tasks 3 and 4 in tree
+// order, but their cycle is reported first.
+func TestDoctorOrdersCyclesByLowestID(t *testing.T) {
+	w := ready(t)
+	w.ok("folder create", `{"folder":"/a"}`) // 1
+	w.ok("folder create", `{"folder":"/b"}`) // 2
+	w.ok("task create", `{"title":"c"}`)     // 3
+	w.ok("task create", `{"title":"d"}`)     // 4
+	edit := func(rel, blockers string) {
+		os.WriteFile(w.root(rel), []byte(strings.Replace(w.file(rel), `"blocked_by": []`, `"blocked_by": `+blockers, 1)), 0o644)
+	}
+	edit("a/folder.json", "[2]")
+	edit("b/folder.json", "[1]")
+	edit("3.json", "[4]")
+	edit("4.json", "[3]")
+	fs := w.ok("doctor", `{}`)["findings"].([]any)
+	if len(fs) != 2 {
+		t.Fatalf("findings %v", fs)
+	}
+	wantIDs(t, "first cycle", fs[0].(map[string]any)["ids"], 1, 2)
+	wantIDs(t, "second cycle", fs[1].(map[string]any)["ids"], 3, 4)
+}

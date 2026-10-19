@@ -115,12 +115,17 @@ func cmdFolderCreate(c *call) (any, *errs.Error) {
 		}
 		return folderCreated{c.made(f, false, []model.Folder{}), []model.ID{}}, nil
 	}
-	bs, e := c.blockers(blockedBy, false)
+	// What is missing from both is named at once.
+	var m absent
+	bs, e := c.gather(blockedBy, false, &m)
 	if e != nil {
 		return nil, e
 	}
-	ds, e := c.blockers(blocks, false)
+	ds, e := c.gather(blocks, false, &m)
 	if e != nil {
+		return nil, e
+	}
+	if e := m.err(); e != nil {
 		return nil, e
 	}
 	deps, e := c.dependents(ds)
@@ -176,13 +181,35 @@ func cmdFolderCreate(c *call) (any, *errs.Error) {
 	}
 	created, e := c.makeFolders(missing, first, want...)
 	if e != nil {
+		return nil, c.folderNotMade(e, f, id, created, dependents)
+	}
+	return folderCreated{c.made(f, len(created) > 0, created), dependents}, nil
+}
+
+// folderNotMade is the error of a folder create of f, with ID id, that
+// failed making the folders, after what is in blocks, dependents, was made
+// to wait on id: it says what it left (spec/operations.md, folder create).
+func (c *call) folderNotMade(e *errs.Error, f model.Folder, id model.ID, created []model.Folder, dependents []model.ID) *errs.Error {
+	_, noFile := c.t.Stat(model.FolderFileRel(f))
+	switch {
+	case !slices.Contains(created, f):
 		if len(dependents) > 0 {
 			e.Message = fmt.Sprintf("%v wait on folder %d, which was not made: %s", dependents, id, e.Message)
 			e.WithIDs(dependents...)
 		}
-		return nil, e
+	case noFile != nil:
+		e.Message = fmt.Sprintf("%s was made without its %s, so `koan repair` gives it a new ID: %s", f, model.FolderFileName, e.Message)
+		if len(dependents) > 0 {
+			e.Message = fmt.Sprintf("%s; %v wait on %d, which it will not have, so point them at it with task block or folder block", e.Message, dependents, id)
+		}
+		e.WithIDs(dependents...).WithFolders(string(f))
+	default:
+		// Only its notes are missing: what is in blocks waits on a folder
+		// that exists.
+		e.Message = fmt.Sprintf("%s was made without its notes: %s", f, e.Message)
+		e.WithIDs(id)
 	}
-	return folderCreated{c.made(f, len(created) > 0, created), dependents}, nil
+	return e
 }
 
 func cmdFolderShow(c *call) (any, *errs.Error) {
@@ -336,8 +363,11 @@ func cmdFolderMove(c *call) (any, *errs.Error) {
 	} else if taken {
 		return nil, c.destinationExists("already exists", to)
 	}
-	if e := c.moveCheck(graph.Ref{}, from, to); e != nil {
-		return nil, e
+	// A rename keeps the parent, so nothing it inherits or holds changes.
+	if from.Parent() != to.Parent() {
+		if e := c.moveCheck(graph.Ref{}, from, to); e != nil {
+			return nil, e
+		}
 	}
 	created, e := c.ensure(to.Parent())
 	if e != nil {
@@ -388,7 +418,7 @@ func (c *call) moveCheck(t graph.Ref, from, to model.Folder) *errs.Error {
 		k.changed = []graph.Ref{t}
 		n, _ := o.Task(t.ID)
 		for _, b := range n.BlockedBy {
-			k.wait(t, b, "/to")
+			k.contain(t, b, "/to")
 		}
 		if to != model.Root {
 			k.edge(t, graph.WaitOf(to), "/to")
@@ -397,21 +427,23 @@ func (c *call) moveCheck(t graph.Ref, from, to model.Folder) *errs.Error {
 	} else {
 		o.from, o.to = from, to
 		k.changed = []graph.Ref{graph.WaitOf(to), graph.DoneOf(to)}
-		k.edge(graph.WaitOf(to), graph.WaitOf(into), "/to")
-		k.edge(graph.DoneOf(into), graph.DoneOf(to), "/to")
+		if into != model.Root {
+			k.edge(graph.WaitOf(to), graph.WaitOf(into), "/to")
+			k.edge(graph.DoneOf(into), graph.DoneOf(to), "/to")
+		}
 		// What is under the folder, against the blockers of its new
 		// ancestors, and they against what is under it.
 		var walk func(f model.Folder)
 		walk = func(f model.Folder) {
 			bs, _, _ := o.Blockers(f)
 			for _, b := range bs {
-				k.wait(graph.WaitOf(f), b, "/to")
+				k.contain(graph.WaitOf(f), b, "/to")
 			}
 			fo := o.Folder(f)
 			for _, id := range fo.Tasks {
 				if n, ok := o.Task(id); ok {
 					for _, b := range n.BlockedBy {
-						k.wait(graph.TaskRef(id), b, "/to")
+						k.contain(graph.TaskRef(id), b, "/to")
 					}
 				}
 			}
@@ -424,7 +456,7 @@ func (c *call) moveCheck(t graph.Ref, from, to model.Folder) *errs.Error {
 	for _, a := range graph.Chain(into) {
 		bs, _, _ := o.Blockers(a)
 		for _, b := range bs {
-			k.wait(graph.WaitOf(a), b, "/to")
+			k.contain(graph.WaitOf(a), b, "/to")
 		}
 	}
 	return c.refuse(k)
@@ -606,6 +638,12 @@ func cmdFolderBlock(c *call) (any, *errs.Error) {
 	}
 	f, ff, e := c.blockedFolder(ref)
 	if e != nil {
+		// Every task, folder, and path that names nothing is reported at
+		// once.
+		if e.Kind == errs.NotFound {
+			_, be := c.blockers(items, false)
+			e = alsoAbsent(e, be)
+		}
 		return nil, e
 	}
 	bs, e := c.blockers(items, false)
@@ -645,6 +683,12 @@ func cmdFolderUnblock(c *call) (any, *errs.Error) {
 	}
 	f, ff, e := c.blockedFolder(ref)
 	if e != nil {
+		// Every task, folder, and path that names nothing is reported at
+		// once.
+		if e.Kind == errs.NotFound {
+			_, be := c.blockers(items, true)
+			e = alsoAbsent(e, be)
+		}
 		return nil, e
 	}
 	bs, e := c.blockers(items, true)

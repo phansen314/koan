@@ -429,3 +429,30 @@ func TestCreateBlocksNotesFail(t *testing.T) {
 		t.Errorf("findings %v", f)
 	}
 }
+
+// not-found names everything missing at once, across every field of the
+// input: IDs in ids, folder paths in folders.
+func TestNotFoundAcrossFields(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"a"}`) // 1
+	for _, c := range []struct {
+		name, input string
+		ids         []int64
+		folders     []string
+	}{
+		{"task create", `{"title":"x","blocked_by":[98],"blocks":[99]}`, []int64{98, 99}, []string{}},
+		{"task create", `{"title":"x","blocked_by":[98,"/nope"]}`, []int64{98}, []string{"/nope"}},
+		{"task block", `{"id":1,"blocked_by":[98,"/nope"]}`, []int64{98}, []string{"/nope"}},
+		{"task block", `{"id":97,"blocked_by":[98,"/nope"]}`, []int64{97, 98}, []string{"/nope"}},
+		{"task unblock", `{"id":97,"blocked_by":["/nope"]}`, []int64{97}, []string{"/nope"}},
+		{"folder block", `{"folder":"/gone","blocked_by":[98,"/nope"]}`, []int64{98}, []string{"/gone", "/nope"}},
+		{"folder unblock", `{"folder":"@96","blocked_by":["/nope"]}`, []int64{96}, []string{"/nope"}},
+		{"folder create", `{"folder":"/f","blocked_by":["/nope"],"blocks":[99]}`, []int64{99}, []string{"/nope"}},
+		{"batch", `{"folders":[{"folder":"/f","blocked_by":["/nope"]}],"tasks":[{"title":"a","blocked_by":[98]},{"title":"b","blocked_by":[99]}]}`, []int64{98, 99}, []string{"/nope"}},
+	} {
+		e := w.fail(c.name, c.input, errs.NotFound, "")
+		if !slices.Equal(e.IDs, c.ids) || !slices.Equal(e.Folders, c.folders) {
+			t.Errorf("%s %s: ids %v folders %v", c.name, c.input, e.IDs, e.Folders)
+		}
+	}
+}

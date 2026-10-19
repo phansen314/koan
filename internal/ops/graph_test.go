@@ -423,3 +423,101 @@ func TestFolderWhyWithNoFolderFile(t *testing.T) {
 	}
 	wantIDs(t, "stuck", why["stuck"], 2)
 }
+
+// A cycle check searches only from its new edges, so a file it can't use
+// that only the old ones lead to never refuses it (spec/implementation.md,
+// The graph).
+func TestCycleCheckSearchesFromTheNewEdges(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"one"}`)   // 1
+	w.ok("task create", `{"title":"two"}`)   // 2
+	w.ok("task create", `{"title":"three"}`) // 3
+	w.ok("task block", `{"id":1,"blocked_by":[3]}`)
+	os.WriteFile(w.root("3.json"), []byte("{"), 0o644)
+	w.ok("task block", `{"id":1,"blocked_by":[2]}`)
+	// A folder file that can't be used above what is blocked.
+	w.ok("task create", `{"title":"in b","folder":"/a/b"}`) // /a 4, /a/b 5, task 6
+	os.WriteFile(w.root("a/folder.json"), []byte("{"), 0o644)
+	w.ok("folder block", `{"folder":"/a/b","blocked_by":[2]}`)
+	w.ok("task block", `{"id":6,"blocked_by":[2]}`)
+	// A new blocker that leads to it is still refused.
+	w.ok("task create", `{"title":"under a","folder":"/a"}`) // 7
+	w.fail("task block", `{"id":2,"blocked_by":[7]}`, errs.Corrupt, "")
+}
+
+// A rename keeps the parent, and a move to the top level adds no edge: they
+// make no search. A move into another folder can't rule out a cycle through
+// the folder's unknown blockers (spec/operations.md, Folder and Cycles).
+func TestMovesThatMakeNoSearch(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"t","folder":"/p/m"}`) // /p 1, /p/m 2, task 3
+	os.WriteFile(w.root("p/m/3.json"), []byte("{"), 0o644)
+	w.ok("folder move", `{"folder":"/p/m","to":"/p/n"}`)
+	w.ok("folder move", `{"folder":"/p/n","to":"/n"}`)
+	os.WriteFile(w.root("n/folder.json"), []byte("{"), 0o644)
+	env := w.run("folder move", `{"folder":"/n","to":"/o"}`)
+	if !env.OK || result(env)["id"] != nil || !slices.ContainsFunc(env.Warnings, func(wn errs.Warning) bool { return wn.Kind == errs.WarnUnusableFile }) {
+		t.Errorf("a top-level move of a folder whose file can't be used: %+v", env)
+	}
+	w.ok("folder move", `{"folder":"/o","to":"/O"}`)
+	w.fail("folder move", `{"folder":"/O","to":"/p/o"}`, errs.Corrupt, "")
+}
+
+// Containment errors give the one that would wait first, whatever the
+// command changed, and the folders among the two.
+func TestContainmentErrors(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"t"}`)                      // 1
+	w.ok("folder create", `{"folder":"/x","blocked_by":[1]}`) // 2
+	w.ok("task create", `{"title":"in m","folder":"/m"}`)     // /m 3, task 4
+	w.ok("task create", `{"title":"in x","folder":"/x"}`)     // 5
+	w.ok("folder create", `{"folder":"/x/sub"}`)              // 6
+	for _, c := range []struct {
+		name, input string
+		ids         []int64
+		folders     []string
+		message     string
+	}{
+		{"task block", `{"id":5,"blocked_by":["/x"]}`, []int64{5, 2}, []string{"/x"}, "/x contains task 5"},
+		{"folder block", `{"folder":"/x","blocked_by":[5]}`, []int64{2, 5}, []string{"/x"}, "/x contains task 5"},
+		{"folder block", `{"folder":"/x/sub","blocked_by":["/x"]}`, []int64{6, 2}, []string{"/x/sub", "/x"}, "/x contains /x/sub"},
+		{"folder block", `{"folder":"/x","blocked_by":["/x/sub"]}`, []int64{2, 6}, []string{"/x", "/x/sub"}, "/x contains /x/sub"},
+		// In a move, the one that waits is a folder above the destination.
+		{"task move", `{"id":1,"to":"/x/y"}`, []int64{2, 1}, []string{"/x"}, "/x contains task 1"},
+	} {
+		e := w.fail(c.name, c.input, errs.Conflict, errs.RuleCycle)
+		if !slices.Equal(e.IDs, c.ids) || !slices.Equal(e.Folders, c.folders) || !strings.HasPrefix(e.Message, c.message) {
+			t.Errorf("%s %s: ids %v folders %v message %q", c.name, c.input, e.IDs, e.Folders, e.Message)
+		}
+	}
+	w.ok("folder block", `{"folder":"/x","blocked_by":[4]}`)
+	e := w.fail("folder move", `{"folder":"/m","to":"/x/m"}`, errs.Conflict, errs.RuleCycle)
+	if !slices.Equal(e.IDs, []int64{2, 4}) || !slices.Equal(e.Folders, []string{"/x"}) {
+		t.Errorf("folder move under what waits on its task: ids %v folders %v", e.IDs, e.Folders)
+	}
+}
+
+// A dangling ID in a folder file is reported only by a command that
+// evaluates that folder's blockers.
+func TestFolderDanglingReportedWhenEvaluated(t *testing.T) {
+	w := ready(t)
+	w.ok("task create", `{"title":"t","folder":"/p"}`) // /p 1, task 2
+	os.WriteFile(w.root("p/folder.json"), []byte(strings.Replace(w.file("p/folder.json"), `"blocked_by": []`, `"blocked_by": [99]`, 1)), 0o644)
+	dangling := func(env Envelope) bool {
+		return slices.ContainsFunc(env.Warnings, func(wn errs.Warning) bool { return wn.Kind == errs.WarnDanglingReference })
+	}
+	for _, c := range [][2]string{
+		{"folder update", `{"folder":"/p","title":"x"}`},
+		{"folder unblock", `{"folder":"/p","blocked_by":[98]}`},
+		{"task update", `{"id":2,"priority":1}`},
+	} {
+		if env := w.run(c[0], c[1]); !env.OK || dangling(env) {
+			t.Errorf("%s: %+v", c[0], env)
+		}
+	}
+	for _, c := range [][2]string{{"task show", `{"id":2}`}, {"folder show", `{"folder":"/p"}`}} {
+		if env := w.run(c[0], c[1]); !env.OK || !dangling(env) {
+			t.Errorf("%s: %+v", c[0], env)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/phansen314/koan/internal/errs"
 	"github.com/phansen314/koan/internal/graph"
@@ -31,14 +32,34 @@ func idsOf(rs []resolved) []model.ID {
 // reported at once, unless anyID is set, as in task unblock and folder
 // unblock, where an ID need not exist.
 func (c *call) blockers(items []item, anyID bool) ([]resolved, *errs.Error) {
+	var m absent
+	out, e := c.gather(items, anyID, &m)
+	if e == nil {
+		e = m.err()
+	}
+	if e != nil {
+		return nil, e
+	}
+	return out, nil
+}
+
+// gather is blockers for one field of an input with several: what is
+// missing is added to m, for one not-found over all of them, and any other
+// error is returned at once.
+func (c *call) gather(items []item, anyID bool, m *absent) ([]resolved, *errs.Error) {
 	if _, e := c.folders(); e != nil {
 		return nil, e
 	}
 	var out []resolved
-	var gone []model.ID
 	for _, it := range items {
 		id := it.id
 		if id == 0 {
+			if ok, e := c.t.FolderExists(it.path); e != nil {
+				return nil, e
+			} else if !ok {
+				m.folder(it.path)
+				continue
+			}
 			var e *errs.Error
 			if id, e = c.folderIDAt(it.path); e != nil {
 				return nil, e
@@ -47,7 +68,7 @@ func (c *call) blockers(items []item, anyID bool) ([]resolved, *errs.Error) {
 			_, isTask := c.x.Tasks[id]
 			switch n := len(c.fx.byID[id]); {
 			case !isTask && n == 0:
-				gone = append(gone, id)
+				m.id(id)
 				continue
 			case isTask && n > 0 || n > 1:
 				return nil, c.duplicateID(id)
@@ -57,13 +78,60 @@ func (c *call) blockers(items []item, anyID bool) ([]resolved, *errs.Error) {
 			out = append(out, resolved{id, it.at})
 		}
 	}
-	if len(gone) > 0 {
-		if len(gone) == 1 {
-			return nil, errs.New(errs.NotFound, "no task or folder has ID %d", gone[0]).WithIDs(gone...)
-		}
-		return nil, errs.New(errs.NotFound, "no task or folder has IDs %v", gone).WithIDs(gone...)
-	}
 	return out, nil
+}
+
+// alsoAbsent is the not-found error gone, with e's added when e is
+// not-found too: what blockers found missing, beside the task or folder the
+// command was asked for.
+func alsoAbsent(gone, e *errs.Error) *errs.Error {
+	if e != nil && e.Kind == errs.NotFound {
+		gone.Message += "; " + e.Message
+		gone.WithIDs(e.IDs...).WithFolders(e.Folders...)
+	}
+	return gone
+}
+
+// absent is what an input names that does not exist, gathered over all of
+// its fields, since not-found names everything missing at once.
+type absent struct {
+	ids     []model.ID
+	folders []model.Folder
+}
+
+func (m *absent) id(id model.ID) {
+	if !slices.Contains(m.ids, id) {
+		m.ids = append(m.ids, id)
+	}
+}
+
+func (m *absent) folder(f model.Folder) {
+	if !slices.Contains(m.folders, f) {
+		m.folders = append(m.folders, f)
+	}
+}
+
+// err is the not-found error naming everything missing, or nil.
+func (m *absent) err() *errs.Error {
+	var parts []string
+	switch len(m.ids) {
+	case 0:
+	case 1:
+		parts = append(parts, fmt.Sprintf("no task or folder has ID %d", m.ids[0]))
+	default:
+		parts = append(parts, fmt.Sprintf("no task or folder has IDs %v", m.ids))
+	}
+	for _, f := range m.folders {
+		parts = append(parts, fmt.Sprintf("folder %s does not exist", f))
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	e := errs.New(errs.NotFound, "%s", strings.Join(parts, "; ")).WithIDs(m.ids...)
+	for _, f := range m.folders {
+		e.WithFolders(string(f))
+	}
+	return e
 }
 
 // folderIDAt is the ID of the folder at path f, which a blocked_by stores
