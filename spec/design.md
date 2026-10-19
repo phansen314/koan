@@ -270,7 +270,7 @@ A **claim** reserves a task: once it is claimed, no other `task claim` of it suc
 | Finding | `repair` |
 |---|---|
 | `temp-leftover`: a temp file koan left behind | Removes it. |
-| `id-above-counter`: a task or folder ID above `last_id` | Raises `last_id`. |
+| `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name or in a folder file | Raises `last_id`. |
 | `dangling-reference`: a `blocked_by` ID with no task | Removes the ID, when asked for by name. |
 | `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name. |
 | `orphan-notes`: a `@<id>.md` with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes. Otherwise leaves it. |

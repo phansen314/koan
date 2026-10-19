@@ -123,6 +123,15 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 			above, abovePaths = append(above, ff.ID), append(abovePaths, t.Abs(model.FolderFileRel(f)))
 		}
 	}
+	// Notes hold their ID when their task is gone: the next task given it
+	// would find them in its place.
+	for _, id := range slices.Sorted(maps.Keys(x.Notes)) {
+		if _, isTask := x.Tasks[id]; id > t.State.LastID && !isTask {
+			for _, f := range x.Notes[id] {
+				above, abovePaths = append(above, id), append(abovePaths, t.Abs(model.NotesRel(f, id)))
+			}
+		}
+	}
 	if len(above) > 0 {
 		top := slices.Max(above)
 		d.add(errs.FindingIDAboveCounter, fmt.Sprintf("IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
