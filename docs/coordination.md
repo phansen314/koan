@@ -26,8 +26,8 @@ The coordinator closes both, by deciding who may do what.
 | Read: `task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `folder why`, `where`, `context` | yes | yes |
 | `task claim-next`, `task claim`, `task release` | yes | no |
 | `task create`, `batch`, `task update`, `task done`, `task reopen` | yes | no |
-| `task block`, `task unblock`, `task move`, `task delete` | yes | no |
-| `folder create`, `folder update`, `folder block`, `folder unblock`, `folder move`, `folder delete` | yes | no |
+| `task block`, `task unblock`, `task move`, `task delete`, `task archive` | yes | no |
+| `folder create`, `folder update`, `folder block`, `folder unblock`, `folder move`, `folder delete`, `folder archive` | yes | no |
 | `marker bind`, `marker unbind` | yes | no |
 | Edit the `@<id>.md` of its own task | no | yes |
 | Edit any other file in the tree | no | no |

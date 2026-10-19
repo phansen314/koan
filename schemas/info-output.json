@@ -5,7 +5,7 @@
   "required": ["root", "tree", "archive", "state_path", "state", "missing", "format", "last_id", "claims", "error"],
   "properties": {
     "root": { "type": "string" },
-    "tree": { "type": "string", "description": "The root folder's directory." },
+    "tree": { "type": "string", "description": "The tree's directory: the folder /." },
     "archive": { "type": "string", "description": "The archive's directory, there or not." },
     "state_path": { "type": "string" },
     "state": {

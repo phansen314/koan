@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/phansen314/koan/actions/workflows/ci.yml/badge.svg)](https://github.com/phansen314/koan/actions/workflows/ci.yml)
 
-Task management on one machine, with the filesystem as the database: tasks are JSON files in nested folders, with dependencies between them, and a Markdown notes file each. No daemon, no index, no server. Every command prints one line of JSON, so it is built to be driven by an agent such as Claude Code or OpenCode, with `jq` for anything a person reads.
+Task management on one machine, with the filesystem as the database: tasks are JSON files in nested folders, with dependencies between them, and a Markdown notes file each. No daemon, no index of the tree, no server. Every command prints one line of JSON, so it is built to be driven by an agent such as Claude Code or OpenCode, with `jq` for anything a person reads.
 
 Linux and macOS only.
 
@@ -146,7 +146,7 @@ To move a tree to another machine, clone or copy it to `~/koan-root` there and r
 
 ## Keeping the tree small
 
-koan has no index: a command walks the folders it needs, so the tree's size is its speed. Rather than keep finished work in it, archive a body of work when it is done (a story shipped, a trip taken):
+Nothing indexes the tree: a command walks the folders it needs, so the tree's size is its speed. Rather than keep finished work in it, archive a body of work when it is done (a story shipped, a trip taken):
 
 ```sh
 koan folder archive /work/HOME-12345     # the folder, everything under it, its material included

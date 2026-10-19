@@ -17,7 +17,7 @@
       "type": "array",
       "items": { "$ref": "task-file#/properties/id" }
     },
-    "repairable": { "type": "boolean", "description": "Whether repair can fix it: by default, or, for a dangling-reference to an ID the archive doesn't hold and a stale-claim on a task that is gone, when asked for by name. A dangling-reference is not repairable while any folder file can't be used." }
+    "repairable": { "type": "boolean", "description": "Whether repair can fix it: by default, or, for a dangling-reference or a stale-claim on a task that is gone, when asked for by name, unless the archive holds the ID. A dangling-reference is not repairable while any folder file in the tree can't be used, unless the archive holds the ID." }
   },
   "additionalProperties": false
 }

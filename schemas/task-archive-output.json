@@ -2,9 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "task-archive-output",
   "type": "object",
-  "required": ["id", "changed", "archived", "dependents"],
+  "required": ["id", "path", "changed", "archived", "dependents"],
   "properties": {
     "id": { "$ref": "task-file#/properties/id" },
+    "path": { "$ref": "folder-path", "description": "The path of the folder it was in." },
     "changed": { "const": true },
     "archived": { "type": "string", "description": "The absolute path of its task file in the archive." },
     "dependents": {

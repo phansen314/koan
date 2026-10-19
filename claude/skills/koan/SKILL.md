@@ -177,7 +177,7 @@ koan folder update /work/HOME-12345 --title null --extra-merge '{"status":"revie
 koan folder list --folder /work --recursive=false --limit 50 --fields title   # the folders directly in /work, not /work itself
 ```
 
-`folder create` sets a title, `extra`, notes, or blockers only on a folder it makes: on one already there it refuses with `destination-exists`, and `folder update` and `folder block` are the way. Edit a folder's notes in its `@folder.md`, as a task's in its `@<id>.md`. The root, `/`, has no ID, title, or notes.
+`folder create` sets a title, `extra`, notes, or blockers only on a folder it makes: on one already there it refuses with `destination-exists`, and `folder update` and `folder block` are the way. Edit a folder's notes in its `@folder.md`, as a task's in its `@<id>.md`. The tree, `/`, has no ID, title, or notes.
 
 **Folders are created as needed.** `task create`, `batch`, `task move`, `folder move`, and `folder create` make any folder they are given that doesn't exist, so a typo in a folder path makes a new folder. Their results list what was made in `folders_created`: **check it, and tell the user about any folder you didn't mean to make.**
 
@@ -268,7 +268,7 @@ EOF
 
 Rules the commands enforce:
 
-- **Folder paths are exact**, from the tree's root: `/`, `/proj/api`. Never `proj/api` or `/proj/`, and never derived from the working directory. Segments: letters (either case), digits, hyphens, and case must match exactly (`/Work` is not `/work`). Tags: lowercase letters, digits, hyphens.
+- **Folder paths are exact**, from the tree, `/`: `/`, `/proj/api`. Never `proj/api` or `/proj/`, and never derived from the working directory. Segments: letters (either case), digits, hyphens, and case must match exactly (`/Work` is not `/work`). Tags: lowercase letters, digits, hyphens.
 - **Titles**: one line, up to 200 characters. Quote them with single quotes. A title starting with `-` goes last, after `--`.
 - **Priority**: an integer; **higher** sorts first in `task frontier`. `null` means none (sorts after every priority, even negative ones).
 - **Notes**: short text with `--notes`, anything longer through a quoted heredoc with `--notes-file -` (no escaping needed).
@@ -301,7 +301,7 @@ The tree is kept small by archiving finished work (the README's "Keeping the tre
 - Only what is done can be archived; otherwise it fails `not-done`, with the open tasks in `.error.ids`. Don't mark them done to get past it: ask the user.
 - `.result.dependents` lists tasks and folders that named what was archived; their readiness doesn't change. `.result.archived` is where it went.
 - A worktree bound to the folder names nothing once it is archived: mention it, so the user can remove the worktree.
-- **Finding archived work.** A command given an archived ID or folder path fails `not-found`, and `.error.paths` says where it went. Search the archive with `rg ~/koan-root/archived`, or the index, one JSON line per item archived: `jq -c 'select(.path | startswith("/work/HOME-12345"))' ~/koan-root/archived/@index.jsonl`. Read archived files; never change them. To pick the work up again, create new tasks from what you find.
+- **Finding archived work.** A command given an archived ID or folder path fails `not-found`, and `.error.paths` says where it went. Search the archive with `rg '<text>' ~/koan-root/archived`, or the index, one JSON line per item archived: `jq -c --arg p /work/HOME-12345 'select(.path == $p or (.path | startswith($p + "/")))' ~/koan-root/archived/@index.jsonl`. Read archived files; never change them. To pick the work up again, create new tasks from what you find.
 
 ## Hard rules
 

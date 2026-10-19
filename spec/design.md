@@ -1,6 +1,6 @@
 # koan design
 
-Task management on one machine, with the filesystem as the database: no daemon, no index, no server. This document is the data model and the rules every command follows. Commands are specified in `operations.md`; the JSON Schemas in `schemas/` are normative for every file and every input and output.
+Task management on one machine, with the filesystem as the database: no daemon, no index of the tree, no server. This document is the data model and the rules every command follows. Commands are specified in `operations.md`; the JSON Schemas in `schemas/` are normative for every file and every input and output.
 
 Linux and macOS only.
 
@@ -16,19 +16,19 @@ Linux and macOS only.
 
 The root's and the state file's paths are fixed, on both platforms, and are found from `HOME`, which must be an absolute path. There is no config file. To keep the root somewhere else, make `~/koan-root` a symlink to it: koan resolves that one link, and follows no symlink inside it. The tree and the archive are in one directory so that archiving is a rename within one filesystem, and so that one git repository, and one `@koan.json`, cover both.
 
-One tree per user, written from one machine. Separate bodies of work are folders of the one tree (`/work`, `/home`). The tree must be on a local filesystem, since the lock relies on `flock`.
+One tree per user, written from one machine. Separate bodies of work are folders of the one tree (`/work`, `/home`). The root must be on a local filesystem, since the lock relies on `flock`.
 
 ## Assumptions
 
 - **koan is the only writer of the tree, the archive, the state file, and the [markers](#markers).** Anything else that changes them is an **outside change**, and koan's guarantees hold only without one. Git and sync tools are welcome to carry the tree; what a merge or restore leaves inconsistent is an outside change, which [`doctor`](#doctor-and-repair) finds. A merge of two lines of history, two machines writing one tree, or putting back an older `@koan.json` without the files beside it, is such a change: only a single line of history, written from one machine, keeps the [invariants](#invariants) (see the README's [Keep the tree in git](../README.md#keep-the-tree-in-git)).
 - **Notes are the exception.** A task's `@<id>.md` and a folder's `@folder.md` are edited with any editor. koan never reads meaning into them.
-- **koan owns what is named with `@`.** In `~/koan-root` itself, koan owns `@koan.json`, `tree`, and `archived`, and everything else there is material (a `.git` for the whole root, say). Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`). Two kinds of entry are **disposable** instead, and go with their folder: a temp file koan left behind (`.koan-tmp-*`), which is koan's own, and a `.DS_Store`. Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
+- **koan owns what is named with `@`.** In `~/koan-root` itself, koan owns `@koan.json`, `tree`, and `archived`, and everything else there is material (a `.git` for the whole root, say). Every other entry in the tree is **material**: yours, whatever its name, hidden entries (`.git`, `.obsidian`) included. koan never reads material, never walks into it, and changes it only by removing a folder that holds it, when told to ([`folder delete`](operations.md#folder-delete) with `force`); archiving a folder moves its material with it, unread. Two kinds of entry are **disposable** instead, and go with their folder: a temp file koan left behind (`.koan-tmp-*`), which is koan's own, in the tree, in `~/koan-root` itself, or in `archived/`, and a `.DS_Store`. Only koan writes `@` names, so a folder made by hand, by an editor, or by a build tool is material, never a folder of koan's.
 
 ## Data model
 
 ### Folders
 
-A **folder** is a directory named `@` and a folder name, directly in the root or in another folder. It nests to any depth, and holds any number of tasks and folders, and any material:
+A **folder** is a directory named `@` and a folder name, directly in the tree or in another folder. It nests to any depth, and holds any number of tasks and folders, and any material:
 
 ```text
 @proj/@folder.json     the folder file: its fields
@@ -66,7 +66,7 @@ Every key is required and no other key is allowed.
 
 A folder exists when its directory does. A missing `@folder.md` reads as empty notes. A folder with no folder file is still a folder, whose tasks and folders count as usual; it has no ID until one is written, and `doctor` reports it. Its `blocked_by` is unknown, so everything in it is held back (see [Dependencies](#dependencies)).
 
-The **root folder** is the folder `/`: the directory `~/koan-root/tree`. It has no folder file and no ID.
+**The tree is the folder `/`**: the directory `~/koan-root/tree`. It has no folder file and no ID. (The **root** is `~/koan-root`, which holds it.)
 
 A folder name is 1–64 ASCII letters, digits, and hyphens, not starting or ending with a hyphen:
 
@@ -80,7 +80,7 @@ Names are compared byte for byte, but koan never lets two names in one folder di
 - **One input never names two paths that differ only in case** in the same part (`/Proj/a` and `/proj/b`): `invalid-input`. The one exception is `folder move` renaming a folder to the same name in another case.
 - A tree that already holds such a pair, made by hand or by an older koan, still works on Linux: an exact match always wins.
 
-A **folder path** names a folder from the root: `/` is the root, `/proj/travel` is `travel` inside `proj`. Leading `/`, no trailing `/`, no empty segment, no `.` or `..`. Paths never carry the `@`: `/proj/travel` is `@proj/@travel` on disk, so a name is at most 65 characters there.
+A **folder path** names a folder from the tree: `/` is the tree, `/proj/travel` is `travel` inside `proj`. Leading `/`, no trailing `/`, no empty segment, no `.` or `..`. Paths never carry the `@`: `/proj/travel` is `@proj/@travel` on disk, so a name is at most 65 characters there.
 
 ### Tasks
 
@@ -150,7 +150,7 @@ A **reference** names a task, a folder, or material in a folder, in commands, in
 - **The `@` is optional on input**, and koan always writes it, in `where`'s `ref` and in the convention below (JSON results carry IDs as plain integers): `@41` stands out as a reference in prose, where a bare `41` does not.
 - **A reference by ID is stable**: IDs never change, so it survives moves and renames. A path is readable. Notes and prompts write both, the reference and its path as a hint: `@41 (/proj/travel)`, `@41:docs/plan.md (/proj/travel:docs/plan.md)`. Reading one, the reference wins; a hint that no longer matches has gone stale. koan never reads notes, so this is a convention, not a format; [`where`](operations.md#where) gives both forms.
 - **Text kept outside the tree names things by path**, or a task by its title: commit messages, pull requests, other repositories' documents. An ID means something only in its tree, and after a restore can name something else ([IDs](#ids)).
-- **An ID** names a task or a folder, whichever has it, since they share the counter. `blocked_by` and `blocks` take either kind, and a folder by path as well, which is stored as its ID. Where only one kind is taken, the other is `not-found`, with a message saying what the ID is. The root has no ID, and is only `/`.
+- **An ID** names a task or a folder, whichever has it, since they share the counter. `blocked_by` and `blocks` take either kind, and a folder by path as well, which is stored as its ID. Where only one kind is taken, the other is `not-found`, with a message saying what the ID is. The tree has no ID, and is only `/`.
 - **The part after `:`** is a path to material, from the folder: segments separated by `/`, none empty, `.`, or `..`, and the first not starting with `@`, which would name one of koan's own entries. Further down is inside material, where `@` means nothing (`@41:node_modules/@types/x`). So a file has one reference per folder form. The colon can't occur in a folder path, so the first one splits the two; the material part may hold more.
 - A material reference says where a file is or would be; the file need not exist, and koan never looks.
 - **A reference to something archived** names nothing in the tree: a command given one fails with `not-found`, and its message says where in the archive it went, found from the [index](#the-archive).
@@ -160,13 +160,13 @@ A **reference** names a task, a folder, or material in a folder, in commands, in
 
 `blocked_by` orders tasks and folders. A task's `blocked_by` names what the task waits on; a folder's names what everything in the folder waits on.
 
-- **What something waits on**, a task or a folder: its own `blocked_by`, and the `blocked_by` of every folder above it, up to the root. A folder's blockers apply to everything in it at any depth, without being copied into any file.
+- **What something waits on**, a task or a folder: its own `blocked_by`, and the `blocked_by` of every folder above it, up to `/`. A folder's blockers apply to everything in it at any depth, without being copied into any file.
 - **Done.** A task is done when its `completed_at` is set. A folder is **done** when every task and every folder directly in it is done: when every task under it, at any depth, is done. An empty folder is done. A task file that can't be used counts as not done.
 - **Done-ness ignores blockers.** A task can be marked done at any time, blocked or not, so a folder can be done while what it waits on is still open. Blockers constrain readiness, not completion.
 - **A blocker blocks** while it is an open task, a folder that is not done, or an ID that names nothing or a task whose file is unusable. A folder's ID is only in its folder file, so the ID of a folder whose file is unusable reads as naming nothing, and blocks the same way.
 - **Unknown blockers hold back.** A folder whose folder file is missing or can't be used has unknown blockers, so everything in it counts as blocked: where koan can't tell, it holds back.
 - An open task is **ready** when nothing it waits on blocks, and **blocked** otherwise. A done task is neither.
-- A folder is `done`, or else `blocked` when something it waits on blocks or is unknown, or else `ready`. The root has no blockers, so it is never blocked.
+- A folder is `done`, or else `blocked` when something it waits on blocks or is unknown, or else `ready`. `/` has no blockers, so it is never blocked.
 
 Readiness and done-ness are derived when read, and never stored, so they follow the tree as it changes. A task added to a done folder makes it not done again, and what is open and waits on the folder is blocked again; a done task that waited on it stays done, since `completed_at` is history. Nothing is ever reopened. **Ordering is continuous**: "B after A" holds whenever A has open work, work added after B started included.
 
@@ -180,11 +180,11 @@ Every tree that only koan has written satisfies these, and koan refuses any chan
 
     | Node | Has an edge to |
     |---|---|
-    | Each task | each ID in its `blocked_by`, a folder's being that folder's done node; and its folder's wait node, unless its folder is the root |
-    | A folder's **wait** node: what its contents wait on | each ID in its `blocked_by`, as for a task; and its parent's wait node, unless its parent is the root |
+    | Each task | each ID in its `blocked_by`, a folder's being that folder's done node; and its folder's wait node, unless its folder is `/` |
+    | A folder's **wait** node: what its contents wait on | each ID in its `blocked_by`, as for a task; and its parent's wait node, unless its parent is `/` |
     | A folder's **done** node: what it waits on to be done | each task directly in it; the done node of each folder directly in it; and its own wait node |
 
-    The nodes are a way of reasoning about the tree, and nothing about them is stored. The root has no nodes: it has no blockers, and can't be named. The edge from a folder's done node to its own wait node stands for a task that might be added to it later: with it, adding a task to a folder never closes a cycle. In words, nothing may be blocked by a folder that contains it, no folder by anything under it, and no chain of blockers may lead from what is in a folder back to the folder.
+    The nodes are a way of reasoning about the tree, and nothing about them is stored. `/` has no nodes: it has no blockers, and can't be named. The edge from a folder's done node to its own wait node stands for a task that might be added to it later: with it, adding a task to a folder never closes a cycle. In words, nothing may be blocked by a folder that contains it, no folder by anything under it, and no chain of blockers may lead from what is in a folder back to the folder.
 2. **No dangling references.** Every ID in a `blocked_by`, in a task file or a folder file in the tree, names an existing task or folder. Deleting or archiving a task removes its ID from every `blocked_by`, and deleting or archiving a folder removes its ID and those of the folders and tasks under it. What is archived keeps its own `blocked_by` as it was.
 3. **Unique IDs.** No two task files or folder files have the same ID, in the tree and the archive together.
 4. **IDs within the counter.** No ID in a task file's or notes file's name, and no folder's ID, in the tree or the archive, is above `last_id`. Only an outside change can break this one; `repair` restores it.
@@ -202,10 +202,10 @@ task 42, in /work/HOME-777        →  archived/work/HOME-777/@42.json and @42.m
 task 7, in /                      →  archived/@7.json and @7.md
 ```
 
-- **The directories above an archived item** are named after the folders it was in, without the `@`. They say where it was, and are not folders: archives under one path share them, and nothing in them is overwritten, since every item in them carries its ID. A folder renamed later is archived under its new name, and the directories of the old one stay as they were.
+- **The directories above an archived item** are named after the folders it was in, without the `@`. They say where it was, and are not folders: archives under one path share them, and nothing in them is overwritten, since every item in them carries its ID. A folder renamed later is archived under its new name, and the directories of the old one stay as they were. They are found as a folder path's parts are ([Folders](#folders)), but where a directory already there differs only in case, it is used, and the index records the name on disk: archiving never refuses for case, and a filesystem that ignores case never puts one item where the index doesn't say.
 - **An archived folder** is the folder's directory, renamed to `@<id>_<name>`, with everything in it as it was: its folder file and notes, its tasks, the folders under it under their own `@` names, and its material. A folder name can't hold `_`, so the two parts never run together; an ID is never issued twice, so no two archived folders have one name.
 - **An archived task** is its task file and notes, under their own names, in the directories of its folder's path.
-- **Nothing archived changes.** Its files keep their fields and their format, its `blocked_by` included, which may come to name what is gone. It is history: koan never converts, repairs, or reports it, but as below.
+- **Nothing archived changes.** Its files keep their fields and their format, its `blocked_by` included, which may come to name what is gone. It is history: koan never converts it, and reads or writes it only as below.
 
 **Only what is done is archived.** A task must be done; a folder must be [done](#dependencies), every task under it, at any depth, done, as an empty folder is. A folder needs a folder file koan can use, and so does every folder under it, for the archive to record their IDs. Nothing is blocked by what is done, so archiving changes no task's or folder's readiness:
 
@@ -229,13 +229,15 @@ task 7, in /                      →  archived/@7.json and @7.md
 | `archived_at` | When it was archived; `null` in a line `repair` wrote. |
 | `ids` | Every task and folder ID it took out of the tree, its own included, ascending. |
 
-The index is how koan finds an ID or a path that has left the tree without walking the archive: a command given one fails `not-found`, saying where it went. All of it but `archived_at` can be read back from the archive, so `doctor` checks it against the archive, and `repair` rewrites it. It is written whole, through a temp file, as every file koan writes.
+The index is how koan finds an ID or a path that has left the tree without walking the archive: a command given one fails `not-found`, saying where it went. An index koan can't read words nothing: the command fails `not-found` as for anything missing. All of it but `archived_at` can be read back from the archive, so `doctor` checks it against the archive, and `repair` rewrites it, keeping each line that still matches and adding the lines it rebuilds at the end, ascending by ID. It is written whole, through a temp file, as every file koan writes.
 
-**What reads the archive.** Commands on the tree read only the index, and only to word a `not-found`. `init`, making a `@koan.json`, counts the archive's IDs with the tree's; `doctor` and `repair` walk it for IDs above the counter, for an ID held in both the tree and the archive, and to check the index. A walk of the archive enters the directories above archived items and the archived folders, and takes `@<id>_<name>` for an archived folder and `@<id>.json` for a task; inside an archived folder it walks as in the tree. Anything else there is material, and an archived file koan can't read is skipped without a report.
+**What reads the archive.** Commands on the tree read only the index, and only to word a `not-found`. `init`, making a `@koan.json`, counts the archive's IDs with the tree's; `doctor` and `repair` walk it for temp files, for IDs above the counter, for an ID held twice, and to check the index. `repair` writes there only to rewrite the index, and to move notes a `task archive` cut short left behind (`orphan-notes`).
+
+A walk of the archive enters a directory whose name follows the folder-name rule, as a directory above archived items; takes `@<id>_<name>` for an archived folder, and walks it as a folder in the tree; and takes `@<id>.json` for a task file and `@<id>.md` for notes. In `archived/` itself, `@index.jsonl` is the index. Anything else there is material, temp files aside. It reads archived folder files and task files for their IDs and titles, which the index holds. An archived folder whose folder file holds another ID than its directory's name is `unusable-file`; a file koan can't read is otherwise skipped without a report.
 
 ### `@koan.json`
 
-`~/koan-root` holds one metadata file, which marks the directory as koan's, records its format, and holds the ID counter: `last_id`, the highest ID ever issued in the tree ([IDs](#ids)). It is written only under the [lock](#concurrency).
+`~/koan-root` holds one metadata file, which marks the directory as koan's, records its format, and holds the ID counter: `last_id`, the highest ID ever issued in the root ([IDs](#ids)). It is written only under the [lock](#concurrency).
 
 ```json
 {
@@ -293,14 +295,14 @@ koan writes JSON with two-space indentation, keys in schema order, `blocked_by` 
 | Needs migration, or too new | See [Formats](#formats). | `migration-pending`, `unsupported-format`. |
 | Usable | Otherwise. | — |
 
-`init` creates whatever is missing, and changes nothing that is there. A tree cloned onto a new machine brings its counter, and `init` gives it a state file with no claims; a lost state file is replaced the same way, losing only its claims. A `@koan.json` it creates beside an existing tree, as when one was lost, starts `last_id` at the highest ID in the tree; an ID whose task was deleted can then be issued again.
+`init` creates whatever is missing, and changes nothing that is there. A tree cloned onto a new machine brings its counter, and `init` gives it a state file with no claims; a lost state file is replaced the same way, losing only its claims. A `@koan.json` it creates beside an existing tree, as when one was lost, starts `last_id` at the highest ID in the tree and the archive; an ID whose task was deleted can then be issued again.
 
 ### Walking
 
-There is no index: a command that looks a task up by ID walks the tree.
+Nothing indexes the tree: a command that looks a task up by ID walks it.
 
 - A walk is of the tree, never the archive, but in `init`, `doctor`, and `repair` ([The archive](#the-archive)).
-- A walk enters only folders: directories named `@` and a folder name, in the root folder or in a folder it entered. Within a folder, an entry named with `@` is a task file `@<id>.json`, notes `@<id>.md`, the folder file `@folder.json` or notes `@folder.md` (not in the root), or a folder. Every other entry is material, and is skipped without a look.
+- A walk enters only folders: directories named `@` and a folder name, in the tree or in a folder it entered. Within a folder, an entry named with `@` is a task file `@<id>.json`, notes `@<id>.md`, the folder file `@folder.json` or notes `@folder.md` (not in `/`), or a folder. Every other entry is material, and is skipped without a look.
 - An entry named with `@` that is none of these, a symlink, or of the wrong type (a directory named `@42.json`) is skipped too, and `doctor` reports it.
 - A walk lists entries by name only; folder files are read only by the commands that need them ([implementation.md](implementation.md)).
 - A folder that can't be listed fails the command with `io`: it cannot answer without the whole tree.
@@ -333,7 +335,7 @@ Every key is required and no other key is allowed.
 | Field | Rule |
 |---|---|
 | `schema` | The format this file is in. |
-| `id` | The folder's ID: what the marker binds. A folder with no ID (the root, or one with no folder file) can't be bound. |
+| `id` | The folder's ID: what the marker binds. A folder with no ID (`/`, or one with no folder file) can't be bound. |
 | `path` | The folder's path when it was bound: a hint, as in a [reference](#references). |
 | `dir` | The absolute real path of the directory holding `.koan/`. A marker found in any other directory was copied there, or moved with its directory (`git worktree move`), and binds nothing. Directories are told apart by identity, not by spelling: on a filesystem that ignores case, `~/Code/wt` and `~/code/wt` are one. |
 
@@ -360,7 +362,7 @@ Several processes may use one tree at once, with no coordinator between them.
 
 ### Crashes and failures
 
-A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task or folder that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `folder delete` cut short shows up as some of these, in what is left of it: run `folder delete` again to finish. An archive cut short leaves the item in the archive with references to it left in the tree, or no line for it in the index; `repair` fixes both. A `folder delete` that fails partway, rather than being killed, cleans up after itself: the tasks and folders it did remove leave every `blocked_by`, in task files and folder files, and the tasks' claims end.
+A command that fails after changing something says what it changed. A command that is killed, or a machine that crashes, can leave a multi-file change half done: an ID used with no task or folder, a `@<id>.md` without its task file, a reference to a task or folder that is gone or was never made, a temp file, or a folder without its folder file (a folder is made first, then its files are written in it). None of these stops later commands, and `doctor` finds all of them. A folder partly removed by a `folder delete` cut short shows up as some of these, in what is left of it: run `folder delete` again to finish. An archive cut short leaves the item in the archive with what follows the rename undone: references to it left in the tree, a claim on an archived task, no line for it in the index, or, for a task, its notes left in the tree; `repair` fixes each by default. A `folder delete` that fails partway, rather than being killed, cleans up after itself: the tasks and folders it did remove leave every `blocked_by`, in task files and folder files, and the tasks' claims end.
 
 koan keeps no journal and takes no idempotency keys. After an unclear outcome, look (`task show`, `task list`, `doctor`), then decide. The task commands that set a state (`done`, `reopen`, `block`, `unblock`, `update`, `release`) are safe to run again; `task create` and `batch` make new tasks each time, and `task claim-next` a new claim.
 
@@ -380,14 +382,14 @@ A **claim** reserves a task: once it is claimed, no other `task claim` of it suc
 
 ## Doctor and repair
 
-`doctor` walks the whole tree and reports what it finds, each finding with a kind, the paths and IDs involved, and a sentence saying what to do. `repair` fixes the kinds that can be fixed without losing anything or choosing between versions, and leaves the rest to a person. A reference or a claim to a task that seems gone it removes only when asked for its kind by name: the task may only be out of koan's sight, in a folder moved by hand, and removing its ID would lose the link for good, where moving the folder back would restore it.
+`doctor` walks the whole tree, and the archive ([The archive](#the-archive)), and reports what it finds, each finding with a kind, the paths and IDs involved, and a sentence saying what to do. `repair` fixes the kinds that can be fixed without losing anything or choosing between versions, and leaves the rest to a person. A reference or a claim to a task that seems gone it removes only when asked for its kind by name: the task may only be out of koan's sight, in a folder moved by hand, and removing its ID would lose the link for good, where moving the folder back would restore it. One the archive holds is gone for good, and is removed by default.
 
 | Finding | `repair` |
 |---|---|
-| `temp-leftover`: a temp file koan left behind | Removes it. |
-| `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name or in a folder file, in the tree or the archive, as only an outside change leaves | Raises `last_id`. |
-| `dangling-reference`: a `blocked_by` ID, in a task file or a folder file in the tree, with no task or folder there | Removes the ID, when asked for by name; by default when the archive holds it, since then it is not out of sight but gone for good. Not while any folder file can't be used: the ID may be that folder's, and removing it would lose the link once the file is fixed. |
-| `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name. |
+| `temp-leftover`: a temp file koan left behind, in the tree, in `~/koan-root` itself, or in `archived/` | Removes it. |
+| `id-above-counter`: an ID above `last_id`, in a task file's or notes file's name, in an archived folder's name, or in a folder file, in the tree or the archive, as only an outside change leaves | Raises `last_id`. |
+| `dangling-reference`: a `blocked_by` ID, in a task file or a folder file in the tree, with no task or folder there | Removes the ID, when asked for by name; by default when the archive holds it, since then it is not out of sight but gone for good. Not while any folder file in the tree can't be used, unless the archive holds the ID: it may be that folder's, and removing it would lose the link once the file is fixed. |
+| `stale-claim`: a claim on a task that is done or gone | Removes the claim; on a task that is gone, when asked for by name, or by default when the archive holds it. |
 | `orphan-notes`: a `@<id>.md` in the tree with no task file beside it | Removes it when empty; moves it to its task when the task is elsewhere without notes, in the tree or, as a `task archive` cut short leaves it, the archive. Otherwise leaves it. |
 | `missing-folder-file`: a folder with no `@folder.json` | Writes one, with a new ID and an empty `blocked_by`. A `blocked_by` that named the folder's old ID then dangles, and the finding's message says so: re-point such references with `task block` or `folder block` before repairing `dangling-reference`. |
 | `archive-index`: the index doesn't match the archive: an archived item with no line, a line naming nothing or not what is there, or a line or index koan can't read | Rewrites the index from the archive, keeping each line that still matches. |
