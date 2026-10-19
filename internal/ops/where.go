@@ -131,12 +131,20 @@ func (c *call) placeTask(id model.ID) (any, *errs.Error) {
 // is never looked at.
 func (c *call) fromFile(p string) (target, *errs.Error) {
 	p = path.Clean(p)
-	rel, ok := c.inTree(p)
+	rel, ok := c.inRoot(p)
 	if !ok {
-		rel, ok = c.inTree(c.resolveLinks(p))
+		rel, ok = c.inRoot(c.resolveLinks(p))
 	}
 	if !ok {
 		return c.fromMarker(p)
+	}
+	switch rest, inTree := strings.CutPrefix(rel+"/", model.TreeDir+"/"); {
+	case inTree:
+		rel = strings.TrimSuffix(rest, "/")
+	case rel == model.ArchiveDir || strings.HasPrefix(rel, model.ArchiveDir+"/"):
+		return target{}, errs.New(errs.NotFound, "%s is in the archive, outside the tree, and has no reference: it was archived", p).WithPaths(p)
+	default:
+		return target{}, errs.New(errs.NotFound, "%s is outside the tree, %s, and has no reference", p, c.env.TreePath()).WithPaths(p)
 	}
 	segs := strings.Split(rel, "/")
 	if rel == "" {
@@ -201,7 +209,7 @@ func (c *call) fromMarker(p string) (target, *errs.Error) {
 		return target{}, e
 	}
 	if d == "" {
-		return target{}, errs.New(errs.NotFound, "%s is not in the tree, %s, nor in a directory bound to a folder", p, c.t.Abs(".")).WithPaths(p)
+		return target{}, errs.New(errs.NotFound, "%s is not in the tree, %s, nor in a directory bound to a folder", p, c.env.TreePath()).WithPaths(p)
 	}
 	b, e := store.OpenBound(c.env, d)
 	if e != nil {
@@ -231,9 +239,9 @@ func (c *call) fromMarker(p string) (target, *errs.Error) {
 	return target{at: folderRef{path: f}, marker: mp}, nil
 }
 
-// treeDirs are the tree's directory as ~/koan-root, and as where that
+// rootDirs are the root's directory as ~/koan-root, and as where that
 // leads when it is a link.
-func (c *call) treeDirs() []string {
+func (c *call) rootDirs() []string {
 	roots := []string{c.env.RootPath()}
 	if real, err := c.env.FS.EvalSymlinks(roots[0]); err == nil && real != roots[0] {
 		roots = append(roots, real)
@@ -241,10 +249,10 @@ func (c *call) treeDirs() []string {
 	return roots
 }
 
-// inTree is p relative to the tree's directory, "" for the directory
+// inRoot is p relative to the root's directory, "" for the directory
 // itself, given as ~/koan-root or as where that leads.
-func (c *call) inTree(p string) (string, bool) {
-	for _, root := range c.treeDirs() {
+func (c *call) inRoot(p string) (string, bool) {
+	for _, root := range c.rootDirs() {
 		if p == root {
 			return "", true
 		}

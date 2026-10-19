@@ -27,6 +27,8 @@ var crashCases = []struct {
 	{"folder update", []string{"folder", "update", "/proj", "--title", "P", "--extra-merge", `{"k":1}`}},
 	{"folder move", []string{"folder", "move", "/proj", "--to", "/moved/proj"}},
 	{"folder delete", []string{"folder", "delete", "/proj", "--contents"}},
+	{"folder archive", []string{"folder", "archive", "/proj/sub"}},
+	{"task archive", []string{"task", "archive", "4"}},
 	{"task update", []string{"task", "update", "2", "--title", "renamed", "--tags-add", "t"}},
 	{"task done", []string{"task", "done", "3"}},
 	{"task reopen", []string{"task", "reopen", "4"}},
@@ -70,25 +72,31 @@ func setup(t *testing.T, name string) string {
 	ok(t, home, "task", "move", "4", "--to", "/proj/sub")
 	ok(t, home, "task", "done", "4")
 	ok(t, home, "task", "claim", "3")
+	if strings.HasSuffix(name, "archive") {
+		// What is archived is named by others, which archiving rewrites,
+		// and has notes, which a task archive moves second.
+		ok(t, home, "task", "block", "2", "--blocked-by", "4,/proj/sub")
+		os.WriteFile(filepath.Join(home, "koan-root", "tree", "@proj", "@sub", "@4.md"), []byte("notes"), 0o644)
+	}
 	if name == "init rebuild" {
 		// A lost @koan.json: init makes a new one, its counter from the tree.
 		os.Remove(filepath.Join(home, "koan-root", "@koan.json"))
 	}
 	if strings.HasPrefix(name, "repair") {
 		ok(t, home, "task", "claim", "1")
-		os.Remove(filepath.Join(home, "koan-root", "@1.json"))
-		os.Mkdir(filepath.Join(home, "koan-root", "@hand"), 0o755)
+		os.Remove(filepath.Join(home, "koan-root", "tree", "@1.json"))
+		os.Mkdir(filepath.Join(home, "koan-root", "tree", "@hand"), 0o755)
 	}
 	return home
 }
 
 // leftovers are the findings a killed or failed command may leave, as
 // spec/design.md lists them: a temp file, a reference to a deleted task, a
-// claim on a task that is done or gone, notes without their task, and a
-// folder without its folder file. Every one is something repair fixes, the
+// claim on a task that is done or gone, notes without their task, a folder
+// without its folder file, and an index that misses what was archived. Every one is something repair fixes, the
 // reference, and a claim on a task that is gone, only when asked for by
 // name. An ID used with no task is not a finding.
-var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes", "missing-folder-file"}
+var leftovers = []string{"temp-leftover", "dangling-reference", "stale-claim", "orphan-notes", "missing-folder-file", "archive-index"}
 
 // checkAfter requires what the design promises after a crash or a failure:
 // the next write succeeds, doctor reports nothing but the expected kinds,

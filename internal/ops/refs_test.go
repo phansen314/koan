@@ -177,9 +177,9 @@ func TestWhere(t *testing.T) {
 
 	// The link's own path and where it leads both count as in the tree.
 	real := t.TempDir()
-	os.Rename(w.disk(), real+"/tree")
-	os.Symlink(real+"/tree", w.disk())
-	if got := w.ok("where", `{"file":"`+real+`/tree/@p/x"}`); got["ref"] != "@1:x" {
+	os.Rename(w.top(), real+"/root")
+	os.Symlink(real+"/root", w.top())
+	if got := w.ok("where", `{"file":"`+real+`/root/tree/@p/x"}`); got["ref"] != "@1:x" {
 		t.Errorf("through the link: %v", got)
 	}
 	if got := w.ok("where", `{"file":"`+w.disk()+`/@p/x"}`); got["ref"] != "@1:x" {
@@ -193,7 +193,7 @@ func TestWhere(t *testing.T) {
 	for _, in := range []string{`{"ref":"@9"}`, `{"ref":"@3:x"}`, `{"ref":"/nope:x"}`,
 		`{"file":"/elsewhere/x"}`, `{"file":"` + w.disk() + `-not/x"}`, `{"file":"` + w.root("nope") + `/x"}`,
 		`{"file":"` + w.root("p/q/9.json") + `"}`, `{"file":"` + w.root("p/3.md") + `"}`, `{"file":"` + w.root("p/stray") + `"}`,
-		`{"file":"` + w.root("koan.json") + `"}`, `{"file":"` + w.root("p/q/3.json") + `/x"}`} {
+		`{"file":"` + w.top("@koan.json") + `"}`, `{"file":"` + w.root("p/q/3.json") + `/x"}`} {
 		w.fail("where", in, errs.NotFound, "")
 	}
 	if e := w.fail("where", `{"ref":"@3:x"}`, errs.NotFound, ""); !strings.Contains(e.Message, "task") {

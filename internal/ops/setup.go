@@ -13,18 +13,20 @@ import (
 
 type initResult struct {
 	Root      string   `json:"root"`
+	Tree      string   `json:"tree"`
+	Archive   string   `json:"archive"`
 	StatePath string   `json:"state_path"`
 	Created   []string `json:"created"`
 }
 
-// cmdInit creates whatever is missing of the root, its @koan.json, and the
-// state file, and changes nothing that is there.
+// cmdInit creates whatever is missing of the root, its @koan.json and
+// tree, and the state file, and changes nothing that is there.
 func cmdInit(c *call) (any, *errs.Error) {
 	if e := c.checked(); e != nil {
 		return nil, e
 	}
 	env := c.env
-	res := initResult{Root: env.RootPath(), StatePath: env.StatePath(), Created: []string{}}
+	res := initResult{Root: env.RootPath(), Tree: env.TreePath(), Archive: env.ArchivePath(), StatePath: env.StatePath(), Created: []string{}}
 	err := env.FS.Mkdir(env.RootPath(), store.FolderMode)
 	switch {
 	case err == nil:
@@ -56,11 +58,20 @@ func cmdInit(c *call) (any, *errs.Error) {
 	if cond.Status == store.Unusable {
 		return nil, cond.Err
 	}
+	// The tree is made before @koan.json is, so that the walk for the
+	// highest ID has a tree to walk. A tree that is not a folder made the
+	// root unusable above.
+	madeTree := slices.Contains(cond.Missing, store.PartTree)
+	if madeTree {
+		if e := t.MakeTree(); e != nil {
+			return nil, e
+		}
+	}
 	if cond.Meta == nil {
 		// A new @koan.json starts its counter at the highest ID already in
-		// the directory, as when one was lost. Duplicated IDs don't matter
-		// to it, but a folder that can't be listed does: an ID in it would
-		// be issued again.
+		// the tree and the archive, as when one was lost. Duplicated IDs
+		// don't matter to it, but a folder that can't be listed does: an
+		// ID in it would be issued again.
 		x, e := t.Walk(true)
 		if e != nil {
 			return nil, e
@@ -71,10 +82,17 @@ func cmdInit(c *call) (any, *errs.Error) {
 		}
 		// A folder file that can't be read is doctor's.
 		folders, _ := loadFolderFiles(t, x)
-		if e := t.WriteMeta(model.Meta{Schema: model.Format, LastID: highestID(x, folders)}, true); e != nil {
+		highest := highestID(x, folders)
+		for id := range t.WalkArchive().Named {
+			highest = max(highest, id)
+		}
+		if e := t.WriteMeta(model.Meta{Schema: model.Format, LastID: highest}, true); e != nil {
 			return nil, e
 		}
 		res.Created = append(res.Created, store.PartMeta)
+	}
+	if madeTree {
+		res.Created = append(res.Created, store.PartTree)
 	}
 	if cond.State == nil {
 		t.State = &model.State{Schema: model.StateFormat, Claims: map[string]model.Claim{}}
@@ -109,6 +127,8 @@ func cmdVersion(c *call) (any, *errs.Error) {
 
 type infoResult struct {
 	Root      string       `json:"root"`
+	Tree      string       `json:"tree"`
+	Archive   string       `json:"archive"`
 	StatePath string       `json:"state_path"`
 	State     store.Status `json:"state"`
 	Missing   []string     `json:"missing"`
@@ -128,7 +148,8 @@ func cmdInfo(c *call) (any, *errs.Error) {
 		defer root.Close()
 	}
 	cond := store.Inspect(c.env, root, err)
-	res := infoResult{Root: c.env.RootPath(), StatePath: c.env.StatePath(), State: cond.Status, Missing: cond.Missing}
+	res := infoResult{Root: c.env.RootPath(), Tree: c.env.TreePath(), Archive: c.env.ArchivePath(), StatePath: c.env.StatePath(),
+		State: cond.Status, Missing: cond.Missing}
 	if cond.Meta != nil {
 		res.Format = &cond.Meta.Schema
 		// A newer koan's @koan.json is read for its format alone, and a
@@ -215,10 +236,10 @@ func cmdRepair(c *call) (any, *errs.Error) {
 // task file from it to the next. There is no earlier format yet.
 var conversions = map[int64]func([]byte) ([]byte, error){}
 
-// treeConversions holds the tree formats this binary converts from. Formats
-// 1 and 2 have none: they came before the first release. Format 3 kept the
-// counter in the state file; migrate moves it into @koan.json.
-var treeConversions = map[int64]bool{3: true}
+// treeConversions holds the tree formats this binary converts from. There
+// are none: format 5 moved the tree into tree/ with no conversion from 4,
+// and so from 3 (spec/design.md, Formats).
+var treeConversions = map[int64]bool{}
 
 // convertible refuses a tree in a format this binary has no conversion
 // from: doctor and migrate would misread it.

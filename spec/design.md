@@ -278,7 +278,7 @@ A walk of the archive enters a directory whose name follows the folder-name rule
 - Format 2 (the `@` names, folder files, and `@koan.json`) has no conversion from format 1. A format-1 tree has no `@koan.json`, so this binary finds it not initialized; `init` there adopts it as any folder, and everything format 1 wrote is material.
 - Format 3 (folder files in format 2, with `blocked_by`) has no conversion from format 2: start a new tree with `init`.
 - Format 5 (`tree/` and `archived/`) has no conversion from format 4: start a new root with `init`. The index's lines are in the tree format's files; the files in the archive are not, and keep the format they were written in.
-- Format 4 moves the ID counter from the state file into `@koan.json`. `migrate` converts a format-3 tree by writing `@koan.json` with a `last_id` above both the state file's and every ID in the tree, as a format-3 command would have issued; no task file or folder file changes. Until then, `doctor` and `info` read a format-3 tree's counter from the state file. The state file goes to format 2 the next time a claim changes.
+- Format 4 moved the ID counter from the state file into `@koan.json`, and a format-4 binary's `migrate` converted a format-3 tree. This binary converts neither, since format 5 has no conversion from 4; `info` still reads a format-3 tree's counter from the state file. The state file goes to format 2 the next time a claim changes.
 
 ### Written files
 

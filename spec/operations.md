@@ -270,7 +270,7 @@ Fix repairable findings, as the table in [design.md](design.md#doctor-and-repair
 
 ### migrate
 
-Convert every file in an earlier format to this binary's, then record the format in `@koan.json` ([Formats](design.md#formats)), with the counter: from format 3, it moves the counter there from the state file. koan never runs it on its own.
+Convert every file in an earlier format to this binary's, then record the format in `@koan.json` ([Formats](design.md#formats)). This binary has no conversion from an earlier tree format, so it converts only task files in an earlier format, of which there are none yet. koan never runs it on its own.
 
 - **Input:** `dry_run` (default `false`): report what would change and write nothing.
 - **Result:** `from` and `to` (the tree's format before and after), `converted` (how many task files), and `unconverted` (paths of task files it could not read or convert, which are left as they are).

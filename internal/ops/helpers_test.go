@@ -38,7 +38,7 @@ func ready(t *testing.T) *world {
 }
 
 // root is the path on disk of an entry of koan's, named as koan names it
-// before the @: root("p/3.json") is <root>/@p/@3.json. A hidden name keeps
+// before the @: root("p/3.json") is <tree>/@p/@3.json. A hidden name keeps
 // its own. disk takes names as they are on disk, for material.
 func (w *world) root(rel ...string) string {
 	var segs []string
@@ -64,6 +64,12 @@ func paths(records any) string {
 }
 
 func (w *world) disk(rel ...string) string {
+	return filepath.Join(append([]string{w.env.TreePath()}, rel...)...)
+}
+
+// top is the path on disk of an entry of the root itself, beside the tree:
+// top("@koan.json"), top("archived").
+func (w *world) top(rel ...string) string {
 	return filepath.Join(append([]string{w.env.RootPath()}, rel...)...)
 }
 
@@ -172,7 +178,13 @@ func readJSON(t *testing.T, p string) json.RawMessage {
 
 func (w *world) file(rel string) string {
 	w.t.Helper()
-	data, err := os.ReadFile(w.root(rel))
+	return w.fileAt(w.root(rel))
+}
+
+// fileAt is the content of the file at path p.
+func (w *world) fileAt(p string) string {
+	w.t.Helper()
+	data, err := os.ReadFile(p)
 	if err != nil {
 		w.t.Fatal(err)
 	}

@@ -34,10 +34,10 @@ func cmdMarkerBind(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	for _, root := range c.treeDirs() {
+	for _, root := range c.rootDirs() {
 		for a := path.Dir(root); ; a = path.Dir(a) {
 			if store.SameDir(c.env, a, real) {
-				return nil, errs.NewConflict(errs.RuleHoldsTree, "%s holds the tree, %s: its marker would bind every directory outside the tree that has none of its own", real, root).
+				return nil, errs.NewConflict(errs.RuleHoldsTree, "%s holds the root, %s: its marker would bind every directory outside it that has none of its own", real, root).
 					WithPaths(real)
 			}
 			if a == "/" {

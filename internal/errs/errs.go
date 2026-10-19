@@ -42,6 +42,7 @@ const (
 	RuleHoldsTree         = "holds-tree"
 	RuleCheckout          = "checkout"
 	RuleBoundElsewhere    = "bound-elsewhere"
+	RuleNotDone           = "not-done"
 )
 
 // Problem is one thing wrong with an input or a file.
@@ -151,6 +152,7 @@ const (
 	FindingStaleClaim        = "stale-claim"
 	FindingOrphanNotes       = "orphan-notes"
 	FindingMissingFolderFile = "missing-folder-file"
+	FindingArchiveIndex      = "archive-index"
 	FindingDuplicateID       = "duplicate-id"
 	FindingCycle             = "cycle"
 	FindingUnusableFile      = "unusable-file"
@@ -161,13 +163,13 @@ const (
 // FindingKinds are the finding kinds, in the order doctor reports them.
 var FindingKinds = []string{
 	FindingTempLeftover, FindingIDAboveCounter, FindingDanglingReference, FindingStaleClaim, FindingOrphanNotes,
-	FindingMissingFolderFile, FindingDuplicateID, FindingCycle, FindingUnusableFile, FindingOldFormat, FindingSkippedEntry,
+	FindingMissingFolderFile, FindingArchiveIndex, FindingDuplicateID, FindingCycle, FindingUnusableFile, FindingOldFormat, FindingSkippedEntry,
 }
 
 // RepairableKinds are the finding kinds repair can fix, in the same order.
 var RepairableKinds = []string{
 	FindingTempLeftover, FindingIDAboveCounter, FindingDanglingReference, FindingStaleClaim, FindingOrphanNotes,
-	FindingMissingFolderFile,
+	FindingMissingFolderFile, FindingArchiveIndex,
 }
 
 // Finding is one thing doctor found wrong.

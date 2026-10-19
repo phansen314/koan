@@ -13,9 +13,9 @@ import (
 	"unicode/utf8"
 )
 
-// Format is the one tree format this binary reads and writes: the tree's
+// Format is the one tree format this binary reads and writes: the root's
 // layout, and what @koan.json records.
-const Format = 4
+const Format = 5
 
 // The format of each kind of file this binary reads and writes. Each kind is
 // numbered apart, so no kind shares a constant with another.
@@ -41,11 +41,12 @@ const MaxInt int64 = 1<<53 - 1
 func ValidID(n ID) bool { return n >= 1 && n <= MaxID }
 
 var (
-	folderName = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$`)
-	tagName    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
-	taskName   = regexp.MustCompile(`^@([1-9][0-9]{0,14})\.(json|md)$`)
-	idRef      = regexp.MustCompile(`^@?([1-9][0-9]{0,14})$`)
-	timestamp  = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`)
+	folderName   = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$`)
+	tagName      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
+	taskName     = regexp.MustCompile(`^@([1-9][0-9]{0,14})\.(json|md)$`)
+	idRef        = regexp.MustCompile(`^@?([1-9][0-9]{0,14})$`)
+	archivedName = regexp.MustCompile(`^@([1-9][0-9]{0,14})_(.+)$`)
+	timestamp    = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`)
 )
 
 // ValidFolderName reports whether s can name a folder.
@@ -102,6 +103,14 @@ const (
 	FolderNotesName = "@folder.md"
 )
 
+// The directories in the root that hold the tree and the archive, and the
+// archive's index.
+const (
+	TreeDir    = "tree"
+	ArchiveDir = "archived"
+	IndexName  = "@index.jsonl"
+)
+
 // TaskFilename splits a filename like @42.json or @42.md into its ID and
 // suffix; ok is false for any other name.
 func TaskFilename(name string) (id ID, suffix string, ok bool) {
@@ -146,16 +155,28 @@ func ParseFolder(s string) (Folder, bool) {
 }
 
 // Rel is the folder's path relative to the root directory, each name with
-// its `@`: "@proj/@travel", and "." for the root.
+// its `@`: "tree/@proj/@travel", and "tree" for /.
 func (f Folder) Rel() string {
-	if f == Root {
-		return "."
-	}
 	segs := f.Segments()
 	for i, s := range segs {
 		segs[i] = FolderDir(s)
 	}
-	return path.Join(segs...)
+	return path.Join(append([]string{TreeDir}, segs...)...)
+}
+
+// ArchivedFolderName is the name in the archive of folder name, whose ID is
+// id: "@41_HOME-12345".
+func ArchivedFolderName(id ID, name string) string { return IDRef(id) + "_" + name }
+
+// ParseArchivedFolder splits an archived folder's name into its ID and its
+// folder name; ok is false for any other name.
+func ParseArchivedFolder(entry string) (id ID, name string, ok bool) {
+	m := archivedName.FindStringSubmatch(entry)
+	if m == nil || !ValidFolderName(m[2]) {
+		return 0, "", false
+	}
+	id, _ = strconv.ParseInt(m[1], 10, 64)
+	return id, m[2], true
 }
 
 // TaskRel and NotesRel are the root-relative paths of a task's two files.
