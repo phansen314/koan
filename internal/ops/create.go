@@ -49,25 +49,16 @@ func (n newTask) file(id model.ID, now string, blockers []model.ID) *model.TaskF
 	}
 }
 
-// issue takes n new IDs and saves the counter: the first is returned. They
-// start above the tree's highest ID as well as the counter's, since an
-// outside change can bring in IDs the counter never issued.
+// issue takes n new IDs and saves the counter in @koan.json: the first is
+// returned. The counter travels with the tree, so it alone decides them.
 func (c *call) issue(n int) (model.ID, *errs.Error) {
-	top, rel, e := c.highest()
-	if e != nil {
-		return 0, e
-	}
-	if top > c.t.State.LastID {
-		c.warn(errs.WarnIDAboveCounter, fmt.Sprintf("the tree holds ID %d, above the counter (%d), as an outside change can leave it: the counter was raised past it", top, c.t.State.LastID),
-			[]model.ID{top}, c.t.Abs(rel))
-		c.t.State.LastID = top
-	}
-	first := c.t.State.LastID + 1
+	first := c.t.Meta.LastID + 1
 	if first+model.ID(n)-1 > model.MaxID {
 		return 0, errs.New(errs.Internal, "the ID counter is exhausted")
 	}
-	c.t.State.LastID += model.ID(n)
-	return first, c.t.SaveState()
+	m := *c.t.Meta
+	m.LastID += model.ID(n)
+	return first, c.t.WriteMeta(m, false)
 }
 
 // writeNew writes one new task, whose folder is there: its task file, then
@@ -121,10 +112,7 @@ func cmdCreate(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	next, e := c.nextID()
-	if e != nil {
-		return nil, e
-	}
+	next := c.nextID()
 	id := next + model.ID(len(missing))
 	// A new task closes a cycle only through its blocked_by and blocks.
 	if len(bs) > 0 || len(deps) > 0 {
@@ -359,10 +347,7 @@ func cmdBatch(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	next, e := c.nextID()
-	if e != nil {
-		return nil, e
-	}
+	next := c.nextID()
 	base := next + model.ID(len(missing))
 	// The blockers named by ID or by a path of the tree, and by a path of
 	// a folder the batch makes, which has the ID it will take. What is

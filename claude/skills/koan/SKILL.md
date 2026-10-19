@@ -30,7 +30,7 @@ Every command writes one envelope:
 - success: `{"ok":true,"result":{…},"warnings":[…]}`
 - failure: `{"ok":false,"error":{"kind":"…","rule":…,"message":"…","ids":[…],"folders":[…],"paths":[…],"problems":[…],"changed_paths":[…]},"warnings":[…]}`
 
-Branch on `.error.kind`, not the exit code. **Always tell the user about any `warnings`** (`unusable-file`, `dangling-reference`, `id-above-counter`): they mean the tree needs attention. `id-above-counter` means something outside koan (a clone, a merge, a restore) brought in IDs above this machine's counter; koan already issued past them, so nothing needs fixing, but the user should know.
+Branch on `.error.kind`, not the exit code. **Always tell the user about any `warnings`** (`unusable-file`, `dangling-reference`): they mean the tree needs attention.
 
 | Exit | Meaning | What to do |
 |---|---|---|
@@ -209,7 +209,9 @@ koan where 42 | jq -r .result.file                    # a task: its @42.md
 koan where --file docs/plan.md | jq -r '.result | "\(.ref) (\(.hint))"'   # a file on disk → @41:docs/plan.md (/work/HOME-12345:docs/plan.md)
 ```
 
-**When writing a reference down** (in notes, a prompt for another agent, a commit message), write the stable ID and the path as a hint: `@41 (/work/HOME-12345)`, `@41:docs/plan.md (/work/HOME-12345:docs/plan.md)`. IDs survive moves and renames; paths don't. Get both from `where`'s `ref` and `hint`. **When reading one**, resolve the ID with `koan where`; if the path no longer matches the hint, the ID wins, and say the hint is stale.
+**When writing a reference down** in notes or a prompt for another agent, write the stable ID and the path as a hint: `@41 (/work/HOME-12345)`, `@41:docs/plan.md (/work/HOME-12345:docs/plan.md)`. IDs survive moves and renames; paths don't. Get both from `where`'s `ref` and `hint`. **When reading one**, resolve the ID with `koan where`; if the path no longer matches the hint, the ID wins, and say the hint is stale.
+
+**Never put koan IDs in commit messages, pull requests, or other repositories' files.** An ID means something only in the user's tree, and a restore of the tree can hand it to something else. Name the work there in words, by the task's title or the folder's path, as anyone reading it would.
 
 ### Worktrees: markers and `context`
 
@@ -302,7 +304,7 @@ The tree is kept small by letting finished work leave it, with git keeping it (t
 ## Hard rules
 
 - **Never** hand-edit, create, rename, or delete anything under `~/koan-root` named with `@`, except a task's notes `@<id>.md` and a folder's `@folder.md` — use `task move`, `folder move`, `task delete`, and `folder delete`. Task files, folder files, and `@koan.json` belong to koan; a hand edit can break invariants no command will repair. Anything not named with `@` is the user's material, which koan never reads: a `docs/` beside a folder's tasks is fine, but a folder made by hand is material, not a koan folder (`koan folder create` makes one). The same goes for `~/.config/koan/state.json`, which you also never restore.
-- **Never run git commands that switch, merge, rebase, or reset in `~/koan-root`** (`checkout`, `switch`, `merge`, `pull`, `rebase`, `reset`, `stash`): the tree is one line of history, and koan's counter and claims are outside it. Committing is the user's business: commit in the tree only when asked. Restoring a deleted task's files, as the user asks, is fine; see the README's "Undoing a delete".
+- **Never run git commands that switch, merge, rebase, or reset in `~/koan-root`** (`checkout`, `switch`, `merge`, `pull`, `rebase`, `reset`, `stash`): the tree is one line of history, and koan's claims are outside it. Committing is the user's business: commit in the tree only when asked. Restoring a deleted task's files, as the user asks, is fine; see the README's "Undoing a delete".
 - Don't pass `--input` unless building input from other JSON, or for `batch`, which takes nothing else; flags are clearer.
 - Don't create tasks the user didn't ask for. When a follow-up turns up during other work, offer it: "Want me to add a task for X?"
 

@@ -258,10 +258,4 @@ func (c *call) block(deps []dependent, id model.ID, what string) ([]model.ID, *e
 
 // nextID is the first ID issue would issue now, without issuing it: what a
 // change is checked with before an ID is used.
-func (c *call) nextID() (model.ID, *errs.Error) {
-	top, _, e := c.highest()
-	if e != nil {
-		return 0, e
-	}
-	return max(top, c.t.State.LastID) + 1, nil
-}
+func (c *call) nextID() model.ID { return c.t.Meta.LastID + 1 }

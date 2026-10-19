@@ -105,7 +105,7 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	folderFiles, folderErrs := loadFolderFiles(t, x)
 	// highest is the highest ID in the tree, or the counter if higher: what
 	// a new ID must be above.
-	highest := max(t.State.LastID, highestID(x, folderFiles))
+	highest := max(t.Meta.LastID, highestID(x, folderFiles))
 
 	for _, rel := range x.Temps {
 		d.add(errs.FindingTempLeftover, "a temp file koan left behind: `koan repair` removes it", nil,
@@ -115,19 +115,19 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	var above []model.ID
 	var abovePaths []string
 	for _, l := range files {
-		if l.id > t.State.LastID {
+		if l.id > t.Meta.LastID {
 			above, abovePaths = append(above, l.id), append(abovePaths, abs(l))
 		}
 	}
 	for _, f := range x.Folders {
-		if ff := folderFiles[f]; ff != nil && ff.ID > t.State.LastID {
+		if ff := folderFiles[f]; ff != nil && ff.ID > t.Meta.LastID {
 			above, abovePaths = append(above, ff.ID), append(abovePaths, t.Abs(model.FolderFileRel(f)))
 		}
 	}
 	// Notes hold their ID when their task is gone: the next task given it
 	// would find them in its place.
 	for _, id := range slices.Sorted(maps.Keys(x.Notes)) {
-		if _, isTask := x.Tasks[id]; id > t.State.LastID && !isTask {
+		if _, isTask := x.Tasks[id]; id > t.Meta.LastID && !isTask {
 			for _, f := range x.Notes[id] {
 				above, abovePaths = append(above, id), append(abovePaths, t.Abs(model.NotesRel(f, id)))
 			}
@@ -135,10 +135,11 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	}
 	if len(above) > 0 {
 		top := slices.Max(above)
-		d.add(errs.FindingIDAboveCounter, fmt.Sprintf("IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.State.LastID, top),
+		d.add(errs.FindingIDAboveCounter, fmt.Sprintf("IDs above the counter (%d), which would be issued again: `koan repair` raises it to %d", t.Meta.LastID, top),
 			above, abovePaths, func() (bool, *errs.Error) {
-				t.State.LastID = top
-				return done(t.SaveState())
+				m := *t.Meta
+				m.LastID = top
+				return done(t.WriteMeta(m, false))
 			})
 	}
 
@@ -243,9 +244,11 @@ func diagnose(c *call) (*diagnosis, *errs.Error) {
 	for _, f := range x.Unfiled() {
 		d.add(errs.FindingMissingFolderFile, fmt.Sprintf("folder %s has no %s, so its blockers are unknown and everything in it is held back: `koan repair` writes one, with a new ID and no blockers; a blocked_by that named its old ID then dangles, so re-point such references with `koan task block` or `koan folder block` before repairing dangling-reference", f, model.FolderFileName),
 			nil, []string{t.Abs(f.Rel())}, func() (bool, *errs.Error) {
-				id := max(t.State.LastID, highest) + 1
-				t.State.LastID, highest = id, id
-				if e := t.SaveState(); e != nil {
+				id := max(t.Meta.LastID, highest) + 1
+				highest = id
+				m := *t.Meta
+				m.LastID = id
+				if e := t.WriteMeta(m, false); e != nil {
 					return false, e
 				}
 				return done(t.WriteFolderFile(f, model.NewFolderFile(id), true))

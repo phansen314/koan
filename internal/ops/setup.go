@@ -12,15 +12,13 @@ import (
 )
 
 type initResult struct {
-	Root          string   `json:"root"`
-	StatePath     string   `json:"state_path"`
-	Created       []string `json:"created"`
-	CounterRaised bool     `json:"counter_raised"`
+	Root      string   `json:"root"`
+	StatePath string   `json:"state_path"`
+	Created   []string `json:"created"`
 }
 
 // cmdInit creates whatever is missing of the root, its @koan.json, and the
-// state file, raises a counter below the tree's highest ID, and changes
-// nothing else that is there.
+// state file, and changes nothing that is there.
 func cmdInit(c *call) (any, *errs.Error) {
 	if e := c.checked(); e != nil {
 		return nil, e
@@ -59,40 +57,31 @@ func cmdInit(c *call) (any, *errs.Error) {
 		return nil, cond.Err
 	}
 	if cond.Meta == nil {
-		if e := t.WriteMeta(model.Format, true); e != nil {
+		// A new @koan.json starts its counter at the highest ID already in
+		// the directory, as when one was lost. Duplicated IDs don't matter
+		// to it, but a folder that can't be listed does: an ID in it would
+		// be issued again.
+		x, e := t.Walk(true)
+		if e != nil {
+			return nil, e
+		}
+		if len(x.Unlistable) > 0 {
+			p := t.Abs(x.Unlistable[0])
+			return nil, errs.New(errs.IO, "%s can't be listed, so the highest ID in the tree is not known", p).WithPaths(p)
+		}
+		// A folder file that can't be read is doctor's.
+		folders, _ := loadFolderFiles(t, x)
+		if e := t.WriteMeta(model.Meta{Schema: model.Format, LastID: highestID(x, folders)}, true); e != nil {
 			return nil, e
 		}
 		res.Created = append(res.Created, store.PartMeta)
 	}
-	// Duplicated IDs don't matter to the counter, but a folder that can't
-	// be listed does: an ID in it would be issued again.
-	x, e := t.Walk(true)
-	if e != nil {
-		return nil, e
-	}
-	if len(x.Unlistable) > 0 {
-		p := t.Abs(x.Unlistable[0])
-		return nil, errs.New(errs.IO, "%s can't be listed, so the highest ID in the tree is not known", p).WithPaths(p)
-	}
-	// A folder file that can't be read is doctor's.
-	folders, _ := loadFolderFiles(t, x)
-	top := highestID(x, folders)
-	switch {
-	case cond.State == nil:
-		t.State = &model.State{Schema: model.StateFormat, LastID: top, Claims: map[string]model.Claim{}}
+	if cond.State == nil {
+		t.State = &model.State{Schema: model.StateFormat, Claims: map[string]model.Claim{}}
 		if e := t.SaveState(); e != nil {
 			return nil, e
 		}
 		res.Created = append(res.Created, store.PartState)
-	case cond.State.LastID < top:
-		// A tree cloned, copied, or restored beside a state file of this
-		// machine's: raising the counter never harms.
-		t.State = cond.State
-		t.State.LastID = top
-		if e := t.SaveState(); e != nil {
-			return nil, e
-		}
-		res.CounterRaised = true
 	}
 	return res, nil
 }
@@ -142,10 +131,15 @@ func cmdInfo(c *call) (any, *errs.Error) {
 	res := infoResult{Root: c.env.RootPath(), StatePath: c.env.StatePath(), State: cond.Status, Missing: cond.Missing}
 	if cond.Meta != nil {
 		res.Format = &cond.Meta.Schema
+		// A newer koan's @koan.json is read for its format alone, and a
+		// format-3 tree's counter is in a state file that may be gone.
+		if cond.Meta.Schema == model.Format || (cond.Meta.Schema == 3 && cond.State != nil) {
+			res.LastID = &cond.Meta.LastID
+		}
 	}
 	if cond.State != nil {
 		n := len(cond.State.Claims)
-		res.LastID, res.Claims = &cond.State.LastID, &n
+		res.Claims = &n
 	}
 	if cond.Status == store.Unusable {
 		res.Error = cond.Err
@@ -221,9 +215,10 @@ func cmdRepair(c *call) (any, *errs.Error) {
 // task file from it to the next. There is no earlier format yet.
 var conversions = map[int64]func([]byte) ([]byte, error){}
 
-// treeConversions holds the tree formats this binary converts from. Format
-// 1 has none: format 2 came before the first release, without one.
-var treeConversions = map[int64]bool{}
+// treeConversions holds the tree formats this binary converts from. Formats
+// 1 and 2 have none: they came before the first release. Format 3 kept the
+// counter in the state file; migrate moves it into @koan.json.
+var treeConversions = map[int64]bool{3: true}
 
 // convertible refuses a tree in a format this binary has no conversion
 // from: doctor and migrate would misread it.
@@ -276,7 +271,11 @@ func cmdMigrate(c *call) (any, *errs.Error) {
 		res.Converted++
 	}
 	if !dry && res.From < res.To {
-		if e := c.t.WriteMeta(model.Format, false); e != nil {
+		// The counter starts above the state file's and every ID in the
+		// tree, as a format-3 command issued them.
+		folders, _ := loadFolderFiles(c.t, x)
+		m := model.Meta{Schema: model.Format, LastID: max(c.t.Meta.LastID, highestID(x, folders))}
+		if e := c.t.WriteMeta(m, false); e != nil {
 			return nil, e
 		}
 	}

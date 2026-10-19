@@ -17,7 +17,7 @@ GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest   # any
 koan init                                                                  # this machine's task tree
 ```
 
-The tree is always at `~/koan-root`, and koan's own state (the ID counter and the claims) at `~/.config/koan/state.json`. To keep the tree somewhere else, make `~/koan-root` a symlink to it before running `init`.
+The tree is always at `~/koan-root`, its ID counter in its `@koan.json`, and this machine's claims at `~/.config/koan/state.json`. To keep the tree somewhere else, make `~/koan-root` a symlink to it before running `init`.
 
 ## A taste
 
@@ -111,9 +111,9 @@ git -C ~/koan-root add -A && git -C ~/koan-root commit -q -m "koan $(date -u +%F
 
 A crash can leave a `.koan-tmp-*` file; a root `.gitignore` with `.koan-tmp-*` keeps one out of a commit. A commit doesn't wait for koan's lock, so one taken while a command is writing can catch a change half done; restoring it leaves what a crash leaves, which `koan doctor` finds.
 
-- **Don't check out other branches at `~/koan-root`, or merge into it.** IDs come from a counter outside the tree, so branches on one machine never repeat one, but merging them brings conflicts on task files, `blocked_by` naming tasks deleted on the other branch, and claims for tasks the checked-out branch doesn't have. `koan doctor` finds these, but can't resolve them.
+- **Don't check out other branches at `~/koan-root`, or merge into it.** The ID counter is in `@koan.json`, so two branches issue the same IDs, and merging them conflicts there, on task files, and on `blocked_by` naming tasks deleted on the other branch. `koan doctor` finds what is left, but can't resolve it.
 - **Don't work on a checkout of the tree anywhere else.** koan only ever reads and writes `~/koan-root`; a clone or `git worktree` elsewhere is invisible to it.
-- **Don't put `~/.config/koan/state.json` in git, a dotfiles repo, or a sync tool.** Putting back an older copy lowers the counter, and the IDs of tasks deleted since are issued again, to new tasks: restoring a deleted task from git, or a `@57` written in notes, then names the wrong one. It also puts back old claims. This is the one way a restore can break IDs on a single machine.
+- **Restoring the whole tree to an older commit** takes its counter back too, so the IDs issued since are issued again. That is why koan IDs belong in notes and prompts, and not in commit messages or anything else kept outside the tree.
 
 ### Undoing a delete
 
@@ -142,7 +142,7 @@ git restores only what it tracked:
 
 A tree is written from one machine, and a machine has one tree; keep separate bodies of work as top-level folders (`/work`, `/home`).
 
-To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`: it brings the counter up to the highest ID in the tree, whether it makes the state file or finds one there. Commands that issue IDs also start above the highest ID in the tree, so a restore can't make koan issue an ID that is already in use. After the move, write the tree from the new machine only. Two machines that both create tasks in copies of one tree will issue the same IDs; merging them gives duplicate IDs, which `koan doctor` reports for you to resolve. A sync tool between two machines that both write the tree is the same thing, so use one only as a backup.
+To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`, which gives that machine its own state file for claims; the ID counter comes with the tree. After the move, write the tree from the new machine only. Two machines that both create tasks in copies of one tree will issue the same IDs; with git, merging them conflicts on `@koan.json`. A sync tool between two machines that both write the tree has no such check, so use one only as a backup.
 
 ## Keeping the tree small
 

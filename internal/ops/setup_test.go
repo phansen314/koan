@@ -83,19 +83,21 @@ func TestInitReportsWhatItCreated(t *testing.T) {
 	}
 }
 
-// init can't know the highest ID in a tree it can't list.
+// init can't know the highest ID in a tree it can't list, so it can't make
+// a @koan.json there. With one there, it walks nothing.
 func TestInitNeedsTheWholeTree(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root can list anything")
 	}
 	w := ready(t)
 	w.ok("task create", `{"title":"a","folder":"/locked"}`)
-	os.Remove(w.env.StatePath())
 	os.Chmod(w.root("locked"), 0)
 	defer os.Chmod(w.root("locked"), 0o755)
+	w.ok("init", `{}`)
+	os.Remove(w.root("koan.json"))
 	w.fail("init", `{}`, errs.IO, "")
-	if _, err := os.Stat(w.env.StatePath()); !os.IsNotExist(err) {
-		t.Error("init made a state file without having seen the whole tree")
+	if _, err := os.Stat(w.root("koan.json")); !os.IsNotExist(err) {
+		t.Error("init made a @koan.json without having seen the whole tree")
 	}
 }
 
@@ -103,7 +105,7 @@ func TestInitNeedsTheWholeTree(t *testing.T) {
 func TestInitCountsFolderIDs(t *testing.T) {
 	w := ready(t)
 	w.ok("folder create", `{"folder":"/a/b/c"}`)
-	os.Remove(w.env.StatePath())
+	os.Remove(w.root("koan.json"))
 	w.ok("init", `{}`)
 	if n := w.ok("info", `{}`)["last_id"]; n != float64(3) {
 		t.Errorf("last_id %v, want 3", n)
@@ -132,7 +134,7 @@ func TestATreeInFormatOneIsMaterial(t *testing.T) {
 func TestFormats(t *testing.T) {
 	w := ready(t)
 	w.ok("task create", `{"title":"a"}`)
-	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(3) {
+	if got := w.ok("migrate", `{}`); got["converted"] != float64(0) || got["from"] != float64(4) {
 		t.Errorf("migrate on a current tree: %v", got)
 	}
 
@@ -144,7 +146,7 @@ func TestFormats(t *testing.T) {
 		w.fail("doctor", `{}`, errs.Conflict, errs.RuleNoConversion)
 	}
 
-	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 4}`), 0o644)
+	os.WriteFile(w.root("koan.json"), []byte(`{"schema": 5}`), 0o644)
 	w.fail("task show", `{"id":1}`, errs.UnsupportedFormat, "")
 	w.fail("migrate", `{}`, errs.UnsupportedFormat, "")
 	w.fail("doctor", `{}`, errs.UnsupportedFormat, "")

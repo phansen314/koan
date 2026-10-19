@@ -132,10 +132,7 @@ func cmdFolderCreate(c *call) (any, *errs.Error) {
 	if e != nil {
 		return nil, e
 	}
-	next, e := c.nextID()
-	if e != nil {
-		return nil, e
-	}
+	next := c.nextID()
 	id := next + model.ID(slices.Index(missing, f))
 	if len(bs) > 0 || len(deps) > 0 {
 		o := c.overlay()
@@ -404,10 +401,7 @@ func (c *call) moveCheck(t graph.Ref, from, to model.Folder) *errs.Error {
 	if e != nil {
 		return e
 	}
-	next, e := c.nextID()
-	if e != nil {
-		return e
-	}
+	next := c.nextID()
 	o := c.overlay()
 	for i, m := range missing {
 		o.addFolder(m, next+model.ID(i), nil)
@@ -876,34 +870,6 @@ func highestID(x *store.Index, folders map[model.Folder]*model.FolderFile) model
 		highest = max(highest, ff.ID)
 	}
 	return highest
-}
-
-// highest is the highest ID in the tree, as highestID counts it, and a file
-// that holds it. A folder file koan can't use is a warning, as for
-// folderIDs.
-func (c *call) highest() (model.ID, string, *errs.Error) {
-	byID, e := c.folderIDs()
-	if e != nil {
-		return 0, "", e
-	}
-	var top model.ID
-	var rel string
-	for id, f := range c.x.Tasks {
-		if id > top {
-			top, rel = id, model.TaskRel(f, id)
-		}
-	}
-	for id, fs := range c.x.Notes {
-		if id > top {
-			top, rel = id, model.NotesRel(fs[0], id)
-		}
-	}
-	for id, fs := range byID {
-		if id > top {
-			top, rel = id, model.FolderFileRel(fs[0])
-		}
-	}
-	return top, rel, nil
 }
 
 // holder finds what has ID id: a task, in folder f, or folder f itself.
