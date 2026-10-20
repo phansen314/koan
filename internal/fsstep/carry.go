@@ -387,18 +387,21 @@ func (w *work) clean(tmp string) error {
 // remove removes notes or a directory, done when the path is gone. Unless
 // its change was forced, a directory remove first looks for material,
 // since what was checked before COMMIT can change before the step runs;
-// finding any, it removes nothing and is stuck.
+// finding any, it removes nothing and is stuck. Finding none, it removes
+// only koan's entries, so material written while it runs stays.
 func (w *work) remove(s Step) (string, error) {
 	if ok, err := w.listed(s.From); err != nil || !ok {
 		return "", err
 	}
 	if s.Dir && !s.Force {
-		if m, err := holdsMaterial(w.abs(s.From)); err != nil || m {
-			if m {
-				return Material, nil
-			}
+		m, err := w.holdsMaterial(s.From)
+		if m {
+			return Material, nil
+		}
+		if err != nil {
 			return "", err
 		}
+		return "", w.removeKoan(s.From)
 	}
 	return "", w.do("remove "+s.From, func() error {
 		if s.Dir {
@@ -406,6 +409,58 @@ func (w *work) remove(s Step) (string, error) {
 		}
 		return os.Remove(w.abs(s.From))
 	})
+}
+
+// holdsMaterial reports whether a directory being removed holds material:
+// any entry not named with @, other than .DS_Store, in it or in any @
+// directory under it.
+func (w *work) holdsMaterial(rel string) (bool, error) {
+	var entries []fs.DirEntry
+	if err := w.do("look in "+rel, func() (err error) {
+		entries, err = os.ReadDir(w.abs(rel))
+		return err
+	}); err != nil {
+		return false, err
+	}
+	for _, de := range entries {
+		n := de.Name()
+		switch {
+		case n == ".DS_Store":
+		case !strings.HasPrefix(n, "@"):
+			return true, nil
+		case de.IsDir():
+			if m, err := w.holdsMaterial(path.Join(rel, n)); err != nil || m {
+				return m, err
+			}
+		}
+	}
+	return false, nil
+}
+
+// removeKoan removes a directory bottom-up, never by a recursive remove: in each
+// directory it unlinks only the @ entries and .DS_Store it listed there,
+// then removes the directory with rmdir, which the operating system
+// refuses while it isn't empty. Material written since the walk is left,
+// and the step fails.
+func (w *work) removeKoan(rel string) error {
+	entries, err := os.ReadDir(w.abs(rel))
+	if err != nil {
+		return err
+	}
+	for _, de := range entries {
+		n := de.Name()
+		p := path.Join(rel, n)
+		switch {
+		case de.IsDir() && strings.HasPrefix(n, "@"):
+			err = w.removeKoan(p)
+		case n == ".DS_Store" || strings.HasPrefix(n, "@"):
+			err = w.do("unlink "+p, func() error { return os.Remove(w.abs(p)) })
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return w.do("rmdir "+rel, func() error { return os.Remove(w.abs(rel)) })
 }
 
 // move moves notes or a directory, done when the source is gone and the

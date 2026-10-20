@@ -395,6 +395,74 @@ func TestRemoveMaterial(t *testing.T) {
 	}
 }
 
+// A directory remove whose change wasn't forced never removes material
+// written while it runs: mid-walk, in a directory the walk already
+// passed, or mid-removal, in a directory already listed. It removes only
+// the @ entries and .DS_Store it listed, and each directory with rmdir, so
+// the step fails and stays pending; the next write's walk finds the
+// material and the step sticks.
+func TestRemoveMaterialMidway(t *testing.T) {
+	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/.DS_Store=finder",
+		"tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s"}
+	for _, c := range []struct {
+		name, at, late string
+	}{
+		{"mid-walk", "step 1: look in tree/@old/@sub", "tree/@old/late.txt=late"},
+		{"mid-removal, in a listed directory", "step 1: unlink tree/@old/@notes.md", "tree/@old/late.txt=late"},
+		{"mid-removal, in a directory walked", "step 1: unlink tree/@old/@5.md", "tree/@old/@sub/late.txt=late"},
+		{"mid-removal, in an emptied directory", "step 1: rmdir tree/@old/@sub", "tree/@old/@sub/late.txt=late"},
+		{"before the last rmdir", "step 1: rmdir tree/@old", "tree/@old/.git/"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, s := newRoot(t)
+			files(t, s, koans...)
+			reached := false
+			faults(t, func(p string) error {
+				if p == c.at {
+					reached = true
+					files(t, s, c.late)
+				}
+				return nil
+			})
+			late := strings.TrimSuffix(c.late, "/")
+			name, _, _ := strings.Cut(late, "=")
+			has := func() bool {
+				return slices.ContainsFunc(snapshot(t, s), func(e string) bool { return strings.TrimSuffix(e, "/") == late })
+			}
+			w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true}, Step{Op: OpMkdir, To: "tree/@after"})
+			if !reached {
+				t.Fatalf("never reached %s", c.at)
+			}
+			if !has() {
+				t.Fatalf("%s was removed", name)
+			}
+			if !slices.Equal(kinds(w), []string{"pending-step"}) {
+				t.Errorf("warnings %s", describe(w))
+			}
+			if live, stuck := rows(t, s); !slices.Equal(seqs(live), []int64{1, 2}) || len(stuck) != 0 {
+				t.Errorf("live %v, stuck %v", seqs(live), seqs(stuck))
+			}
+
+			store.Fault = nil
+			w = write(t, s)
+			got, ok := warning(w, "stuck-step")
+			if !ok || !slices.Equal(got.Paths, absAll(s, "tree/@old")) || len(w) != 1 {
+				t.Errorf("next write: warnings %s", describe(w))
+			}
+			_, stuck := rows(t, s)
+			if !slices.Equal(seqs(stuck), []int64{1, 2}) {
+				t.Fatalf("stuck %v", seqs(stuck))
+			}
+			if st, _ := Parse(stuck[0].Step); st.Stuck != Material {
+				t.Errorf("stuck step %+v", st)
+			}
+			if !has() {
+				t.Errorf("%s was removed by the next write", name)
+			}
+		})
+	}
+}
+
 // A step found already done, carried out by a write that crashed before
 // its flush, still has each directory it concerns flushed before its row
 // is deleted.

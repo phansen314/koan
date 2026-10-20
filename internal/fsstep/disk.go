@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 )
 
 // listed reports whether the listing of dir holds name, byte for byte. A
@@ -32,29 +31,6 @@ func names(dir string) (listing []string, ok bool, err error) {
 		return nil, false, err
 	}
 	return listing, true, nil
-}
-
-// holdsMaterial reports whether a directory being removed holds material:
-// any entry not named with @, other than .DS_Store, in it or in any @
-// directory under it.
-func holdsMaterial(dir string) (bool, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false, err
-	}
-	for _, de := range entries {
-		n := de.Name()
-		switch {
-		case n == ".DS_Store":
-		case !strings.HasPrefix(n, "@"):
-			return true, nil
-		case de.IsDir():
-			if m, err := holdsMaterial(filepath.Join(dir, n)); err != nil || m {
-				return m, err
-			}
-		}
-	}
-	return false, nil
 }
 
 // renameNew renames from to to, refusing with fs.ErrExist when to is
