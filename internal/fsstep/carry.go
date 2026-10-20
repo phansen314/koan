@@ -24,34 +24,70 @@ var _ store.Steps = (*Steps)(nil)
 func New(root store.Root) *Steps { return &Steps{root: root} }
 
 // Open opens the database of the root under home, as store.Open does,
-// with its filesystem steps carried out here.
+// with its filesystem steps carried out here. It is how a command opens
+// the store.
 func Open(home string) (*store.Store, *cli.Error) {
-	s, e := store.Open(home)
-	if e != nil {
-		return nil, e
-	}
-	s.Steps = New(s.Root)
-	return s, nil
+	return store.Open(home, stepsFor)
 }
 
-// Carry carries out the steps, oldest first, then flushes each directory
-// they touched. A step that fails or sticks holds back the rest of its
-// change, since those may depend on it; later changes go on.
-func (c *Steps) Carry(rows []store.Pending) store.Outcome {
+// OpenDatabase opens a root's database, as store.OpenDatabase does, with
+// its filesystem steps carried out here.
+func OpenDatabase(r store.Root) (*store.Store, int, *cli.Error) {
+	return store.OpenDatabase(r, stepsFor)
+}
+
+func stepsFor(r store.Root) store.Steps { return New(r) }
+
+// Encode is a step as its pending row holds it, given the seq it will
+// have. A case-only move gets its temporary name from that seq, so it
+// records all three names. Anything but a Step is refused.
+func (c *Steps) Encode(seq int64, step any) (json.RawMessage, error) {
+	s, ok := step.(Step)
+	if !ok {
+		return nil, fmt.Errorf("%T is not a filesystem step", step)
+	}
+	if s.Op == OpMove && caseOnly(s.From, s.To) {
+		s.Via = path.Join(path.Dir(s.From), CaseName(seq))
+	}
+	return json.Marshal(s)
+}
+
+// Carry carries out the live steps, oldest first, then flushes each
+// directory they concern. A step that fails or sticks holds back the rest
+// of its change, since those may depend on it; later changes go on,
+// except that a step waits, holding back the rest of its change, while a
+// step of an earlier change that overlaps it is still pending, stuck or
+// not.
+func (c *Steps) Carry(live, stuck []store.Pending) store.Outcome {
 	var out store.Outcome
 	held := map[int64]bool{}
+	// waiting is every step still pending, by change.
+	type row struct {
+		change int64
+		step   Step
+	}
+	var waiting []row
+	for _, r := range stuck {
+		if s, err := Parse(r.Step); err == nil {
+			waiting = append(waiting, row{r.Change, s})
+		}
+	}
 	type carried struct {
 		seq  int64
 		dirs []string
 	}
 	var done []carried
-	for _, r := range rows {
-		if held[r.Change] {
-			continue
-		}
+	for _, r := range live {
 		s, err := Parse(r.Step)
 		if err != nil {
 			held[r.Change] = true
+			continue
+		}
+		if !held[r.Change] && slices.ContainsFunc(waiting, func(w row) bool { return w.change != r.Change && overlaps(w.step, s) }) {
+			held[r.Change] = true
+		}
+		if held[r.Change] {
+			waiting = append(waiting, row{r.Change, s})
 			continue
 		}
 		w := &work{root: c.root.Dir, seq: r.Seq}
@@ -59,8 +95,10 @@ func (c *Steps) Carry(rows []store.Pending) store.Outcome {
 		switch {
 		case err != nil:
 			held[r.Change] = true
+			waiting = append(waiting, row{r.Change, s})
 		case found != "":
 			held[r.Change] = true
+			waiting = append(waiting, row{r.Change, s})
 			s.Stuck = found
 			b, _ := json.Marshal(s)
 			out.Stuck = append(out.Stuck, store.Pending{Seq: r.Seq, Change: r.Change, Step: b})
@@ -89,6 +127,24 @@ func (c *Steps) Carry(rows []store.Pending) store.Outcome {
 	return out
 }
 
+// overlaps reports whether two steps touch the same path, or one above
+// the other, ignoring case, so the order is the same on every filesystem.
+func overlaps(a, b Step) bool {
+	for _, p := range a.Paths() {
+		for _, q := range b.Paths() {
+			if under(p, q) || under(q, p) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// under reports whether p is q or below it, ignoring case.
+func under(p, q string) bool {
+	return len(p) >= len(q) && strings.EqualFold(p[:len(q)], q) && (len(p) == len(q) || p[len(q)] == '/')
+}
+
 // Warnings is what the rows left say: pending-step for the steps still
 // pending, with the paths they touch, and stuck-step for those that stuck,
 // with each one's source, then its destination.
@@ -112,7 +168,7 @@ func (c *Steps) Warnings(live, stuck []store.Pending) []cli.Warning {
 	if len(paths) > 0 {
 		out = append(out, cli.Warning{
 			Kind:    "stuck-step",
-			Message: "A filesystem step found both its source and its destination holding content, or neither, and is set aside with the rest of its change. Keep one copy, then run koan repair.",
+			Message: "A filesystem step found both its source and its destination holding content, or neither, or a remove found material, and is set aside with the rest of its change. Keep one copy, or move the material out, then run koan repair.",
 			Paths:   paths,
 		})
 	}
@@ -147,7 +203,7 @@ func (c *Steps) pendingStep(live []store.Pending) (cli.Warning, bool) {
 }
 
 // abs is a step's path under the root as written.
-func (c *Steps) abs(rel string) string { return filepath.Join(c.root.Path, filepath.FromSlash(rel)) }
+func (c *Steps) abs(rel string) string { return Abs(c.root, rel) }
 
 // inject calls the test's fault hook at a point; its error is the
 // operating system refusing there.
@@ -175,7 +231,10 @@ func (w *work) do(what string, fn func() error) error {
 	return fn()
 }
 
-// touch records directories the step changes, to flush.
+// touch records directories the step concerns, to flush once it is
+// done, whether it changed them or found them already done: a step found
+// done may have been carried out by a write that crashed before its
+// flush.
 func (w *work) touch(dirs ...string) {
 	for _, d := range dirs {
 		if !slices.Contains(w.dirs, d) {
@@ -189,44 +248,102 @@ func (w *work) listed(rel string) (bool, error) {
 	return listed(w.abs(path.Dir(rel)), path.Base(rel))
 }
 
+// errCase is a name on a step's paths that equals the one it needs only
+// ignoring case. The step fails, on every filesystem, and stays pending.
+type errCase struct{ found, needed string }
+
+func (e errCase) Error() string {
+	return fmt.Sprintf("%s differs only in case from %s, which a step needs", e.found, e.needed)
+}
+
+// sameCase lists each directory on rel, from tree/ or archived/ down,
+// and fails where a name in a listing equals rel's own name there only
+// ignoring case. With leaf, only rel's own name is checked. allow names
+// the other names a case-only rename has beside its own.
+func (w *work) sameCase(rel string, leaf bool, allow ...string) error {
+	parts := strings.Split(rel, "/")
+	first := 1
+	if leaf {
+		first = len(parts) - 1
+	}
+	for i := first; i < len(parts); i++ {
+		dir := strings.Join(parts[:i], "/")
+		listing, ok, err := names(w.abs(dir))
+		if err != nil || !ok {
+			return err
+		}
+		for _, n := range listing {
+			if n != parts[i] && strings.EqualFold(n, parts[i]) && !(i == len(parts)-1 && slices.Contains(allow, n)) {
+				return errCase{path.Join(dir, n), path.Join(dir, parts[i])}
+			}
+		}
+	}
+	return nil
+}
+
 // carry carries out a step. found is what a stuck step found, or "".
 func (w *work) carry(s Step) (found string, err error) {
 	switch s.Op {
 	case OpMkdir:
-		return "", w.mkdir(s.To, true)
+		w.touch(path.Dir(s.To), s.To)
+		if err := w.sameCase(path.Join(s.To, FolderNotes), false); err != nil {
+			return "", err
+		}
+		return "", w.mkdir(s.To)
 	case OpWrite:
+		w.touch(path.Dir(s.To))
+		if err := w.sameCase(s.To, false); err != nil {
+			return "", err
+		}
 		return "", w.write(s.To, []byte(s.Content))
 	case OpMove:
+		var allow []string
+		for _, p := range []string{s.From, s.Via, s.To} {
+			if p != "" {
+				w.touch(path.Dir(p))
+				allow = append(allow, path.Base(p))
+			}
+		}
+		if s.Via == "" {
+			allow = nil
+		}
+		for _, p := range []string{s.From, s.Via, s.To} {
+			if p == "" {
+				continue
+			}
+			if err := w.sameCase(p, false, allow...); err != nil {
+				return "", err
+			}
+		}
 		return w.move(s)
 	case OpRemove:
-		return "", w.remove(s.From, s.Dir)
+		w.touch(path.Dir(s.From))
+		if err := w.sameCase(s.From, false); err != nil {
+			return "", err
+		}
+		return w.remove(s)
 	case OpArchive:
 		return w.archive(s)
 	}
 	return "", fmt.Errorf("unknown step %q", s.Op)
 }
 
-// mkdir makes a directory, done when it exists; a folder's is done when
-// it holds @notes.md too, and gets an empty one if it doesn't.
-func (w *work) mkdir(rel string, notes bool) error {
+// mkdir makes a folder's directory, done when it exists holding
+// @notes.md, making whichever is missing.
+func (w *work) mkdir(rel string) error {
 	ok, err := w.listed(rel)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		w.touch(path.Dir(rel), rel)
 		if err := w.do("mkdir "+rel, func() error { return os.Mkdir(w.abs(rel), 0o755) }); err != nil {
 			return err
 		}
-	}
-	if !notes {
-		return nil
 	}
 	n := path.Join(rel, FolderNotes)
 	if ok, err := w.listed(n); err != nil || ok {
 		return err
 	}
-	w.touch(rel)
 	return w.do("create "+n, func() error { return createEmpty(w.abs(n)) })
 }
 
@@ -234,6 +351,9 @@ func (w *work) mkdir(rel string, notes bool) error {
 // A temp file left behind is removed once it is done.
 func (w *work) write(rel string, data []byte) error {
 	tmp := path.Join(path.Dir(rel), TempName(w.seq))
+	if err := w.sameCase(tmp, true); err != nil {
+		return err
+	}
 	ok, err := w.listed(rel)
 	if err != nil {
 		return err
@@ -241,7 +361,6 @@ func (w *work) write(rel string, data []byte) error {
 	if ok {
 		return w.clean(tmp)
 	}
-	w.touch(path.Dir(rel))
 	if err := w.do("write "+tmp, func() error { return writeFile(w.abs(tmp), data) }); err != nil {
 		return err
 	}
@@ -262,21 +381,30 @@ func (w *work) clean(tmp string) error {
 	if ok, err := w.listed(tmp); err != nil || !ok {
 		return err
 	}
-	w.touch(path.Dir(tmp))
 	return w.do("remove "+tmp, func() error { return os.Remove(w.abs(tmp)) })
 }
 
-// remove removes notes or a directory, done when the path is gone.
-func (w *work) remove(rel string, dir bool) error {
-	if ok, err := w.listed(rel); err != nil || !ok {
-		return err
+// remove removes notes or a directory, done when the path is gone. Unless
+// its change was forced, a directory remove first looks for material,
+// since what was checked before COMMIT can change before the step runs;
+// finding any, it removes nothing and is stuck.
+func (w *work) remove(s Step) (string, error) {
+	if ok, err := w.listed(s.From); err != nil || !ok {
+		return "", err
 	}
-	w.touch(path.Dir(rel))
-	return w.do("remove "+rel, func() error {
-		if dir {
-			return os.RemoveAll(w.abs(rel))
+	if s.Dir && !s.Force {
+		if m, err := holdsMaterial(w.abs(s.From)); err != nil || m {
+			if m {
+				return Material, nil
+			}
+			return "", err
 		}
-		return os.Remove(w.abs(rel))
+	}
+	return "", w.do("remove "+s.From, func() error {
+		if s.Dir {
+			return os.RemoveAll(w.abs(s.From))
+		}
+		return os.Remove(w.abs(s.From))
 	})
 }
 
@@ -345,7 +473,6 @@ func (w *work) settle(src, dst string, dir bool) (stuck bool, err error) {
 			return false, err
 		}
 		if empty {
-			w.touch(path.Dir(side))
 			return false, w.do("remove empty "+side, func() error { return removeEmpty(w.abs(side), dir) })
 		}
 	}
@@ -355,7 +482,6 @@ func (w *work) settle(src, dst string, dir bool) (stuck bool, err error) {
 // rename renames without replacing. Finding the destination there is no
 // failure: the move judges the sides again.
 func (w *work) rename(from, to string) error {
-	w.touch(path.Dir(from), path.Dir(to))
 	err := w.do("rename "+from, func() error { return renameNew(w.abs(from), w.abs(to)) })
 	if errors.Is(err, fs.ErrExist) {
 		return nil
@@ -364,22 +490,30 @@ func (w *work) rename(from, to string) error {
 }
 
 // archive moves notes or a directory to the archive, done when it sits
-// there: it makes the directories above it, writes its JSON through a
-// temp file renamed into place beside where it goes, then renames it out
-// of the tree. Notes missing from the tree leave the JSON alone; a missing
-// directory is stuck.
+// there: it makes the directories above it, using any already there in
+// whatever case, writes its JSON through a temp file renamed into place
+// beside where it goes, then renames it out of the tree. Notes missing
+// from the tree leave the JSON alone; a missing directory is stuck.
 func (w *work) archive(s Step) (string, error) {
-	parts := strings.Split(path.Dir(s.To), "/")
-	for i := range parts {
-		if err := w.mkdir(strings.Join(parts[:i+1], "/"), false); err != nil {
+	w.touch(path.Dir(s.From))
+	if err := w.sameCase(s.From, false); err != nil {
+		return "", err
+	}
+	dir, err := w.above(path.Dir(s.To))
+	if err != nil {
+		return "", err
+	}
+	to, file := path.Join(dir, path.Base(s.To)), path.Join(dir, path.Base(s.File))
+	for _, p := range []string{to, file} {
+		if err := w.sameCase(p, true); err != nil {
 			return "", err
 		}
 	}
-	if err := w.write(s.File, s.Rows); err != nil {
+	if err := w.write(file, s.Rows); err != nil {
 		return "", err
 	}
 	for range 2 {
-		if ok, err := w.listed(s.To); err != nil || ok {
+		if ok, err := w.listed(to); err != nil || ok {
 			return "", err
 		}
 		ok, err := w.listed(s.From)
@@ -392,9 +526,40 @@ func (w *work) archive(s Step) (string, error) {
 			}
 			return "", nil
 		}
-		if err := w.rename(s.From, s.To); err != nil {
+		if err := w.rename(s.From, to); err != nil {
 			return "", err
 		}
 	}
 	return "", fmt.Errorf("archiving %s to %s did not settle", s.From, s.To)
+}
+
+// above makes the directories of rel, below archived/, that are missing,
+// and gives rel as it is found on disk: a directory already there in
+// another case is used as it is, and never gets a second spelling beside
+// it.
+func (w *work) above(rel string) (string, error) {
+	parts := strings.Split(rel, "/")
+	dir := parts[0]
+	for _, p := range parts[1:] {
+		listing, _, err := names(w.abs(dir))
+		if err != nil {
+			return "", err
+		}
+		name := p
+		if !slices.Contains(listing, p) {
+			slices.Sort(listing)
+			if i := slices.IndexFunc(listing, func(n string) bool { return strings.EqualFold(n, p) }); i >= 0 {
+				name = listing[i]
+			}
+		}
+		next := path.Join(dir, name)
+		w.touch(dir, next)
+		if !slices.Contains(listing, name) {
+			if err := w.do("mkdir "+next, func() error { return os.Mkdir(w.abs(next), 0o755) }); err != nil {
+				return "", err
+			}
+		}
+		dir = next
+	}
+	return dir, nil
 }

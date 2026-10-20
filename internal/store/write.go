@@ -10,12 +10,13 @@ import (
 	"github.com/phansen314/koan/internal/core"
 )
 
-// Store is a root with its database open, as one command uses it.
+// Store is a root with its database open, as one command uses it. Its
+// writes always carry out their filesystem steps: it can only be opened
+// with the Steps that do.
 type Store struct {
-	Root Root
-	db   *DB
-	// Steps carries out filesystem steps. With none, steps stay pending.
-	Steps Steps
+	Root  Root
+	db    *DB
+	steps Steps
 }
 
 // Close closes the database.
@@ -41,22 +42,34 @@ type Outcome struct {
 
 // Steps carries out filesystem steps, oldest first.
 type Steps interface {
-	Carry(rows []Pending) Outcome
+	// Encode is a step as its pending row holds it, given the seq it
+	// will have. It refuses anything that isn't one of its steps, so
+	// nothing adds a step bypassing it.
+	Encode(seq int64, step any) (json.RawMessage, error)
+	// Carry carries out the live rows; stuck are set aside, and steps
+	// that overlap them wait.
+	Carry(live, stuck []Pending) Outcome
 	// Warnings is what the rows left say once a write is done with them:
 	// live are still pending, stuck are set aside.
 	Warnings(live, stuck []Pending) []cli.Warning
 }
 
+// StepsFor is the Steps of a root.
+type StepsFor func(Root) Steps
+
 // Fault, when a test sets it, is called at each point where a write can
-// be cut short, which point names. A test crashes the process there, or,
-// at a filesystem step, returns an error for the operating system
-// refusing it. Nothing but tests sets it.
+// be cut short, which point names. A test crashes the process there, or
+// returns an error for the operating system refusing there: at COMMIT,
+// at a filesystem step, or deleting the rows of the steps carried out.
+// Past COMMIT, at committed, nothing can fail, and its error is ignored.
+// Nothing but tests sets it.
 var Fault func(point string) error
 
-func fault(point string) {
-	if Fault != nil {
-		Fault(point)
+func fault(point string) error {
+	if Fault == nil {
+		return nil
 	}
+	return Fault(point)
 }
 
 // Change is steps 3 to 5 of a write: inside BEGIN IMMEDIATE it resolves
@@ -107,8 +120,11 @@ func (s *Store) write(change Change) (any, []cli.Warning, *cli.Error) {
 		tx.exec("ROLLBACK")
 		return nil, nil, e
 	}
-	fault("commit")
-	if _, err := s.db.conn.ExecContext(tx.ctx, "COMMIT"); err != nil {
+	err = fault("commit")
+	if err == nil {
+		_, err = s.db.conn.ExecContext(tx.ctx, "COMMIT")
+	}
+	if err != nil {
 		tx.exec("ROLLBACK")
 		return nil, nil, sqliteError(err, s.Root.Database)
 	}
@@ -125,14 +141,11 @@ func (s *Store) write(change Change) (any, []cli.Warning, *cli.Error) {
 
 // left is what the pending rows say once a write is done with them.
 func (s *Store) left() []cli.Warning {
-	if s.Steps == nil {
-		return nil
-	}
 	live, stuck, err := pendingRows(context.Background(), s.db.conn)
 	if err != nil {
 		return nil
 	}
-	return s.Steps.Warnings(live, stuck)
+	return s.steps.Warnings(live, stuck)
 }
 
 // Read runs fn in one read transaction, so it sees one committed state.
@@ -158,7 +171,7 @@ func (s *Store) begin(stmt string) (*Tx, *cli.Error) {
 	if _, err := s.db.conn.ExecContext(ctx, stmt); err != nil {
 		return nil, sqliteError(err, s.Root.Database)
 	}
-	return &Tx{conn: s.db.conn, ctx: ctx, Now: core.FormatTimestamp(time.Now())}, nil
+	return &Tx{conn: s.db.conn, ctx: ctx, Now: core.FormatTimestamp(time.Now()), encode: s.steps.Encode}, nil
 }
 
 // querier is a connection or a transaction.
@@ -201,21 +214,20 @@ func (t *Tx) Pending() (live, stuck []Pending, err error) {
 // deletes the rows of those done and marks the stuck changes, in one
 // transaction.
 func (s *Store) finish() *cli.Error {
-	if s.Steps == nil {
-		return nil
-	}
-	pending, _, err := pendingRows(context.Background(), s.db.conn)
+	live, stuck, err := pendingRows(context.Background(), s.db.conn)
 	if err != nil {
 		return sqliteError(err, s.Root.Database)
 	}
-	if len(pending) == 0 {
+	if len(live) == 0 {
 		return nil
 	}
-	out := s.Steps.Carry(pending)
+	out := s.steps.Carry(live, stuck)
 	if len(out.Done) == 0 && len(out.Stuck) == 0 {
 		return nil
 	}
-	fault("delete")
+	if err := fault("delete"); err != nil {
+		return cli.IO("could not delete the rows of the steps carried out: "+err.Error(), s.Root.Database)
+	}
 	tx, e := s.begin("BEGIN IMMEDIATE")
 	if e != nil {
 		return e
@@ -253,6 +265,8 @@ type Tx struct {
 	// seq of its first.
 	steps  bool
 	change int64
+	// encode is the store's Steps' Encode.
+	encode func(seq int64, step any) (json.RawMessage, error)
 }
 
 // Exec runs a statement in the transaction.
@@ -289,23 +303,28 @@ func (t *Tx) fail(err error) bool {
 	return t.err != nil
 }
 
-// NextSeq is the seq the next step added will have.
-func (t *Tx) NextSeq() (int64, error) {
+// nextSeq is the seq the next step added will have.
+func (t *Tx) nextSeq() (int64, error) {
 	var seq int64
 	err := t.QueryRow("SELECT coalesce(max(seq), 0) + 1 FROM pending").Scan(&seq)
 	return seq, err
 }
 
-// AddStep adds a filesystem step to the change, and returns its seq.
-func (t *Tx) AddStep(step json.RawMessage) (int64, error) {
-	seq, err := t.NextSeq()
+// AddStep adds a filesystem step to the change, as the store's Steps
+// encode it, and returns its seq.
+func (t *Tx) AddStep(step any) (int64, error) {
+	seq, err := t.nextSeq()
+	if err != nil {
+		return 0, err
+	}
+	b, err := t.encode(seq, step)
 	if err != nil {
 		return 0, err
 	}
 	if !t.steps {
 		t.steps, t.change = true, seq
 	}
-	if _, err := t.Exec("INSERT INTO pending (seq, change, step) VALUES (?, ?, ?)", seq, t.change, string(step)); err != nil {
+	if _, err := t.Exec("INSERT INTO pending (seq, change, step) VALUES (?, ?, ?)", seq, t.change, string(b)); err != nil {
 		return 0, err
 	}
 	return seq, nil

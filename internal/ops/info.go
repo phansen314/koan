@@ -2,6 +2,7 @@ package ops
 
 import (
 	"github.com/phansen314/koan/internal/cli"
+	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
 )
 
@@ -46,7 +47,7 @@ func Info() *cli.Command {
 			if !has {
 				return r.failed(store.NotInitialized(root.Database), -1), nil, nil
 			}
-			s, format, e := store.OpenDatabase(root)
+			s, format, e := fsstep.OpenDatabase(root)
 			if e != nil {
 				if e.Kind == cli.KindUnsupportedFormat || e.Kind == cli.KindCorrupt {
 					return r.failed(e, format), nil, nil

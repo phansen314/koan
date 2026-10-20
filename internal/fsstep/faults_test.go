@@ -100,12 +100,14 @@ func TestCrashMatrix(t *testing.T) {
 	}
 }
 
-// The operating system refusing at any point leaves the write ok; a
-// refused step stays pending with pending-step, and the next write
-// finishes the change.
+// The operating system refusing COMMIT fails the write, and nothing is
+// written. Refusing at any later point leaves the write ok: a refused
+// step, a flush or the deletion of the rows leaves steps pending with
+// pending-step, and the next write finishes the change. Past COMMIT,
+// at committed, nothing can be refused: it is a crash point only.
 func TestRefusalMatrix(t *testing.T) {
 	for i, p := range points(t) {
-		if !sampled(p, i) {
+		if !sampled(p, i) || p == "committed" {
 			continue
 		}
 		t.Run(fmt.Sprintf("%02d %s", i, p), func(t *testing.T) {
@@ -118,16 +120,23 @@ func TestRefusalMatrix(t *testing.T) {
 				}
 				return nil
 			})
-			w := write(t, s, scenarioSteps...)
-			_, pending := warning(w, "pending-step")
-			if want := strings.HasPrefix(p, "step ") || strings.HasPrefix(p, "flush "); pending != want {
-				t.Errorf("warnings %s", describe(w))
+			want := scenarioAfter
+			if p == "commit" {
+				if _, _, e := s.Write(change(scenarioSteps...)); e == nil {
+					t.Fatal("a refused COMMIT succeeded")
+				}
+				want = sorted(scenarioBefore...)
+			} else {
+				w := write(t, s, scenarioSteps...)
+				if _, pending := warning(w, "pending-step"); !pending {
+					t.Errorf("warnings %s", describe(w))
+				}
 			}
 			store.Fault = nil
 			if w := write(t, s); len(w) != 0 {
 				t.Errorf("warnings %s", describe(w))
 			}
-			checkTree(t, s, scenarioAfter)
+			checkTree(t, s, want)
 			noPending(t, s)
 		})
 	}
@@ -139,11 +148,13 @@ type casefoldResult struct {
 	Listing   []string `json:"listing"`
 	Warnings  []string `json:"warnings"`
 	Pending   int64    `json:"pending"`
+	// Cases is what each of caseCases gave.
+	Cases map[string]caseResult `json:"cases"`
 }
 
 // casefoldHelper runs inside a case-insensitive mount: it checks the
 // filesystem ignores case, that one rename leaves the old spelling, then
-// makes a case-only rename as a write does.
+// makes a case-only rename as a write does, and runs every case in caseCases.
 func casefoldHelper(home string) int {
 	first := int64(1)
 	if _, _, _, e := store.Init(home, &first); e != nil {
@@ -189,6 +200,11 @@ func casefoldHelper(home string) int {
 	r.Warnings = kinds(w)
 	st, _ := s.Stats()
 	r.Pending = st.Pending
+	var err error
+	if r.Cases, err = caseHomes(home); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	json.NewEncoder(os.Stdout).Encode(r)
 	return 0
 }
@@ -196,6 +212,7 @@ func casefoldHelper(home string) int {
 // On a filesystem that ignores case, one rename of @work to @Work does
 // nothing; the step goes through @.case-<seq> and completes. Linux's
 // casefold, on a tmpfs mounted in a user namespace, stands in for macOS.
+// Every name differing only in case gives what it gives on Linux.
 func TestCaseOnlyCasefold(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("mounts a Linux casefold tmpfs")
@@ -225,5 +242,12 @@ HOME="$1/home" KOAN_FSSTEP_HELPER=casefold exec "$2" -test.run='^$'`
 	}
 	if !slices.Equal(r.Listing, []string{"@Work"}) || len(r.Warnings) != 0 || r.Pending != 0 {
 		t.Errorf("case-only rename: %+v", r)
+	}
+	for _, c := range caseCases {
+		if got, ok := r.Cases[c.name]; !ok {
+			t.Errorf("%s: not run", c.name)
+		} else {
+			c.check(t, got)
+		}
 	}
 }

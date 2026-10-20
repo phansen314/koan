@@ -18,13 +18,14 @@ type Path struct {
 // Read runs a read's fn in one read transaction, as store.Read does, and
 // returns the warnings pending filesystem steps give its result; fn
 // returns the paths the result gives. Reads never repair: when steps are
-// pending, Read tries the lock without waiting. If a write holds it, the
-// steps are being carried out, and each path returned that they bring
-// about is pending-filesystem: the path given is where the file is going.
-// If no one holds it, Read checks the rows again, since a write may have
-// finished in between, and releases the lock at once; steps still pending
-// have no write carrying them out, and give pending-step instead. Stuck
-// steps give stuck-step.
+// pending, Read tries the lock shared, without waiting, so readers never
+// keep each other out. If something holds it exclusively, nearly always a
+// write, the steps are being carried out, and each path returned that
+// they bring about is pending-filesystem: the path given is where the
+// file is going. If not, Read checks the rows again, since a write may
+// have finished in between, and releases the lock at once; steps still
+// pending have no write carrying them out, and give pending-step instead.
+// Stuck steps give stuck-step.
 func Read(s *store.Store, fn func(tx *store.Tx) ([]Path, error)) ([]cli.Warning, *cli.Error) {
 	var paths []Path
 	var live, stuck []store.Pending
@@ -44,7 +45,7 @@ func Read(s *store.Store, fn func(tx *store.Tx) ([]Path, error)) ([]cli.Warning,
 	if len(live) == 0 {
 		return c.Warnings(nil, stuck), nil
 	}
-	lock, ok, e := store.TryLock(s.Root.Dir, s.Root.Path)
+	lock, ok, e := store.TryShared(s.Root.Dir, s.Root.Path)
 	if e != nil {
 		return nil, e
 	}

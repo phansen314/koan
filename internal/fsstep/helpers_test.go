@@ -132,9 +132,15 @@ func warning(ws []cli.Warning, kind string) (cli.Warning, bool) {
 // directory, anything else a file with that content.
 func files(t *testing.T, s *store.Store, entries ...string) {
 	t.Helper()
+	if err := makeFiles(s.Root.Dir, entries...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func makeFiles(dir string, entries ...string) error {
 	for _, e := range entries {
 		name, content, _ := strings.Cut(e, "=")
-		p := filepath.Join(s.Root.Dir, filepath.FromSlash(name))
+		p := filepath.Join(dir, filepath.FromSlash(name))
 		var err error
 		if strings.HasSuffix(name, "/") {
 			err = os.MkdirAll(p, 0o755)
@@ -142,23 +148,32 @@ func files(t *testing.T, s *store.Store, entries ...string) {
 			err = os.WriteFile(p, []byte(content), 0o644)
 		}
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 	}
+	return nil
 }
 
 // snapshot is the tree and the archive as sorted entries: a directory as
 // its path ending /, a file as path=content.
 func snapshot(t *testing.T, s *store.Store) []string {
 	t.Helper()
+	out, err := snap(s.Root.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func snap(dir string) ([]string, error) {
 	var out []string
 	for _, top := range []string{store.TreeName, store.ArchiveName} {
-		base := filepath.Join(s.Root.Dir, top)
+		base := filepath.Join(dir, top)
 		err := filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
 			if err != nil || p == base {
 				return err
 			}
-			rel := filepath.ToSlash(p[len(s.Root.Dir)+1:])
+			rel := filepath.ToSlash(p[len(dir)+1:])
 			if d.IsDir() {
 				out = append(out, rel+"/")
 				return nil
@@ -168,11 +183,11 @@ func snapshot(t *testing.T, s *store.Store) []string {
 			return err
 		})
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 	}
 	slices.Sort(out)
-	return out
+	return out, nil
 }
 
 func sorted(entries ...string) []string {

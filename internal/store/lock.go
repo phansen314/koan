@@ -46,14 +46,15 @@ func TakeLock(dir, root string) (*Lock, *cli.Error) {
 	}
 }
 
-// TryLock takes the write lock only if no one holds it, without waiting.
-// ok is false when someone does.
-func TryLock(dir, root string) (l *Lock, ok bool, e *cli.Error) {
+// TryShared is a reader's try of the lock: it takes it shared, without
+// waiting, so readers never keep each other out. ok is false when
+// something holds it exclusively: a write, init or backup.
+func TryShared(dir, root string) (l *Lock, ok bool, e *cli.Error) {
 	f, err := os.Open(dir)
 	if err != nil {
 		return nil, false, cli.IO("could not open the root to lock it: "+err.Error(), root)
 	}
-	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	err = unix.Flock(int(f.Fd()), unix.LOCK_SH|unix.LOCK_NB)
 	switch {
 	case err == nil:
 		return &Lock{f}, true, nil

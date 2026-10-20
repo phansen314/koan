@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -192,12 +193,18 @@ func (t *Tx) MakeGate(folder int64, end core.End) (int64, error) {
 // RemoveTasks deletes task rows, as delete and archive do. First it finds
 // the tasks that wait on them through edge_blocker and gives each a new
 // updated_at, since its blocked_by loses an entry; then it deletes the
-// edges, claims, tags and rows, and marks each ID deleted, or archived to
-// archive when that isn't empty. It returns the open tasks it left ready
-// that were blocked before, lowest ID first.
-func (t *Tx) RemoveTasks(ids []int64, archive string) (released []int64, err error) {
+// edges, claims, tags and rows, and marks each ID deleted, or, when
+// archive is given, archived to where archive says that ID itself went.
+// It returns the open tasks it left ready that were blocked before,
+// lowest ID first.
+func (t *Tx) RemoveTasks(ids []int64, archive map[int64]string) (released []int64, err error) {
 	if len(ids) == 0 {
 		return nil, nil
+	}
+	for _, id := range ids {
+		if _, ok := archive[id]; archive != nil && !ok {
+			return nil, fmt.Errorf("no archive path for task %d", id)
+		}
 	}
 	gone := map[int64]bool{}
 	for _, id := range ids {
@@ -217,11 +224,11 @@ func (t *Tx) RemoveTasks(ids []int64, archive string) (released []int64, err err
 		before[w] = core.Ready(t, w)
 		t.exec("UPDATE task SET updated_at = ? WHERE id = ?", t.Now, w)
 	}
-	state, path := "deleted", any(nil)
-	if archive != "" {
-		state, path = "archived", archive
-	}
 	for _, id := range ids {
+		state, path := "deleted", any(nil)
+		if archive != nil {
+			state, path = "archived", archive[id]
+		}
 		// The cascade is a backstop: the edges go first, by name.
 		t.exec("DELETE FROM edge WHERE task = ? OR blocker = ?", id, id)
 		t.exec("DELETE FROM task WHERE id = ?", id)

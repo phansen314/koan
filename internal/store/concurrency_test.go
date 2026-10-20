@@ -3,6 +3,7 @@ package store
 import (
 	"bufio"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,7 +38,7 @@ func helper(kind, home, arg string) error {
 		// runs and E when its filesystem step is carried out, both under
 		// the lock.
 		n, _ := strconv.Atoi(arg)
-		s, e := Open(home)
+		s, e := Open(home, idleSteps)
 		if e != nil {
 			return fmt.Errorf("%s: %s", e.Kind, e.Message)
 		}
@@ -47,7 +48,7 @@ func helper(kind, home, arg string) error {
 			return err
 		}
 		defer log.Close()
-		s.Steps = logSteps{log}
+		s.steps = logSteps{log: log}
 		pid := os.Getpid()
 		for range n {
 			_, _, e := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
@@ -55,7 +56,7 @@ func helper(kind, home, arg string) error {
 				if _, err := addTask(tx, core.RootID, "t"); err != nil {
 					return nil, nil, err
 				}
-				_, err := tx.AddStep([]byte(`{}`))
+				_, err := tx.AddStep(json.RawMessage(`{}`))
 				return nil, nil, err
 			})
 			if e != nil {
@@ -94,9 +95,12 @@ func helper(kind, home, arg string) error {
 
 // logSteps carries out every step by logging E, slowly enough that an
 // overlapping writer would show.
-type logSteps struct{ log *os.File }
+type logSteps struct {
+	idle
+	log *os.File
+}
 
-func (l logSteps) Carry(rows []Pending) Outcome {
+func (l logSteps) Carry(rows, _ []Pending) Outcome {
 	var out Outcome
 	time.Sleep(time.Millisecond)
 	fmt.Fprintf(l.log, "E %d\n", os.Getpid())
@@ -105,8 +109,6 @@ func (l logSteps) Carry(rows []Pending) Outcome {
 	}
 	return out
 }
-
-func (logSteps) Warnings(live, stuck []Pending) []cli.Warning { return nil }
 
 // startHelper runs the test binary as a helper.
 func startHelper(t *testing.T, home, kind, arg string) *exec.Cmd {
@@ -195,8 +197,8 @@ func TestLockBusyQuick(t *testing.T) {
 		t.Fatal(e.Message)
 	}
 	defer held.Release()
-	if _, ok, _ := TryLock(s.Root.Dir, s.Root.Path); ok {
-		t.Error("TryLock got a held lock")
+	if _, ok, _ := TryShared(s.Root.Dir, s.Root.Path); ok {
+		t.Error("TryShared got a held lock")
 	}
 	old := LockWait
 	LockWait = 200 * time.Millisecond
@@ -207,9 +209,19 @@ func TestLockBusyQuick(t *testing.T) {
 		t.Errorf("after %v: %+v", time.Since(start), e)
 	}
 	held.Release()
-	l, ok, e := TryLock(s.Root.Dir, s.Root.Path)
+	l, ok, e := TryShared(s.Root.Dir, s.Root.Path)
 	if !ok || e != nil {
-		t.Errorf("TryLock on a free lock: %v %+v", ok, e)
+		t.Errorf("TryShared on a free lock: %v %+v", ok, e)
+	}
+	// Readers never keep each other out.
+	if l2, ok, e := TryShared(s.Root.Dir, s.Root.Path); !ok || e != nil {
+		t.Errorf("TryShared beside a reader: %v %+v", ok, e)
+	} else {
+		l2.Release()
+	}
+	// A reader's try keeps a writer waiting no longer than it holds it.
+	if _, _, e := s.Write(func(tx *Tx) (any, []cli.Warning, error) { return nil, nil, nil }); e == nil || e.Kind != cli.KindBusy {
+		t.Errorf("a write beside a reader's try: %+v", e)
 	}
 	l.Release()
 }

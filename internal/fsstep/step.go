@@ -27,8 +27,9 @@ const (
 
 // What a stuck step found.
 const (
-	Both    = "both"
-	Neither = "neither"
+	Both     = "both"
+	Neither  = "neither"
+	Material = "material"
 )
 
 // The notes names koan keeps, matched exactly.
@@ -53,12 +54,15 @@ type Step struct {
 	Via string `json:"via,omitempty"`
 	// Dir is whether a move, a remove or an archive is of a directory.
 	Dir bool `json:"dir,omitempty"`
+	// Force is whether a remove's change was forced, so it takes
+	// material with it.
+	Force bool `json:"force,omitempty"`
 	// Content is the notes a write puts at To.
 	Content string `json:"content,omitempty"`
 	// File is where an archive writes Rows, its JSON, beside To.
 	File string          `json:"file,omitempty"`
 	Rows json.RawMessage `json:"rows,omitempty"`
-	// Stuck is what a stuck step found: both or neither.
+	// Stuck is what a stuck step found: both, neither or material.
 	Stuck string `json:"stuck,omitempty"`
 }
 
@@ -93,22 +97,9 @@ func caseOnly(from, to string) bool {
 	return path.Dir(from) == path.Dir(to) && from != to && strings.EqualFold(path.Base(from), path.Base(to))
 }
 
-// Add adds a step to the change. A case-only move gets its temporary name
-// from the seq it will have, so it records all three names.
-func Add(tx *store.Tx, s Step) (int64, error) {
-	if s.Op == OpMove && caseOnly(s.From, s.To) {
-		seq, err := tx.NextSeq()
-		if err != nil {
-			return 0, err
-		}
-		s.Via = path.Join(path.Dir(s.From), CaseName(seq))
-	}
-	b, err := json.Marshal(s)
-	if err != nil {
-		return 0, err
-	}
-	return tx.AddStep(b)
-}
+// Add adds a step to the change. It is the one way a step is added: the
+// store refuses anything else.
+func Add(tx *store.Tx, s Step) (int64, error) { return tx.AddStep(s) }
 
 // Parse reads a pending row's step.
 func Parse(raw json.RawMessage) (Step, error) {

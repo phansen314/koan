@@ -25,7 +25,7 @@ var (
 		{Op: OpWrite, To: "tree/@a/@5.md", Content: "five"},
 		{Op: OpMove, From: "tree/@work", To: "tree/@Work", Dir: true},
 		{Op: OpMove, From: "tree/@Work/@1.md", To: "tree/@a/@1.md"},
-		{Op: OpRemove, From: "tree/@old", Dir: true},
+		{Op: OpRemove, From: "tree/@old", Dir: true, Force: true},
 		{Op: OpArchive, From: "tree/@fin", To: "archived/@9_fin", File: "archived/@9_fin.json", Dir: true, Rows: json.RawMessage(`{"schema":1,"kind":"folder"}`)},
 		{Op: OpArchive, From: "tree/@Work/@2.md", To: "archived/work/@2.md", File: "archived/work/@2.json", Rows: json.RawMessage(`{"schema":1,"kind":"task"}`)},
 	}
@@ -57,10 +57,10 @@ func TestStepKinds(t *testing.T) {
 	c := New(s.Root)
 	var again []store.Pending
 	for i, st := range scenarioSteps {
-		b, _ := json.Marshal(st)
+		b, _ := c.Encode(int64(i+1), st)
 		again = append(again, store.Pending{Seq: int64(i + 1), Change: 1, Step: b})
 	}
-	if out := c.Carry(again); len(out.Done) != len(again) || len(out.Stuck) != 0 {
+	if out := c.Carry(again, nil); len(out.Done) != len(again) || len(out.Stuck) != 0 {
 		t.Errorf("again: %+v", out)
 	}
 	checkTree(t, s, scenarioAfter)
@@ -343,4 +343,99 @@ func TestNeverReplaces(t *testing.T) {
 	}
 	write(t, s, Step{Op: OpWrite, To: "tree/@a/@2.md", Content: "mine"})
 	checkTree(t, s, sorted("tree/@1.md=mine", "tree/@a/", "tree/@a/@1.md=raced", "tree/@a/@2.md=raced"))
+}
+
+// A directory remove whose change wasn't forced looks for material first,
+// walking every @ directory under it: finding any, it removes nothing and
+// sticks with material, holding back the rest of its change. Notes, any
+// @ entry and .DS_Store are not material. A forced remove takes it all.
+func TestRemoveMaterial(t *testing.T) {
+	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/@Notes.md=by hand",
+		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s"}
+	for _, c := range []struct {
+		name     string
+		material []string
+		force    bool
+		stuck    bool
+	}{
+		{"none", nil, false, false},
+		{"at the top", []string{"tree/@old/thesis.tex=t"}, false, true},
+		{"an empty file", []string{"tree/@old/@sub/__init__.py="}, false, true},
+		{"a hidden directory", []string{"tree/@old/.git/"}, false, true},
+		{"under @ directories", []string{"tree/@old/@sub/@types/x.d.ts=x"}, false, true},
+		{"forced", []string{"tree/@old/thesis.tex=t", "tree/@old/@sub/.git/"}, true, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, s := newRoot(t)
+			files(t, s, koans...)
+			files(t, s, c.material...)
+			before := snapshot(t, s)
+			w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true, Force: c.force}, Step{Op: OpMkdir, To: "tree/@after"})
+			_, stuck := rows(t, s)
+			if !c.stuck {
+				if len(w) != 0 {
+					t.Errorf("warnings %s", describe(w))
+				}
+				checkTree(t, s, sorted("tree/@after/", "tree/@after/@notes.md="))
+				noPending(t, s)
+				return
+			}
+			got, ok := warning(w, "stuck-step")
+			if !ok || !slices.Equal(got.Paths, absAll(s, "tree/@old")) || len(w) != 1 {
+				t.Errorf("warnings %s", describe(w))
+			}
+			checkTree(t, s, before)
+			if !slices.Equal(seqs(stuck), []int64{1, 2}) {
+				t.Fatalf("stuck %v", seqs(stuck))
+			}
+			if st, _ := Parse(stuck[0].Step); st.Stuck != Material || st.Force {
+				t.Errorf("stuck step %+v", st)
+			}
+		})
+	}
+}
+
+// A step found already done, carried out by a write that crashed before
+// its flush, still has each directory it concerns flushed before its row
+// is deleted.
+func TestDoneStepsFlushed(t *testing.T) {
+	_, s := newRoot(t)
+	files(t, s,
+		"tree/@a/@notes.md=", "tree/@a/@5.md=five", "tree/@a/@1.md=one",
+		"archived/w/@9.md=nine", "archived/w/@9.json={}",
+	)
+	var flushed []string
+	faults(t, func(p string) error {
+		if d, ok := strings.CutPrefix(p, "flush "); ok {
+			flushed = append(flushed, d)
+		}
+		return nil
+	})
+	write(t, s,
+		Step{Op: OpMkdir, To: "tree/@a"},
+		Step{Op: OpWrite, To: "tree/@a/@5.md", Content: "five"},
+		Step{Op: OpMove, From: "tree/@1.md", To: "tree/@a/@1.md"},
+		Step{Op: OpRemove, From: "tree/@gone", Dir: true},
+		Step{Op: OpArchive, From: "tree/@9.md", To: "archived/w/@9.md", File: "archived/w/@9.json", Rows: []byte(`{}`)},
+	)
+	slices.Sort(flushed)
+	if want := []string{"archived", "archived/w", "tree", "tree/@a"}; !slices.Equal(flushed, want) {
+		t.Errorf("flushed %q, want %q", flushed, want)
+	}
+	noPending(t, s)
+}
+
+// A step is added only through Add: the store refuses anything else, so
+// no step lacks what Add gives it, such as a case-only move's temporary
+// name.
+func TestAddOnlySteps(t *testing.T) {
+	_, s := newRoot(t)
+	_, _, e := s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
+		_, err := tx.AddStep(json.RawMessage(`{"op":"move","from":"tree/@work","to":"tree/@Work","dir":true}`))
+		return nil, nil, err
+	})
+	if e == nil || e.Kind != cli.KindInternal {
+		t.Errorf("a raw step: %+v", e)
+	}
+	noPending(t, s)
 }

@@ -25,11 +25,16 @@ func read(t *testing.T, s *store.Store, paths []Path, during func()) []cli.Warni
 	return w
 }
 
+// idle is Steps that carries out nothing.
+type idle struct{ *Steps }
+
+func (idle) Carry(_, _ []store.Pending) store.Outcome { return store.Outcome{} }
+
 // leave commits a change whose steps stay pending, as a write that
 // crashed after COMMIT leaves them.
 func leave(t *testing.T, home string, steps ...Step) {
 	t.Helper()
-	raw, e := store.Open(home)
+	raw, e := store.Open(home, func(r store.Root) store.Steps { return idle{New(r)} })
 	if e != nil {
 		t.Fatal(e.Message)
 	}
@@ -75,6 +80,16 @@ func TestRead(t *testing.T) {
 	got, ok = warning(w, "pending-step")
 	if !ok || len(w) != 1 || !slices.Equal(got.Paths, absAll(s, "tree/@a", "tree/@a/@5.md")) {
 		t.Errorf("no write: %s", describe(w))
+	}
+	// Another reader's try of the lock is no write.
+	other, ok, e := store.TryShared(s.Root.Dir, s.Root.Path)
+	if !ok || e != nil {
+		t.Fatalf("try: %v %+v", ok, e)
+	}
+	w = read(t, s, paths, nil)
+	other.Release()
+	if !slices.Equal(kinds(w), []string{"pending-step"}) {
+		t.Errorf("beside another reader: %s", describe(w))
 	}
 	checkTree(t, s, nil)
 

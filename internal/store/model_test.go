@@ -158,7 +158,7 @@ func TestAgreesWithModel(t *testing.T) {
 		var got []int64
 		write(t, s, func(tx *Tx) error {
 			var err error
-			got, err = tx.RemoveTasks([]int64{id}, "")
+			got, err = tx.RemoveTasks([]int64{id}, nil)
 			return err
 		})
 		if title == "design" && len(got) == 0 {

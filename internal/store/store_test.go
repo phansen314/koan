@@ -24,7 +24,7 @@ func newRoot(t *testing.T, first int64) (string, *Store) {
 	if _, _, _, e := Init(home, &first); e != nil {
 		t.Fatalf("init: %s", e.Message)
 	}
-	s, e := Open(home)
+	s, e := Open(home, idleSteps)
 	if e != nil {
 		t.Fatalf("open: %s", e.Message)
 	}
@@ -121,11 +121,11 @@ func TestPragmas(t *testing.T) {
 
 func TestOpenStates(t *testing.T) {
 	home := t.TempDir()
-	if _, e := Open(home); e == nil || e.Kind != cli.KindNotInitialized || e.Paths[0] != filepath.Join(home, "koan-root") {
+	if _, e := Open(home, idleSteps); e == nil || e.Kind != cli.KindNotInitialized || e.Paths[0] != filepath.Join(home, "koan-root") {
 		t.Errorf("no root: %+v", e)
 	}
 	os.Mkdir(filepath.Join(home, "koan-root"), 0o755)
-	if _, e := Open(home); e == nil || e.Kind != cli.KindNotInitialized || e.Paths[0] != filepath.Join(home, "koan-root", "koan.db") {
+	if _, e := Open(home, idleSteps); e == nil || e.Kind != cli.KindNotInitialized || e.Paths[0] != filepath.Join(home, "koan-root", "koan.db") {
 		t.Errorf("no database: %+v", e)
 	}
 
@@ -134,7 +134,7 @@ func TestOpenStates(t *testing.T) {
 	if _, err := rawDB(t, home).Exec("PRAGMA user_version = 2"); err != nil {
 		t.Fatal(err)
 	}
-	_, e := Open(home)
+	_, e := Open(home, idleSteps)
 	if e == nil || e.Kind != cli.KindUnsupportedFormat || !strings.Contains(e.Message, "format 2") || !strings.Contains(e.Message, "format 1") {
 		t.Errorf("format 2: %+v", e)
 	}
@@ -142,7 +142,7 @@ func TestOpenStates(t *testing.T) {
 	home = t.TempDir()
 	os.Mkdir(filepath.Join(home, "koan-root"), 0o755)
 	os.WriteFile(filepath.Join(home, "koan-root", "koan.db"), []byte(strings.Repeat("not a database ", 100)), 0o644)
-	if _, e := Open(home); e == nil || e.Kind != cli.KindCorrupt || e.Paths[0] != filepath.Join(home, "koan-root", "koan.db") {
+	if _, e := Open(home, idleSteps); e == nil || e.Kind != cli.KindCorrupt || e.Paths[0] != filepath.Join(home, "koan-root", "koan.db") {
 		t.Errorf("not a database: %+v", e)
 	}
 }
@@ -215,14 +215,14 @@ func TestUnfinishedInit(t *testing.T) {
 	root := filepath.Join(home, "koan-root")
 	os.Mkdir(root, 0o755)
 	os.WriteFile(filepath.Join(root, "koan.db"), nil, 0o644)
-	if _, e := Open(home); e == nil || e.Kind != cli.KindUnsupportedFormat || !strings.Contains(e.Message, "format 0") {
+	if _, e := Open(home, idleSteps); e == nil || e.Kind != cli.KindUnsupportedFormat || !strings.Contains(e.Message, "format 0") {
 		t.Errorf("before: %+v", e)
 	}
 	_, created, first, e := Init(home, ptr(int64(40)))
 	if e != nil || first != 40 || !slices.Equal(created, []string{"tree", "archive", "database"}) {
 		t.Fatalf("init: %v %d %+v", created, first, e)
 	}
-	s, e := Open(home)
+	s, e := Open(home, idleSteps)
 	if e != nil {
 		t.Fatal(e.Message)
 	}
@@ -271,7 +271,7 @@ func TestIssue(t *testing.T) {
 		return err
 	})
 	write(t, s, func(tx *Tx) error {
-		_, err := tx.RemoveTasks([]int64{101}, "")
+		_, err := tx.RemoveTasks([]int64{101}, nil)
 		return err
 	})
 	write(t, s, func(tx *Tx) error {
@@ -340,14 +340,32 @@ func TestMakeGate(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
+// idle is a fake Steps that takes steps as raw JSON and leaves every one
+// pending.
+type idle struct{}
+
+func idleSteps(Root) Steps { return idle{} }
+
+func (idle) Encode(_ int64, step any) (json.RawMessage, error) {
+	if b, ok := step.(json.RawMessage); ok {
+		return b, nil
+	}
+	return nil, fmt.Errorf("%T is not a step", step)
+}
+
+func (idle) Carry(_, _ []Pending) Outcome { return Outcome{} }
+
+func (idle) Warnings(_, _ []Pending) []cli.Warning { return nil }
+
 // steps is a fake Steps: it records what it is given and answers as told.
 type steps struct {
+	idle
 	carried [][]int64
 	stuck   map[int64]bool // changes to report stuck
 	fail    map[int64]bool // seqs that fail and stay pending
 }
 
-func (f *steps) Carry(rows []Pending) Outcome {
+func (f *steps) Carry(rows, _ []Pending) Outcome {
 	var out Outcome
 	var seqs []int64
 	for _, r := range rows {
@@ -406,14 +424,14 @@ func step(t *testing.T, tx *Tx, s string) int64 {
 func TestWriteSteps(t *testing.T) {
 	_, s := newRoot(t, 1)
 
-	// With no Steps, everything stays pending.
+	// Steps that carry out nothing leave everything pending.
 	write(t, s, func(tx *Tx) error { step(t, tx, `{"a":1}`); return nil })
 	if live, _ := pendingSeqs(t, s); !slices.Equal(live, []int64{1}) {
 		t.Fatalf("pending %v", live)
 	}
 
 	f := &steps{stuck: map[int64]bool{}, fail: map[int64]bool{}}
-	s.Steps = f
+	s.steps = f
 	// Step 2 finishes seq 1; step 7 carries out this change's two steps,
 	// sharing one change, of which the second fails.
 	var first, second, change int64
@@ -476,7 +494,7 @@ func TestWriteSteps(t *testing.T) {
 func TestWriteLeft(t *testing.T) {
 	_, s := newRoot(t, 1)
 	f := &steps{stuck: map[int64]bool{}, fail: map[int64]bool{}}
-	s.Steps = f
+	s.steps = f
 	var a, b int64
 	w := write(t, s, func(tx *Tx) error {
 		a, b = step(t, tx, `{"a":1}`), step(t, tx, `{"a":2}`)
@@ -566,7 +584,7 @@ func TestRemoveTasks(t *testing.T) {
 	var released []int64
 	write(t, s, func(tx *Tx) error {
 		var err error
-		released, err = tx.RemoveTasks([]int64{b}, "")
+		released, err = tx.RemoveTasks([]int64{b}, nil)
 		return err
 	})
 	if !slices.Equal(released, []int64{a}) {
@@ -594,18 +612,80 @@ func TestRemoveTasks(t *testing.T) {
 		t.Errorf("issued state %s", state)
 	}
 
-	// Archived, an ID is not-found with where it went.
+	// Archived, each ID is not-found with where it itself went.
 	write(t, s, func(tx *Tx) error {
-		_, err := tx.RemoveTasks([]int64{d}, "/archive/d")
+		_, err := tx.RemoveTasks([]int64{d, x}, map[int64]string{d: "/archive/f/@d.md", x: "/archive/f/@sub/@x.md"})
 		return err
 	})
+	for id, want := range map[int64]string{d: "/archive/f/@d.md", x: "/archive/f/@sub/@x.md"} {
+		_, _, er := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
+			_, err := core.ResolveString(tx, "@"+itoa(id), core.WantTask, nil)
+			return nil, nil, err
+		})
+		if er == nil || er.Kind != cli.KindNotFound || len(er.Archived) != 1 || er.Archived[0].Archive != want {
+			t.Errorf("archived @%d: %+v", id, er)
+		}
+	}
+	// Archiving needs a path for every ID.
 	_, _, er := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
-		_, err := core.ResolveString(tx, "@"+itoa(d), core.WantTask, nil)
+		_, err := tx.RemoveTasks([]int64{a, c}, map[int64]string{a: "/archive/a"})
 		return nil, nil, err
 	})
-	if er == nil || er.Kind != cli.KindNotFound || len(er.Archived) != 1 || er.Archived[0].Archive != "/archive/d" {
-		t.Errorf("archived: %+v", er)
+	if er == nil || er.Kind != cli.KindInternal {
+		t.Errorf("an ID with no archive path: %+v", er)
 	}
 }
 
 func itoa(n int64) string { b, _ := json.Marshal(n); return string(b) }
+
+// The operating system refusing COMMIT fails the write, and nothing is
+// written; refusing to delete the rows of the steps carried out leaves
+// them pending, for the next write to carry out again, and the write
+// still succeeds.
+func TestRefusedCommitAndDelete(t *testing.T) {
+	_, s := newRoot(t, 1)
+	f := &steps{stuck: map[int64]bool{}, fail: map[int64]bool{}}
+	s.steps = f
+	refuse := func(point string) {
+		Fault = func(p string) error {
+			if p == point {
+				return fmt.Errorf("refused at %s", p)
+			}
+			return nil
+		}
+	}
+	t.Cleanup(func() { Fault = nil })
+
+	refuse("commit")
+	_, _, e := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
+		addTask(tx, core.RootID, "a")
+		step(t, tx, `{}`)
+		return nil, nil, nil
+	})
+	if e == nil {
+		t.Error("a refused COMMIT succeeded")
+	}
+	if st, _ := s.Stats(); st.Tasks != 0 || st.Pending != 0 {
+		t.Errorf("a refused COMMIT left %+v", st)
+	}
+
+	refuse("delete")
+	var seq int64
+	write(t, s, func(tx *Tx) error { seq = step(t, tx, `{}`); return nil })
+	if live, _ := pendingSeqs(t, s); !slices.Equal(live, []int64{seq}) {
+		t.Errorf("pending after a refused delete: %v", live)
+	}
+	Fault = nil
+	write(t, s, func(tx *Tx) error { return nil })
+	if live, _ := pendingSeqs(t, s); len(live) != 0 {
+		t.Errorf("pending %v", live)
+	}
+}
+
+// A store can't be opened without the Steps its writes carry out.
+func TestOpenNeedsSteps(t *testing.T) {
+	home, _ := newRoot(t, 1)
+	if _, e := Open(home, nil); e == nil || e.Kind != cli.KindInternal {
+		t.Errorf("opened with no steps: %+v", e)
+	}
+}

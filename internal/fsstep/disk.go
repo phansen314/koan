@@ -6,26 +6,52 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 )
 
 // listed reports whether the listing of dir holds name, byte for byte. A
 // missing directory holds nothing.
 func listed(dir, name string) (bool, error) {
+	listing, _, err := names(dir)
+	return slices.Contains(listing, name), err
+}
+
+// names lists dir. ok is false when it is missing.
+func names(dir string) (listing []string, ok bool, err error) {
 	f, err := os.Open(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	defer f.Close()
-	names, err := f.Readdirnames(-1)
+	listing, err = f.Readdirnames(-1)
+	if err != nil {
+		return nil, false, err
+	}
+	return listing, true, nil
+}
+
+// holdsMaterial reports whether a directory being removed holds material:
+// any entry not named with @, other than .DS_Store, in it or in any @
+// directory under it.
+func holdsMaterial(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return false, err
 	}
-	for _, n := range names {
-		if n == name {
+	for _, de := range entries {
+		n := de.Name()
+		switch {
+		case n == ".DS_Store":
+		case !strings.HasPrefix(n, "@"):
 			return true, nil
+		case de.IsDir():
+			if m, err := holdsMaterial(filepath.Join(dir, n)); err != nil || m {
+				return m, err
+			}
 		}
 	}
 	return false, nil

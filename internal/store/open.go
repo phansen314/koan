@@ -167,10 +167,13 @@ func (d *DB) UserVersion() (int, *cli.Error) {
 }
 
 // OpenDatabase opens a root's database, which must be there, and checks
-// its format. On unsupported-format, and on corrupt when the format could
-// be read, format says what the database holds; it is -1 when it couldn't
-// be read.
-func OpenDatabase(r Root) (s *Store, format int, e *cli.Error) {
+// its format; its writes carry out their filesystem steps through steps.
+// On unsupported-format, and on corrupt when the format could be read,
+// format says what the database holds; it is -1 when it couldn't be read.
+func OpenDatabase(r Root, steps StepsFor) (s *Store, format int, e *cli.Error) {
+	if steps == nil {
+		return nil, -1, cli.NewError(cli.KindInternal, "a store opened with no filesystem steps")
+	}
 	d, e := openConn(filepath.Join(r.Dir, DatabaseName), r.Database, "rw")
 	if e != nil {
 		return nil, -1, e
@@ -184,13 +187,14 @@ func OpenDatabase(r Root) (s *Store, format int, e *cli.Error) {
 		d.Close()
 		return nil, format, UnsupportedFormat(r.Database, format)
 	}
-	return &Store{Root: r, db: d}, format, nil
+	return &Store{Root: r, db: d, steps: steps(r)}, format, nil
 }
 
-// Open opens the database of the root under home for a command: the root's
-// state is checked here, so a missing root or database is not-initialized,
-// and one in another format is unsupported-format.
-func Open(home string) (*Store, *cli.Error) {
+// Open opens the database of the root under home for a command, its
+// writes carrying out their filesystem steps through steps. The root's
+// state is checked here, so a missing root or database is
+// not-initialized, and one in another format is unsupported-format.
+func Open(home string, steps StepsFor) (*Store, *cli.Error) {
 	r, exists, e := FindRoot(home)
 	if e != nil {
 		return nil, e
@@ -205,7 +209,7 @@ func Open(home string) (*Store, *cli.Error) {
 	if !has {
 		return nil, NotInitialized(r.Database)
 	}
-	s, _, e := OpenDatabase(r)
+	s, _, e := OpenDatabase(r, steps)
 	return s, e
 }
 
