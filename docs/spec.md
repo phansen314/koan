@@ -442,7 +442,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `claimed` | The task already has a claim | the task |  |
 | `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it | the open tasks |  |
 | `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | its direct contents, its gates left out |  |
-| `has-material` | Deleting a folder that holds material, at any depth, without `--force` |  | the top-level material entries of its directory and of each folder under it |
+| `has-material` | Deleting a folder that holds material, at any depth, without `--force` |  | the top-level material entries of its directory and of each folder under it, each as a material reference by path in the tree, such as `/work/api:docs`, never a path on disk |
 | `gate` | Moving a gate out of its folder | the gate |  |
 | `into-itself` | Moving a folder inside itself | the folder | the destination |
 | `exists` | The destination is taken: a path for a move or a create, a directory for a backup, a database for init --ids-from |  | the taken path |
