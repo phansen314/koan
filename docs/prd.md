@@ -92,12 +92,7 @@ A marker is a `.koan/` directory in the directory it binds, outside the tree. Ho
 <dir>/.koan/marker.json    the folder it is bound to
 ```
 
-| `marker.json` field | Rule |
-| --- | --- |
-| `schema` | The file's format. |
-| `id` | The folder's ID: what the marker binds. The root has none, so it can't be bound. |
-| `path` | The folder's path when it was bound: a hint. |
-| `dir` | The absolute real path of the directory holding `.koan/`. A marker found anywhere else was copied or moved there, and binds nothing. |
+Its fields are the spec's, under On-disk formats → marker.json.
 
 ## Storage
 
@@ -275,14 +270,13 @@ A marker binds a directory outside the tree, usually a code worktree, to a folde
 - **The nearest marker is the one.** A path outside the tree is in the folder of the nearest marker at or above it, as with `.git`. The look stops at the first `marker.json`, whatever its state, so an unusable one is never passed over for one further up.
 - **Inside the tree, markers are never looked at.** Where a path sits already says which folder it is in.
 - **The ID decides; the path is a hint.** A marker follows its folder through moves and renames. A `path` that no longer matches is a `stale-marker` warning, and binding again refreshes it.
-- **A marker whose folder is gone binds nothing.** For an archived folder, `where` and `context` say where in the archive it went, from the index; for a deleted one, that it was deleted. Nor does a marker bind anything when it was copied or moved (its `dir` isn't where it is), can't be read as JSON, lacks a field, or is in a format koan doesn't read. Every marker that binds nothing is treated alike: `where` and `context` fail with `not-found`, the message saying why, and the look still stops there. `marker bind` replaces such a marker freely, as it does one for the same folder; replacing one bound to another live folder needs --force (bound).
+- **A marker whose folder is gone binds nothing.** For an archived folder, `where` and `context` say where in the archive it went, from the index; for a deleted one, that it was deleted. Nor does a marker bind anything when it was copied or moved (its `dir` isn't where it is), can't be read as JSON, lacks a field, or is in a format koan doesn't read. Every marker that binds nothing is treated alike: `where` and `context` fail with `not-found`, the message saying why, and the look still stops there.
 - **koan keeps no list of markers.** A worktree is removed by git or `rm` without koan knowing, so a list would go stale at once. A folder deleted or archived under a bound worktree shows when the worktree is next used, through `where` and `context`.
 - **Reads never write a marker.** Only `marker bind` and `marker unbind` do.
 - **Out of git's way.** The `*` in `.koan/.gitignore` matches everything there, itself included, so `git status` never shows it and `git worktree remove` needs no `--force`.
 - **Bind worktrees, not checkouts.** A marker binds every directory under it with no nearer one, so `marker bind` refuses a directory whose `.git` is a directory, unless forced (checkout).
 - **`.koan/` holds only koan's own files.** `marker bind` and `marker unbind` refuse to touch a `.koan/` that holds anything else (foreign-files).
 - **Written whole.** `.gitignore` first, then `marker.json` through a temp file renamed into place. `marker unbind` removes them in the other order, `marker.json`, then `.gitignore`, then `.koan/` itself.
-- **Checked in order.** `marker bind` checks a directory under `~/koan-root` (`invalid-input`) first, then `foreign-files`, then `checkout`, then `bound`.
 
 ## Operations
 

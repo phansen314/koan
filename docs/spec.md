@@ -850,7 +850,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 ### Markers
 
-`koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, or one that binds nothing: its folder is gone, it was copied or moved, it can't be read as JSON, it lacks a field, or it is in a schema koan doesn't know. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `--dir` that doesn't exist is `io`. `koan marker unbind [--dir]` removes the binding: `marker.json`, then `.gitignore`, then `.koan/`; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). Bind checks the directory under the root first, then `foreign-files`, then `checkout`, then `bound`.
+`koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, or one that binds nothing, as PRD Markers says when. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `--dir` that doesn't exist is `io`. `koan marker unbind [--dir]` removes the binding, in the order PRD Markers gives; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). Bind checks the directory under the root first, then `foreign-files`, then `checkout`, then `bound`.
 
 ```json
 { "$id": "marker-bind", "$defs": {
