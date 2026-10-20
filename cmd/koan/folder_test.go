@@ -338,7 +338,7 @@ func TestFolderShowMissingNotes(t *testing.T) {
 	os.Remove(filepath.Join(dir, "@notes.md"))
 	os.WriteFile(filepath.Join(dir, "@Notes.md"), []byte("by hand"), 0o644)
 	r := koan(t, home, "folder", "show", "/work")
-	if r.Exit != 0 || r.Stderr != "koan: 1 warnings\n" {
+	if r.Exit != 0 || r.Stderr != "koan: 1 warning\n" {
 		t.Errorf("exit %d, stderr %q", r.Exit, r.Stderr)
 	}
 	golden(t, r, "folder-show-missing-notes")

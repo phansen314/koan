@@ -134,7 +134,7 @@ A file koan can't read, or a working directory it can't resolve, is `io`, with t
 
 **The home directory.** `~` is `HOME`. A command that uses the root, which is every command but `version`, finds it as part of checking the root's state, after the input's shape: `HOME` unset, empty or not an absolute path is `io`, with no path. `version` never reads it.
 
-**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens; `--help` alone prints usage text instead, to standard output with exit 0: `koan --help` for every command, `koan <command> --help` for one. `--help` with anything else is an unknown option, and so is `-h`. Standard error gets at most one line, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings. Callers read the envelope, never standard error.
+**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens; `--help` alone prints usage text instead, to standard output with exit 0: `koan --help` for every command, `koan <command> --help` for one. `--help` with anything else is an unknown option, and so is `-h`. Standard error gets at most one line, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings, `koan: 1 warning` for one. Callers read the envelope, never standard error.
 
 | Exit | Means |
 | --- | --- |

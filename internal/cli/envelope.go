@@ -208,6 +208,8 @@ func stderrLine(e *Error, warnings []Warning) string {
 	case e != nil:
 		msg := strings.Join(strings.Fields(e.Message), " ")
 		return "koan: " + e.Kind + ": " + msg + "\n"
+	case len(warnings) == 1:
+		return "koan: 1 warning\n"
 	case len(warnings) > 0:
 		return "koan: " + strconv.Itoa(len(warnings)) + " warnings\n"
 	}

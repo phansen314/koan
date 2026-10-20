@@ -47,6 +47,9 @@ func TestMainWarnings(t *testing.T) {
 	if r.stdout != want || r.stderr != "koan: 2 warnings\n" || r.code != 0 {
 		t.Errorf("got %q %q %d", r.stdout, r.stderr, r.code)
 	}
+	if got := stderrLine(nil, []Warning{{Kind: "pending-step", Message: "m"}}); got != "koan: 1 warning\n" {
+		t.Errorf("one warning: got %q", got)
+	}
 }
 
 func TestMainFailureKinds(t *testing.T) {
