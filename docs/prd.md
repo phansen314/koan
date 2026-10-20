@@ -186,7 +186,7 @@ A write commits the database first and changes the tree after, from a list of fi
 
 | Step | Done when | Carried out by |
 | --- | --- | --- |
-| Make a folder's directory | it exists | `mkdir`, then an empty `@notes.md` |
+| Make a folder's directory | it exists, holding `@notes.md` | `mkdir`, then an empty `@notes.md`, making whichever is missing |
 | Write notes | the file exists | writing the content the step holds to a temp file (below), then one `rename` into place |
 | Move notes or a directory | the source is gone and the destination exists | one `rename`, atomic on one filesystem; a case-only rename takes two, through a temporary name (below) |
 | Remove notes or a directory | the path is gone | `unlink`, or a recursive remove that can be run again |
