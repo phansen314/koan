@@ -75,7 +75,7 @@
         "properties": {
           "field": {
             "type": "string",
-            "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed."
+            "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed, or \"\" when what is at fault is missing."
           },
           "reason": {
             "type": "string"

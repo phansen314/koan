@@ -116,8 +116,10 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 - **JSON values** (`--extra`, `--extra-merge`, `--extra-replace-all`) are one JSON object in one argument.
 - **Names are matched exactly.** There are no abbreviations, so adding an option never changes what an existing command line means.
 - **`--`** ends the options, for a title that starts with `-`.
+- **Values** follow their option as the next argument, taken as typed even when it starts with `-`, or after `=`: `--title -x` and `--title=-x` are the same. `-i` takes only the next argument.
+- **Once each.** An option that isn't a list can be given once.
 
-**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, a missing or extra subject, an option without its value, `--input` with anything else, or both `--notes` and `--notes-file`. Every check of a value is the command's, and is `invalid-input` exactly as it would be through `--input`.
+**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, a missing or extra subject, an option without its value, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. Its problem names the argument at fault as typed, or `""` when the fault is something missing, such as the command or the subject. Every check of a value is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
 
 **Conveniences**, which need a shell's files or working directory. Through `--input`, give what they stand for.
 
@@ -128,9 +130,9 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 | no subject | `context` | `file`, the working directory |
 | `--dir <path>`, relative or left out | `marker bind`, `marker unbind` | `dir`, made absolute; the working directory when left out |
 
-A file koan can't read, or a working directory it can't resolve, is `io`.
+A file koan can't read, or a working directory it can't resolve, is `io`, with the file's absolute path; standard input that can't be read is `io` with no path.
 
-**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens; `--help` alone prints usage text instead. Standard error gets at most one line, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings. Callers read the envelope, never standard error.
+**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens; `--help` alone prints usage text instead, to standard output with exit 0: `koan --help` for every command, `koan <command> --help` for one. `--help` with anything else is an unknown option, and so is `-h`. Standard error gets at most one line, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings. Callers read the envelope, never standard error.
 
 | Exit | Means |
 | --- | --- |
@@ -404,7 +406,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
     "paths":    { "type": "array", "items": { "type": "string" }, "description": "Folder paths or paths on disk, as the kind or rule gives." },
     "problems": { "type": "array",
                   "items": { "type": "object", "required": ["field", "reason"],
-                              "properties": { "field":  { "type": "string", "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed." },
+                              "properties": { "field":  { "type": "string", "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed, or \"\" when what is at fault is missing." },
                                               "reason": { "type": "string" } } } },
     "archived": { "type": "array",
                   "items": { "type": "object", "required": ["id", "archive"],
@@ -427,7 +429,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `not-found` | 1 | A reference names nothing | `ids` and `paths` that name nothing; `archived` for those that were archived. The message says which were deleted, archived or never issued, and that an ID below the root's first ID came from an earlier root |
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
 | `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
-| `not-initialized` | 1 | There is no root, or no database in it. Run `init` | `paths`: what is missing |
+| `not-initialized` | 1 | There is no root, or no database in it. Run `init` | `paths`: what is missing: the root when there is none, else the database |
 | `corrupt` | 1 | `doctor`'s integrity or foreign-key check failed, or SQLite reported the file corrupt while a command ran | `paths`: the database |
 | `unsupported-format` | 1 | The database is in a format this binary doesn't read | the message names both formats |
 | `io` | 1 | The operating system refused something | `paths`: what it refused |
@@ -881,7 +883,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### info, version
 
-`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one.
+`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. A `~/koan-root` that isn't a directory, or that koan can't list, is the operating system refusing, not a state: info fails with `io`. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one.
 
 ```json
 { "$id": "info", "$defs": {

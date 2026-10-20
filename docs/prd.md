@@ -161,7 +161,7 @@ CREATE TABLE pending (seq INTEGER PRIMARY KEY, change INTEGER NOT NULL,
                       stuck INTEGER NOT NULL DEFAULT 0 CHECK (stuck IN (0, 1)));
 ```
 
-- **Format.** `PRAGMA user_version` holds the database's format. A binary reads exactly one; any other is `unsupported-format`. Before 1.0 a new format means a fresh `init`, with no conversion. The archive needs none, since its JSON is read with any tool. A fresh root issues IDs from 1, unless init is given --ids-from N. Starting past the old root's highest ID keeps every ID unique across every root you have had, so old notes and archives never meet a second @42. An old archived/ can then be moved into the new root, though its IDs aren't in the new index.
+- **Format.** `PRAGMA user_version` holds the database's format. The first format is 1. A binary reads exactly one; any other is `unsupported-format`. Before 1.0 a new format means a fresh `init`, with no conversion. The archive needs none, since its JSON is read with any tool. A fresh root issues IDs from 1, unless init is given --ids-from N. Starting past the old root's highest ID keeps every ID unique across every root you have had, so old notes and archives never meet a second @42. An old archived/ can then be moved into the new root, though its IDs aren't in the new index.
 - **Timestamps** are stored as their text form, `YYYY-MM-DDTHH:MM:SSZ`, so they sort as text.
 - **`folder.parent` has no cascade on purpose.** koan removes a folder's subtree itself, so it can check for material first and report what it removed.
 

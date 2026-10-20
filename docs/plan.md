@@ -24,7 +24,6 @@ Ask before adding any other.
 | Package | For |
 |---|---|
 | `modernc.org/sqlite` | the database, no cgo |
-| `github.com/spf13/cobra` | the command line, as today |
 | `github.com/santhosh-tekuri/jsonschema/v6` | tests only: checking output against `schemas/` |
 | `golang.org/x/sys/unix` | `flock`, `fsync` of directories, `F_FULLFSYNC` |
 

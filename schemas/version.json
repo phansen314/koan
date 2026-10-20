@@ -3,7 +3,8 @@
   "$id": "version",
   "$defs": {
     "input": {
-      "type": "object"
+      "type": "object",
+      "unevaluatedProperties": false
     },
     "result": {
       "type": "object",

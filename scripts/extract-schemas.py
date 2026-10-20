@@ -7,7 +7,8 @@ schemas/ is out of date, for CI.
 
 The spec writes one convention once instead of in every schema: records,
 results and inputs are closed with unevaluatedProperties: false. This
-script writes that convention into the files, with the spec's exceptions:
+script writes that convention into the files, every input included even
+when it has no fields, with the spec's exceptions:
 extra and envelope.result (objects with no listed properties), the
 on-disk formats (open at every level), and fragments that others build
 on through allOf, which are closed only where they are used.
@@ -42,7 +43,8 @@ def blocks(text):
 
 def close(node, sid, ptr=""):
     if isinstance(node, dict):
-        if (node.get("type") == "object" and "properties" in node
+        if (node.get("type") == "object"
+                and ("properties" in node or ptr == "/$defs/input")
                 and sid not in OPEN_SCHEMAS and (sid, ptr) not in FRAGMENTS):
             node.setdefault("unevaluatedProperties", False)
         for key, child in node.items():
