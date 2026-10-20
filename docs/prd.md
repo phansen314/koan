@@ -348,18 +348,7 @@ Every command prints exactly one line of JSON to standard output, and exits 0 on
 
 With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
-**Warnings** sit beside the result and never stop a command:
-
-| Warning | When |
-| --- | --- |
-| `pending-filesystem` | a path returned belongs to a change whose filesystem steps are still running |
-| `pending-step` | filesystem steps are pending with no write carrying them out: this write failed one, an earlier write crashed, or a step waits behind an earlier change's step on the same paths; the next write or repair finishes them |
-| `stuck-step` | a step is set aside as stuck; every result carries it until a person keeps one copy or moves the material out, and repair clears it |
-| `missing-notes` | a read of one task or folder (show, context) finds no file at its notes path; it reads as empty notes, and doctor looks for the file. Not given while a pending or stuck step is still to make the path, making it or a directory above it: that step's warning already says why the file isn't there |
-| `complete-blocker` | an edge was added to the `blocked_by` of a complete task, which therefore holds nothing back |
-| `claimed-blocked` | the change made a claimed task wait again |
-| `stale-marker` | a marker's path hint no longer matches its folder |
-| `moved-claimed` | a task or folder move changed the notes path of a claimed task; the warning lists those tasks |
+**Warnings** sit beside the result and never stop a command; the spec's Warnings lists them.
 
 ## Markers
 
