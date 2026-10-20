@@ -3,6 +3,7 @@ package fsstep
 import (
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -46,3 +47,33 @@ func TaskNotesPath(folder string, id int64, gate core.End) string {
 
 // Abs is a step's path under the root as written, as results give it.
 func Abs(r store.Root, rel string) string { return filepath.Join(r.Path, filepath.FromSlash(rel)) }
+
+// Taken is the entry on disk where a folder's directory would go: one in
+// its parent's directory spelled as the directory, or differing from it
+// only in case, given as a step's path. The exact spelling is preferred,
+// then the first in byte order. A parent directory that is missing holds
+// nothing.
+func Taken(r store.Root, folder string) (entry string, ok bool, err error) {
+	dir := FolderDir(folder)
+	parent, name := path.Dir(dir), path.Base(dir)
+	listing, _, err := names(filepath.Join(r.Dir, filepath.FromSlash(parent)))
+	if err != nil {
+		return "", false, err
+	}
+	slices.Sort(listing)
+	i := slices.Index(listing, name)
+	if i < 0 {
+		i = slices.IndexFunc(listing, func(n string) bool { return strings.EqualFold(n, name) })
+	}
+	if i < 0 {
+		return "", false, nil
+	}
+	return path.Join(parent, listing[i]), true, nil
+}
+
+// Missing reports whether nothing is at a step's path, judged by listing
+// its parent directory and comparing names byte for byte.
+func Missing(r store.Root, rel string) (bool, error) {
+	ok, err := listed(filepath.Join(r.Dir, filepath.FromSlash(path.Dir(rel))), path.Base(rel))
+	return !ok, err
+}

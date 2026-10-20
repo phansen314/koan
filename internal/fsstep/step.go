@@ -61,7 +61,8 @@ type Step struct {
 	// gone: the directories of the folders being deleted, and the notes
 	// of what is being deleted.
 	Owns []string `json:"owns,omitempty"`
-	// Content is the notes a write puts at To.
+	// Content is the notes a write puts at To, or the first notes a
+	// mkdir puts in the directory it makes.
 	Content string `json:"content,omitempty"`
 	// File is where an archive writes Rows, its JSON, beside To.
 	File string          `json:"file,omitempty"`

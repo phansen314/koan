@@ -289,7 +289,7 @@ func (w *work) carry(s Step) (found string, err error) {
 		if err := w.sameCase(path.Join(s.To, FolderNotes), false); err != nil {
 			return "", err
 		}
-		return "", w.mkdir(s.To)
+		return "", w.mkdir(s.To, s.Content)
 	case OpWrite:
 		w.touch(path.Dir(s.To))
 		if err := w.sameCase(s.To, false); err != nil {
@@ -329,8 +329,9 @@ func (w *work) carry(s Step) (found string, err error) {
 }
 
 // mkdir makes a folder's directory, done when it exists holding
-// @notes.md, making whichever is missing.
-func (w *work) mkdir(rel string) error {
+// @notes.md, making whichever is missing. Notes with content are written
+// through a temp file; empty ones are created in place.
+func (w *work) mkdir(rel, content string) error {
 	ok, err := w.listed(rel)
 	if err != nil {
 		return err
@@ -341,6 +342,9 @@ func (w *work) mkdir(rel string) error {
 		}
 	}
 	n := path.Join(rel, FolderNotes)
+	if content != "" {
+		return w.write(n, []byte(content))
+	}
 	if ok, err := w.listed(n); err != nil || ok {
 		return err
 	}

@@ -51,6 +51,14 @@ func (o Option) Name() string {
 	return "--" + strings.ReplaceAll(o.Field, "_", "-")
 }
 
+// File is a convenience that sets an input field from a file read whole,
+// or from standard input for -, such as --notes-file for notes. It isn't
+// an input field: through --input, the field itself is given.
+type File struct {
+	Name  string // as typed, such as --notes-file
+	Field string
+}
+
 // Input is a command's input: one JSON object, with numbers kept as
 // json.Number.
 type Input map[string]any
@@ -77,6 +85,7 @@ type Command struct {
 	Name    string
 	Subject *Option
 	Options []Option
+	Files   []File
 	Run     func(env *Env, in Input) (result any, warnings []Warning, err *Error)
 }
 
@@ -98,13 +107,18 @@ type line struct {
 	hasInput bool
 	other    string // the first argument other than -i, as typed
 	in       Input
+	// files maps a field to the file a convenience reads it from.
+	files map[string]string
 }
 
 // parse reads the arguments after the command's name.
 func (c *Command) parse(args []string) (*line, *Error) {
-	l := &line{in: Input{}}
+	l := &line{in: Input{}, files: map[string]string{}}
 	var subjects []string
 	set := map[string]bool{}
+	// by is the option that set each field, as typed, so a field set by
+	// both its option and a convenience names the later.
+	by := map[string]string{}
 	noteOther := func(a string) {
 		if l.other == "" {
 			l.other = a
@@ -140,6 +154,25 @@ func (c *Command) parse(args []string) (*line, *Error) {
 			l.input, l.hasInput = value, true
 			continue
 		}
+		if f := c.file(name); f != nil {
+			noteOther(a)
+			if !hasValue {
+				if i+1 == len(args) {
+					return nil, Usage(a, name+" needs a value")
+				}
+				i++
+				value = args[i]
+			}
+			if by[f.Field] == name {
+				return nil, Usage(a, name+" given twice")
+			}
+			if set[f.Field] {
+				return nil, Usage(a, name+" can't go with "+by[f.Field])
+			}
+			set[f.Field], by[f.Field] = true, name
+			l.files[f.Field] = value
+			continue
+		}
 		opt := c.option(name)
 		if opt == nil {
 			return nil, Usage(a, "unknown option "+name)
@@ -156,10 +189,13 @@ func (c *Command) parse(args []string) (*line, *Error) {
 			i++
 			value = args[i]
 		}
+		if _, ok := l.files[opt.Field]; ok {
+			return nil, Usage(a, name+" can't go with "+by[opt.Field])
+		}
 		if set[opt.Field] && opt.Kind != List && opt.Kind != Each {
 			return nil, Usage(a, name+" given twice")
 		}
-		set[opt.Field] = true
+		set[opt.Field], by[opt.Field] = true, name
 		opt.set(l.in, value)
 	}
 	if l.hasInput {
@@ -180,6 +216,15 @@ func (c *Command) parse(args []string) (*line, *Error) {
 		return nil, Usage("", c.Name+" needs a subject: "+c.Subject.Field)
 	}
 	return l, nil
+}
+
+func (c *Command) file(name string) *File {
+	for i := range c.Files {
+		if c.Files[i].Name == name {
+			return &c.Files[i]
+		}
+	}
+	return nil
 }
 
 func (c *Command) option(name string) *Option {
@@ -266,25 +311,49 @@ func (trailingError) Error() string { return "more than one JSON value" }
 
 var errTrailing = trailingError{}
 
-// readInput reads the -i file, or standard input for -, as one JSON
-// object.
-func readInput(env *Env, name string) (Input, *Error) {
-	var data []byte
-	var err error
+// readFile reads a file whole, or standard input for -. A file it can't
+// read is io with its absolute path; standard input, io with no path.
+func readFile(env *Env, name, what string) ([]byte, *Error) {
 	if name == "-" {
-		data, err = io.ReadAll(env.Stdin)
+		data, err := io.ReadAll(env.Stdin)
 		if err != nil {
 			return nil, IO("could not read standard input: " + err.Error())
 		}
-	} else {
-		data, err = os.ReadFile(name)
-		if err != nil {
-			abs, aerr := filepath.Abs(name)
-			if aerr != nil {
-				abs = name
-			}
-			return nil, IO("could not read the input file: "+err.Error(), abs)
+		return data, nil
+	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		abs, aerr := filepath.Abs(name)
+		if aerr != nil {
+			abs = name
 		}
+		return nil, IO("could not read the "+what+": "+err.Error(), abs)
+	}
+	return data, nil
+}
+
+// readFiles sets each field a convenience names from its file.
+func (c *Command) readFiles(env *Env, l *line) *Error {
+	for _, f := range c.Files {
+		name, ok := l.files[f.Field]
+		if !ok {
+			continue
+		}
+		data, e := readFile(env, name, f.Field+" file")
+		if e != nil {
+			return e
+		}
+		l.in[f.Field] = string(data)
+	}
+	return nil
+}
+
+// readInput reads the -i file, or standard input for -, as one JSON
+// object.
+func readInput(env *Env, name string) (Input, *Error) {
+	data, e := readFile(env, name, "input file")
+	if e != nil {
+		return nil, e
 	}
 	v, err := decodeOne(bytes.NewReader(data))
 	if err != nil {

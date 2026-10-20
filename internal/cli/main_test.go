@@ -215,3 +215,28 @@ func TestMainHome(t *testing.T) {
 		t.Errorf("HOME set: %s", out.String())
 	}
 }
+
+// --note-file reads its field whole from a file, or from standard input
+// for -. A file it can't read is io with its absolute path.
+func TestMainFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "n.md"), []byte("line one\nline two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	r := runMain(t, "", []*Command{fake}, "thing", "make", "t", "--note-file", "n.md")
+	want := `{"ok":true,"result":{"note":"line one\nline two\n","title":"t"},"warnings":[]}` + "\n"
+	if r.stdout != want || r.code != 0 {
+		t.Errorf("file: got %q %d", r.stdout, r.code)
+	}
+	r = runMain(t, "from stdin", []*Command{fake}, "thing", "make", "t", "--note-file", "-")
+	want = `{"ok":true,"result":{"note":"from stdin","title":"t"},"warnings":[]}` + "\n"
+	if r.stdout != want || r.code != 0 {
+		t.Errorf("stdin: got %q %d", r.stdout, r.code)
+	}
+	r = runMain(t, "", []*Command{fake}, "thing", "make", "t", "--note-file", "missing.md")
+	want = `"paths":["` + filepath.Join(dir, "missing.md") + `"]`
+	if !strings.Contains(r.stdout, `"kind":"io"`) || !strings.Contains(r.stdout, want) || r.code != ExitFailure {
+		t.Errorf("missing: got %q %d", r.stdout, r.code)
+	}
+}

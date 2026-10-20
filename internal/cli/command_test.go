@@ -22,7 +22,8 @@ var fake = &Command{
 		{Field: "extra_remove", Kind: Each},
 		{Field: "extra", Kind: JSON},
 	},
-	Run: func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+	Files: []File{{Name: "--note-file", Field: "note"}},
+	Run:   func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
 // optional takes a subject or none.
@@ -152,6 +153,11 @@ func TestParseUsage(t *testing.T) {
 		{fake, []string{"-i", "f", "--name", "n"}, "--name"},
 		{fake, []string{"-i", "f", "-i", "g"}, "-i"},
 		{fake, []string{"-i", "f", "--", "t"}, "t"},
+		{fake, []string{"t", "--note", "n", "--note-file", "f"}, "--note-file"},
+		{fake, []string{"t", "--note-file", "f", "--note", "n"}, "--note"},
+		{fake, []string{"t", "--note-file", "f", "--note-file", "g"}, "--note-file"},
+		{fake, []string{"t", "--note-file"}, "--note-file"},
+		{fake, []string{"-i", "f", "--note-file", "g"}, "--note-file"},
 		{optional, []string{"a", "b"}, "b"},
 		{bare, []string{"x"}, "x"},
 		{bare, []string{"--", "x"}, "x"},
@@ -165,6 +171,17 @@ func TestParseUsage(t *testing.T) {
 		}
 		if e.Kind != KindUsage || len(e.Problems) != 1 || e.Problems[0].Field != c.field {
 			t.Errorf("%s %q: got %s %+v, want usage at %q", c.cmd.Name, c.args, e.Kind, e.Problems, c.field)
+		}
+	}
+}
+
+// A convenience names the file its field is read from; the field is set
+// only once the file is read.
+func TestParseFiles(t *testing.T) {
+	for _, args := range [][]string{{"t", "--note-file", "n.md"}, {"t", "--note-file=n.md"}, {"--note-file", "n.md", "t"}} {
+		l, e := fake.parse(args)
+		if e != nil || len(l.in) != 1 || l.files["note"] != "n.md" {
+			t.Errorf("%q: got %+v, %v", args, l, e)
 		}
 	}
 }

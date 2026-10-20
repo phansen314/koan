@@ -30,3 +30,50 @@ func TestPaths(t *testing.T) {
 		}
 	}
 }
+
+// A folder's path is taken on disk by an entry where its directory would
+// go, spelled the same or differing only in case, file or directory; the
+// exact spelling first. A missing parent directory holds nothing.
+// Missing judges a path by its parent's listing, byte for byte.
+func TestTakenAndMissing(t *testing.T) {
+	_, s := newRoot(t)
+	files(t, s, "tree/@A/", "tree/@b=", "tree/@work/", "tree/@work/@Api/", "tree/@work/@notes.md=", "tree/c/")
+	if !ignoresCase(t, s) {
+		files(t, s, "tree/@a/")
+	}
+	for _, c := range []struct {
+		folder, want string
+		ok           bool
+	}{
+		{"/b", "tree/@b", true},
+		{"/B", "tree/@b", true},
+		{"/work/api", "tree/@work/@Api", true},
+		{"/work/new", "", false},
+		{"/c", "", false},
+		{"/gone/x", "", false},
+	} {
+		got, ok, err := Taken(s.Root, c.folder)
+		if err != nil || ok != c.ok || got != c.want {
+			t.Errorf("%s: got %q %v %v, want %q", c.folder, got, ok, err, c.want)
+		}
+	}
+	want := "tree/@A"
+	if !ignoresCase(t, s) {
+		want = "tree/@a"
+	}
+	if got, ok, err := Taken(s.Root, "/a"); err != nil || !ok || got != want {
+		t.Errorf("/a: got %q %v %v, want %q", got, ok, err, want)
+	}
+	for _, c := range []struct {
+		rel  string
+		want bool
+	}{
+		{"tree/@work/@notes.md", false},
+		{"tree/@work/@Notes.md", true},
+		{"tree/@gone/@notes.md", true},
+	} {
+		if got, err := Missing(s.Root, c.rel); err != nil || got != c.want {
+			t.Errorf("%s: got %v %v", c.rel, got, err)
+		}
+	}
+}

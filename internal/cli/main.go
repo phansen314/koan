@@ -42,6 +42,8 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 		if in, e = readInput(env, l.input); e != nil {
 			return write(stdout, stderr, nil, e, nil)
 		}
+	} else if e := c.readFiles(env, l); e != nil {
+		return write(stdout, stderr, nil, e, nil)
 	}
 	if e := c.unknownFields(in); e != nil {
 		return write(stdout, stderr, nil, e, nil)
@@ -99,6 +101,9 @@ func (c *Command) usage() string {
 		default:
 			b.WriteString(" [" + o.Name() + " <value>]")
 		}
+	}
+	for _, f := range c.Files {
+		b.WriteString(" [" + f.Name + " <file|->]")
 	}
 	b.WriteString("\n       koan " + c.Name + " -i <file|->\n")
 	return b.String()

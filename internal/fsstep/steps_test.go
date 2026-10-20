@@ -22,6 +22,7 @@ var (
 	}
 	scenarioSteps = []Step{
 		{Op: OpMkdir, To: "tree/@a"},
+		{Op: OpMkdir, To: "tree/@a/@b", Content: "b notes"},
 		{Op: OpWrite, To: "tree/@a/@5.md", Content: "five"},
 		{Op: OpMove, From: "tree/@work", To: "tree/@Work", Dir: true},
 		{Op: OpMove, From: "tree/@Work/@1.md", To: "tree/@a/@1.md"},
@@ -31,6 +32,7 @@ var (
 	}
 	scenarioAfter = sorted(
 		"tree/@a/", "tree/@a/@notes.md=", "tree/@a/@5.md=five", "tree/@a/@1.md=one",
+		"tree/@a/@b/", "tree/@a/@b/@notes.md=b notes",
 		"tree/@Work/", "tree/@Work/@notes.md=work notes", "tree/@Work/material.txt=m",
 		"archived/@9_fin/", "archived/@9_fin/@notes.md=fin", "archived/@9_fin/@3.md=three",
 		"archived/@9_fin.json="+`{"schema":1,"kind":"folder"}`,
@@ -80,8 +82,9 @@ func TestDoneWhenListed(t *testing.T) {
 	checkTree(t, s, sorted("tree/@api/", "tree/@api/@notes.md=", "tree/@api/@start.md=by hand"))
 	noPending(t, s)
 
+	// A folder's first notes never replace a @notes.md made by hand.
 	files(t, s, "tree/@b/@notes.md=kept")
-	write(t, s, Step{Op: OpMkdir, To: "tree/@b"})
+	write(t, s, Step{Op: OpMkdir, To: "tree/@b", Content: "first"})
 	checkTree(t, s, sorted("tree/@api/", "tree/@api/@notes.md=", "tree/@api/@start.md=by hand", "tree/@b/", "tree/@b/@notes.md=kept"))
 }
 
