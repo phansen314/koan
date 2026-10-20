@@ -544,7 +544,7 @@ Tasks in tree order: open ones unless `--state` says otherwise, gates included. 
 
 #### task why
 
-`koan task why <task>`. What a task waits on: its open blockers, and the ready tasks it waits on at any depth, which are what to work on. Both are empty for a ready or complete task.
+`koan task why <task>`. What a task waits on: its open blockers, and the ready tasks it waits on at any depth through open blockers, which are what to work on. A complete task holds nothing back, so the walk never passes one, and it stops at each ready task. Both are empty for a ready or complete task.
 
 ```json
 { "$id": "task-why", "$defs": {
@@ -553,7 +553,7 @@ Tasks in tree order: open ones unless `--state` says otherwise, gates included. 
     "id":        { "$ref": "types#/$defs/id" },
     "readiness": { "$ref": "types#/$defs/readiness" },
     "blockers":  { "type": "array", "items": { "$ref": "types#/$defs/edge-end" }, "description": "Its open blockers. Ascending by ID." },
-    "ready":     { "type": "array", "items": { "$ref": "types#/$defs/id" }, "description": "Ready tasks it waits on, at any depth, claimed ones included, since they are the work in progress. Work order." } } } } }
+    "ready":     { "type": "array", "items": { "$ref": "types#/$defs/id" }, "description": "Ready tasks it waits on, at any depth through open blockers, claimed ones included, since they are the work in progress. Work order." } } } } }
 ```
 
 #### task update

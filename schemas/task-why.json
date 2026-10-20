@@ -32,7 +32,7 @@
           "items": {
             "$ref": "types#/$defs/id"
           },
-          "description": "Ready tasks it waits on, at any depth, claimed ones included, since they are the work in progress. Work order."
+          "description": "Ready tasks it waits on, at any depth through open blockers, claimed ones included, since they are the work in progress. Work order."
         }
       },
       "unevaluatedProperties": false

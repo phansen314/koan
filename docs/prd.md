@@ -276,7 +276,7 @@ The surface is today's, with `task done` renamed `task complete`, and the folder
 | `task show <ref>` | Reads one task: its fields, folder and path, gate, readiness, blockers with their state, what it blocks, claim, notes path | the record |  |
 | `task list` | Tasks in tree order, open ones unless `--state` says otherwise, gates included; filtered by `--folder` (a subtree, or with `--recursive=false` the folder alone), `--readiness`, `--tags-any`, `--tags-all`, `--claimed`, with `--limit` (100 by default) and `--fields` | records; the total |  |
 | `task frontier` | Ready, unclaimed tasks in work order, under `--folder` or everywhere, with `--limit` (100 by default) | records; the total |  |
-| `task why <ref>` | What a task waits on: its open blockers, and the ready tasks it waits on at any depth, which are what to work on | blockers; ready tasks |  |
+| `task why <ref>` | What a task waits on: its open blockers, and the ready tasks it waits on at any depth through open blockers, which are what to work on; a complete task holds nothing back, so the walk never passes one | blockers; ready tasks |  |
 | `task update <ref>` | Changes title, priority, tags (add and remove) and `extra` (merged) | its ID |  |
 | `task complete <ref>` | Marks it complete and ends its claim | its ID; `released` |  |
 | `task reopen <ref>` | Marks it open again | its ID; `reblocked`; the `claimed-blocked` warning |  |
