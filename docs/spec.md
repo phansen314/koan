@@ -448,7 +448,7 @@ Each rule is a refusal the rules doc or the PRD makes, in the section its row na
 | `claimed` | The task already has a claim | rules Claims | the task |  |
 | `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it | rules Archiving | the open tasks |  |
 | `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | rules Changes | its direct contents, its gates left out |  |
-| `has-material` | Deleting a folder that holds material, at any depth, without `--force`. Material here is as the rules doc's Changes counts it for a delete: stray `@` entries and other tasks' notes that hold content count, and `.DS_Store` never does | rules Changes |  | the top-level material entries of its directory and of each folder under it, each written as the folder's path, `:`, then the entry's name, such as `/work/api:docs` or `/work/api:@Notes.md`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it |
+| `has-material` | Deleting a folder that holds material, at any depth, without `--force`. Material here is as the rules doc's Changes counts it for a delete | rules Changes |  | the top-level material entries of its directory and of each folder under it, each written as the folder's path, `:`, then the entry's name, such as `/work/api:docs` or `/work/api:@Notes.md`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it |
 | `gate` | Moving a gate, even to its own folder | rules I11 | the gate |  |
 | `into-itself` | Moving a folder inside itself | rules I3 | the folder | the destination |
 | `exists` | The destination is taken: a path for a move or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from | rules Changes, for a path; PRD Install, init, backup and restore otherwise |  | the taken path: a folder path when a folder has it, else the entry's path on disk |
@@ -761,7 +761,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder move
 
-`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created; each is a destination, so an entry on disk at its path refuses the move as `exists`. A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`, checked in that order.
+`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created; each is a destination, as for folder create (rules doc, Changes). A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`, checked in that order.
 
 ```json
 { "$id": "folder-move", "$defs": {
@@ -968,7 +968,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 parts, folders and tasks together. The batch is read as the tree it would leave, so a part can name a folder or a label that another part makes, in any order.
 
-- **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch as `exists`; missing parents are made, as `folder create` makes them. Each folder made, a missing parent included, is a destination, so an entry on disk at its path refuses the batch as `exists`.
+- **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch as `exists`; missing parents are made, as `folder create` makes them. Each folder made, a missing parent included, is a destination (rules doc, Changes).
 - **Tasks** go in their own `folder`, or the batch's `folder`, or the root. A task's folder can be one the batch makes.
 - **Labels** name a task within the batch only. Each is defined once, and takes no end and no material: `$a.start` is `invalid-input`. Labels are never stored.
 - **Edges** are written from either end, as on the command line, with labels allowed wherever an `edge-ref` is, and nowhere else: a label where a folder or a task subject is taken is `invalid-input`.
