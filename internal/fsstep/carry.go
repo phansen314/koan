@@ -195,9 +195,13 @@ func (c *Steps) pendingStep(live []store.Pending) (cli.Warning, bool) {
 			}
 		}
 	}
+	message := fmt.Sprintf("%d filesystem steps are pending with no write carrying them out. The next write, or koan repair, finishes them.", len(live))
+	if len(live) == 1 {
+		message = "1 filesystem step is pending with no write carrying it out. The next write, or koan repair, finishes it."
+	}
 	return cli.Warning{
 		Kind:    "pending-step",
-		Message: fmt.Sprintf("%d filesystem steps are pending with no write carrying them out. The next write, or koan repair, finishes them.", len(live)),
+		Message: message,
 		Paths:   paths,
 	}, true
 }
