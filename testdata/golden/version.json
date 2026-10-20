@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "result": {
+    "version": "(devel)",
+    "commit": "$COMMIT",
+    "go": "$GO",
+    "format": 1
+  },
+  "warnings": []
+}
