@@ -550,3 +550,15 @@ func TestTaskCreateModel(t *testing.T) {
 		t.Errorf("tree order: koan %v, model %v", got, want)
 	}
 }
+
+// Two steps left pending, by a write that crashed after COMMIT, are
+// counted in the plural.
+func TestTaskShowPendingSteps(t *testing.T) {
+	home := root(t)
+	db(t, home, task(1, 0, "", false)...)
+	db(t, home, task(2, 0, "", false)...)
+	db(t, home,
+		`INSERT INTO pending (seq, change, step) VALUES (1, 1, '{"op":"write","to":"tree/@1.md"}')`,
+		`INSERT INTO pending (seq, change, step) VALUES (2, 1, '{"op":"write","to":"tree/@2.md"}')`)
+	golden(t, koan(t, home, "task", "show", "1"), "task-show-pending-steps")
+}

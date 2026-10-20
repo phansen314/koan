@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "result": {
+    "task": {
+      "id": 1,
+      "ref": "@1 (/)",
+      "gate": null,
+      "title": "T",
+      "priority": null,
+      "folder": {
+        "id": null,
+        "path": "/"
+      },
+      "created_at": "2026-10-20T10:00:00Z",
+      "completed_at": null,
+      "updated_at": "2026-10-20T10:00:00Z",
+      "state": "open",
+      "readiness": "ready",
+      "blocked_by": [],
+      "blocks": [],
+      "tags": [],
+      "extra": {},
+      "claim": null,
+      "notes_path": "$HOME/koan-root/tree/@1.md"
+    }
+  },
+  "warnings": [
+    {
+      "kind": "pending-step",
+      "message": "2 filesystem steps are pending with no write carrying them out. The next write, or koan repair, finishes them.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@1.md",
+        "$HOME/koan-root/tree/@2.md"
+      ]
+    }
+  ]
+}
