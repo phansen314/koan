@@ -264,91 +264,9 @@ Every invariant of the rules doc has a mechanism that keeps it and a test that s
 
 ## Command surface
 
-### Commands
+The spec fixes the surface: every command's input, result, warnings and refusals (spec Commands), the envelope and exit codes (spec Invocation, Envelope), the records reads return (spec Records), and every warning and error (spec Warnings, Errors). Its shape follows from Goals: one line of JSON per command, a kind for every failure, and a result that names by ID what every write changed.
 
-The surface is today's, with `task done` renamed `task complete`, and the folder blocking commands gone: a folder is ordered through its gates, which are tasks. Refusals are listed beyond the usual `not-found` and `invalid-input`; each is a `conflict` rule (spec Errors → Conflict rules).
-
-**Tasks**
-
-| Command | Does | Result reports | Refused when |
-| --- | --- | --- | --- |
-| `task create <title>` | Makes a task in `--folder` (the root by default), with `--priority`, `--tags`, `--extra`, `--notes`, `--blocked-by`, `--blocks` | its ID; `gates_made`; `reblocked`; the `complete-blocker` and `claimed-blocked` warnings | `cycle` |
-| `task show <ref>` | Reads one task: its fields, folder and path, gate, readiness, blockers with their state, what it blocks, claim, notes path | the record |  |
-| `task list` | Tasks in tree order, open ones unless `--state` says otherwise, gates included; filtered by `--folder` (a subtree, or with `--recursive=false` the folder alone), `--readiness`, `--tags-any`, `--tags-all`, `--claimed`, with `--limit` (100 by default) and `--fields` | records; the total |  |
-| `task frontier` | Ready, unclaimed tasks in work order, under `--folder` or everywhere, with `--limit` (100 by default) | records; the total |  |
-| `task why <ref>` | What a task waits on: its open blockers, and the ready tasks it waits on at any depth through open blockers, which are what to work on; a complete task holds nothing back, so the walk never passes one | blockers; ready tasks |  |
-| `task update <ref>` | Changes title, priority, tags (add and remove) and `extra` (merged) | its ID |  |
-| `task complete <ref>` | Marks it complete and ends its claim | its ID; `released` |  |
-| `task reopen <ref>` | Marks it open again | its ID; `reblocked`; the `claimed-blocked` warning |  |
-| `task block <ref>` | Adds edges, by `--blocked-by` and `--blocks` | its ID; `gates_made`; `reblocked`; the `complete-blocker` and `claimed-blocked` warnings | `cycle` |
-| `task unblock <ref>` | Removes edges, by the same options | its ID; `released` |  |
-| `task move <ref> --to <folder>` | Puts it in another folder or the root | its ID; its notes path; the `moved-claimed` warning | `gate` |
-| `task delete <ref>` | Removes it, its notes, its claim and its edges | `released` |  |
-| `task archive <ref>` | Moves a complete task to the archive | where it went | `not-finished` |
-| `task claim <ref>` | Claims it, with an `--extra` the caller keeps | the claim | `claimed`, `complete` |
-| `task claim-next` | Claims the first task of the frontier, under `--folder` or everywhere | the task and claim, or nothing |  |
-| `task release <ref>` | Ends its claim | its ID |  |
-
-**Folders**
-
-| Command | Does | Result reports | Refused when |
-| --- | --- | --- | --- |
-| `folder create <path>` | Makes the folder and any missing parents, with `--title` and `--extra`; no gates | the IDs of folders made | `case-mismatch`, `exists` |
-| `folder show <ref>` | Reads one folder: fields, path, its gates and their state, open and complete counts under it, whether it is finished, its notes path and directory | the record |  |
-| `folder list` | Folders in tree order under `--folder`, with `--limit` (100 by default) and `--fields` | records; the total |  |
-| `folder update <ref>` | Changes title and `extra` | its ID |  |
-| `folder move <ref> --to <path>` | Moves or renames it, everything under it included, making any missing parents | its ID; its new path; the moved-claimed warning | `into-itself`, `case-mismatch`, `exists` |
-| `folder delete <ref>` | Removes it and everything under it, with `--contents` when it holds tasks or folders, `--force` when it holds material | what it removed; `released` | `not-empty`, `has-material` |
-| `folder archive <ref>` | Moves a finished folder to the archive | where it went | `not-finished` |
-
-**Everything else**
-
-| Command | Does | Result reports | Refused when |
-| --- | --- | --- | --- |
-| `batch -i <file>` | Applies a plan of folders, tasks and edges as one change, from a file or `-` for standard input | task IDs; `labels`; folders made; `gates_made` | whatever refuses a part |
-| `where [path]` | Says which folder or task a path is in, in the tree or in a bound worktree | the kept-text pair, ID and path |  |
-| `context [path]` | Briefs an agent on the folder a path is in: its notes, its gates, its open tasks | the brief |  |
-| `marker bind <ref>`, `marker unbind` | Binds a directory, `--dir` or the current one, to a folder, or removes the binding | the marker | see Markers |
-| `init` | Makes `~/koan-root`, its `tree/` and `archived/`, and the database, issuing IDs from --ids-from; changes nothing that is there | the paths | `not-a-root`, `exists` |
-| `info`, `version` | Report the root's paths, format, state and next ID, and the binary's version; no lock | the report |  |
-| `doctor` | Checks the database and the tree against it; changes nothing | findings |  |
-| `repair` | Fixes the findings that lose nothing, by `--kinds` | what it fixed |  |
-| `backup <dir>` | Copies the database, the tree and the archive into an empty directory, then checks the copy with doctor | what it wrote | `exists` |
-
-### Output
-
-Every command prints exactly one line of JSON to standard output, and exits 0 on success, 1 on failure, 2 when the command line can't be read, and 3 when koan couldn't write its output: the outcome is then unknown, and the caller looks before running it again.
-
-```json
-{"ok": true,  "result": { … }, "warnings": [ … ]}
-{"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "…", "ids": [8, 10, 57], "paths": [], "problems": [ … ], "archived": []}, "warnings": [ … ]}
-```
-
-- **Writes return identities; reads return records.** A write's result names what it changed by ID, ready to pass to the next command. A record is exact only as of the call.
-- **IDs are plain integers in JSON.** A gate is marked by its `gate` field and its folder. Every record also carries `ref`, the kept-text pair such as `@57 (/work/api.done)`.
-
-**Records**
-
-| Record | Holds |
-| --- | --- |
-| Task | `id`, `gate`, `title`, `priority`, `folder` (ID and path), `created_at`, `completed_at`, `updated_at`, `state` (`open` or `complete`), `readiness` (`ready`, `blocked`, or `null` once complete), `blocked_by` (each with its state), `blocks`, `tags`, `extra`, `claim`, `notes_path`, `ref` |
-| Folder | `id`, `name`, `path`, `title`, `extra`, `gates` (each gate's ID and state, or `null`), `open` and `complete` counts under it, `finished`, `notes_path`, `dir`, `ref` |
-| Claim | `task`, `claimed_at`, `extra` |
-
-**What a write's result reports**, beyond what it changed:
-
-| Field | Reported by | Holds |
-| --- | --- | --- |
-| `released` | complete, unblock, delete, folder delete | open tasks that the change made ready |
-| `reblocked` | create, block, reopen, a batch | ready tasks that the change made wait again, claimed ones included |
-| `gates_made` | any change that writes edges | each gate made: folder, `start` or `done`, its new ID |
-| `labels` | batch | each label and the ID it got |
-| `removed` | delete | every task and folder removed, by ID |
-| `archive`, `json`, `left` | archive | where in the archive it went, its JSON, and every ID that left |
-
-With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
-
-**Warnings** sit beside the result and never stop a command; the spec's Warnings lists them.
+**Every write reports what it released and blocked again.** With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
 ## Markers
 

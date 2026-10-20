@@ -41,7 +41,7 @@ Three short experiments whose answers the rest depends on. Write the findings to
 
 ## S1. Harness and skeleton
 
-**Read:** spec Introduction, Shared types, Invocation, Envelope, Errors, Input formats → Option values; PRD Command surface → Output.
+**Read:** spec Introduction, Shared types, Invocation, Envelope, Errors, Input formats → Option values; PRD Command surface.
 
 **Build**
 - The Go module, `github.com/phansen314/koan`: the PRD's install path, and the name koan keeps once the rewrite replaces it. There is no remote yet; the module builds and tests locally without one.
