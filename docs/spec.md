@@ -864,7 +864,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### init
 
-`koan init [--ids-from]`. Makes `~/koan-root`, its `tree/` and `archived/`, and the database; run again, it changes nothing that is there and reports what it found. `--ids-from` sets the first ID a new root issues; given for a root that already has a database, it is refused with `exists`. Refused: `not-a-root`, `exists`.
+`koan init [--ids-from]`. Makes `~/koan-root`, its `tree/` and `archived/`, and the database; run again, it changes nothing that is there and reports what it found. `--ids-from` sets the first ID a new root issues; given for a root that already has a database, it is refused with `exists`. koan's own names in the root are `koan.db`, `koan.db-wal`, `koan.db-shm`, and `tree/` and `archived/` as directories, byte for byte; anything else is `not-a-root`, with every such path in `paths`, in byte order, and a `~/koan-root` that isn't a directory is `not-a-root` with the root as its path. not-a-root is checked before `exists`. init takes the write lock once the root directory exists, so it can fail with `busy`. A database with format 0 and no tables is an unfinished init, which init finishes and lists in `created`; any other database in another format, or a corrupt one, fails init as it fails every command. Refused: `not-a-root`, `exists`.
 
 ```json
 { "$id": "init", "$defs": {
@@ -883,7 +883,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### info, version
 
-`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. A `~/koan-root` that isn't a directory, or that koan can't list, is the operating system refusing, not a state: info fails with `io`. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one.
+`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. A `~/koan-root` that isn't a directory, or that koan can't list, is the operating system refusing, not a state: info fails with `io`. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one; it is null unless the state is usable. `format` is the database's whenever koan can read it, so an `unsupported-format` root reports it, and a corrupt one does when it can be read. If SQLite itself stays busy for 5 seconds, info fails with `busy`.
 
 ```json
 { "$id": "info", "$defs": {
@@ -896,8 +896,8 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
       "archive":  { "$ref": "types#/$defs/abs-path" },
       "database": { "$ref": "types#/$defs/abs-path" },
       "state":    { "enum": ["usable", "not-initialized", "unsupported-format", "corrupt"] },
-      "format":   { "type": ["integer", "null"], "description": "The database's; null when there is none." },
-      "next_id":  { "anyOf": [ { "$ref": "types#/$defs/id" }, { "type": "null" } ] },
+      "format":   { "type": ["integer", "null"], "description": "The database's; null when there is none, or it can't be read." },
+      "next_id":  { "anyOf": [ { "$ref": "types#/$defs/id" }, { "type": "null" } ], "description": "Null unless usable." },
       "tasks":    { "type": ["integer", "null"], "description": "Live tasks. This and the counts below are null unless usable." },
       "folders":  { "type": ["integer", "null"] },
       "claims":   { "type": ["integer", "null"] },

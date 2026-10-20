@@ -49,7 +49,7 @@
             "integer",
             "null"
           ],
-          "description": "The database's; null when there is none."
+          "description": "The database's; null when there is none, or it can't be read."
         },
         "next_id": {
           "anyOf": [
@@ -59,7 +59,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Null unless usable."
         },
         "tasks": {
           "type": [
