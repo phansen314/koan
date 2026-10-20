@@ -208,7 +208,9 @@ func (o *Option) value(text string) any {
 	}
 	switch o.Kind {
 	case Integer:
-		if n, err := strconv.ParseInt(text, 10, 64); err == nil {
+		// Only text written as a JSON integer is one, so --priority 007
+		// is refused as it would be through --input.
+		if n, err := strconv.ParseInt(text, 10, 64); err == nil && jsonInteger(text) {
 			return json.Number(strconv.FormatInt(n, 10))
 		}
 	case Bool:
@@ -221,6 +223,21 @@ func (o *Option) value(text string) any {
 		}
 	}
 	return text
+}
+
+// jsonInteger reports whether text is an integer as JSON writes one: an
+// optional "-", then digits with no leading zero.
+func jsonInteger(text string) bool {
+	digits := strings.TrimPrefix(text, "-")
+	if digits == "" || digits[0] == '0' && len(digits) > 1 {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // decodeOne reads exactly one JSON value, numbers kept as json.Number.
