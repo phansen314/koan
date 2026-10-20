@@ -32,8 +32,8 @@ func TestEncodeRemoveOwns(t *testing.T) {
 // left to its own listing.
 func TestMaterialIn(t *testing.T) {
 	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/@todo.md=",
-		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s",
-		"tree/@old/@7.md=", "tree/@old/@stray/@x.md=", "tree/@old/@stray/.DS_Store=finder"}
+		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=",
+		"tree/@old/@start.md=s", "tree/@old/@7.md=", "tree/@old/@stray/@x.md=", "tree/@old/@stray/.DS_Store=finder"}
 	for _, c := range []struct {
 		name     string
 		material []string
@@ -48,7 +48,8 @@ func TestMaterialIn(t *testing.T) {
 		{"another task's notes", []string{"tree/@old/@sub/@7.md=seven"}, nil, []string{"@7.md"}},
 		{"a stray @ directory holding content", []string{"tree/@old/@stray/@x.md=x"}, []string{"@stray"}, nil},
 		{"a stray @ directory holding material", []string{"tree/@old/@stray/@deep/a="}, []string{"@stray"}, nil},
-		{"a done gate's notes the step records", []string{"tree/@old/@sub/@done.md=d"}, nil, nil},
+		{"a gate's notes the step records", []string{"tree/@old/@sub/@done.md=d"}, nil, nil},
+		{"a gate-less @start.md with content", []string{"tree/@old/@sub/@start.md=s"}, nil, []string{"@start.md"}},
 		{"in byte order", []string{"tree/@old/b=", "tree/@old/B=", "tree/@old/a/"}, []string{"B", "a", "b"}, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {

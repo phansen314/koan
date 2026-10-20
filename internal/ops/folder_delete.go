@@ -69,17 +69,16 @@ func FolderDelete() *cli.Command {
 					}
 				}
 				// What the step may remove: the directories of the folders
-				// being deleted, and the notes of what is being deleted.
+				// being deleted, and the notes of what is being deleted. A
+				// gate's notes come with its gate, among the tasks; a
+				// @start.md or @done.md with no gate is a stray entry.
 				var owns []string
 				for _, f := range folders {
 					dir := fsstep.FolderDir(t.paths[f])
-					owns = append(owns, dir, path.Join(dir, fsstep.FolderNotes),
-						path.Join(dir, fsstep.StartNotes), path.Join(dir, fsstep.DoneNotes))
+					owns = append(owns, dir, path.Join(dir, fsstep.FolderNotes))
 				}
 				for _, tid := range tasks {
-					if n := t.notesRel(tid); !slices.Contains(owns, n) {
-						owns = append(owns, n)
-					}
+					owns = append(owns, t.notesRel(tid))
 				}
 				if !force {
 					var material []string

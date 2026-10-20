@@ -151,43 +151,51 @@ func TestFolderDeleteNotEmpty(t *testing.T) {
 // has-material names the material at any depth, each folder's own
 // entries byte for byte before those of the folders under it: entries
 // not named with @, an @ entry holding content that isn't the notes of
-// what is being deleted, and never .DS_Store or a zero-byte @ file.
-// --force takes it all.
+// what is being deleted, and never .DS_Store or a zero-byte @ file. A
+// @start.md or @done.md is the notes of a gate the folder has, and
+// otherwise a stray entry. --force takes it all.
 func TestFolderDeleteMaterial(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/w/b")                                   // 1, 2
 	ok(t, home, "folder", "create", "/w/a")                                   // 3
 	ok(t, home, "task", "create", "t", "--folder", "/w/a", "--notes", "mine") // 4
 	ok(t, home, "task", "create", "u")                                        // 5
+	ok(t, home, "task", "block", "5", "--blocked-by", "/w/a.done")            // 6
 	for rel, content := range map[string]string{
 		"@w/docs/x.md":        "x",
 		"@w/.DS_Store":        "finder",
 		"@w/@todo.md":         "by hand",
 		"@w/@empty.md":        "",
+		"@w/@start.md":        "no gate's",
 		"@w/@b/__init__.py":   "",
 		"@w/@b/@5.md":         "another task's",
+		"@w/@b/@done.md":      "no gate's",
 		"@w/@a/@stray/@x.md":  "x",
 		"@w/@a/@hollow/@y.md": "",
 		"@w/@a/.git/HEAD":     "ref",
+		"@w/@a/@done.md":      "its gate's",
 	} {
 		writeTree(t, home, rel, content)
 	}
 	r := fails(t, home, "conflict", "has-material", "folder", "delete", "/w", "--contents")
 	golden(t, r, "folder-delete-has-material")
-	if fmt.Sprint(r.Error()["paths"]) != "[/w:@todo.md /w:docs /w/a:.git /w/a:@stray /w/b:@5.md /w/b:__init__.py]" {
+	if fmt.Sprint(r.Error()["paths"]) != "[/w:@start.md /w:@todo.md /w:docs /w/a:.git /w/a:@stray /w/b:@5.md /w/b:@done.md /w/b:__init__.py]" {
 		t.Errorf("material: %s", r.Line())
 	}
 	r = ok(t, home, "folder", "delete", "/w", "--contents", "--force")
-	if fmt.Sprint(r.Result()) != "map[released:[] removed:[1 2 3 4]]" {
+	if fmt.Sprint(r.Result()) != "map[released:[5] removed:[1 2 3 4 6]]" {
 		t.Errorf("forced: %s", r.Line())
 	}
 	checkTree(t, home, "@5.md=")
 	// With only what isn't material, no force is needed, and what isn't
-	// material goes with it.
-	ok(t, home, "folder", "create", "/v") // 6
+	// material goes with it: a gate's notes, and a @start.md or @done.md
+	// with no gate that is empty.
+	ok(t, home, "folder", "create", "/v")                         // 7
+	ok(t, home, "task", "block", "5", "--blocked-by", "/v.start") // 8
 	writeTree(t, home, "@v/.DS_Store", "finder")
 	writeTree(t, home, "@v/@hollow/@y.md", "")
-	writeTree(t, home, "@v/@start.md", "no gate's, but its folder's")
+	writeTree(t, home, "@v/@start.md", "its gate's")
+	writeTree(t, home, "@v/@done.md", "")
 	ok(t, home, "folder", "delete", "/v")
 	checkTree(t, home, "@5.md=")
 }

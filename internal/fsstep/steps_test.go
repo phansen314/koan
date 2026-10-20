@@ -348,10 +348,11 @@ func TestNeverReplaces(t *testing.T) {
 	checkTree(t, s, sorted("tree/@1.md=mine", "tree/@a/", "tree/@a/@1.md=raced", "tree/@a/@2.md=raced"))
 }
 
-// oldOwns is what a delete of the folder at tree/@old, with its subfolder
-// @sub and its task 5, records it may remove.
+// oldOwns is what a delete of the folder at tree/@old, with both its
+// gates, its subfolder @sub, with only its done gate, and its task 5,
+// records it may remove.
 var oldOwns = []string{"tree/@old", "tree/@old/@notes.md", "tree/@old/@start.md", "tree/@old/@done.md", "tree/@old/@5.md",
-	"tree/@old/@sub", "tree/@old/@sub/@notes.md", "tree/@old/@sub/@start.md", "tree/@old/@sub/@done.md"}
+	"tree/@old/@sub", "tree/@old/@sub/@notes.md", "tree/@old/@sub/@done.md"}
 
 // A directory remove whose change wasn't forced looks for material first,
 // walking every @ directory under it: finding any, it removes nothing and
@@ -363,8 +364,8 @@ var oldOwns = []string{"tree/@old", "tree/@old/@notes.md", "tree/@old/@start.md"
 // takes it all.
 func TestRemoveMaterial(t *testing.T) {
 	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/@Notes.md=",
-		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s",
-		"tree/@old/@7.md=", "tree/@old/@stray/@x.md=", "tree/@old/@stray/.DS_Store=finder"}
+		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=",
+		"tree/@old/@start.md=s", "tree/@old/@7.md=", "tree/@old/@stray/@x.md=", "tree/@old/@stray/.DS_Store=finder"}
 	for _, c := range []struct {
 		name     string
 		material []string
@@ -380,7 +381,9 @@ func TestRemoveMaterial(t *testing.T) {
 		{"another task's notes", []string{"tree/@old/@sub/@7.md=seven"}, false, true},
 		{"a stray @ directory holding content", []string{"tree/@old/@stray/@x.md=x"}, false, true},
 		{"a stray @ directory holding material", []string{"tree/@old/@stray/@deep/a="}, false, true},
-		{"a done gate's notes the step records", []string{"tree/@old/@sub/@done.md=d"}, false, false},
+		{"a gate's notes the step records", []string{"tree/@old/@sub/@done.md=d"}, false, false},
+		{"a gate-less @start.md with content", []string{"tree/@old/@sub/@start.md=s"}, false, true},
+		{"forced, a gate-less @start.md with content", []string{"tree/@old/@sub/@start.md=s"}, true, false},
 		{"forced", []string{"tree/@old/thesis.tex=t", "tree/@old/@sub/.git/", "tree/@old/@Notes.md=by hand"}, true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -422,7 +425,7 @@ func TestRemoveMaterial(t *testing.T) {
 // sticks.
 func TestRemoveMaterialMidway(t *testing.T) {
 	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/.DS_Store=finder",
-		"tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s", "tree/@old/@sub/@8.md="}
+		"tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=", "tree/@old/@sub/@8.md="}
 	for _, c := range []struct {
 		name, at, late string
 	}{
@@ -436,6 +439,7 @@ func TestRemoveMaterialMidway(t *testing.T) {
 		{"another task's notes, mid-walk", "step 1: look in tree/@old/@sub", "tree/@old/@7.md=seven"},
 		{"another task's notes, mid-removal", "step 1: rmdir tree/@old/@sub", "tree/@old/@sub/@7.md=seven"},
 		{"another task's empty notes written as it is unlinked", "step 1: unlink tree/@old/@sub/@8.md", "tree/@old/@sub/@8.md=eight"},
+		{"a gate-less empty @start.md written as it is unlinked", "step 1: unlink tree/@old/@sub/@start.md", "tree/@old/@sub/@start.md=late"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, s := newRoot(t)
