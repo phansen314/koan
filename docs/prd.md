@@ -177,7 +177,7 @@ A write commits the database first and changes the tree after, from a list of fi
 4. Check the tree for what the change needs: a destination path is free, a folder to delete holds no material unless `force`.
 5. Change the rows, check for cycles, and insert into `pending` the filesystem steps that bring the tree in line.
 6. `COMMIT`.
-7. Carry out the steps, fsync each directory they touched, then delete their rows in one transaction, which needn't be durable (see Concurrency).
+7. Carry out the steps, fsync each directory they touched, then delete their rows in one transaction.
 8. Release the lock.
 
 **Once COMMIT succeeds, the command succeeds.** It returns `ok` with its result whatever then happens to the filesystem steps, so an agent never retries a change that was made. The lock keeps other writers out, but not Zed or a person: a step fails when the operating system refuses it, or when a hand change got to its path first. A failed step stays pending, the result carries `pending-step`, and the next write finishes it. A step the operating system keeps refusing stays pending: every later write retries it, fails again and returns `pending-step`, until the cause is fixed. That is by design. A crash between the commit and the output is the one case left to the agent, which reads the tree to see what happened.
@@ -228,7 +228,7 @@ Writes are serialized by one lock; reads never wait on a writer or on that lock.
 | **A write decides on current state** | Inside the lock, the database work runs in `BEGIN IMMEDIATE`, and every reference is resolved there. A plain `BEGIN` that reads then writes can fail on a snapshot that went stale, which `busy_timeout` doesn't retry. |
 | **Reads see one committed state, and never wait on a writer** | WAL mode: a read transaction sees the snapshot it started with, and takes koan's lock only for the brief try below, made only when steps are pending. SQLite may still make a reader wait briefly while it tidies its own files: the last connection to close checkpoints the WAL and deletes it, and the next to open rebuilds its index. `busy_timeout` makes that a wait, not an error; S0 measured waits of up to 54 ms (docs/spikes.md). |
 | **Waiting is bounded** | A writer that finds the lock held waits up to 5 seconds, then fails with `busy`, which is always safe to retry. `busy_timeout = 5000` is the same backstop inside SQLite, for other writers of the file such as the `sqlite3` tool, and for SQLite's own tidying; a command that SQLite keeps busy for 5 seconds also fails with `busy`. |
-| **Commits are durable** | `synchronous = FULL`, `fullfsync = ON` and `checkpoint_fullfsync = ON`, without which macOS doesn't flush the drive. A rename is made durable by fsyncing its directories, with `F_FULLFSYNC` on macOS, before its step's row is deleted. The one commit that needn't be durable is the one deleting finished steps' rows: every step can be carried out twice, so losing it to a power cut only means redoing them. It runs with `synchronous = NORMAL`, saving a flush. |
+| **Commits are durable** | `synchronous = FULL`, `fullfsync = ON` and `checkpoint_fullfsync = ON`, without which macOS doesn't flush the drive. A rename is made durable by fsyncing its directories, with `F_FULLFSYNC` on macOS, before its step's row is deleted. |
 | **Per connection** | `foreign_keys = ON`, `busy_timeout` and the three sync pragmas above are set on every open, since SQLite doesn't store them; `journal_mode = WAL` is stored in the file by `init`. |
 
 - **`doctor` reads one snapshot and takes no koan lock**, so no writer waits for it. `repair` is a write, and takes the lock like any other.
@@ -488,7 +488,6 @@ Anything that would change a rule goes to the rules doc, not to this list.
 | A `flock` on the root as the write lock | SQLite's write lock alone, which ends too early |
 | A 5-second wait before `busy` | another bound |
 | `synchronous = FULL`, with `fullfsync = ON` and `checkpoint_fullfsync = ON` on macOS, whatever the cost there turns out to be | `NORMAL`, which can lose the last commits on power loss |
-| `synchronous = NORMAL` for deleting finished steps' rows | a durable delete, one more flush for a commit that can be redone |
 | Every case-only rename through a temporary name | one `rename`, which a Linux directory that ignores case turns into a silent no-op |
 | `task list`, `task frontier` and `folder list` return 100 results unless `--limit` says otherwise | everything, 3 MB of JSON at 10,000 tasks for an agent to take in |
 | The archive laid out by path, items named by ID | an archive laid out by ID only |
