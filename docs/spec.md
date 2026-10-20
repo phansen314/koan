@@ -362,7 +362,7 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | --- | --- | --- | --- | --- |
 | `pending-filesystem` | A path returned belongs to a change whose filesystem steps are still running | any read | the tasks and folders whose paths are pending | the paths returned, where they are going |
 | `pending-step` | Steps are pending with no write carrying them out: this write failed one, or an earlier write crashed | any command |  | the paths the steps touch |
-| `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination, in seq order |
+| `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination, in seq order: the steps that found both or neither, not the rest of their changes |
 | `missing-notes` | No file at a notes path; it reads as empty notes | `task show`, `folder show`, `context` | the task or folder | its notes path |
 | `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `batch` | the complete tasks |  |
 | `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |

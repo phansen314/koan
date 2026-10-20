@@ -180,14 +180,14 @@ A write commits the database first and changes the tree after, from a list of fi
 7. Carry out the steps, fsync each directory they touched, then delete their rows in one transaction.
 8. Release the lock.
 
-**Once COMMIT succeeds, the command succeeds.** It returns `ok` with its result whatever then happens to the filesystem steps, so an agent never retries a change that was made. The lock keeps other writers out, but not Zed or a person: a step fails when the operating system refuses it, or when a hand change got to its path first. A failed step stays pending, the result carries `pending-step`, and the next write finishes it. A step the operating system keeps refusing stays pending: every later write retries it, fails again and returns `pending-step`, until the cause is fixed. That is by design. A crash between the commit and the output is the one case left to the agent, which reads the tree to see what happened.
+**Once COMMIT succeeds, the command succeeds.** It returns `ok` with its result whatever then happens to the filesystem steps, so an agent never retries a change that was made. The lock keeps other writers out, but not Zed or a person: a step fails when the operating system refuses it, or when a hand change got to its path first. A failed step stays pending, the rest of its change waits with it, since those may depend on it, and later changes go on; the result carries `pending-step`, and the next write finishes it. A step the operating system keeps refusing stays pending: every later write retries it, fails again and returns `pending-step`, until the cause is fixed. That is by design. A crash between the commit and the output is the one case left to the agent, which reads the tree to see what happened.
 
 **Filesystem steps.** Each is stated as the result it wants, so carrying it out twice is harmless.
 
 | Step | Done when | Carried out by |
 | --- | --- | --- |
 | Make a folder's directory | it exists | `mkdir`, then an empty `@notes.md` |
-| Write notes | the file exists | writing the content the step holds to a temp file, then one `rename` into place |
+| Write notes | the file exists | writing the content the step holds to a temp file (below), then one `rename` into place |
 | Move notes or a directory | the source is gone and the destination exists | one `rename`, atomic on one filesystem; a case-only rename takes two, through a temporary name (below) |
 | Remove notes or a directory | the path is gone | `unlink`, or a recursive remove that can be run again |
 | Archive | it sits in the archive | making the directories above it, writing its JSON through a temp file renamed into place beside where it goes, then one rename out of the tree |
@@ -196,9 +196,11 @@ A write commits the database first and changes the tree after, from a list of fi
 
 **A case-only rename** goes through a temporary name on every filesystem, since one that ignores case returns success from `rename("@work", "@Work")` and leaves the old spelling in place. The step renames `@work` to `@.case-<seq>`, with its own `seq`, then `@.case-<seq>` to `@Work`. It records all three names, so a step cut short resumes from whichever of them the listing shows. It is done when the listing shows the new spelling, byte for byte, and neither of the others.
 
-**A move that finds both** its source and its destination finishes when one side is empty: a zero-byte notes file, or a directory holding nothing but zero-byte `@` notes files. Any other file is content, however small, since material is full of meaningful empty files such as `__init__.py` and `.gitkeep`. An empty source is removed, an empty destination replaced. The usual case is an agent writing notes at a task's new path before the move ran, while the old file is still the empty one create wrote.
+**A temp file** for notes or archive JSON is `@.tmp-<seq>`, with its step's own `seq`, in the directory the file goes into. A step cut short writes it afresh, and once the step is done, one left behind is removed.
 
-**A stuck step** finds both sides holding content, or neither when a directory is needed. Its row is marked `stuck`, with the rest of its change, since those may depend on it. Later writes go on and skip stuck rows, so a later change can become stuck only because an earlier one is. Every result carries `stuck-step` until a person keeps one copy; `repair` then retries every stuck change in `seq` order, and clears each that now succeeds. A step holds everything it needs, notes content and archived rows included, since the rows it came from may already be gone.
+**A move that finds both** its source and its destination finishes when one side is empty: a zero-byte notes file, or a directory holding nothing but zero-byte `@` notes files, named exactly as koan names them, and any `.DS_Store`, which is disposable and goes with it. Any other file is content, however small, since material is full of meaningful empty files such as `__init__.py` and `.gitkeep`. An empty source is removed, an empty destination replaced. The usual case is an agent writing notes at a task's new path before the move ran, while the old file is still the empty one create wrote.
+
+**A stuck step** finds both sides holding content, or neither when a directory is needed; a move of notes that finds neither is done, since missing notes read as empty (T3). Its row is marked `stuck`, with the rest of its change, since those may depend on it, and records which it found, `both` or `neither`. Only the step that found it is reported, by `stuck-step` and by doctor; the rest of its change is set aside with it. Later writes go on and skip stuck rows, so a later change can become stuck only because an earlier one is. Every result carries `stuck-step` until a person keeps one copy; `repair` then retries every stuck change in `seq` order, and clears each that now succeeds. A step holds everything it needs, notes content and archived rows included, since the rows it came from may already be gone.
 
 **Notes files.** Creating a task writes its `@<id>.md`, empty unless the input gives notes, so that it shows in Zed straight away. A missing notes file still reads as empty notes (T3).
 
@@ -436,7 +438,7 @@ The only outside changes left are hand changes to `@` entries in the tree (a ren
 | `case-differs` | A folder's directory is spelled in another case (T1) | Renames it to the folder's name, through a temporary name as a case-only rename is. |
 | `misplaced-notes` | A task's notes sit in another folder's directory (T4) | Moves them back, unless notes are already there. |
 | `orphan-notes` | An `@<id>.md` with no live task, whether deleted, archived or never issued, or a `@start.md` or `@done.md` with no gate (T4, T6). The finding says which | Removes them when empty; otherwise leaves them. |
-| `stray-entry` | Any other `@` entry, such as a hand-made `@Notes.md` (T6) | — reported only |
+| `stray-entry` | Any other `@` entry, such as a hand-made `@Notes.md` (T6). An `@.tmp-<seq>` file named by a pending step is that step's, and shows as `pending-step` | — reported only |
 | `invalid-row` | A row breaks a rule SQL can't check, such as a name pattern, a cycle or a gate's placement, after a hand edit of the database | — a person fixes it |
 | `corrupt` | The database fails `PRAGMA integrity_check` or `foreign_key_check` | — restore from a backup |
 
