@@ -7,10 +7,10 @@ Section names refer to `docs/rules.md` (rules), `docs/prd.md` (PRD) and `docs/sp
 ## Order
 
 ```
-S0 spikes ──► S1 harness ──► S3 storage ──► S4 filesystem steps ──► S5a ─► S5b ─► S5c ─► S5d ─► S5e ─► S5f ─┬─► S6 locating ─┐
-                 │                                                                                             └─► S7 recovery ─┤
-S2 core ─────────┴──── (needed by S3 onward)                                                                                    │
-                                                                         S9 ship ◄── S8 hardening ◄── all of S5, S6, S7 ────────┘
+S0 spikes ──► S1 harness ──► S3 storage ──► S4 filesystem steps ──► S5a-1 ─► S5a-2 ─► S5b ─► S5c ─► S5d ─► S5e ─► S5f ─┬─► S6 locating ─┐
+                 │                                                                                                     └─► S7 recovery ─┤
+S2 core ─────────┴──── (needed by S3 onward)                                                                                            │
+                                                                         S9 ship ◄── S8 hardening ◄── all of S5, S6, S7 ────────────────┘
 ```
 
 - S2 can run beside S1. Everything from S3 to S5f is in sequence: each slice extends the one before.
@@ -127,10 +127,11 @@ Each sub-slice is its own task.
 
 | Slice | Commands | Also covers | Also read |
 |---|---|---|---|
-| S5a | `folder create`, `folder show`, `folder list`, `task create`, `task show`, `task list` (no edges yet) | missing parents, notes files written at create, `missing-notes`, `--fields`, tree order | rules Fields, Case, Readiness → Orders; PRD Writes → Notes files, Issuing IDs in a change; spec Invocation → Conveniences |
-| S5b | `task block`, `task unblock`, `task create` with edges, `task why`, `task frontier` | gates made with their notes file, `gates_made`, `cycle`, `released`, `reblocked`, `complete-blocker`, `claimed-blocked` | rules Readiness, Resolution, Claims; PRD Writes → Making a gate, Issuing IDs in a change |
+| S5a-1 | `folder create`, `folder show`, `folder list` | the pattern every later command follows: a file per command in `internal/ops`, results as structs in schema order, the store opened through `fsstep.Open` and steps added through `fsstep.Add`, the disk-path helper, reads' `pending-filesystem`, `pending-step` and `stuck-step`; missing parents, the directory and its `@notes.md` made at create, a destination taken on disk (`exists`), `case-mismatch`, `missing-notes`, `--fields`, tree order | rules Fields, Case, Readiness → Orders, The tree on disk; PRD Writes → Notes files, Issuing IDs in a change; spec Invocation → Conveniences |
+| S5a-2 | `task create`, `task show`, `task list` (no edges yet) | following S5a-1's pattern: notes files written at create, `missing-notes`, `--fields`, tags, `task list`'s default limit, tree order | rules Fields, Case, Readiness → Orders; PRD Writes → Notes files, Issuing IDs in a change; spec Invocation → Conveniences |
+| S5b | `task block`, `task unblock`, `task create` with edges, `task why`, `task frontier` | gates made with their notes file, the subject's own gate made by `task block`, `gates_made`, `cycle`, `released`, `reblocked`, `complete-blocker`, `claimed-blocked` | rules Readiness, Resolution, Claims; PRD Writes → Making a gate, Issuing IDs in a change |
 | S5c | `task complete`, `task reopen`, `task update`, `folder update`, `task claim`, `task claim-next`, `task release` | `changed`, `complete` and `claimed`, claims ending on complete and delete | rules Claims, Fields, Readiness → Orders |
-| S5d | `task move`, `folder move`, `task delete`, `folder delete` | missing parents on move, case-only rename, `moved-claimed`, `gate`, `into-itself`, `not-empty`, `has-material` | rules Case, Fields, The tree on disk; PRD Writes → Issuing IDs in a change, Removing rows |
+| S5d | `task move`, `folder move`, `task delete`, `folder delete` | missing parents on move, case-only rename, an unforced remove step recording what it may remove (`Owns`), `moved-claimed`, `gate`, `into-itself`, `not-empty`, `has-material` | rules Case, Fields, The tree on disk; PRD Writes → Issuing IDs in a change, Removing rows |
 | S5e | `batch` | labels, the batch read as the tree it leaves, the five steps of Resolving a batch (PRD Writes), `problems` pointing at parts | spec Input formats → Batch file; PRD Writes → Resolving a batch, Issuing IDs in a change; rules Resolution, Case |
 | S5f | `task archive`, `folder archive` | archive layout, JSON beside each item, lone-gate names, the index, `not-found` with `archived` filled in | rules Archiving; PRD Layout → The archive, Writes → Archiving; spec On-disk formats (its intro) → Archive JSON; PRD Writes → Removing rows |
 
