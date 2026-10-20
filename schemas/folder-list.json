@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-list",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "default": "/"
+        },
+        "recursive": {
+          "type": "boolean",
+          "default": true
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": null
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "folder#/$defs/field"
+          },
+          "uniqueItems": true
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "folders",
+        "total",
+        "truncated"
+      ],
+      "properties": {
+        "folders": {
+          "type": "array",
+          "items": {
+            "$ref": "folder#/$defs/partial"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

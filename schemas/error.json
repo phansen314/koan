@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "error",
+  "type": "object",
+  "required": [
+    "kind",
+    "rule",
+    "message",
+    "ids",
+    "paths",
+    "problems",
+    "archived"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "usage",
+        "invalid-input",
+        "not-found",
+        "conflict",
+        "busy",
+        "not-initialized",
+        "corrupt",
+        "unsupported-format",
+        "io",
+        "internal"
+      ]
+    },
+    "rule": {
+      "enum": [
+        "case-mismatch",
+        "cycle",
+        "claimed",
+        "not-finished",
+        "not-empty",
+        "has-material",
+        "gate",
+        "into-itself",
+        "exists",
+        "not-a-root",
+        "checkout",
+        "foreign-files",
+        "complete",
+        "bound",
+        null
+      ],
+      "description": "The conflict rule; null for every other kind."
+    },
+    "message": {
+      "type": "string",
+      "description": "One or two sentences for a person. Never parsed."
+    },
+    "ids": {
+      "type": "array",
+      "items": {
+        "$ref": "types#/$defs/id"
+      },
+      "description": "In the order the kind or rule gives."
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Folder paths or paths on disk, as the kind or rule gives."
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "field",
+          "reason"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed."
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "archived": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "archive"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "types#/$defs/id"
+          },
+          "archive": {
+            "$ref": "types#/$defs/abs-path"
+          }
+        },
+        "unevaluatedProperties": false
+      },
+      "description": "For not-found: where each archived ID the input named went, from the index."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "conflict"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "rule": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "rule": {
+            "const": null
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

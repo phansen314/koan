@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task",
+  "$ref": "#/$defs/partial",
+  "required": [
+    "id",
+    "ref",
+    "gate",
+    "title",
+    "priority",
+    "folder",
+    "created_at",
+    "completed_at",
+    "updated_at",
+    "state",
+    "readiness",
+    "blocked_by",
+    "blocks",
+    "tags",
+    "extra",
+    "claim",
+    "notes_path"
+  ],
+  "$defs": {
+    "partial": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "description": "A task cut down by --fields: id, then the fields asked for, in this order.",
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "ref": {
+          "$ref": "types#/$defs/kept"
+        },
+        "gate": {
+          "$ref": "types#/$defs/gate"
+        },
+        "title": {
+          "$ref": "types#/$defs/title"
+        },
+        "priority": {
+          "$ref": "types#/$defs/priority"
+        },
+        "folder": {
+          "$ref": "types#/$defs/folder-at",
+          "description": "Where it sits; the root has a null ID."
+        },
+        "created_at": {
+          "$ref": "types#/$defs/timestamp"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "$ref": "types#/$defs/timestamp"
+        },
+        "state": {
+          "$ref": "types#/$defs/state"
+        },
+        "readiness": {
+          "$ref": "types#/$defs/readiness"
+        },
+        "blocked_by": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/edge-end"
+          },
+          "description": "What it waits on. Ascending by ID."
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/edge-end"
+          },
+          "description": "What waits on it. Ascending by ID."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/tag"
+          },
+          "uniqueItems": true,
+          "description": "Sorted byte for byte."
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        },
+        "claim": {
+          "anyOf": [
+            {
+              "$ref": "claim"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notes_path": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "Its @<id>.md, or its folder's @start.md or @done.md."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "field": {
+      "enum": [
+        "id",
+        "ref",
+        "gate",
+        "title",
+        "priority",
+        "folder",
+        "created_at",
+        "completed_at",
+        "updated_at",
+        "state",
+        "readiness",
+        "blocked_by",
+        "blocks",
+        "tags",
+        "extra",
+        "claim",
+        "notes_path"
+      ]
+    }
+  }
+}

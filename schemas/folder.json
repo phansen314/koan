@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder",
+  "$ref": "#/$defs/partial",
+  "required": [
+    "id",
+    "ref",
+    "name",
+    "path",
+    "title",
+    "extra",
+    "gates",
+    "open",
+    "complete",
+    "finished",
+    "notes_path",
+    "dir"
+  ],
+  "$defs": {
+    "partial": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "description": "A folder cut down by --fields: id, then the fields asked for, in this order.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "description": "The kept-text pair, such as @41 (/work/api); / for the root."
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/name"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "$ref": "types#/$defs/path"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/title"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        },
+        "gates": {
+          "type": "object",
+          "required": [
+            "start",
+            "done"
+          ],
+          "properties": {
+            "start": {
+              "$ref": "#/$defs/gate-entry"
+            },
+            "done": {
+              "$ref": "#/$defs/gate-entry"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "open": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finished": {
+          "type": "boolean"
+        },
+        "notes_path": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/abs-path"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its @notes.md."
+        },
+        "dir": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "Its directory in the tree."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "gate-entry": {
+      "anyOf": [
+        {
+          "type": "null",
+          "description": "The folder has no gate at that end."
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "readiness"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "types#/$defs/id"
+            },
+            "state": {
+              "$ref": "types#/$defs/state"
+            },
+            "readiness": {
+              "$ref": "types#/$defs/readiness"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "field": {
+      "enum": [
+        "id",
+        "ref",
+        "name",
+        "path",
+        "title",
+        "extra",
+        "gates",
+        "open",
+        "complete",
+        "finished",
+        "notes_path",
+        "dir"
+      ]
+    }
+  }
+}

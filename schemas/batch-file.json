@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "batch-file",
+  "type": "object",
+  "properties": {
+    "folders": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "allOf": [
+              {
+                "$ref": "types#/$defs/path"
+              },
+              {
+                "not": {
+                  "const": "/"
+                }
+              }
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "extra": {
+            "$ref": "types#/$defs/extra",
+            "default": {}
+          },
+          "notes": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "folder": {
+      "$ref": "types#/$defs/folder-ref",
+      "default": "/",
+      "description": "Where tasks go that name no folder."
+    },
+    "tasks": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "label": {
+            "$ref": "types#/$defs/label"
+          },
+          "title": {
+            "type": "string"
+          },
+          "folder": {
+            "$ref": "types#/$defs/folder-ref"
+          },
+          "priority": {
+            "$ref": "types#/$defs/priority",
+            "default": null
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "types#/$defs/tag"
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "blocked_by": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "types#/$defs/edge-ref"
+                },
+                {
+                  "$ref": "types#/$defs/label"
+                }
+              ]
+            }
+          },
+          "blocks": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "types#/$defs/edge-ref"
+                },
+                {
+                  "$ref": "types#/$defs/label"
+                }
+              ]
+            }
+          },
+          "extra": {
+            "$ref": "types#/$defs/extra",
+            "default": {}
+          },
+          "notes": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "folders"
+      ],
+      "properties": {
+        "folders": {
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "required": [
+        "tasks"
+      ],
+      "properties": {
+        "tasks": {
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "description": "folders and tasks hold 1 to 1000 parts between them, which koan checks.",
+  "unevaluatedProperties": false
+}

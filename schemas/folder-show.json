@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-show",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "folder"
+      ],
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "description": "Subject."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "folder"
+      ],
+      "properties": {
+        "folder": {
+          "$ref": "folder"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

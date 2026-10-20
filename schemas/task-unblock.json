@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-unblock",
+  "$defs": {
+    "input": {
+      "$ref": "task-block#/$defs/input"
+    },
+    "result": {
+      "$ref": "task-complete#/$defs/result"
+    }
+  }
+}

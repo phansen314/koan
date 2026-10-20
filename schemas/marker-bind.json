@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "marker-bind",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "folder",
+        "dir"
+      ],
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "description": "Subject. Never the root, which has no ID."
+        },
+        "dir": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "force": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "marker",
+        "file",
+        "replaced"
+      ],
+      "properties": {
+        "marker": {
+          "$ref": "marker-file"
+        },
+        "file": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "The marker.json written."
+        },
+        "replaced": {
+          "type": "boolean",
+          "description": "Whether a marker was there before."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

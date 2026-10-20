@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "types",
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 999999999999999
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$"
+    },
+    "tag": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^(?:/|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+)$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+$",
+      "description": "As stored. Input is trimmed of whitespace first, then checked. Lengths count code points."
+    },
+    "priority": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "A real date and time, which koan checks."
+    },
+    "extra": {
+      "type": "object"
+    },
+    "end": {
+      "enum": [
+        "start",
+        "done"
+      ]
+    },
+    "gate": {
+      "enum": [
+        "start",
+        "done",
+        null
+      ]
+    },
+    "state": {
+      "enum": [
+        "open",
+        "complete"
+      ]
+    },
+    "readiness": {
+      "enum": [
+        "ready",
+        "blocked",
+        null
+      ],
+      "description": "null once complete."
+    },
+    "label": {
+      "type": "string",
+      "pattern": "^\\$[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$",
+      "description": "Compared byte for byte."
+    },
+    "folder-ref": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/id"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:/|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+|@?[1-9][0-9]{0,14}(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*)$"
+        }
+      ]
+    },
+    "task-ref": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/id"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:@?[1-9][0-9]{0,14}|(?:@?[1-9][0-9]{0,14}(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+)\\.(?:start|done))$"
+        }
+      ]
+    },
+    "edge-ref": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/id"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:@?[1-9][0-9]{0,14}(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+)(?:\\.(?:start|done))?$"
+        }
+      ]
+    },
+    "material": {
+      "type": "string",
+      "pattern": "^(?:[^\\x00/.@][^\\x00/]*|\\.[^\\x00/.][^\\x00/]*|\\.\\.[^\\x00/]+)(?:/(?:[^\\x00/.][^\\x00/]*|\\.[^\\x00/.][^\\x00/]*|\\.\\.[^\\x00/]+))*$",
+      "description": "A path inside a folder's directory: no empty, . or .. part, and no @ at the start of the first."
+    },
+    "ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/folder-ref"
+        },
+        {
+          "$ref": "#/$defs/task-ref"
+        },
+        {
+          "type": "string",
+          "description": "A folder-ref, then :, then a material path.",
+          "pattern": "^(?:/|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+|@?[1-9][0-9]{0,14}(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*):(?:[^\\x00/.@][^\\x00/]*|\\.[^\\x00/.][^\\x00/]*|\\.\\.[^\\x00/]+)(?:/(?:[^\\x00/.][^\\x00/]*|\\.[^\\x00/.][^\\x00/]*|\\.\\.[^\\x00/]+))*$"
+        }
+      ]
+    },
+    "kept": {
+      "type": "string",
+      "description": "@<id>, or @<id>:<material>, then a space and the hint in parentheses."
+    },
+    "abs-path": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      },
+      "uniqueItems": true
+    },
+    "folder-at": {
+      "type": "object",
+      "required": [
+        "id",
+        "path"
+      ],
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "edge-end": {
+      "type": "object",
+      "required": [
+        "id",
+        "ref",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "ref": {
+          "$ref": "#/$defs/kept"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "gate-made": {
+      "type": "object",
+      "required": [
+        "id",
+        "folder",
+        "end"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "folder": {
+          "$ref": "#/$defs/folder-at"
+        },
+        "end": {
+          "$ref": "#/$defs/end"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

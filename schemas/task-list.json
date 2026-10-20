@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-list",
+  "$defs": {
+    "filter": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "default": "/"
+        },
+        "recursive": {
+          "type": "boolean",
+          "default": true,
+          "description": "false: only the tasks directly in the folder."
+        },
+        "tags_any": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/tag"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "tags_all": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/tag"
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/filter"
+        }
+      ],
+      "properties": {
+        "state": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/state"
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": [
+            "open"
+          ]
+        },
+        "readiness": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ready",
+              "blocked"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": [
+            "ready",
+            "blocked"
+          ],
+          "description": "Applies to open tasks; complete tasks that --state lets in pass through."
+        },
+        "claimed": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null,
+          "description": "true: only claimed; false: only unclaimed; null: both."
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": null
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "task#/$defs/field"
+          },
+          "uniqueItems": true,
+          "description": "Left out: every field."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "tasks",
+        "total",
+        "truncated"
+      ],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "task#/$defs/partial"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

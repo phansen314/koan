@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finding",
+  "type": "object",
+  "required": [
+    "kind",
+    "detail",
+    "message",
+    "ids",
+    "paths",
+    "repairable"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "pending-step",
+        "stuck-step",
+        "stray-directory",
+        "missing-directory",
+        "case-differs",
+        "misplaced-notes",
+        "orphan-notes",
+        "stray-entry",
+        "invalid-row",
+        "corrupt"
+      ]
+    },
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "description": "What is wrong and what to do about it, for a person."
+    },
+    "ids": {
+      "$ref": "types#/$defs/ids"
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "$ref": "types#/$defs/abs-path"
+      }
+    },
+    "repairable": {
+      "type": "boolean"
+    }
+  },
+  "unevaluatedProperties": false
+}

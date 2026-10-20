@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "doctor",
+  "$defs": {
+    "input": {
+      "type": "object"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "findings"
+      ],
+      "properties": {
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "finding"
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

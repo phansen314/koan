@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "marker-file",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "path",
+    "dir"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "id": {
+      "$ref": "types#/$defs/id",
+      "description": "The folder bound."
+    },
+    "path": {
+      "allOf": [
+        {
+          "$ref": "types#/$defs/path"
+        },
+        {
+          "not": {
+            "const": "/"
+          }
+        }
+      ],
+      "description": "The folder's path when it was bound."
+    },
+    "dir": {
+      "$ref": "types#/$defs/abs-path",
+      "description": "The real path of the directory holding .koan/: no empty, . or .. part, and no trailing /."
+    }
+  }
+}

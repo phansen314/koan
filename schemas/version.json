@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "version",
+  "$defs": {
+    "input": {
+      "type": "object"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "version",
+        "commit",
+        "go",
+        "format"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Such as v0.4.0; (devel) for a local build."
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "go": {
+          "type": "string"
+        },
+        "format": {
+          "type": "integer",
+          "description": "The database format this binary reads."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "warning",
+  "type": "object",
+  "required": [
+    "kind",
+    "message",
+    "ids",
+    "paths"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "pending-filesystem",
+        "pending-step",
+        "stuck-step",
+        "missing-notes",
+        "complete-blocker",
+        "claimed-blocked",
+        "moved-claimed",
+        "stale-marker"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "ids": {
+      "$ref": "types#/$defs/ids"
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "$ref": "types#/$defs/abs-path"
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}
