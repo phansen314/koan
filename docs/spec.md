@@ -427,7 +427,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | Kind | Exit | Means | Carries |
 | --- | --- | --- | --- |
 | `usage` | 2 | The command line couldn't be turned into an input | `problems`: the argument at fault |
-| `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer. A fault in how fields go together, such as `tags_replace_all` with `tags_add`, nothing to change, or no edge given, points at the object holding them: `""`, or the batch part. A duplicate in a list points at its later occurrence. Two paths that differ only in case point at both references, in input order. A required field that isn't given points at that field, such as `/folder`. A field the command doesn't take, such as `priority` on `folder update`, points at that field |
+| `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer. A fault in how fields go together, such as `tags_replace_all` with `tags_add`, nothing to change, or no edge given, points at the object holding them: `""`, or the batch part. A duplicate in a list points at its later occurrence, and so does a tag both added and removed or a key both merged and removed: its entry in `tags_remove` or `extra_remove`. Two paths that differ only in case point at both references, in input order. A required field that isn't given points at that field, such as `/folder`. A field the command doesn't take, such as `priority` on `folder update`, points at that field |
 | `not-found` | 1 | A reference names nothing | `ids` and `paths` that name nothing, a gate its folder lacks as its folder's path and end, such as `/work.start`; `archived` for those that were archived. The message says which were deleted, archived or never issued, and that an ID below the root's first ID came from an earlier root |
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
 | `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
@@ -560,7 +560,7 @@ Tasks in tree order: open ones unless `--state` says otherwise, gates included. 
 
 `koan task update <task> [--title] [--priority] [--tags-add] [--tags-remove] [--tags-replace-all] [--extra-merge] [--extra-remove] [--extra-replace-all]`
 
-Changes fields; at least one option is needed. `--tags-replace-all` can't go with `--tags-add` or `--tags-remove`, nor `--extra-replace-all` with `--extra-merge` or `--extra-remove`. `--extra-merge` merges at the top level only.
+Changes fields; at least one option is needed. `--tags-replace-all` can't go with `--tags-add` or `--tags-remove`, nor `--extra-replace-all` with `--extra-merge` or `--extra-remove`. A tag can't be both added and removed, nor a key both merged and removed. `--extra-merge` merges at the top level only.
 
 ```json
 { "$id": "task-update", "$defs": {
@@ -669,7 +669,7 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
 
 #### task claim, task claim-next, task release
 
-`koan task claim <task> [--extra]` claims a task, blocked or not, so long as it is open; refused: `claimed`, `complete`. `koan task claim-next [--folder] [--recursive] [--tags-any] [--tags-all] [--extra]` claims the first task of the frontier, or returns nulls when there is none. `koan task release <task>` ends a claim, whoever made it.
+`koan task claim <task> [--extra]` claims a task, blocked or not, so long as it is open; refused: `claimed`, `complete`. `koan task claim-next [--folder] [--recursive] [--tags-any] [--tags-all] [--extra]` claims the first task of the frontier, or returns nulls when there is none; the task's record shows its new claim. `koan task release <task>` ends a claim, whoever made it.
 
 ```json
 { "$id": "task-claim", "$defs": {
