@@ -756,3 +756,59 @@ func TestInitDatabaseNotAFile(t *testing.T) {
 		}
 	}
 }
+
+// A claim is its own row: claiming and ending one leave the task's
+// updated_at alone, and completing a task ends its claim, the one helper
+// release, complete and delete share.
+func TestClaims(t *testing.T) {
+	home, s := newRoot(t, 1)
+	db := rawDB(t, home)
+	var a, b int64
+	write(t, s, func(tx *Tx) error {
+		var err error
+		if a, err = addTask(tx, core.RootID, "a"); err != nil {
+			return err
+		}
+		b, err = addTask(tx, core.RootID, "b")
+		return err
+	})
+	db.Exec("UPDATE task SET updated_at = '2000-01-01T00:00:00Z'")
+	write(t, s, func(tx *Tx) error {
+		for _, id := range []int64{a, b} {
+			if _, err := tx.InsertClaim(id, json.RawMessage(`{"who":"w"}`)); err != nil {
+				return err
+			}
+		}
+		c, ok, err := tx.Claim(a)
+		if err != nil || !ok || c.Task != a || c.ClaimedAt != tx.Now || string(c.Extra) != `{"who":"w"}` {
+			t.Errorf("claim %+v %v %v", c, ok, err)
+		}
+		if ended, err := tx.EndClaim(a); err != nil || !ended {
+			t.Errorf("end: %v %v", ended, err)
+		}
+		if ended, err := tx.EndClaim(a); err != nil || ended {
+			t.Errorf("end again: %v %v", ended, err)
+		}
+		if _, ok, err := tx.Claim(a); ok || err != nil {
+			t.Errorf("ended claim: %v %v", ok, err)
+		}
+		return nil
+	})
+	var moved int
+	db.QueryRow("SELECT count(*) FROM task WHERE updated_at <> '2000-01-01T00:00:00Z'").Scan(&moved)
+	if moved != 0 {
+		t.Errorf("claims moved updated_at on %d tasks", moved)
+	}
+	write(t, s, func(tx *Tx) error { return tx.SetComplete(b, true) })
+	var claims int
+	var completed sql.NullString
+	db.QueryRow("SELECT (SELECT count(*) FROM claim), (SELECT completed_at FROM task WHERE id = ?)", b).Scan(&claims, &completed)
+	if claims != 0 || !completed.Valid {
+		t.Errorf("completing left %d claims, completed_at %v", claims, completed)
+	}
+	write(t, s, func(tx *Tx) error { return tx.SetComplete(b, false) })
+	db.QueryRow("SELECT (SELECT count(*) FROM claim), (SELECT completed_at FROM task WHERE id = ?)", b).Scan(&claims, &completed)
+	if claims != 0 || completed.Valid {
+		t.Errorf("reopening: %d claims, completed_at %v", claims, completed)
+	}
+}

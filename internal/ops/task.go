@@ -187,7 +187,8 @@ func (t *tasks) record(id int64) Task {
 		rec.Tags = []string{}
 	}
 	if c, ok := t.claims[id]; ok {
-		rec.Claim = &Claim{Task: c.Task, ClaimedAt: c.ClaimedAt, Extra: c.Extra}
+		claim := claimOf(c)
+		rec.Claim = &claim
 	}
 	return rec
 }

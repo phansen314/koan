@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "result": {
+    "claim": {
+      "task": 2,
+      "claimed_at": "$NOW",
+      "extra": {
+        "who": "w1"
+      }
+    }
+  },
+  "warnings": []
+}

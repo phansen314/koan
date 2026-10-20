@@ -141,6 +141,11 @@ func TestUpdate(t *testing.T) {
 	wantErr(t, err, core.KindInvalidInput, "")
 	_, err = tr.UpdateTask("1", Update{SetTitle: true, Title: nil})
 	wantErr(t, err, core.KindInvalidInput, "")
+	// Added and removed at once, refused at the removing entry.
+	_, err = tr.UpdateTask("1", Update{TagsAdd: []string{"c", "d"}, TagsRemove: []string{"e", "d"}, ExtraMerge: map[string]any{"k": 1.0}, ExtraRemove: []string{"k"}})
+	if e, _ := err.(*core.Error); e == nil || !reflect.DeepEqual(e.Problems, []string{"/tags_remove/1", "/extra_remove/0"}) {
+		t.Errorf("added and removed: %v", err)
+	}
 
 	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))
 	if !must[bool](t)(tr.UpdateFolder("/f", Update{SetTitle: true, Title: ptr("F")})) || *tr.Folders[2].Title != "F" {

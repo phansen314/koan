@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"x\" is both added and removed",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/tags_remove/1",
+        "reason": "\"x\" is both added and removed"
+      },
+      {
+        "field": "/extra_remove/0",
+        "reason": "\"k\" is both merged and removed"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

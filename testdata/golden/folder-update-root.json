@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "the root can't be updated",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/folder",
+        "reason": "the root can't be updated"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

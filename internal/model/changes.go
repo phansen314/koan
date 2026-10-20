@@ -391,6 +391,21 @@ func (s *shape) extra(u Update) {
 	if u.ExtraReplaceAll != nil && (u.ExtraMerge != nil || u.ExtraRemove != nil) {
 		s.faultf("", "extra_replace_all can't go with extra_merge or extra_remove")
 	}
+	merged := map[string]bool{}
+	for k := range u.ExtraMerge {
+		merged[k] = true
+	}
+	s.both("/extra_remove", "merged", u.ExtraRemove, merged)
+}
+
+// both refuses what a list removes that the same update adds, at its
+// entry in the list; a duplicate is refused once, at its first.
+func (s *shape) both(pointer, verb string, removed []string, added map[string]bool) {
+	for i, item := range removed {
+		if added[item] && !slices.Contains(removed[:i], item) {
+			s.faultf(fmt.Sprintf("%s/%d", pointer, i), "%q is both %s and removed", item, verb)
+		}
+	}
 }
 
 func applyExtra(extra map[string]any, u Update) map[string]any {
@@ -431,6 +446,7 @@ func (t *Tree) UpdateTask(task string, u Update) (changed bool, err error) {
 		if u.TagsReplaceAll != nil && (u.TagsAdd != nil || u.TagsRemove != nil) {
 			s.faultf("", "tags_replace_all can't go with tags_add or tags_remove")
 		}
+		s.both("/tags_remove", "added", u.TagsRemove, add)
 		s.extra(u)
 		if err := s.done(nil); err != nil {
 			return err

@@ -1,0 +1,416 @@
+package main_test
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/phansen314/koan/internal/testrun"
+)
+
+const fixed = "2026-10-20T10:00:00Z"
+
+// input runs a command with its input on standard input, checked against
+// its schemas.
+func input(t *testing.T, home, command, in string) *testrun.Result {
+	t.Helper()
+	r := testrun.Run{Home: home, Stdin: strings.NewReader(in)}.Koan(t, append(strings.Fields(command), "-i", "-")...)
+	r.Check(t, command)
+	return r
+}
+
+// task complete marks a task complete, blocked or not, and ends its
+// claim; it reports the open tasks it made ready, and moves updated_at on
+// it alone. Completing a complete task changes nothing.
+func TestTaskComplete(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w") // 1
+	for range 4 {
+		ok(t, home, "task", "create", "t") // 2 to 5
+	}
+	// 3 waits on 2; 4 on 2 and 5; 5 on /w.start, made 6.
+	ok(t, home, "task", "block", "2", "--blocks", "3,4")
+	ok(t, home, "task", "block", "5", "--blocks", "4", "--blocked-by", "/w.start")
+	ok(t, home, "task", "claim", "2")
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	r := ok(t, home, "task", "complete", "2")
+	golden(t, r, "task-complete")
+	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[3]]" {
+		t.Errorf("complete: %s", r.Line())
+	}
+	rec := ok(t, home, "task", "show", "2").Result()["task"].(map[string]any)
+	if rec["state"] != "complete" || rec["readiness"] != nil || rec["claim"] != nil || rec["completed_at"] == nil ||
+		rec["completed_at"] != rec["updated_at"] || rec["updated_at"] == fixed {
+		t.Errorf("completed: %v", rec)
+	}
+	if field(t, home, "3", "updated_at") != fixed || field(t, home, "3", "readiness") != "ready" {
+		t.Errorf("a released task's fields don't change")
+	}
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	r = ok(t, home, "task", "complete", "@2")
+	if fmt.Sprint(r.Result()) != "map[changed:false id:2 released:[]]" || field(t, home, "2", "updated_at") != fixed {
+		t.Errorf("again: %s", r.Line())
+	}
+	// A blocked task, and a gate by its path, can be completed; the
+	// gate's completing releases 5, which then releases 4.
+	if r := ok(t, home, "task", "complete", "/w.start"); fmt.Sprint(r.Result()) != "map[changed:true id:6 released:[5]]" {
+		t.Errorf("gate: %s", r.Line())
+	}
+	if r := ok(t, home, "task", "complete", "5"); fmt.Sprint(r.Result()) != "map[changed:true id:5 released:[4]]" {
+		t.Errorf("last blocker: %s", r.Line())
+	}
+	ok(t, home, "task", "block", "3", "--blocked-by", "4")
+	if r := ok(t, home, "task", "complete", "3"); fmt.Sprint(r.Result()) != "map[changed:true id:3 released:[]]" {
+		t.Errorf("blocked: %s", r.Line())
+	}
+	golden(t, fails(t, home, "not-found", "", "task", "complete", "99"), "task-complete-not-found")
+	fails(t, home, "not-found", "", "task", "complete", "/w.done")
+	fails(t, home, "conflict", "case-mismatch", "task", "complete", "/W.start")
+	if r := fails(t, home, "invalid-input", "", "task", "complete", "/w"); problemFields(r) != "/task" {
+		t.Errorf("a folder path: %s", r.Line())
+	}
+}
+
+// task reopen marks a task open again, so a ready task that waits on it
+// waits again; a claimed one keeps its claim, with claimed-blocked. A
+// reopened task starts unclaimed. Reopening an open task changes nothing.
+func TestTaskReopen(t *testing.T) {
+	home := root(t)
+	for range 5 {
+		ok(t, home, "task", "create", "t") // 1 to 5
+	}
+	// 2, 3 and 4 wait on 1; 4 on 5 too.
+	ok(t, home, "task", "block", "1", "--blocks", "2,3,4")
+	ok(t, home, "task", "block", "4", "--blocked-by", "5")
+	ok(t, home, "task", "claim", "1")
+	ok(t, home, "task", "complete", "1")
+	ok(t, home, "task", "claim", "2")
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	r := warned(t, home, []string{"claimed-blocked"}, "task", "reopen", "1")
+	golden(t, r, "task-reopen-claimed-blocked")
+	if fmt.Sprint(r.Result()) != "map[changed:true id:1 reblocked:[2 3]]" {
+		t.Errorf("reopen: %s", r.Line())
+	}
+	rec := ok(t, home, "task", "show", "1").Result()["task"].(map[string]any)
+	if rec["state"] != "open" || rec["completed_at"] != nil || rec["claim"] != nil || rec["updated_at"] == fixed {
+		t.Errorf("reopened: %v", rec)
+	}
+	if field(t, home, "2", "claim") == nil || field(t, home, "2", "updated_at") != fixed {
+		t.Errorf("the claim stays, and the waiting task's fields don't change")
+	}
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	r = ok(t, home, "task", "reopen", "1")
+	if fmt.Sprint(r.Result()) != "map[changed:false id:1 reblocked:[]]" || field(t, home, "1", "updated_at") != fixed {
+		t.Errorf("again: %s", r.Line())
+	}
+	ok(t, home, "task", "complete", "1")
+	if r := warned(t, home, []string{"claimed-blocked"}, "task", "reopen", "1"); fmt.Sprint(r.Result()["reblocked"]) != "[2 3]" {
+		t.Errorf("reopened again: %s", r.Line())
+	}
+	// Unclaimed, and two claimed in the plural.
+	ok(t, home, "task", "complete", "1")
+	ok(t, home, "task", "release", "2")
+	golden(t, ok(t, home, "task", "reopen", "1"), "task-reopen")
+	ok(t, home, "task", "complete", "1")
+	ok(t, home, "task", "claim", "2")
+	ok(t, home, "task", "claim", "3")
+	r = warned(t, home, []string{"claimed-blocked"}, "task", "reopen", "1")
+	w := r.Envelope["warnings"].([]any)[0].(map[string]any)
+	if fmt.Sprint(w["ids"]) != "[2 3]" || w["message"] != "@2, @3 are claimed, and wait again; their claims stay." {
+		t.Errorf("plural: %s", r.Line())
+	}
+	fails(t, home, "not-found", "", "task", "reopen", "99")
+}
+
+// task update changes title, priority, tags and extra: tags added,
+// removed or replaced, extra merged at the top level, keys removed, or
+// replaced. A change that changes nothing says so and leaves updated_at
+// alone.
+func TestTaskUpdate(t *testing.T) {
+	home := root(t)
+	ok(t, home, "task", "create", "t", "--tags", "a,b", "--extra", `{"x":1,"y":{"z":2}}`) // 1
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	r := ok(t, home, "task", "update", "1", "--title", "  New ", "--priority", "3", "--tags-add", "c,0", "--tags-remove", "a",
+		"--extra-merge", `{"w":true,"x":{"q":1}}`, "--extra-remove", "y")
+	golden(t, r, "task-update")
+	rec := ok(t, home, "task", "show", "1").Result()["task"].(map[string]any)
+	extra, _ := json.Marshal(rec["extra"])
+	if rec["title"] != "New" || rec["priority"] != json.Number("3") || fmt.Sprint(rec["tags"]) != "[0 b c]" ||
+		string(extra) != `{"w":true,"x":{"q":1}}` || rec["updated_at"] == fixed {
+		t.Errorf("updated: %v", rec)
+	}
+	// The same values again, a tag already there added and one not
+	// there removed, a key not there removed: nothing changes.
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	for _, args := range [][]string{
+		{"--title", "New", "--priority", "3"},
+		{"--tags-add", "b", "--tags-remove", "z"},
+		{"--extra-merge", `{"w":true}`, "--extra-remove", "nope"},
+		{"--tags-replace-all", "c,b,0", "--extra-replace-all", `{"x":{"q":1},"w":true}`},
+	} {
+		r := ok(t, home, append([]string{"task", "update", "1"}, args...)...)
+		if fmt.Sprint(r.Result()) != "map[changed:false id:1]" || field(t, home, "1", "updated_at") != fixed {
+			t.Errorf("%q: %s", args, r.Line())
+		}
+	}
+	// --priority null clears; --title null is the word; replacing all
+	// with nothing empties.
+	r = ok(t, home, "task", "update", "1", "--priority", "null", "--title", "null", "--extra-replace-all", "{}")
+	if r.Result()["changed"] != true || field(t, home, "1", "priority") != nil || field(t, home, "1", "title") != "null" ||
+		fmt.Sprint(field(t, home, "1", "extra")) != "map[]" {
+		t.Errorf("null: %s", r.Line())
+	}
+	if r := input(t, home, "task update", `{"task":1,"tags_replace_all":[]}`); r.Result()["changed"] != true || fmt.Sprint(field(t, home, "1", "tags")) != "[]" {
+		t.Errorf("no tags: %s", r.Line())
+	}
+	if r := input(t, home, "task update", `{"task":1,"tags_add":[]}`); fmt.Sprint(r.Result()) != "map[changed:false id:1]" {
+		t.Errorf("an empty list: %s", r.Line())
+	}
+	// A gate's fields change like any task's.
+	ok(t, home, "folder", "create", "/w")                         // 2
+	ok(t, home, "task", "block", "1", "--blocked-by", "/w.start") // 3
+	if r := ok(t, home, "task", "update", "/w.start", "--title", "Begin"); fmt.Sprint(r.Result()) != "map[changed:true id:3]" || field(t, home, "3", "title") != "Begin" {
+		t.Errorf("gate: %s", r.Line())
+	}
+	// Another task's fields stay as they were.
+	if field(t, home, "1", "title") != "null" {
+		t.Errorf("only the subject changes")
+	}
+	golden(t, fails(t, home, "not-found", "", "task", "update", "99", "--title", "x"), "task-update-not-found")
+	fails(t, home, "conflict", "case-mismatch", "task", "update", "/W.start", "--title", "x")
+}
+
+// What an update needs: something to change, values by their rules, and
+// fields that go together; every fault named, before the root is looked
+// at.
+func TestTaskUpdateInvalid(t *testing.T) {
+	home := t.TempDir()
+	golden(t, fails(t, home, "invalid-input", "", "task", "update", "1"), "task-update-nothing")
+	golden(t, fails(t, home, "invalid-input", "", "task", "update", "1", "--tags-add", "x,y", "--tags-remove", "z,x",
+		"--extra-merge", `{"k":1}`, "--extra-remove", "k"), "task-update-added-and-removed")
+	for _, c := range []struct {
+		args   []string
+		fields string
+	}{
+		{[]string{"/", "--title", "x"}, "/task"},
+		{[]string{"1", "--title", " "}, "/title"},
+		{[]string{"1", "--priority", "x"}, "/priority"},
+		{[]string{"1", "--priority", "9007199254740992"}, "/priority"},
+		{[]string{"1", "--tags-add", "A,b,b"}, "/tags_add/0 /tags_add/2"},
+		{[]string{"1", "--tags-replace-all", "a", "--tags-add", "b"}, ""},
+		{[]string{"1", "--tags-replace-all", "a", "--tags-remove", "b"}, ""},
+		{[]string{"1", "--extra-replace-all", "{}", "--extra-merge", "{}"}, ""},
+		{[]string{"1", "--extra-replace-all", "{}", "--extra-remove", "k"}, ""},
+		{[]string{"1", "--extra-merge", "[1]", "--extra-replace-all", "x"}, "/extra_merge /extra_replace_all"},
+		{[]string{"1", "--extra-remove", "k", "--extra-remove", "k"}, "/extra_remove/1"},
+		{[]string{"1", "--tags-add", "x", "--tags-remove", "x,x"}, "/tags_remove/1 /tags_remove/0"},
+	} {
+		r := fails(t, home, "invalid-input", "", append([]string{"task", "update"}, c.args...)...)
+		if problemFields(r) != c.fields {
+			t.Errorf("%q: %s", c.args, r.Line())
+		}
+	}
+	for in, fields := range map[string]string{
+		`{}`:                             "/task ",
+		`{"title":"x"}`:                  "/task",
+		`{"task":1,"title":null}`:        "/title",
+		`{"task":1,"priority":1.5}`:      "/priority",
+		`{"task":1,"extra_remove":[1]}`:  "/extra_remove/0",
+		`{"task":1,"tags_add":"a"}`:      "/tags_add",
+		`{"task":1,"tags_add":[],"x":1}`: "/x",
+	} {
+		if r := input(t, home, "task update", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
+			t.Errorf("%s: %s", in, r.Line())
+		}
+	}
+	fails(t, home, "not-initialized", "", "task", "update", "1", "--title", "x")
+}
+
+// folder update changes title and extra as task update does; the root
+// can't be updated.
+func TestFolderUpdate(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w", "--title", "T", "--extra", `{"a":1,"b":[1]}`) // 1
+	r := ok(t, home, "folder", "update", "/w", "--title", "null", "--extra-merge", `{"c":"x"}`, "--extra-remove", "a")
+	golden(t, r, "folder-update")
+	rec := ok(t, home, "folder", "show", "1").Result()["folder"].(map[string]any)
+	extra, _ := json.Marshal(rec["extra"])
+	if rec["title"] != nil || string(extra) != `{"b":[1],"c":"x"}` {
+		t.Errorf("updated: %v", rec)
+	}
+	for _, args := range [][]string{{"--title", "null"}, {"--extra-merge", `{"c":"x"}`}, {"--extra-replace-all", `{"c":"x","b":[1]}`}} {
+		if r := ok(t, home, append([]string{"folder", "update", "@1"}, args...)...); fmt.Sprint(r.Result()) != "map[changed:false id:1]" {
+			t.Errorf("%q: %s", args, r.Line())
+		}
+	}
+	if r := ok(t, home, "folder", "update", "1", "--title", " New "); r.Result()["changed"] != true ||
+		ok(t, home, "folder", "show", "1").Result()["folder"].(map[string]any)["title"] != "New" {
+		t.Errorf("title: %s", r.Line())
+	}
+	golden(t, fails(t, home, "invalid-input", "", "folder", "update", "/", "--title", "x"), "folder-update-root")
+	golden(t, fails(t, home, "not-found", "", "folder", "update", "/z", "--title", "x"), "folder-update-not-found")
+	fails(t, home, "conflict", "case-mismatch", "folder", "update", "/W", "--title", "x")
+	for in, fields := range map[string]string{
+		`{"folder":"/w"}`:                                            "",
+		`{"folder":"/w","priority":1}`:                               "/priority",
+		`{"folder":"/w","tags_add":["a"]}`:                           "/tags_add",
+		`{"folder":"/w.start","title":"x"}`:                          "/folder",
+		`{"folder":"/w","title":1}`:                                  "/title",
+		`{"folder":"/w","extra_merge":{"k":1},"extra_remove":["k"]}`: "/extra_remove/0",
+		`{"folder":"/w","extra_replace_all":{},"extra_merge":{}}`:    "",
+	} {
+		if r := input(t, home, "folder update", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
+			t.Errorf("%s: %s", in, r.Line())
+		}
+	}
+}
+
+// task claim claims an open task, blocked or not, with the caller's
+// extra; a second claim is claimed, a complete task complete. task release
+// ends a claim whoever made it, and a task with none changes nothing.
+// Neither moves updated_at.
+func TestTaskClaim(t *testing.T) {
+	home := root(t)
+	ok(t, home, "task", "create", "a")                      // 1
+	ok(t, home, "task", "create", "b", "--blocked-by", "1") // 2
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	r := ok(t, home, "task", "claim", "2", "--extra", `{"who":"w1"}`)
+	goldenNow(t, r, "task-claim")
+	claim := r.Result()["claim"]
+	if got := field(t, home, "2", "claim"); fmt.Sprint(got) != fmt.Sprint(claim) || field(t, home, "2", "updated_at") != fixed {
+		t.Errorf("claim: %v, record %v", claim, got)
+	}
+	golden(t, fails(t, home, "conflict", "claimed", "task", "claim", "@2"), "task-claim-claimed")
+	ok(t, home, "task", "complete", "1")
+	golden(t, fails(t, home, "conflict", "complete", "task", "claim", "1"), "task-claim-complete")
+	fails(t, home, "not-found", "", "task", "claim", "99")
+	if r := input(t, home, "task claim", `{"task":1,"extra":[]}`); r.Kind() != "invalid-input" || problemFields(r) != "/extra" {
+		t.Errorf("extra: %s", r.Line())
+	}
+	r = ok(t, home, "task", "release", "2")
+	golden(t, r, "task-release")
+	if field(t, home, "2", "claim") != nil || field(t, home, "2", "updated_at") != fixed {
+		t.Errorf("released")
+	}
+	if r := ok(t, home, "task", "release", "2"); fmt.Sprint(r.Result()) != "map[changed:false id:2]" {
+		t.Errorf("again: %s", r.Line())
+	}
+	r = ok(t, home, "task", "claim", "2")
+	if fmt.Sprint(r.Result()["claim"].(map[string]any)["extra"]) != "map[]" {
+		t.Errorf("default extra: %s", r.Line())
+	}
+	fails(t, home, "not-found", "", "task", "release", "99")
+}
+
+// task claim-next claims the first ready task with no claim within task
+// frontier's filters, in work order, and returns its record with the new
+// claim; nulls when there is none.
+func TestTaskClaimNext(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/a/b") // 1, 2
+	for _, c := range [][]string{
+		{"r1"}, // 3
+		{"a1", "--folder", "/a", "--priority", "2"},                  // 4
+		{"b1", "--folder", "/a/b", "--priority", "5", "--tags", "x"}, // 5
+		{"r2", "--priority", "-1", "--tags", "x,y"},                  // 6
+		{"a2", "--folder", "/a", "--blocked-by", "3"},                // 7
+	} {
+		ok(t, home, append([]string{"task", "create"}, c...)...)
+	}
+	r := ok(t, home, "task", "claim-next", "--extra", `{"who":"w"}`)
+	goldenNow(t, r, "task-claim-next")
+	res := r.Result()
+	if res["task"].(map[string]any)["id"] != json.Number("5") || fmt.Sprint(res["task"].(map[string]any)["claim"]) != fmt.Sprint(res["claim"]) {
+		t.Errorf("first: %s", r.Line())
+	}
+	next := func(args ...string) string {
+		r := ok(t, home, append([]string{"task", "claim-next"}, args...)...)
+		if r.Result()["task"] == nil {
+			if r.Result()["claim"] != nil {
+				t.Errorf("a claim with no task: %s", r.Line())
+			}
+			return "none"
+		}
+		return fmt.Sprint(r.Result()["claim"].(map[string]any)["task"])
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--folder", "/a", "--recursive=false", "--tags-any", "x"}, "none"},
+		{[]string{"--tags-all", "x,y"}, "6"},
+		{[]string{"--folder", "@1", "--recursive=false"}, "4"},
+		{[]string{"--folder", "/a"}, "none"},
+		{nil, "3"},
+		{nil, "none"},
+	} {
+		if got := next(c.args...); got != c.want {
+			t.Errorf("%q: got %s, want %s", c.args, got, c.want)
+		}
+	}
+	golden(t, ok(t, home, "task", "claim-next"), "task-claim-next-none")
+	// Completing 3 lets 7 in.
+	ok(t, home, "task", "complete", "3")
+	if got := next("--folder", "/a"); got != "7" {
+		t.Errorf("after complete: %s", got)
+	}
+	golden(t, fails(t, home, "not-found", "", "task", "claim-next", "--folder", "/z"), "task-claim-next-not-found")
+	fails(t, home, "conflict", "case-mismatch", "task", "claim-next", "--folder", "/A")
+	for _, c := range []struct {
+		args  []string
+		field string
+	}{
+		{[]string{"--folder", "/a.start"}, "/folder"},
+		{[]string{"--tags-any", "A"}, "/tags_any/0"},
+		{[]string{"--extra", "1"}, "/extra"},
+	} {
+		if r := fails(t, home, "invalid-input", "", append([]string{"task", "claim-next"}, c.args...)...); problemFields(r) != c.field {
+			t.Errorf("%q: %s", c.args, r.Line())
+		}
+	}
+}
+
+// Processes claiming at once never get the same task: each ready task is
+// handed out once, and the rest get nulls.
+func TestTaskClaimNextRace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts many processes")
+	}
+	home := root(t)
+	for range 6 {
+		ok(t, home, "task", "create", "t")
+	}
+	results := make([]*testrun.Result, 16)
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = testrun.Run{Home: home}.Koan(t, "task", "claim-next")
+		}()
+	}
+	wg.Wait()
+	seen := map[string]bool{}
+	nulls := 0
+	for _, r := range results {
+		r.Check(t, "task claim-next")
+		if !r.OK() {
+			t.Fatalf("failed: %s", r.Line())
+		}
+		c, _ := r.Result()["claim"].(map[string]any)
+		if c == nil {
+			nulls++
+			continue
+		}
+		id := fmt.Sprint(c["task"])
+		if seen[id] {
+			t.Errorf("@%s handed out twice", id)
+		}
+		seen[id] = true
+	}
+	if len(seen) != 6 || nulls != 10 {
+		t.Errorf("%d claimed, %d nulls", len(seen), nulls)
+	}
+}

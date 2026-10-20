@@ -103,3 +103,27 @@ func (t *Tx) Gates() (map[int64]map[core.End]GateRow, error) {
 	}
 	return out, rows.Err()
 }
+
+// Folder is one folder's row.
+func (t *Tx) Folder(id int64) (FolderRow, error) {
+	f := FolderRow{ID: id}
+	var parent sql.NullInt64
+	var title sql.NullString
+	var extra string
+	err := t.QueryRow("SELECT parent, name, title, extra FROM folder WHERE id = ?", id).Scan(&parent, &f.Name, &title, &extra)
+	if err != nil {
+		return FolderRow{}, err
+	}
+	f.Parent = parent.Int64
+	if title.Valid {
+		f.Title = &title.String
+	}
+	f.Extra = json.RawMessage(extra)
+	return f, nil
+}
+
+// SetFolderFields writes a folder's title and extra.
+func (t *Tx) SetFolderFields(f FolderRow) error {
+	_, err := t.Exec("UPDATE folder SET title = ?, extra = ? WHERE id = ?", f.Title, string(f.Extra), f.ID)
+	return err
+}

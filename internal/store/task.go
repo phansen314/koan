@@ -167,3 +167,108 @@ func (t *Tx) Claimed(id int64) (bool, error) {
 	err := t.QueryRow("SELECT count(*) FROM claim WHERE task = ?", id).Scan(&n)
 	return n > 0, err
 }
+
+// Task is one task's row and its tags, sorted byte for byte.
+func (t *Tx) Task(id int64) (TaskRow, []string, error) {
+	r := TaskRow{ID: id}
+	var folder, priority sql.NullInt64
+	var gate, completed sql.NullString
+	var extra string
+	err := t.QueryRow("SELECT folder, gate, title, priority, created_at, completed_at, updated_at, extra FROM task WHERE id = ?", id).
+		Scan(&folder, &gate, &r.Title, &priority, &r.CreatedAt, &completed, &r.UpdatedAt, &extra)
+	if err != nil {
+		return TaskRow{}, nil, err
+	}
+	r.Folder, r.Gate, r.Extra = folder.Int64, core.End(gate.String), json.RawMessage(extra)
+	if priority.Valid {
+		r.Priority = &priority.Int64
+	}
+	if completed.Valid {
+		r.CompletedAt = &completed.String
+	}
+	var tags []string
+	rows, err := t.Query("SELECT tag FROM tag WHERE task = ? ORDER BY tag COLLATE BINARY", id)
+	if err != nil {
+		return TaskRow{}, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return TaskRow{}, nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return r, tags, rows.Err()
+}
+
+// SetTaskFields writes a task's title, priority, extra and tags, as an
+// update changing one of them does, and gives it a new updated_at.
+func (t *Tx) SetTaskFields(r TaskRow, tags []string) error {
+	if _, err := t.Exec("UPDATE task SET title = ?, priority = ?, extra = ?, updated_at = ? WHERE id = ?",
+		r.Title, r.Priority, string(r.Extra), t.Now, r.ID); err != nil {
+		return err
+	}
+	if _, err := t.Exec("DELETE FROM tag WHERE task = ?", r.ID); err != nil {
+		return err
+	}
+	for _, tag := range tags {
+		if _, err := t.Exec("INSERT INTO tag (task, tag) VALUES (?, ?)", r.ID, tag); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetComplete marks a task complete now, or open again, and gives it a new
+// updated_at. Completing ends its claim.
+func (t *Tx) SetComplete(id int64, complete bool) error {
+	var at any
+	if complete {
+		at = t.Now
+	}
+	if _, err := t.Exec("UPDATE task SET completed_at = ?, updated_at = ? WHERE id = ?", at, t.Now, id); err != nil {
+		return err
+	}
+	if complete {
+		_, err := t.EndClaim(id)
+		return err
+	}
+	return nil
+}
+
+// Blocks is the tasks that wait on a task, lowest ID first.
+func (t *Tx) Blocks(id int64) []int64 {
+	return t.ids("SELECT task FROM edge WHERE blocker = ? ORDER BY task", id)
+}
+
+// Claim is a task's claim; ok is false when it has none.
+func (t *Tx) Claim(id int64) (c ClaimRow, ok bool, err error) {
+	var extra string
+	err = t.QueryRow("SELECT task, claimed_at, extra FROM claim WHERE task = ?", id).Scan(&c.Task, &c.ClaimedAt, &extra)
+	if err == sql.ErrNoRows {
+		return ClaimRow{}, false, nil
+	}
+	c.Extra = json.RawMessage(extra)
+	return c, err == nil, err
+}
+
+// InsertClaim claims a task now, with the caller's extra, a JSON object.
+// Claiming isn't a change to the task's fields, so its updated_at stays.
+func (t *Tx) InsertClaim(id int64, extra json.RawMessage) (ClaimRow, error) {
+	c := ClaimRow{Task: id, ClaimedAt: t.Now, Extra: extra}
+	_, err := t.Exec("INSERT INTO claim (task, claimed_at, extra) VALUES (?, ?, ?)", id, c.ClaimedAt, string(extra))
+	return c, err
+}
+
+// EndClaim ends a task's claim, as release, complete and delete do, and
+// reports whether it had one. A claim isn't a field of its task, so its
+// updated_at stays.
+func (t *Tx) EndClaim(id int64) (bool, error) {
+	res, err := t.Exec("DELETE FROM claim WHERE task = ?", id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}

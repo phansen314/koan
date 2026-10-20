@@ -158,33 +158,21 @@ func (w *edges) add(es []edge) (changed bool, reblocked []int64, warnings []cli.
 	}
 	// Only a task whose blocked_by gains an entry can come to wait.
 	var waiting []int64
-	ready := map[int64]bool{}
 	for _, e := range fresh {
-		if !w.new[e.From] && !slices.Contains(waiting, e.From) {
+		if !w.new[e.From] {
 			waiting = append(waiting, e.From)
-			ready[e.From] = core.Ready(w.tx, e.From)
 		}
 	}
+	watched := watch(w.tx, waiting)
 	for _, e := range fresh {
 		if err := w.tx.AddEdge(e.From, e.To); err != nil {
 			return false, nil, nil, err
 		}
 	}
-	var complete, claimed []int64
-	slices.Sort(waiting)
-	for _, id := range waiting {
-		switch {
-		case !w.tx.Open(id):
+	var complete []int64
+	for _, id := range watched.ids {
+		if !w.tx.Open(id) {
 			complete = append(complete, id)
-		case ready[id] && core.Blocked(w.tx, id):
-			reblocked = append(reblocked, id)
-			c, err := w.tx.Claimed(id)
-			if err != nil {
-				return false, nil, nil, err
-			}
-			if c {
-				claimed = append(claimed, id)
-			}
 		}
 	}
 	if len(complete) > 0 {
@@ -194,27 +182,21 @@ func (w *edges) add(es []edge) (changed bool, reblocked []int64, warnings []cli.
 		}
 		warnings = append(warnings, cli.Warning{Kind: "complete-blocker", Message: message, IDs: complete})
 	}
-	if len(claimed) > 0 {
-		message := core.FormatIDs(claimed) + " is claimed, and waits again; its claim stays."
-		if len(claimed) > 1 {
-			message = core.FormatIDs(claimed) + " are claimed, and wait again; their claims stay."
-		}
-		warnings = append(warnings, cli.Warning{Kind: "claimed-blocked", Message: message, IDs: claimed})
+	reblocked, claimed, err := watched.reblocked()
+	if err != nil {
+		return false, nil, nil, err
 	}
-	return len(fresh) > 0, nonNil(reblocked), warnings, nil
+	return len(fresh) > 0, reblocked, append(warnings, claimed...), nil
 }
 
 // remove removes edges, leaving alone any that isn't there. It reports
 // whether it removed any, and the open tasks it made ready.
 func (w *edges) remove(es []edge) (changed bool, released []int64, err error) {
 	var waiting []int64
-	blocked := map[int64]bool{}
 	for _, e := range es {
-		if !slices.Contains(waiting, e.From) {
-			waiting = append(waiting, e.From)
-			blocked[e.From] = core.Blocked(w.tx, e.From)
-		}
+		waiting = append(waiting, e.From)
 	}
+	watched := watch(w.tx, waiting)
 	for _, e := range es {
 		removed, err := w.tx.RemoveEdge(e.From, e.To)
 		if err != nil {
@@ -222,13 +204,68 @@ func (w *edges) remove(es []edge) (changed bool, released []int64, err error) {
 		}
 		changed = changed || removed
 	}
-	slices.Sort(waiting)
-	for _, id := range waiting {
-		if blocked[id] && core.Ready(w.tx, id) {
-			released = append(released, id)
+	return changed, watched.released(), nil
+}
+
+// watched is the tasks a change may make ready or make wait, lowest ID
+// first, with their readiness before it.
+type watched struct {
+	tx      *store.Tx
+	ids     []int64
+	ready   map[int64]bool
+	blocked map[int64]bool
+}
+
+// watch notes the readiness of tasks before a change.
+func watch(tx *store.Tx, ids []int64) *watched {
+	w := &watched{tx: tx, ready: map[int64]bool{}, blocked: map[int64]bool{}}
+	for _, id := range ids {
+		if _, seen := w.ready[id]; seen {
+			continue
+		}
+		w.ids = append(w.ids, id)
+		w.ready[id], w.blocked[id] = core.Ready(tx, id), core.Blocked(tx, id)
+	}
+	slices.Sort(w.ids)
+	return w
+}
+
+// released is the tasks that were blocked and are ready now.
+func (w *watched) released() []int64 {
+	var out []int64
+	for _, id := range w.ids {
+		if w.blocked[id] && core.Ready(w.tx, id) {
+			out = append(out, id)
 		}
 	}
-	return changed, nonNil(released), nil
+	return nonNil(out)
+}
+
+// reblocked is the tasks that were ready and wait now, with the
+// claimed-blocked warning for those of them that are claimed.
+func (w *watched) reblocked() ([]int64, []cli.Warning, error) {
+	var out, claimed []int64
+	for _, id := range w.ids {
+		if !w.ready[id] || !core.Blocked(w.tx, id) {
+			continue
+		}
+		out = append(out, id)
+		c, err := w.tx.Claimed(id)
+		if err != nil {
+			return nil, nil, err
+		}
+		if c {
+			claimed = append(claimed, id)
+		}
+	}
+	if len(claimed) == 0 {
+		return nonNil(out), nil, nil
+	}
+	message := core.FormatIDs(claimed) + " is claimed, and waits again; its claim stays."
+	if len(claimed) > 1 {
+		message = core.FormatIDs(claimed) + " are claimed, and wait again; their claims stay."
+	}
+	return out, []cli.Warning{{Kind: "claimed-blocked", Message: message, IDs: claimed}}, nil
 }
 
 func nonNil(ids []int64) []int64 {

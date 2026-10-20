@@ -231,6 +231,8 @@ func (t *Tx) RemoveTasks(ids []int64, archive map[int64]string) (released []int6
 		}
 		// The cascade is a backstop: the edges go first, by name.
 		t.exec("DELETE FROM edge WHERE task = ? OR blocker = ?", id, id)
+		_, err := t.EndClaim(id)
+		t.fail(err)
 		t.exec("DELETE FROM task WHERE id = ?", id)
 		t.exec("UPDATE issued SET state = ?, archive = ? WHERE id = ?", state, path, id)
 	}

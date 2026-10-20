@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "@99 names nothing",
+    "ids": [
+      99
+    ],
+    "paths": [],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

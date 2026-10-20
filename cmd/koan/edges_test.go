@@ -530,10 +530,10 @@ func TestTaskFrontier(t *testing.T) {
 	fails(t, home, "conflict", "case-mismatch", "task", "frontier", "--folder", "/A")
 }
 
-// The model's create, block and unblock, run beside koan on the same
-// inputs, agree on every result and refusal, and on readiness, edges and
-// the frontier after each; complete, reopen and claim, which this slice
-// has no commands for, are made in the database as the model makes them.
+// The model's create, block, unblock, complete, reopen, claim, claim-next
+// and release, run beside koan on the same inputs, agree on every result
+// and refusal, and on readiness, edges, claims and the frontier after
+// each.
 func TestEdgesModel(t *testing.T) {
 	seeds := []int64{1, 2, 3}
 	if testing.Short() {
@@ -645,11 +645,12 @@ func edgesModel(t *testing.T, seed int64) {
 	}
 
 	var made, refused int
-	for step := range 60 {
+	succeeded := map[string]int{}
+	for step := range 80 {
 		var args []string
 		var err error
 		var want string
-		switch op := rng.Intn(10); {
+		switch op := rng.Intn(13); {
 		case op < 3:
 			folder := pick([]string{"", "/a", "/a/b", "/c"})
 			bb, bl := edgeList(), edgeList()
@@ -674,24 +675,36 @@ func edgesModel(t *testing.T, seed int64) {
 			args = edgeArgs([]string{"task", "unblock", x}, bb, bl)
 			want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
 		default:
-			ids := taskIDs()
-			if len(ids) == 0 {
-				continue
-			}
-			id := ids[rng.Intn(len(ids))]
-			switch rng.Intn(3) {
+			x := subject()
+			switch rng.Intn(5) {
 			case 0:
-				if out, err := m.Complete(fmt.Sprint(id)); err == nil && out.Changed {
-					db(t, home, fmt.Sprintf("UPDATE task SET completed_at = '2026-10-20T10:00:00Z' WHERE id = %d", id),
-						fmt.Sprintf("DELETE FROM claim WHERE task = %d", id))
-				}
+				var out model.CompleteResult
+				out, err = m.Complete(x)
+				args = []string{"task", "complete", x}
+				want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
 			case 1:
-				if out, err := m.Reopen(fmt.Sprint(id)); err == nil && out.Changed {
-					db(t, home, fmt.Sprintf("UPDATE task SET completed_at = NULL WHERE id = %d", id))
-				}
+				var out model.CompleteResult
+				out, err = m.Reopen(x)
+				args = []string{"task", "reopen", x}
+				want = fmt.Sprintf("%d %v %v %s", out.ID, out.Changed, nonNil(out.Reblocked), warnings(out.Warnings))
+			case 2:
+				var c model.Claim
+				c, err = m.ClaimTask(x, nil)
+				args = []string{"task", "claim", x}
+				want = fmt.Sprint(c.Task)
+			case 3:
+				var changed bool
+				changed, err = m.Release(x)
+				args = []string{"task", "release", x}
+				want = fmt.Sprint(changed)
 			default:
-				if _, err := m.ClaimTask(fmt.Sprint(id), nil); err == nil {
-					db(t, home, fmt.Sprintf("INSERT INTO claim (task, claimed_at, extra) VALUES (%d, '2026-10-20T10:00:00Z', '{}')", id))
+				sc := model.Scope{Folder: pick([]string{"/", "/a", "/a/b", "/c"}), Recursive: rng.Intn(2) == 0}
+				var c *model.Claim
+				c, err = m.ClaimNext(sc, nil)
+				args = []string{"task", "claim-next", "--folder", sc.Folder, fmt.Sprintf("--recursive=%v", sc.Recursive)}
+				want = "<nil>"
+				if c != nil {
+					want = fmt.Sprint(c.Task)
 				}
 			}
 		}
@@ -701,6 +714,7 @@ func edgesModel(t *testing.T, seed int64) {
 				refused++
 			} else {
 				made++
+				succeeded[args[1]]++
 			}
 			switch {
 			case err != nil:
@@ -717,8 +731,19 @@ func edgesModel(t *testing.T, seed int64) {
 					got = fmt.Sprintf("%v %s %v %s", res["id"], koanGates(r), res["reblocked"], koanWarnings(r))
 				case "block":
 					got = fmt.Sprintf("%v %v %s %v %s", res["id"], res["changed"], koanGates(r), res["reblocked"], koanWarnings(r))
-				default:
+				case "unblock", "complete":
 					got = fmt.Sprintf("%v %v %v", res["id"], res["changed"], res["released"])
+				case "reopen":
+					got = fmt.Sprintf("%v %v %v %s", res["id"], res["changed"], res["reblocked"], koanWarnings(r))
+				case "claim":
+					got = fmt.Sprint(res["claim"].(map[string]any)["task"])
+				case "release":
+					got = fmt.Sprint(res["changed"])
+				case "claim-next":
+					got = "<nil>"
+					if c, _ := res["claim"].(map[string]any); c != nil {
+						got = fmt.Sprint(c["task"])
+					}
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)
@@ -745,9 +770,10 @@ func edgesModel(t *testing.T, seed int64) {
 				bb = append(bb, b)
 			}
 			slices.Sort(bb)
-			wantTasks = append(wantTasks, fmt.Sprintf("%d %s %v", id, readiness, nonNil(bb)))
+			_, claimed := m.Claims[id]
+			wantTasks = append(wantTasks, fmt.Sprintf("%d %s %v %v", id, readiness, nonNil(bb), claimed))
 		}
-		for _, x := range ok(t, home, "task", "list", "--state", "open,complete", "--limit", "null", "--fields", "readiness,blocked_by").Result()["tasks"].([]any) {
+		for _, x := range ok(t, home, "task", "list", "--state", "open,complete", "--limit", "null", "--fields", "readiness,blocked_by,claim").Result()["tasks"].([]any) {
 			x := x.(map[string]any)
 			var bb []any
 			for _, e := range x["blocked_by"].([]any) {
@@ -756,7 +782,7 @@ func edgesModel(t *testing.T, seed int64) {
 			if bb == nil {
 				bb = []any{}
 			}
-			gotTasks = append(gotTasks, fmt.Sprintf("%v %v %v", x["id"], x["readiness"], bb))
+			gotTasks = append(gotTasks, fmt.Sprintf("%v %v %v %v", x["id"], x["readiness"], bb, x["claim"] != nil))
 		}
 		if !slices.Equal(gotTasks, wantTasks) {
 			t.Fatalf("step %d: tasks: koan %v, model %v", step, gotTasks, wantTasks)
@@ -773,5 +799,10 @@ func edgesModel(t *testing.T, seed int64) {
 	if made < 5 || refused < 5 {
 		t.Errorf("%d changes made, %d refused", made, refused)
 	}
-	t.Logf("%d changes made, %d refused", made, refused)
+	for _, cmd := range []string{"create", "block", "unblock", "complete", "reopen", "claim", "claim-next", "release"} {
+		if succeeded[cmd] == 0 {
+			t.Errorf("no %s succeeded", cmd)
+		}
+	}
+	t.Logf("%d changes made, %d refused: %v", made, refused, succeeded)
 }
