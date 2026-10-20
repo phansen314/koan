@@ -186,7 +186,7 @@ A write commits the database first and changes the tree after, from a list of fi
 
 | Step | Done when | Carried out by |
 | --- | --- | --- |
-| Make a folder's directory | it exists, holding `@notes.md` | `mkdir`, then an empty `@notes.md`, making whichever is missing |
+| Make a folder's directory | it exists, holding `@notes.md` | `mkdir`, then `@notes.md` holding the notes' first content the step holds, empty unless `folder create`'s input gives notes, making whichever is missing. Empty notes are created in place; content is written through a temp file (below), then one `rename` into place. A `@notes.md` already there, made by hand, is left as it is |
 | Write notes | the file exists | writing the content the step holds to a temp file (below), then one `rename` into place |
 | Move notes or a directory | the source is gone and the destination exists | one `rename`, atomic on one filesystem; a case-only rename takes two, through a temporary name (below) |
 | Remove notes or a directory | the path is gone | `unlink` for notes. A directory remove whose change was forced is a recursive remove that can be run again. Unless its change was forced, a directory remove first looks for material, counted as a delete counts it (rules doc, Changes), as step 4 does, and finding any it removes nothing and is stuck (below). Since the rows may be gone, the step records what it may remove: the directories of the folders being deleted, and the notes of what is being deleted, each such folder's `@notes.md`, `@start.md` and `@done.md` and each such task's `@<id>.md`. It walks the directory and every `@`-named directory under it. Any entry not named with `@` is material, as in the tree. An `@` entry the step doesn't record is material when it holds content: a file of one byte or more, or a directory holding such a file or any entry not named with `@`. A zero-byte file and `.DS_Store` never are. Finding none, it never removes recursively. It works bottom-up: in each directory it unlinks only the entries it listed there that aren't material, never a name without `@` other than `.DS_Store`, then removes the directory with `rmdir`, which the operating system refuses while it isn't empty. So material written while the step runs, by Zed, a person or an agent, is never removed: the step fails and stays pending, and on the next write its walk finds the material and it is stuck. The step records whether its change was forced. |
@@ -206,7 +206,7 @@ A write commits the database first and changes the tree after, from a list of fi
 
 **Steps on the same paths run in order.** Two steps overlap when a path one touches, its source, destination, temporary name or archive JSON, is the same as a path the other touches, or above or below it. These paths are compared ignoring case, so the order is the same on every filesystem. A step waits while any step of an earlier change that overlaps it is still pending, whether stuck or not. A step that waits is held with the rest of its change, as a failed step's change is, and gives `pending-step`. It runs once the earlier step is done. That is why a step's paths, fixed when its change commits, are still right when it runs: whatever an earlier change was still doing on them has finished. For example, a folder created at the path of a deleted folder whose remove was refused gets its directory only after the old one is gone.
 
-**Notes files.** Creating a task writes its `@<id>.md`, empty unless the input gives notes, so that it shows in Zed straight away. A missing notes file still reads as empty notes (T3).
+**Notes files.** Creating a task writes its `@<id>.md`, and creating a folder its `@notes.md`, empty unless the input gives notes, so that it shows in Zed straight away. A folder's notes come with its directory, from the one step that makes both; a missing parent's are empty. A missing notes file still reads as empty notes (T3).
 
 **Issuing IDs in a change.** A change issues IDs in the order it makes things: its folders, parents first, in tree order; then its tasks, in input order; then the gates its edges name: first the task `task block` is given, when that is a gate the folder lacks, then the rest in the order those edges are given, each task's `blocked_by` before its `blocks`. A batch follows the same order, below.
 
@@ -368,7 +368,7 @@ Every failure has one kind. Each refusal in the rules doc maps to one, and a `co
 | Kind | Meaning |
 | --- | --- |
 | `usage` | The command line could not be turned into an input. Exit 2. |
-| `invalid-input` | The input breaks a rule or the command's schema: a bad name, title, value or reference; an end where none is taken; a label misused; two paths in one input that differ only in case. |
+| `invalid-input` | The input breaks a rule or the command's schema: a bad name, title, value or reference; an end where none is taken; a label misused; two paths in one input that differ only in case; text that isn't UTF-8, given on the command line or read from a file. |
 | `not-found` | A reference names nothing. For a deleted or archived ID the message says so, and for an archived one, where it went. |
 | `conflict` | The input is valid, but the tree's state refuses it. Its `rule` says why. |
 | `busy` | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry. |

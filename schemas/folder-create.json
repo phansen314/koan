@@ -35,7 +35,7 @@
         "notes": {
           "type": "string",
           "default": "",
-          "description": "The @notes.md's first content."
+          "description": "The @notes.md's first content, written by the step that makes the directory."
         }
       },
       "unevaluatedProperties": false
