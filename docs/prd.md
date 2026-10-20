@@ -174,7 +174,7 @@ A write commits the database first and changes the tree after, from a list of fi
 1. Check the input's shape: fields, patterns, references as written. Nothing is read yet.
 2. Take the lock, and finish any filesystem steps an earlier write left pending, skipping stuck ones.
 3. `BEGIN IMMEDIATE`. Resolve every reference against the database as it stands.
-4. Check the tree for what the change needs: a destination path is free, a folder to delete holds no material unless `force`. A destination is checked on disk as well, each missing parent a create or a folder move makes included: listing its parent directory, an entry by that name, or one differing from it only in case, refuses the change as `exists`, with that entry's path. A case-only rename's own directory is not in its way.
+4. Check the tree for what the change needs: a destination path is free, a folder to delete holds no material unless `force`. A destination is checked on disk as well, each missing parent a create, a folder move or a batch makes included: listing its parent directory, an entry by that name, or one differing from it only in case, refuses the change as `exists`, with that entry's path. A case-only rename's own directory is not in its way.
 5. Change the rows, check for cycles, and insert into `pending` the filesystem steps that bring the tree in line.
 6. `COMMIT`.
 7. Carry out the steps, fsync each directory they concern, whether this write changed it or found the step already done, then delete their rows in one transaction.
