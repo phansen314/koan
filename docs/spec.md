@@ -656,7 +656,7 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
 
 #### task archive
 
-`koan task archive <task>`. Moves a complete task to the archive, with its JSON beside it. A task whose notes file is missing is archived as its JSON alone. Refused: `not-finished`.
+`koan task archive <task>`. Moves a complete task to the archive, with its JSON beside it. Refused: `not-finished`.
 
 ```json
 { "$id": "task-archive", "$defs": {
