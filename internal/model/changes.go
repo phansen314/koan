@@ -542,8 +542,9 @@ type EdgeResult struct {
 }
 
 // edgeChange checks the shape of block's or unblock's input, then
-// resolves its task.
-func (c *Tree) edgeChange(task string, blockedBy, blocks []string) (*Task, []core.Ref, []core.Ref, error) {
+// resolves its task. When make is set, a gate the subject names that its
+// folder lacks is made, and returned.
+func (c *Tree) edgeChange(task string, blockedBy, blocks []string, make bool) (*Task, []core.Ref, []core.Ref, []GateMade, error) {
 	var s shape
 	ref := s.ref("/task", task, core.WantTask, false)
 	if len(blockedBy)+len(blocks) == 0 {
@@ -551,21 +552,35 @@ func (c *Tree) edgeChange(task string, blockedBy, blocks []string) (*Task, []cor
 	}
 	bb, bl := s.edgeRefs("", blockedBy, blocks, false)
 	if err := s.done(nil); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	x, err := c.resolveTask(ref)
-	return x, bb, bl, err
+	if !make || ref.End == core.EndNone {
+		x, err := c.resolveTask(ref)
+		return x, bb, bl, nil, err
+	}
+	// With its end given, the subject resolves as an edge does, so a gate
+	// the folder lacks is found missing rather than not-found.
+	r, err := core.Resolve(c, ref, core.WantEdge, nil)
+	if err != nil {
+		return nil, nil, nil, nil, pointAt(err, "/task", false)
+	}
+	if !r.MissingGate() {
+		return c.Tasks[r.ID], bb, bl, nil, nil
+	}
+	g := c.makeGate(r.Folder, r.End)
+	return c.Tasks[g.ID], bb, bl, []GateMade{g}, nil
 }
 
 // Block adds edges: task waits on each of blockedBy, and each of blocks
-// waits on task. A gate an edge names is made.
+// waits on task. A gate an edge names is made, the subject included,
+// whose gate gets its ID first.
 func (t *Tree) Block(task string, blockedBy, blocks []string) (out EdgeResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, bb, bl, err := c.edgeChange(task, blockedBy, blocks)
+		before := c.readySet()
+		x, bb, bl, subject, err := c.edgeChange(task, blockedBy, blocks, true)
 		if err != nil {
 			return err
 		}
-		before := c.readySet()
 		edges, made, err := c.resolveEdges(slices.Concat(
 			edgeInputs(x.ID, bb, false, ""),
 			edgeInputs(x.ID, bl, true, "")), nil, true, false)
@@ -576,7 +591,7 @@ func (t *Tree) Block(task string, blockedBy, blocks []string) (out EdgeResult, e
 		if err != nil {
 			return err
 		}
-		out = EdgeResult{ID: x.ID, Changed: changed, GatesMade: made, Reblocked: c.reblocked(before)}
+		out = EdgeResult{ID: x.ID, Changed: changed, GatesMade: append(subject, made...), Reblocked: c.reblocked(before)}
 		out.Warnings = append(warnings, c.claimedBlocked(out.Reblocked)...)
 		return nil
 	})
@@ -586,7 +601,7 @@ func (t *Tree) Block(task string, blockedBy, blocks []string) (out EdgeResult, e
 // Unblock removes edges. It never makes a gate.
 func (t *Tree) Unblock(task string, blockedBy, blocks []string) (out EdgeResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, bb, bl, err := c.edgeChange(task, blockedBy, blocks)
+		x, bb, bl, _, err := c.edgeChange(task, blockedBy, blocks, false)
 		if err != nil {
 			return err
 		}

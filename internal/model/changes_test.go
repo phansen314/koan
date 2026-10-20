@@ -532,3 +532,66 @@ func TestCase(t *testing.T) {
 	}
 	checked(t, tr)
 }
+
+// Block makes any gate it names, its subject included: the subject's gate
+// gets its ID before the gates the edges name. Unblock never makes one,
+// and a refused block makes none.
+func TestBlockSubjectGate(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))       // @1
+	must[[]FolderAt](t)(tr.CreateFolder("/g", nil, nil))       // @2
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x"})) // @3
+
+	_, err := tr.Unblock("/f.start", []string{"3"}, nil)
+	wantErr(t, err, core.KindNotFound, "")
+	_, err = tr.Block("/f.start", []string{"/f.start"}, nil)
+	wantErr(t, err, core.KindInvalidInput, "")
+	_, err = tr.Block("@1", []string{"3"}, nil)
+	wantErr(t, err, core.KindNotFound, "")
+	if tr.Issued != 3 {
+		t.Fatalf("a refused change issued IDs: %d", tr.Issued)
+	}
+
+	r := must[EdgeResult](t)(tr.Block("/f.start", []string{"/g"}, []string{"3"}))
+	want := []GateMade{{ID: 4, Folder: 1, Path: "/f", End: core.EndStart}, {ID: 5, Folder: 2, Path: "/g", End: core.EndDone}}
+	if r.ID != 4 || !r.Changed || !reflect.DeepEqual(r.GatesMade, want) {
+		t.Errorf("block: %+v", r)
+	}
+	if !tr.Tasks[4].BlockedBy[5] || !tr.Tasks[3].BlockedBy[4] {
+		t.Error("edges not written")
+	}
+	// Named again, it is there.
+	if r := must[EdgeResult](t)(tr.Block("@1.start", []string{"/g"}, nil)); r.Changed || len(r.GatesMade) != 0 {
+		t.Errorf("block again: %+v", r)
+	}
+	checked(t, tr)
+}
+
+// Any move of a gate is refused, even to its own folder.
+func TestMoveGateToItsFolder(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
+	_, _, err := tr.MoveTask("/a.done", "/a")
+	wantErr(t, err, core.KindConflict, core.RuleGate)
+}
+
+// folder move checks into-itself, then case-mismatch, then exists. A path
+// names a folder only in its exact case, so into-itself follows exact
+// names.
+func TestMoveFolderOrder(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/a/b", nil, nil)) // @1, @2
+	must[[]FolderAt](t)(tr.CreateFolder("/c/d", nil, nil)) // @3, @4
+	_, err := tr.MoveFolder("@1", "/a/b")
+	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	_, err = tr.MoveFolder("@1", "/a/B/x")
+	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	_, err = tr.MoveFolder("@1", "/C/d")
+	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
+	_, err = tr.MoveFolder("@1", "/A/x")
+	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
+	_, err = tr.MoveFolder("@1", "/c/d")
+	wantErr(t, err, core.KindConflict, core.RuleExists)
+	checked(t, tr)
+}
