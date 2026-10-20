@@ -823,14 +823,21 @@ func (t *Tree) DeleteFolder(folder string, contents, force bool) (out Removed, e
 		}
 		tasks, folders := c.under(f.ID)
 		if !force {
-			var material []string
+			// In tree order: each folder's own entries, byte for byte,
+			// before those of the folders under it.
+			under := map[int64]bool{}
 			for _, id := range folders {
-				for name := range c.Folders[id].Material {
-					material = append(material, c.Path(id)+":"+name)
+				under[id] = true
+			}
+			var material []string
+			for _, id := range c.TreeOrder() {
+				if under[id] {
+					for _, name := range sortedKeys(c.Folders[id].Material) {
+						material = append(material, c.Path(id)+":"+name)
+					}
 				}
 			}
 			if material != nil {
-				slices.Sort(material)
 				return core.Conflict(core.RuleHasMaterial, nil, material, "@%d holds material", f.ID)
 			}
 		}

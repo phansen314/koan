@@ -381,13 +381,15 @@ func TestDeleteFolder(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Folder: "/f", Blocks: []string{"/f"}})) // @3, gate @4
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "w", BlockedBy: []string{"/f"}}))            // @5
 	tr.PutMaterial(2, "notes.txt")
+	tr.PutMaterial(1, "b")
+	tr.PutMaterial(1, "B")
 
 	_, err := tr.DeleteFolder("/f", false, false)
 	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{2, 3}) {
 		t.Errorf("not-empty ids %v", e.IDs)
 	}
 	_, err = tr.DeleteFolder("/f", true, false)
-	if e := wantErr(t, err, core.KindConflict, core.RuleHasMaterial); !reflect.DeepEqual(e.Paths, []string{"/f/sub:notes.txt"}) {
+	if e := wantErr(t, err, core.KindConflict, core.RuleHasMaterial); !reflect.DeepEqual(e.Paths, []string{"/f:B", "/f:b", "/f/sub:notes.txt"}) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
 	r := must[Removed](t)(tr.DeleteFolder("/f", true, true))
