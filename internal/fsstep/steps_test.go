@@ -402,7 +402,7 @@ func TestDoneStepsFlushed(t *testing.T) {
 	_, s := newRoot(t)
 	files(t, s,
 		"tree/@a/@notes.md=", "tree/@a/@5.md=five", "tree/@a/@1.md=one",
-		"archived/w/@9.md=nine", "archived/w/@9.json={}",
+		"archived/@9.md=nine", "archived/@9.json={}",
 	)
 	var flushed []string
 	faults(t, func(p string) error {
@@ -416,10 +416,10 @@ func TestDoneStepsFlushed(t *testing.T) {
 		Step{Op: OpWrite, To: "tree/@a/@5.md", Content: "five"},
 		Step{Op: OpMove, From: "tree/@1.md", To: "tree/@a/@1.md"},
 		Step{Op: OpRemove, From: "tree/@gone", Dir: true},
-		Step{Op: OpArchive, From: "tree/@9.md", To: "archived/w/@9.md", File: "archived/w/@9.json", Rows: []byte(`{}`)},
+		Step{Op: OpArchive, From: "tree/@9.md", To: "archived/@9.md", File: "archived/@9.json", Rows: []byte(`{}`)},
 	)
 	slices.Sort(flushed)
-	if want := []string{"archived", "archived/w", "tree", "tree/@a"}; !slices.Equal(flushed, want) {
+	if want := []string{"archived", "tree", "tree/@a"}; !slices.Equal(flushed, want) {
 		t.Errorf("flushed %q, want %q", flushed, want)
 	}
 	noPending(t, s)

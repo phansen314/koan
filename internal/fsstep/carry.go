@@ -503,6 +503,7 @@ func (w *work) archive(s Step) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	w.touch(dir)
 	to, file := path.Join(dir, path.Base(s.To)), path.Join(dir, path.Base(s.File))
 	for _, p := range []string{to, file} {
 		if err := w.sameCase(p, true); err != nil {
