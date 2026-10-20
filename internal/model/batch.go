@@ -40,7 +40,8 @@ type BatchResult struct {
 
 // Batch makes folders and tasks and writes edges as one change: all of it,
 // or none. Its references resolve against the tree as the whole batch
-// would leave it, so folders are made first, then tasks, then edges.
+// would leave it, so folders are made first, in tree order, then tasks in
+// input order, then edges.
 func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 	err = t.change(func(c *Tree) error {
 		if n := len(in.Folders) + len(in.Tasks); n < 1 || n > 1000 {
@@ -82,17 +83,29 @@ func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 			labels[x.Label] = 0
 		}
 
-		before := c.readySet()
+		// Folders are made parents first, in tree order, whatever the
+		// input's order.
+		folderRefs := make([]core.Ref, len(in.Folders))
+		order := make([]int, len(in.Folders))
 		for i, f := range in.Folders {
 			ref, err := pathRef(f.Path)
 			if err != nil {
 				return problem(err, "/folders/%d/path", i)
 			}
+			folderRefs[i], order[i] = ref, i
+		}
+		slices.SortStableFunc(order, func(a, b int) int {
+			return slices.Compare(folderRefs[a].Names, folderRefs[b].Names)
+		})
+
+		before := c.readySet()
+		for _, i := range order {
+			f := in.Folders[i]
 			title, err := checkFolderTitle(f.Title)
 			if err != nil {
 				return problem(err, "/folders/%d/title", i)
 			}
-			made, err := c.createFolder(ref, title, f.Extra)
+			made, err := c.createFolder(folderRefs[i], title, f.Extra)
 			if err != nil {
 				return problem(err, "/folders/%d/path", i)
 			}

@@ -255,6 +255,12 @@ func TestBatch(t *testing.T) {
 	}
 	checked(t, tr)
 
+	// Folders are made parents first, in tree order, not input order.
+	r = must[BatchResult](t)(tr.Batch(BatchInput{Folders: []BatchFolder{{Path: "/z/b"}, {Path: "/z/a/x"}, {Path: "/Z2"}}}))
+	if want := []FolderAt{{8, "/Z2"}, {9, "/z"}, {10, "/z/a"}, {11, "/z/a/x"}, {12, "/z/b"}}; !reflect.DeepEqual(r.Folders, want) {
+		t.Errorf("folders %v, want %v", r.Folders, want)
+	}
+
 	issued := tr.Issued
 	refused := []BatchInput{
 		{},
@@ -275,7 +281,7 @@ func TestBatch(t *testing.T) {
 			t.Errorf("batch %d succeeded", i)
 		}
 	}
-	if tr.Issued != issued || len(tr.Folders) != 2 {
+	if tr.Issued != issued || len(tr.Folders) != 7 {
 		t.Error("a refused batch made something")
 	}
 	_, err := tr.Batch(refused[len(refused)-1])
