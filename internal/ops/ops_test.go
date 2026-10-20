@@ -65,6 +65,7 @@ func TestCommandsMatchSchemas(t *testing.T) {
 		for _, o := range c.Options {
 			got = append(got, o.Field)
 		}
+		got = append(got, c.Fields...)
 		sort.Strings(got)
 		sort.Strings(want)
 		if strings.Join(got, ",") != strings.Join(want, ",") {

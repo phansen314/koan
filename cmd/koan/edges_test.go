@@ -531,7 +531,7 @@ func TestTaskFrontier(t *testing.T) {
 }
 
 // The model's create, block, unblock, complete, reopen, claim, claim-next,
-// release, move and delete, of tasks and of folders, run beside koan on
+// release, move and delete, of tasks and of folders, and batch, run beside koan on
 // the same inputs, agree on every result and refusal, and on readiness,
 // edges, claims, the frontier and the folders after each.
 func TestEdgesModel(t *testing.T) {
@@ -545,7 +545,7 @@ func TestEdgesModel(t *testing.T) {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { edgesModel(t, seed, succeeded) })
 	}
 	for _, cmd := range []string{"task create", "task block", "task unblock", "task complete", "task reopen", "task claim",
-		"task claim-next", "task release", "task move", "task delete", "folder create", "folder move", "folder delete"} {
+		"task claim-next", "task release", "task move", "task delete", "folder create", "folder move", "folder delete", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -554,6 +554,9 @@ func TestEdgesModel(t *testing.T) {
 
 func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 	rng := rand.New(rand.NewSource(seed))
+	// Batches draw from a source of their own, so that the other changes
+	// draw as they would without them.
+	brng := rand.New(rand.NewSource(seed))
 	home := root(t)
 	m := model.New(1, func() string { return "2026-10-20T10:00:00Z" })
 	for _, p := range []string{"/a/b", "/c"} {
@@ -686,12 +689,99 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 		return fmt.Sprint(out)
 	}
 
+	// batchRef is an edge-ref, or often a label of one of a batch's n
+	// tasks, now and then one no part defines.
+	batchRef := func(n int) string {
+		switch rng.Intn(8) {
+		case 0, 1, 2:
+			return "$" + string(rune('a'+rng.Intn(n)))
+		case 3:
+			return "$z"
+		}
+		return edgeRef()
+	}
+	// batchIn is a batch file, as the model and as JSON.
+	batchIn := func() (model.BatchInput, string) {
+		var in model.BatchInput
+		file := map[string]any{}
+		var folders, tasks []any
+		for range []int{0, 0, 1, 2}[rng.Intn(4)] {
+			p := pick(folderPaths)
+			in.Folders = append(in.Folders, model.BatchFolder{Path: p})
+			folders = append(folders, map[string]any{"path": p})
+		}
+		if rng.Intn(3) == 0 {
+			in.Folder = folderRef()
+			file["folder"] = in.Folder
+		}
+		n := rng.Intn(4)
+		if rng.Intn(5) > 0 {
+			n = max(n, 1)
+		}
+		for range n {
+			x := model.BatchTask{TaskInput: model.TaskInput{Title: "t"}}
+			part := map[string]any{"title": "t"}
+			// Each label once, now and then twice.
+			if l := "$" + string(rune('a'+len(in.Tasks))); rng.Intn(4) > 0 {
+				if rng.Intn(10) == 0 {
+					l = "$a"
+				}
+				x.Label = l
+				part["label"] = x.Label
+			}
+			if rng.Intn(3) == 0 {
+				x.Folder = folderRef()
+				if len(in.Folders) > 0 && rng.Intn(2) == 0 {
+					x.Folder = in.Folders[0].Path
+				}
+				part["folder"] = x.Folder
+			}
+			for range rng.Intn(3) {
+				x.BlockedBy = append(x.BlockedBy, batchRef(n))
+			}
+			for range rng.Intn(2) {
+				x.Blocks = append(x.Blocks, batchRef(n))
+			}
+			if x.BlockedBy != nil {
+				part["blocked_by"] = x.BlockedBy
+			}
+			if x.Blocks != nil {
+				part["blocks"] = x.Blocks
+			}
+			in.Tasks = append(in.Tasks, x)
+			tasks = append(tasks, part)
+		}
+		if folders != nil {
+			file["folders"] = folders
+		}
+		if tasks != nil {
+			file["tasks"] = tasks
+		}
+		b, _ := json.Marshal(file)
+		return in, string(b)
+	}
+
 	var made, refused int
 	for step := range 160 {
 		var args []string
+		var stdin string
 		var err error
 		var want string
-		switch op := rng.Intn(18); {
+		op := 18
+		if brng.Intn(8) > 0 {
+			op = rng.Intn(18)
+		}
+		switch {
+		case op == 18:
+			was := rng
+			rng = brng
+			in, file := batchIn()
+			rng = was
+			var out model.BatchResult
+			out, err = m.Batch(in)
+			args, stdin = []string{"batch", "-i", "-"}, file
+			want = fmt.Sprintf("%v %v %v %s %v %s", madeAt(out.Folders), nonNil(out.Tasks), out.Labels,
+				gates(out.GatesMade), nonNil(out.Reblocked), warnings(out.Warnings))
 		case op < 3:
 			folder := pick([]string{"", "/a", "/a/b", "/c"})
 			bb, bl := edgeList(), edgeList()
@@ -784,12 +874,19 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 			}
 		}
 		if args != nil {
-			r := koan(t, home, args...)
+			name := args[0] + " " + args[1]
+			var r *testrun.Result
+			if stdin != "" {
+				name = args[0]
+				r = input(t, home, name, stdin)
+			} else {
+				r = koan(t, home, args...)
+			}
 			if err != nil {
 				refused++
 			} else {
 				made++
-				succeeded[args[0]+" "+args[1]]++
+				succeeded[name]++
 			}
 			switch {
 			case err != nil:
@@ -802,6 +899,9 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 				res := r.Result()
 				var got string
 				switch args[1] {
+				case "-i":
+					got = fmt.Sprintf("%v %v %v %s %v %s", koanMade(res["folders"]), res["tasks"], res["labels"],
+						koanGates(r), res["reblocked"], koanWarnings(r))
 				case "create":
 					if args[0] == "folder" {
 						got = fmt.Sprint(koanMade(res["created"]))

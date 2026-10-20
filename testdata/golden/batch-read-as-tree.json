@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "result": {
+    "folders": [
+      {
+        "id": 2,
+        "path": "/m"
+      },
+      {
+        "id": 3,
+        "path": "/x"
+      },
+      {
+        "id": 4,
+        "path": "/x/y"
+      }
+    ],
+    "tasks": [
+      5,
+      6,
+      7
+    ],
+    "labels": {
+      "$a": 5,
+      "$b": 6
+    },
+    "gates_made": [
+      {
+        "id": 8,
+        "folder": {
+          "id": 4,
+          "path": "/x/y"
+        },
+        "end": "start"
+      }
+    ],
+    "reblocked": []
+  },
+  "warnings": []
+}

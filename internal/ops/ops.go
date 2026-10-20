@@ -27,6 +27,7 @@ func Commands() []*cli.Command {
 		FolderUpdate(),
 		FolderMove(),
 		FolderDelete(),
+		Batch(),
 		Init(),
 		Info(),
 		Version(),
