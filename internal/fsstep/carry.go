@@ -388,20 +388,20 @@ func (w *work) clean(tmp string) error {
 // its change was forced, a directory remove first looks for material,
 // since what was checked before COMMIT can change before the step runs;
 // finding any, it removes nothing and is stuck. Finding none, it removes
-// only koan's entries, so material written while it runs stays.
+// only what isn't material, so material written while it runs stays.
 func (w *work) remove(s Step) (string, error) {
 	if ok, err := w.listed(s.From); err != nil || !ok {
 		return "", err
 	}
 	if s.Dir && !s.Force {
-		m, err := w.holdsMaterial(s.From)
+		m, err := w.holdsMaterial(s.From, s.Owns)
 		if m {
 			return Material, nil
 		}
 		if err != nil {
 			return "", err
 		}
-		return "", w.removeKoan(s.From)
+		return "", w.removeKoan(s.From, s.Owns)
 	}
 	return "", w.do("remove "+s.From, func() error {
 		if s.Dir {
@@ -411,10 +411,30 @@ func (w *work) remove(s Step) (string, error) {
 	})
 }
 
-// holdsMaterial reports whether a directory being removed holds material:
-// any entry not named with @, other than .DS_Store, in it or in any @
-// directory under it.
-func (w *work) holdsMaterial(rel string) (bool, error) {
+// material reports whether an entry listed in a directory being removed
+// is material in itself: any entry not named with @, other than
+// .DS_Store, or an @ file the step doesn't record that holds a byte or
+// more. An @ directory is material by what it holds.
+func material(p string, de fs.DirEntry, owns []string) (bool, error) {
+	n := de.Name()
+	switch {
+	case n == ".DS_Store" || de.IsDir() && strings.HasPrefix(n, "@"):
+		return false, nil
+	case !strings.HasPrefix(n, "@"):
+		return true, nil
+	case slices.Contains(owns, p):
+		return false, nil
+	}
+	info, err := de.Info()
+	if err != nil {
+		return false, err
+	}
+	return info.Size() > 0, nil
+}
+
+// holdsMaterial reports whether a directory being removed holds material,
+// in it or in any @ directory under it.
+func (w *work) holdsMaterial(rel string, owns []string) (bool, error) {
 	var entries []fs.DirEntry
 	if err := w.do("look in "+rel, func() (err error) {
 		entries, err = os.ReadDir(w.abs(rel))
@@ -423,26 +443,25 @@ func (w *work) holdsMaterial(rel string) (bool, error) {
 		return false, err
 	}
 	for _, de := range entries {
-		n := de.Name()
-		switch {
-		case n == ".DS_Store":
-		case !strings.HasPrefix(n, "@"):
-			return true, nil
-		case de.IsDir():
-			if m, err := w.holdsMaterial(path.Join(rel, n)); err != nil || m {
-				return m, err
-			}
+		p := path.Join(rel, de.Name())
+		m, err := material(p, de, owns)
+		if err == nil && !m && de.IsDir() && strings.HasPrefix(de.Name(), "@") {
+			m, err = w.holdsMaterial(p, owns)
+		}
+		if err != nil || m {
+			return m, err
 		}
 	}
 	return false, nil
 }
 
 // removeKoan removes a directory bottom-up, never by a recursive remove: in each
-// directory it unlinks only the @ entries and .DS_Store it listed there,
-// then removes the directory with rmdir, which the operating system
-// refuses while it isn't empty. Material written since the walk is left,
-// and the step fails.
-func (w *work) removeKoan(rel string) error {
+// directory it unlinks only the entries it listed there that aren't
+// material, then removes the directory with rmdir, which the operating
+// system refuses while it isn't empty. Material written since the walk is
+// left, and the step fails: an @ file the step doesn't record is looked
+// at again as it is unlinked, and left if it now holds content.
+func (w *work) removeKoan(rel string, owns []string) error {
 	entries, err := os.ReadDir(w.abs(rel))
 	if err != nil {
 		return err
@@ -450,11 +469,20 @@ func (w *work) removeKoan(rel string) error {
 	for _, de := range entries {
 		n := de.Name()
 		p := path.Join(rel, n)
+		m, err := material(p, de, owns)
 		switch {
+		case err != nil || m:
 		case de.IsDir() && strings.HasPrefix(n, "@"):
-			err = w.removeKoan(p)
-		case n == ".DS_Store" || strings.HasPrefix(n, "@"):
-			err = w.do("unlink "+p, func() error { return os.Remove(w.abs(p)) })
+			err = w.removeKoan(p, owns)
+		default:
+			err = w.do("unlink "+p, func() error {
+				if n != ".DS_Store" && !slices.Contains(owns, p) {
+					if info, err := os.Lstat(w.abs(p)); err != nil || info.Size() > 0 {
+						return errors.Join(fmt.Errorf("%s holds content", p), err)
+					}
+				}
+				return os.Remove(w.abs(p))
+			})
 		}
 		if err != nil {
 			return err

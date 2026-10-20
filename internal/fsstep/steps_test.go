@@ -25,7 +25,7 @@ var (
 		{Op: OpWrite, To: "tree/@a/@5.md", Content: "five"},
 		{Op: OpMove, From: "tree/@work", To: "tree/@Work", Dir: true},
 		{Op: OpMove, From: "tree/@Work/@1.md", To: "tree/@a/@1.md"},
-		{Op: OpRemove, From: "tree/@old", Dir: true, Force: true},
+		{Op: OpRemove, From: "tree/@old", Dir: true, Force: true, Owns: []string{"tree/@old", "tree/@old/@notes.md"}},
 		{Op: OpArchive, From: "tree/@fin", To: "archived/@9_fin", File: "archived/@9_fin.json", Dir: true, Rows: json.RawMessage(`{"schema":1,"kind":"folder"}`)},
 		{Op: OpArchive, From: "tree/@Work/@2.md", To: "archived/work/@2.md", File: "archived/work/@2.json", Rows: json.RawMessage(`{"schema":1,"kind":"task"}`)},
 	}
@@ -345,13 +345,23 @@ func TestNeverReplaces(t *testing.T) {
 	checkTree(t, s, sorted("tree/@1.md=mine", "tree/@a/", "tree/@a/@1.md=raced", "tree/@a/@2.md=raced"))
 }
 
+// oldOwns is what a delete of the folder at tree/@old, with its subfolder
+// @sub and its task 5, records it may remove.
+var oldOwns = []string{"tree/@old", "tree/@old/@notes.md", "tree/@old/@start.md", "tree/@old/@done.md", "tree/@old/@5.md",
+	"tree/@old/@sub", "tree/@old/@sub/@notes.md", "tree/@old/@sub/@start.md", "tree/@old/@sub/@done.md"}
+
 // A directory remove whose change wasn't forced looks for material first,
 // walking every @ directory under it: finding any, it removes nothing and
-// sticks with material, holding back the rest of its change. Notes, any
-// @ entry and .DS_Store are not material. A forced remove takes it all.
+// sticks with material, holding back the rest of its change. Any entry
+// not named with @ is material. An @ entry the step doesn't record is
+// material when it holds content: a file of a byte or more, or a
+// directory holding one or any entry not named with @. The notes it
+// records, a zero-byte file and .DS_Store never are. A forced remove
+// takes it all.
 func TestRemoveMaterial(t *testing.T) {
-	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/@Notes.md=by hand",
-		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s"}
+	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/@Notes.md=",
+		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s",
+		"tree/@old/@7.md=", "tree/@old/@stray/@x.md=", "tree/@old/@stray/.DS_Store=finder"}
 	for _, c := range []struct {
 		name     string
 		material []string
@@ -363,14 +373,19 @@ func TestRemoveMaterial(t *testing.T) {
 		{"an empty file", []string{"tree/@old/@sub/__init__.py="}, false, true},
 		{"a hidden directory", []string{"tree/@old/.git/"}, false, true},
 		{"under @ directories", []string{"tree/@old/@sub/@types/x.d.ts=x"}, false, true},
-		{"forced", []string{"tree/@old/thesis.tex=t", "tree/@old/@sub/.git/"}, true, false},
+		{"a stray @ file with content", []string{"tree/@old/@Notes.md=by hand"}, false, true},
+		{"another task's notes", []string{"tree/@old/@sub/@7.md=seven"}, false, true},
+		{"a stray @ directory holding content", []string{"tree/@old/@stray/@x.md=x"}, false, true},
+		{"a stray @ directory holding material", []string{"tree/@old/@stray/@deep/a="}, false, true},
+		{"a done gate's notes the step records", []string{"tree/@old/@sub/@done.md=d"}, false, false},
+		{"forced", []string{"tree/@old/thesis.tex=t", "tree/@old/@sub/.git/", "tree/@old/@Notes.md=by hand"}, true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, s := newRoot(t)
 			files(t, s, koans...)
 			files(t, s, c.material...)
 			before := snapshot(t, s)
-			w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true, Force: c.force}, Step{Op: OpMkdir, To: "tree/@after"})
+			w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true, Force: c.force, Owns: oldOwns}, Step{Op: OpMkdir, To: "tree/@after"})
 			_, stuck := rows(t, s)
 			if !c.stuck {
 				if len(w) != 0 {
@@ -397,13 +412,14 @@ func TestRemoveMaterial(t *testing.T) {
 
 // A directory remove whose change wasn't forced never removes material
 // written while it runs: mid-walk, in a directory the walk already
-// passed, or mid-removal, in a directory already listed. It removes only
-// the @ entries and .DS_Store it listed, and each directory with rmdir, so
-// the step fails and stays pending; the next write's walk finds the
-// material and the step sticks.
+// passed, or mid-removal, in a directory already listed or into a file
+// that was empty when listed. It removes only what it listed there that
+// isn't material, and each directory with rmdir, so the step fails and
+// stays pending; the next write's walk finds the material and the step
+// sticks.
 func TestRemoveMaterialMidway(t *testing.T) {
 	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/.DS_Store=finder",
-		"tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s"}
+		"tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=s", "tree/@old/@sub/@8.md="}
 	for _, c := range []struct {
 		name, at, late string
 	}{
@@ -412,6 +428,11 @@ func TestRemoveMaterialMidway(t *testing.T) {
 		{"mid-removal, in a directory walked", "step 1: unlink tree/@old/@5.md", "tree/@old/@sub/late.txt=late"},
 		{"mid-removal, in an emptied directory", "step 1: rmdir tree/@old/@sub", "tree/@old/@sub/late.txt=late"},
 		{"before the last rmdir", "step 1: rmdir tree/@old", "tree/@old/.git/"},
+		{"a stray @ file, mid-walk", "step 1: look in tree/@old/@sub", "tree/@old/@Notes.md=by hand"},
+		{"a stray @ file, mid-removal", "step 1: unlink tree/@old/@notes.md", "tree/@old/@Notes.md=by hand"},
+		{"another task's notes, mid-walk", "step 1: look in tree/@old/@sub", "tree/@old/@7.md=seven"},
+		{"another task's notes, mid-removal", "step 1: rmdir tree/@old/@sub", "tree/@old/@sub/@7.md=seven"},
+		{"another task's empty notes written as it is unlinked", "step 1: unlink tree/@old/@sub/@8.md", "tree/@old/@sub/@8.md=eight"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, s := newRoot(t)
@@ -429,7 +450,7 @@ func TestRemoveMaterialMidway(t *testing.T) {
 			has := func() bool {
 				return slices.ContainsFunc(snapshot(t, s), func(e string) bool { return strings.TrimSuffix(e, "/") == late })
 			}
-			w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true}, Step{Op: OpMkdir, To: "tree/@after"})
+			w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true, Owns: oldOwns}, Step{Op: OpMkdir, To: "tree/@after"})
 			if !reached {
 				t.Fatalf("never reached %s", c.at)
 			}

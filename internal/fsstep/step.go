@@ -57,6 +57,10 @@ type Step struct {
 	// Force is whether a remove's change was forced, so it takes
 	// material with it.
 	Force bool `json:"force,omitempty"`
+	// Owns is what a directory remove may remove, since the rows may be
+	// gone: the directories of the folders being deleted, and the notes
+	// of what is being deleted.
+	Owns []string `json:"owns,omitempty"`
 	// Content is the notes a write puts at To.
 	Content string `json:"content,omitempty"`
 	// File is where an archive writes Rows, its JSON, beside To.

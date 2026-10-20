@@ -35,7 +35,7 @@ func TestOverlapWaitsBehindHeld(t *testing.T) {
 	_, s := newRoot(t)
 	files(t, s, "tree/@old/@notes.md=old notes")
 	points := refuse(t, "step 1: unlink tree/@old/@notes.md")
-	w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true})
+	w := write(t, s, Step{Op: OpRemove, From: "tree/@old", Dir: true, Owns: []string{"tree/@old", "tree/@old/@notes.md"}})
 	if _, ok := warning(w, "pending-step"); !ok {
 		t.Fatalf("warnings %s", describe(w))
 	}
