@@ -363,7 +363,7 @@ var oldOwns = []string{"tree/@old", "tree/@old/@notes.md", "tree/@old/@start.md"
 // records, a zero-byte file and .DS_Store never are. A forced remove
 // takes it all.
 func TestRemoveMaterial(t *testing.T) {
-	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/@Notes.md=",
+	koans := []string{"tree/@old/@notes.md=notes", "tree/@old/@5.md=five", "tree/@old/@todo.md=",
 		"tree/@old/.DS_Store=finder", "tree/@old/@sub/@notes.md=", "tree/@old/@sub/@start.md=",
 		"tree/@old/@start.md=s", "tree/@old/@7.md=", "tree/@old/@stray/@x.md=", "tree/@old/@stray/.DS_Store=finder"}
 	for _, c := range []struct {
@@ -377,17 +377,21 @@ func TestRemoveMaterial(t *testing.T) {
 		{"an empty file", []string{"tree/@old/@sub/__init__.py="}, false, true},
 		{"a hidden directory", []string{"tree/@old/.git/"}, false, true},
 		{"under @ directories", []string{"tree/@old/@sub/@types/x.d.ts=x"}, false, true},
-		{"a stray @ file with content", []string{"tree/@old/@Notes.md=by hand"}, false, true},
+		{"a stray @ file with content", []string{"tree/@old/@todo.md=by hand"}, false, true},
+		{"a hand-made @Notes.md beside the folder's notes", []string{"tree/@old/@Notes.md=by hand"}, false, true},
 		{"another task's notes", []string{"tree/@old/@sub/@7.md=seven"}, false, true},
 		{"a stray @ directory holding content", []string{"tree/@old/@stray/@x.md=x"}, false, true},
 		{"a stray @ directory holding material", []string{"tree/@old/@stray/@deep/a="}, false, true},
 		{"a gate's notes the step records", []string{"tree/@old/@sub/@done.md=d"}, false, false},
 		{"a gate-less @start.md with content", []string{"tree/@old/@sub/@start.md=s"}, false, true},
 		{"forced, a gate-less @start.md with content", []string{"tree/@old/@sub/@start.md=s"}, true, false},
-		{"forced", []string{"tree/@old/thesis.tex=t", "tree/@old/@sub/.git/", "tree/@old/@Notes.md=by hand"}, true, false},
+		{"forced", []string{"tree/@old/thesis.tex=t", "tree/@old/@sub/.git/", "tree/@old/@todo.md=by hand"}, true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, s := newRoot(t)
+			if strings.HasPrefix(c.name, "a hand-made @Notes.md") && ignoresCase(t, s) {
+				t.Skip("@Notes.md and @notes.md are one file where case is ignored")
+			}
 			files(t, s, koans...)
 			files(t, s, c.material...)
 			before := snapshot(t, s)
@@ -434,8 +438,8 @@ func TestRemoveMaterialMidway(t *testing.T) {
 		{"mid-removal, in a directory walked", "step 1: unlink tree/@old/@5.md", "tree/@old/@sub/late.txt=late"},
 		{"mid-removal, in an emptied directory", "step 1: rmdir tree/@old/@sub", "tree/@old/@sub/late.txt=late"},
 		{"before the last rmdir", "step 1: rmdir tree/@old", "tree/@old/.git/"},
-		{"a stray @ file, mid-walk", "step 1: look in tree/@old/@sub", "tree/@old/@Notes.md=by hand"},
-		{"a stray @ file, mid-removal", "step 1: unlink tree/@old/@notes.md", "tree/@old/@Notes.md=by hand"},
+		{"a stray @ file, mid-walk", "step 1: look in tree/@old/@sub", "tree/@old/@todo.md=by hand"},
+		{"a stray @ file, mid-removal", "step 1: unlink tree/@old/@notes.md", "tree/@old/@todo.md=by hand"},
 		{"another task's notes, mid-walk", "step 1: look in tree/@old/@sub", "tree/@old/@7.md=seven"},
 		{"another task's notes, mid-removal", "step 1: rmdir tree/@old/@sub", "tree/@old/@sub/@7.md=seven"},
 		{"another task's empty notes written as it is unlinked", "step 1: unlink tree/@old/@sub/@8.md", "tree/@old/@sub/@8.md=eight"},
