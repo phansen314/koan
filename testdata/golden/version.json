@@ -1,7 +1,7 @@
 {
   "ok": true,
   "result": {
-    "version": "(devel)",
+    "version": "$VERSION",
     "commit": "$COMMIT",
     "go": "$GO",
     "format": 1

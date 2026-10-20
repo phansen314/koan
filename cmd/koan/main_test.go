@@ -27,9 +27,12 @@ func TestVersion(t *testing.T) {
 	if c, ok := res["commit"].(string); ok {
 		commit = `"commit":"` + c + `"`
 	}
+	// The version depends on the build as the commit does: (devel), or a
+	// pseudo-version Go stamps from the checkout.
 	r.Golden(t, "version", *update, map[string]string{
-		`"go":"` + res["go"].(string) + `"`: `"go":"$GO"`,
-		commit:                              `"commit":"$COMMIT"`,
+		`"version":"` + res["version"].(string) + `"`: `"version":"$VERSION"`,
+		`"go":"` + res["go"].(string) + `"`:           `"go":"$GO"`,
+		commit:                                        `"commit":"$COMMIT"`,
 	})
 }
 
