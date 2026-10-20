@@ -297,14 +297,14 @@ koan init
 
 ### Doctor and repair
 
-`doctor` compares the tree with the database and checks the database itself; it reads one snapshot, takes no koan lock and changes nothing. `repair` puts the tree back to what the database says, for the kinds it is given. It never changes the database to match the tree, never invents a task or folder from what it finds on disk, and never deletes anything that holds content.
+`doctor` compares the tree with the database and checks the database itself, and changes nothing; how it reads is under Concurrency. `repair` puts the tree back to what the database says, for the kinds it is given. It never changes the database to match the tree, never invents a task or folder from what it finds on disk, and never deletes anything that holds content.
 
 The only outside changes left are hand changes to `@` entries in the tree (a rename or a drag in Zed) and hand edits of the database file. Editing a file's contents is never one.
 
 | Finding | Means | `repair` |
 | --- | --- | --- |
 | `pending-step` | A change's filesystem steps were cut short | Carries them out, as the next write would. |
-| `stuck-step` | A step found both its source and destination holding content, or neither, or a remove found material | — a person keeps one copy, or moves the material out; repair then retries every stuck change, in seq order. The finding is never marked repairable, since a person must act first, but repair retries it all the same, and a change that now succeeds is fixed |
+| `stuck-step` | A step found both its source and destination holding content, or neither, or a remove found material | — a person acts first, as A stuck step under Writes says; repair then retries every stuck change, as the spec's repair says |
 | `stray-directory` | An `@<name>` directory that is no folder at that path (T2), often a folder renamed by hand. An `@.case-<seq>` directory named by a pending step is that step's, and shows as `pending-step` | Moves it back to a folder whose directory is missing, when exactly one stray and one such folder match: they share a parent (a rename in Zed), or every @\<id>.md in it, at least one, belongs to that folder (a drag). Otherwise reports it, and never decides by name alone. Works top-down, so a parent moved back takes its subfolders with it. |
 | `missing-directory` | A folder has no directory at its path (T1) | Makes an empty one. Its notes and material are gone, and the finding says so. |
 | `case-differs` | A folder's directory is spelled in another case (T1) | Renames it to the folder's name, through a temporary name as a case-only rename is. |

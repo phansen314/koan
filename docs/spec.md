@@ -927,7 +927,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### doctor, repair
 
-`koan doctor` reads one snapshot and reports every finding, in the order of the kinds in Finding, then by path, then by IDs. A failed integrity or foreign-key check is the `corrupt` finding, and doctor still succeeds. `koan repair [--kinds]` fixes the repairable findings of the kinds given, all of them when left out, in that same order, and reports what it fixed and what it left. `stuck-step` is never repairable, since a person must act first, by keeping one copy or moving the material out; but when its kind is given, or none are, repair retries every stuck change in seq order all the same. A change that now succeeds goes in `fixed`, the rest in `left`.
+`koan doctor` reads one snapshot and reports every finding, in the order of the kinds in Finding, then by path, then by IDs. `koan repair [--kinds]` fixes the repairable findings of the kinds given, all of them when left out, in that same order, and reports what it fixed and what it left. `stuck-step` is never repairable, since a person must act first, by keeping one copy or moving the material out; but when its kind is given, or none are, repair retries every stuck change in seq order all the same. A change that now succeeds goes in `fixed`, the rest in `left`.
 
 ```json
 { "$id": "doctor", "$defs": {
