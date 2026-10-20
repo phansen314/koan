@@ -34,6 +34,9 @@ type Error struct {
 	IDs      []int64
 	Paths    []string
 	Archived []int64
+	// Problems are JSON Pointers into the input: every fault for
+	// invalid-input, and for a cycle the fields whose edges close it.
+	Problems []string
 }
 
 func (e *Error) Error() string {
