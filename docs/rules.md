@@ -139,7 +139,7 @@ material  = part { "/" part }              no empty part, no "." or ".."; the fi
 - **`.start` and `.done` name a folder's gates.** Each resolves to that gate's own task ID, so wherever a task is taken, a gate can be named either way.
 - **The anchored form is for typing only.** koan accepts it and never writes it.
 
-**Kept text** writes the target's own ID, with its full path as a hint: `@9 (/work/phase2)`, `@9:docs/plan.md (/work/phase2:docs/plan.md)`. The ID survives moves and renames; the path is there to be read. A gate is written by its own ID, with its folder's path and its end as the hint: `@57 (/work/api.done)`, `@56 (/work/api.start)`. Kept text never writes an end on the ID side: in prose, `@9` is the folder. Labels never appear in kept text: they name nothing once their batch is over.
+**Kept text** writes the target's own ID, with its full path as a hint: `@9 (/work/phase2)`, `@9:docs/plan.md (/work/phase2:docs/plan.md)`. The ID survives moves and renames; the path is there to be read. A gate is written by its own ID, with its folder's path and its end as the hint: `@57 (/work/api.done)`, `@56 (/work/api.start)`. Kept text never writes an end on the ID side: in prose, `@9` is the folder. Labels never appear in kept text: they name nothing once their batch is over. Material in the root is written `/:docs/plan.md`, with no hint: the root has no ID, and its path never changes.
 
 **Keep references out of anything that outlives the tree.** koan is one person's tool on one machine, and its IDs mean something only to this tree. Don't write koan references into commit messages, code, or anything else that leaves the machine or lasts longer than the work it names.
 
@@ -158,7 +158,8 @@ Resolution turns a reference into a task or a folder, and a material reference i
 4. **Resolve the end.**
       - **On a folder**, an end names that folder's gate. A change that writes an edge to a gate the folder doesn't have yet makes it; anywhere else, a missing gate is not-found. In an edge (`--blocked-by`, `--blocks`), a folder with no end means its done gate: "after this folder" is the common case, and `.start` must be written. Where a command takes a folder, as `folder show` or `task move --to` do, an end is `invalid-input`.
       - **On a task**, an end is `invalid-input`: a task has no gates.
-5. **Resolve the material.** It names where a file is or would be inside the target's directory. The target must be a folder or the root, since a task has no directory. koan never checks that the file exists, and never reads it. Below the first part, `@` means nothing: `@41:node_modules/@types/x` is a file in material.
+      - **On the root**, an end is `invalid-input`: the root has no gates.
+5. **Resolve the material.** It names where a file is or would be inside the target's directory. The target must be a folder or the root, since a task has no directory: material on a task is `invalid-input`. koan never checks that the file exists, and never reads it. Below the first part, `@` means nothing: `@41:node_modules/@types/x` is a file in material.
 
 What a reference resolves to then holds:
 
@@ -187,7 +188,7 @@ A folder's place in the tree (its parent) is structure, not a field: moving it c
 | --- | --- |
 | `id` | The task's identity. Never changes. |
 | `gate` | `null` for an ordinary task; `start` or `done` for one of its folder's gates. Never changes. |
-| `title` | 1–200 characters after trimming whitespace, with no control characters or line breaks. |
+| `title` | 1–200 characters after trimming whitespace (Unicode `White_Space`), with no control characters or line breaks. |
 | `priority` | An integer or `null`. Higher comes first; `null` ranks last. |
 | `created_at` | When the task was made. Never changes. |
 | `completed_at` | `null` while the task is open, a timestamp once it is complete. This alone is the task's state; complete covers cancelled too. |
@@ -212,13 +213,13 @@ Every change is whole (I10), resolves its references inside itself (see Resoluti
 | Create a folder | Makes the folder at its path, with its directory and empty notes. It has no gates until one is named. | a sibling's name differs from it only in case (`case-mismatch`); the path is taken (`exists`) |
 | Create a task | Makes the task in a folder or the root, with any edges given. A gate an edge names is made if the folder lacks it. | an edge would close a cycle (`cycle`) |
 | Update a task or folder | Changes its title, priority, tags or `extra`. | — |
-| Block, unblock | Adds or removes edges. A gate an added edge names is made if the folder lacks it. An added edge can block a claimed task. | the edge would close a cycle (`cycle`), or point a task at itself (`invalid-input`) |
+| Block, unblock | Adds or removes edges. A gate an added edge names is made if the folder lacks it. An added edge can block a claimed task. | an added edge would close a cycle (`cycle`), or point a task at itself (`invalid-input`). Removing an edge a task doesn't have, itself included, changes nothing. |
 | Complete, reopen | Sets or clears `completed_at`. Completing ends the task's claim. Reopening blocks again whatever waits on it. | — |
 | Batch | Makes tasks and folders, and writes edges, as one change: all of it, or none. It only creates and blocks; completing, moving and deleting are changes of their own. A task it makes can carry a label, such as `$a`, that names it only within the batch, so any other part, before or after it, can write edges to it; a folder it makes is named by its path. The cycle check runs over the whole batch, and several parts naming the same gate make one gate. Labels appear only in a batch's input, which comes from a file or standard input, never from command-line arguments, so a shell never sees them. The result maps each label to the ID it got. A batch resolves its paths and labels against the tree as the whole batch would leave it, so a part can name a folder or a task that another part of the same batch makes, whatever their order. | whatever would refuse one of its parts |
 | Move a task | Puts it in another folder or the root; its notes move with it. No edge changes, so no readiness does. | it is a gate (`gate`) |
 | Move or rename a folder | Changes its parent or its name; everything under it moves with it, material included. No edge changes. | it would land inside itself (`into-itself`); beside a name that differs only in case (`case-mismatch`); on a path that is taken (`exists`) |
 | Delete a task | Removes the task, its notes, its claim, and every edge to and from it (I5). Whatever it was the last open blocker of becomes ready, and the result lists what it released. | — |
-| Delete a folder | Removes the folder and everything under it, gates included, the same way as a task. | it holds tasks or folders other than its own gates, and `contents` isn't given (`not-empty`); it holds material and `force` isn't given (`has-material`) |
+| Delete a folder | Removes the folder and everything under it, gates included, the same way as a task. | it holds tasks or folders other than its own gates, and `contents` isn't given (`not-empty`); it holds material, at any depth, and `force` isn't given (`has-material`). The first is checked first. |
 | Archive | See Archiving. | something leaving is open (`not-finished`) |
 | Claim, release | See Claims. | the task is already claimed (`claimed`), or complete (complete) |
 

@@ -54,7 +54,7 @@ A reference is a string, or an ID given as a JSON integer. Every form takes the 
     "path":      { "type": "string", "pattern": "^(?:/|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+)$" },
     "title":     { "type": "string", "minLength": 1, "maxLength": 200,
                    "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+$",
-                   "description": "As stored. Input is trimmed of whitespace first, then checked. Lengths count code points." },
+                   "description": "As stored. Input is trimmed of Unicode White_Space first, then checked. Lengths count code points." },
     "priority":  { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991 },
     "timestamp": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
                    "description": "A real date and time, which koan checks." },
@@ -363,7 +363,7 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination, in seq order |
 | `missing-notes` | No file at a notes path; it reads as empty notes | `task show`, `folder show`, `context` | the task or folder | its notes path |
 | `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `batch` | the complete tasks |  |
-| `claimed-blocked` | The change made a claimed task wait again | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |
+| `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |
 | `moved-claimed` | A move changed the notes path of a claimed task | `task move`, `folder move` | the claimed tasks | their new notes paths, in the same order |
 | `stale-marker` | A marker's path hint no longer matches its folder | `where`, `context` | the folder | the marker.json |
 
@@ -424,7 +424,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | --- | --- | --- | --- |
 | `usage` | 2 | The command line couldn't be turned into an input | `problems`: the argument at fault |
 | `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer |
-| `not-found` | 1 | A reference names nothing | `ids` and `paths` that name nothing; `archived` for those that were archived. The message says which were deleted, archived or never issued, and that an ID below the root's first ID came from an earlier root |
+| `not-found` | 1 | A reference names nothing | `ids` and `paths` that name nothing, a gate its folder lacks as its folder's path and end, such as `/work.start`; `archived` for those that were archived. The message says which were deleted, archived or never issued, and that an ID below the root's first ID came from an earlier root |
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
 | `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
 | `not-initialized` | 1 | There is no root, or no database in it. Run `init` | `paths`: what is missing |
@@ -437,12 +437,12 @@ A failure carries exactly one error. koan checks in this order and reports the f
 
 | Rule | Refused because | `ids` | `paths` |
 | --- | --- | --- | --- |
-| `case-mismatch` | A path matched a folder only ignoring case, or a new name differs from a sibling's only in case | the folder | the path as given, then as it is |
-| `cycle` | The change would close a cycle | one such cycle, in order: from the task whose blocked\_by gains the closing edge, ending at the task it waits on |  |
+| `case-mismatch` | A path matched a folder only ignoring case, or a new name differs from a sibling's only in case | the folder | the path as given, up to the part that matched only ignoring case, then that path as it is |
+| `cycle` | The change would close a cycle | one such cycle, in order: the task whose blocked\_by gains the closing edge, then the task it now waits on, then each task the one before waits on; the last waits on the first |  |
 | `claimed` | The task already has a claim | the task |  |
 | `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it | the open tasks |  |
 | `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | its direct contents, its gates left out |  |
-| `has-material` | Deleting a folder that holds material, without `--force` |  | the material's top-level entries |
+| `has-material` | Deleting a folder that holds material, at any depth, without `--force` |  | the top-level material entries of its directory and of each folder under it |
 | `gate` | Moving a gate out of its folder | the gate |  |
 | `into-itself` | Moving a folder inside itself | the folder | the destination |
 | `exists` | The destination is taken: a path for a move or a create, a directory for a backup, a database for init --ids-from |  | the taken path |
@@ -452,7 +452,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `complete` | Claiming a task that is complete | the task |  |
 | `bound` | marker bind on a directory already bound to another live folder, without --force | the folder it is bound to | the marker.json |
 
-For `cycle`, `problems` also names the input fields whose edges close it.
+For `cycle`, `problems` also names every input field whose new edge lies on that cycle, in cycle order.
 
 ## Commands
 
@@ -753,7 +753,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder move
 
-`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created. A case-only rename is a move. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`.
+`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created. A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`.
 
 ```json
 { "$id": "folder-move", "$defs": {
@@ -771,7 +771,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder delete
 
-`koan folder delete <folder> [--contents] [--force]`. Removes it and everything under it, gates included. Refused: `not-empty` without `--contents`, `has-material` without `--force`.
+`koan folder delete <folder> [--contents] [--force]`. Removes it and everything under it, gates included. Refused: `not-empty` without `--contents`, then `has-material` without `--force`, checked in that order.
 
 ```json
 { "$id": "folder-delete", "$defs": {
@@ -956,7 +956,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 parts, folders and tasks together. The batch is read as the tree it would leave, so a part can name a folder or a label that another part makes, in any order.
 
-- **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch; missing parents are made, as `folder create` makes them.
+- **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch as `exists`; missing parents are made, as `folder create` makes them.
 - **Tasks** go in their own `folder`, or the batch's `folder`, or the root. A task's folder can be one the batch makes.
 - **Labels** name a task within the batch only. Each is defined once, and takes no end and no material: `$a.start` is `invalid-input`. Labels are never stored.
 - **Edges** are written from either end, as on the command line, with labels allowed wherever an `edge-ref` is.
