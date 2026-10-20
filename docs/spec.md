@@ -132,6 +132,8 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 
 A file koan can't read, or a working directory it can't resolve, is `io`, with the file's absolute path; standard input that can't be read is `io` with no path.
 
+**The home directory.** `~` is `HOME`. A command that uses the root, which is every command but `version`, finds it as part of checking the root's state, after the input's shape: `HOME` unset, empty or not an absolute path is `io`, with no path. `version` never reads it.
+
 **Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens; `--help` alone prints usage text instead, to standard output with exit 0: `koan --help` for every command, `koan <command> --help` for one. `--help` with anything else is an unknown option, and so is `-h`. Standard error gets at most one line, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings. Callers read the envelope, never standard error.
 
 | Exit | Means |
@@ -362,7 +364,7 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | --- | --- | --- | --- | --- |
 | `pending-filesystem` | A path returned belongs to a change whose filesystem steps are still running | any read | the tasks and folders whose paths are pending | the paths returned, where they are going |
 | `pending-step` | Steps are pending with no write carrying them out: this write failed one, an earlier write crashed, or a step waits behind an earlier change's step on the same path | any command |  | the paths the steps touch |
-| `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination when it has one, in seq order: the steps that found both or neither, not the rest of their changes |
+| `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination when it has one, in seq order: the steps that found both, neither or material, not the rest of their changes |
 | `missing-notes` | No file at a notes path; it reads as empty notes | `task show`, `folder show`, `context` | the task or folder | its notes path |
 | `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `batch` | the complete tasks |  |
 | `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |
@@ -864,7 +866,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### init
 
-`koan init [--ids-from]`. Makes `~/koan-root`, its `tree/` and `archived/`, and the database; run again, it changes nothing that is there and reports what it found. `--ids-from` sets the first ID a new root issues; given for a root that already has a database, it is refused with `exists`. koan's own names in the root are `koan.db`, `koan.db-wal`, `koan.db-shm`, `koan.db-journal` (the rollback journal SQLite writes while init creates the database, before WAL mode is set, and may leave behind when init is cut short), and `tree/` and `archived/` as directories, byte for byte; anything else is `not-a-root`, with every such path in `paths`, in byte order, and a `~/koan-root` that isn't a directory is `not-a-root` with the root as its path. not-a-root is checked before `exists`. init takes the write lock once the root directory exists, so it can fail with `busy`. A database with format 0 and no tables is an unfinished init, which init finishes and lists in `created`; any other database in another format, or a corrupt one, fails init as it fails every command. Refused: `not-a-root`, `exists`.
+`koan init [--ids-from]`. Makes `~/koan-root`, its `tree/` and `archived/`, and the database; run again, it changes nothing that is there and reports what it found. `--ids-from` sets the first ID a new root issues; given for a root that already has a database, it is refused with `exists`. koan's own names in the root are `koan.db`, `koan.db-wal`, `koan.db-shm`, `koan.db-journal` (the rollback journal SQLite writes while init creates the database, before WAL mode is set, and may leave behind when init is cut short) as regular files, and `tree/` and `archived/` as directories, byte for byte, without following a symlink; anything else is `not-a-root`, with every such path in `paths`, in byte order, and a `~/koan-root` that isn't a directory is `not-a-root` with the root as its path. not-a-root is checked before `exists`. init takes the write lock once the root directory exists, so it can fail with `busy`. A database with format 0 and no tables is an unfinished init, which init finishes and lists in `created`; any other database in another format, or a corrupt one, fails init as it fails every command. init checks the database it finds, and `--ids-from`, before it makes `tree/`, `archived/` or anything else, so an init that fails for what it found makes nothing. Refused: `not-a-root`, `exists`.
 
 ```json
 { "$id": "init", "$defs": {
