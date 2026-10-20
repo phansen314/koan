@@ -512,8 +512,10 @@ Tasks in tree order: open ones unless `--state` says otherwise, gates included. 
   "filter": { "type": "object", "properties": {
     "folder":    { "$ref": "types#/$defs/folder-ref", "default": "/" },
     "recursive": { "type": "boolean", "default": true, "description": "false: only the tasks directly in the folder." },
-    "tags_any":  { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "uniqueItems": true, "default": [] },
-    "tags_all":  { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "uniqueItems": true, "default": [] } } },
+    "tags_any":  { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "uniqueItems": true, "default": [],
+                   "description": "Only tasks holding at least one of these tags; empty filters nothing." },
+    "tags_all":  { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "uniqueItems": true, "default": [],
+                   "description": "Only tasks holding every one of these tags; empty filters nothing. Given with tags_any, a task must pass both." } } },
   "input": { "type": "object", "allOf": [ { "$ref": "#/$defs/filter" } ], "properties": {
     "state":     { "type": "array", "items": { "$ref": "types#/$defs/state" }, "uniqueItems": true, "minItems": 1, "default": ["open"] },
     "readiness": { "type": "array", "items": { "enum": ["ready", "blocked"] }, "uniqueItems": true, "minItems": 1,

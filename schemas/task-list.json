@@ -20,7 +20,8 @@
             "$ref": "types#/$defs/tag"
           },
           "uniqueItems": true,
-          "default": []
+          "default": [],
+          "description": "Only tasks holding at least one of these tags; empty filters nothing."
         },
         "tags_all": {
           "type": "array",
@@ -28,7 +29,8 @@
             "$ref": "types#/$defs/tag"
           },
           "uniqueItems": true,
-          "default": []
+          "default": [],
+          "description": "Only tasks holding every one of these tags; empty filters nothing. Given with tags_any, a task must pass both."
         }
       }
     },
