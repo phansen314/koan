@@ -33,15 +33,30 @@ type Pending struct {
 type Outcome struct {
 	// Done is the steps carried out, each directory they touched flushed.
 	Done []int64
-	// Stuck is the changes to set aside: each is marked stuck, every step
-	// of it.
-	Stuck    []int64
-	Warnings []cli.Warning
+	// Stuck is the steps that stuck, each with its step rewritten to
+	// record what it found. Each is marked stuck with the rest of its
+	// change.
+	Stuck []Pending
 }
 
 // Steps carries out filesystem steps, oldest first.
 type Steps interface {
 	Carry(rows []Pending) Outcome
+	// Warnings is what the rows left say once a write is done with them:
+	// live are still pending, stuck are set aside.
+	Warnings(live, stuck []Pending) []cli.Warning
+}
+
+// Fault, when a test sets it, is called at each point where a write can
+// be cut short, which point names. A test crashes the process there, or,
+// at a filesystem step, returns an error for the operating system
+// refusing it. Nothing but tests sets it.
+var Fault func(point string) error
+
+func fault(point string) {
+	if Fault != nil {
+		Fault(point)
+	}
 }
 
 // Change is steps 3 to 5 of a write: inside BEGIN IMMEDIATE it resolves
@@ -62,45 +77,62 @@ type Change func(tx *Tx) (result any, warnings []cli.Warning, err error)
 //  8. Release the lock.
 //
 // Once COMMIT succeeds the write succeeds, whatever then happens to its
-// filesystem steps.
+// filesystem steps. Once the lock is taken, the result or the error
+// carries what the steps left pending or stuck say.
 func (s *Store) Write(change Change) (any, []cli.Warning, *cli.Error) {
 	lock, e := TakeLock(s.Root.Dir, s.Root.Path)
 	if e != nil {
 		return nil, nil, e
 	}
 	defer lock.Release()
-	warnings, e := s.finish()
-	if e != nil {
-		return nil, warnings, e
+	result, warnings, e := s.write(change)
+	return result, append(warnings, s.left()...), e
+}
+
+func (s *Store) write(change Change) (any, []cli.Warning, *cli.Error) {
+	if e := s.finish(); e != nil {
+		return nil, nil, e
 	}
 
 	tx, e := s.begin("BEGIN IMMEDIATE")
 	if e != nil {
-		return nil, warnings, e
+		return nil, nil, e
 	}
-	result, w, err := change(tx)
+	result, warnings, err := change(tx)
 	if err == nil {
 		err = tx.err
 	}
 	if err != nil {
 		e := asError(err, s.Root.Database, tx.archivePath)
 		tx.exec("ROLLBACK")
-		return nil, warnings, e
+		return nil, nil, e
 	}
+	fault("commit")
 	if _, err := s.db.conn.ExecContext(tx.ctx, "COMMIT"); err != nil {
 		tx.exec("ROLLBACK")
-		return nil, warnings, sqliteError(err, s.Root.Database)
+		return nil, nil, sqliteError(err, s.Root.Database)
 	}
-	warnings = append(warnings, w...)
+	fault("committed")
 
 	if tx.steps {
 		// Past COMMIT nothing fails the write. Rows that couldn't be
 		// deleted stay pending, and the next write carries them out
 		// again, which is harmless.
-		more, _ := s.finish()
-		warnings = append(warnings, more...)
+		s.finish()
 	}
 	return result, warnings, nil
+}
+
+// left is what the pending rows say once a write is done with them.
+func (s *Store) left() []cli.Warning {
+	if s.Steps == nil {
+		return nil
+	}
+	live, stuck, err := pendingRows(context.Background(), s.db.conn)
+	if err != nil {
+		return nil
+	}
+	return s.Steps.Warnings(live, stuck)
 }
 
 // Read runs fn in one read transaction, so it sees one committed state.
@@ -129,49 +161,71 @@ func (s *Store) begin(stmt string) (*Tx, *cli.Error) {
 	return &Tx{conn: s.db.conn, ctx: ctx, Now: core.FormatTimestamp(time.Now())}, nil
 }
 
-// finish carries out the steps left pending, skipping stuck ones, then
-// deletes the rows of those done and marks the stuck changes, in one
-// transaction.
-func (s *Store) finish() ([]cli.Warning, *cli.Error) {
-	if s.Steps == nil {
-		return nil, nil
-	}
-	ctx := context.Background()
-	rows, err := s.db.conn.QueryContext(ctx, "SELECT seq, change, step FROM pending WHERE stuck = 0 ORDER BY seq")
+// querier is a connection or a transaction.
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// pendingRows reads the pending rows, oldest first: live are still to be
+// carried out, stuck are set aside.
+func pendingRows(ctx context.Context, q querier) (live, stuck []Pending, err error) {
+	rows, err := q.QueryContext(ctx, "SELECT seq, change, step, stuck FROM pending ORDER BY seq")
 	if err != nil {
-		return nil, sqliteError(err, s.Root.Database)
+		return nil, nil, err
 	}
-	var pending []Pending
+	defer rows.Close()
 	for rows.Next() {
 		var p Pending
 		var step string
-		if err := rows.Scan(&p.Seq, &p.Change, &step); err != nil {
-			rows.Close()
-			return nil, sqliteError(err, s.Root.Database)
+		var st bool
+		if err := rows.Scan(&p.Seq, &p.Change, &step, &st); err != nil {
+			return nil, nil, err
 		}
 		p.Step = json.RawMessage(step)
-		pending = append(pending, p)
+		if st {
+			stuck = append(stuck, p)
+		} else {
+			live = append(live, p)
+		}
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, sqliteError(err, s.Root.Database)
+	return live, stuck, rows.Err()
+}
+
+// Pending reads the pending rows as the transaction sees them, oldest
+// first: live are still to be carried out, stuck are set aside.
+func (t *Tx) Pending() (live, stuck []Pending, err error) {
+	return pendingRows(t.ctx, t.conn)
+}
+
+// finish carries out the steps left pending, skipping stuck ones, then
+// deletes the rows of those done and marks the stuck changes, in one
+// transaction.
+func (s *Store) finish() *cli.Error {
+	if s.Steps == nil {
+		return nil
+	}
+	pending, _, err := pendingRows(context.Background(), s.db.conn)
+	if err != nil {
+		return sqliteError(err, s.Root.Database)
 	}
 	if len(pending) == 0 {
-		return nil, nil
+		return nil
 	}
 	out := s.Steps.Carry(pending)
 	if len(out.Done) == 0 && len(out.Stuck) == 0 {
-		return out.Warnings, nil
+		return nil
 	}
+	fault("delete")
 	tx, e := s.begin("BEGIN IMMEDIATE")
 	if e != nil {
-		return out.Warnings, e
+		return e
 	}
 	for _, seq := range out.Done {
 		tx.exec("DELETE FROM pending WHERE seq = ?", seq)
 	}
-	for _, change := range out.Stuck {
-		tx.exec("UPDATE pending SET stuck = 1 WHERE change = ?", change)
+	for _, p := range out.Stuck {
+		tx.exec("UPDATE pending SET step = ? WHERE seq = ?", string(p.Step), p.Seq)
+		tx.exec("UPDATE pending SET stuck = 1 WHERE change = ?", p.Change)
 	}
 	if tx.err == nil {
 		tx.exec("COMMIT")
@@ -180,9 +234,9 @@ func (s *Store) finish() ([]cli.Warning, *cli.Error) {
 		e := sqliteError(tx.err, s.Root.Database)
 		tx.err = nil
 		tx.exec("ROLLBACK")
-		return out.Warnings, e
+		return e
 	}
-	return out.Warnings, nil
+	return nil
 }
 
 // Tx is one transaction: a write's, from BEGIN IMMEDIATE to COMMIT, or a
@@ -235,10 +289,17 @@ func (t *Tx) fail(err error) bool {
 	return t.err != nil
 }
 
+// NextSeq is the seq the next step added will have.
+func (t *Tx) NextSeq() (int64, error) {
+	var seq int64
+	err := t.QueryRow("SELECT coalesce(max(seq), 0) + 1 FROM pending").Scan(&seq)
+	return seq, err
+}
+
 // AddStep adds a filesystem step to the change, and returns its seq.
 func (t *Tx) AddStep(step json.RawMessage) (int64, error) {
-	var seq int64
-	if err := t.QueryRow("SELECT coalesce(max(seq), 0) + 1 FROM pending").Scan(&seq); err != nil {
+	seq, err := t.NextSeq()
+	if err != nil {
 		return 0, err
 	}
 	if !t.steps {

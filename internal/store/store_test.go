@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -341,8 +342,8 @@ func (f *steps) Carry(rows []Pending) Outcome {
 		seqs = append(seqs, r.Seq)
 		switch {
 		case f.stuck[r.Change]:
-			if !slices.Contains(out.Stuck, r.Change) {
-				out.Stuck = append(out.Stuck, r.Change)
+			if !slices.ContainsFunc(out.Stuck, func(p Pending) bool { return p.Change == r.Change }) {
+				out.Stuck = append(out.Stuck, Pending{Seq: r.Seq, Change: r.Change, Step: json.RawMessage(`{"stuck":true}`)})
 			}
 		case f.fail[r.Seq]:
 		default:
@@ -353,7 +354,12 @@ func (f *steps) Carry(rows []Pending) Outcome {
 	return out
 }
 
-func pendingRows(t *testing.T, s *Store) (live, stuck []int64) {
+// Warnings says how many rows are left of each.
+func (f *steps) Warnings(live, stuck []Pending) []cli.Warning {
+	return []cli.Warning{{Kind: "left", Message: fmt.Sprintf("%d %d", len(live), len(stuck))}}
+}
+
+func pendingSeqs(t *testing.T, s *Store) (live, stuck []int64) {
 	t.Helper()
 	rows, err := s.db.conn.QueryContext(t.Context(), "SELECT seq, stuck FROM pending ORDER BY seq")
 	if err != nil {
@@ -390,7 +396,7 @@ func TestWriteSteps(t *testing.T) {
 
 	// With no Steps, everything stays pending.
 	write(t, s, func(tx *Tx) error { step(t, tx, `{"a":1}`); return nil })
-	if live, _ := pendingRows(t, s); !slices.Equal(live, []int64{1}) {
+	if live, _ := pendingSeqs(t, s); !slices.Equal(live, []int64{1}) {
 		t.Fatalf("pending %v", live)
 	}
 
@@ -412,7 +418,7 @@ func TestWriteSteps(t *testing.T) {
 	if change != first || second != first+1 {
 		t.Errorf("seqs %d, %d in change %d", first, second, change)
 	}
-	if live, _ := pendingRows(t, s); !slices.Equal(live, []int64{second}) {
+	if live, _ := pendingSeqs(t, s); !slices.Equal(live, []int64{second}) {
 		t.Errorf("pending after a failed step: %v", live)
 	}
 
@@ -431,7 +437,7 @@ func TestWriteSteps(t *testing.T) {
 		f.stuck[tx.change] = true
 		return nil
 	})
-	if live, got := pendingRows(t, s); len(live) != 0 || !slices.Equal(got, stuck) {
+	if live, got := pendingSeqs(t, s); len(live) != 0 || !slices.Equal(got, stuck) {
 		t.Errorf("stuck: live %v, stuck %v", live, got)
 	}
 	f.carried = nil
@@ -443,12 +449,46 @@ func TestWriteSteps(t *testing.T) {
 			}
 		}
 	}
-	if live, got := pendingRows(t, s); len(live) != 0 || !slices.Equal(got, stuck) {
+	if live, got := pendingSeqs(t, s); len(live) != 0 || !slices.Equal(got, stuck) {
 		t.Errorf("after: live %v, stuck %v", live, got)
 	}
 	st, _ := s.Stats()
 	if st.Pending != 2 || st.Stuck != 2 {
 		t.Errorf("stats %+v", st)
+	}
+}
+
+// Once the lock is taken, a write's result, and its error too, carries
+// what the rows left say; a step that stuck keeps the step it was given
+// back, and the rest of its change is marked with it.
+func TestWriteLeft(t *testing.T) {
+	_, s := newRoot(t, 1)
+	f := &steps{stuck: map[int64]bool{}, fail: map[int64]bool{}}
+	s.Steps = f
+	var a, b int64
+	w := write(t, s, func(tx *Tx) error {
+		a, b = step(t, tx, `{"a":1}`), step(t, tx, `{"a":2}`)
+		f.stuck[tx.change] = true
+		return nil
+	})
+	if len(w) != 1 || w[0].Message != "0 2" {
+		t.Errorf("warnings %+v", w)
+	}
+	var got string
+	if err := s.db.conn.QueryRowContext(t.Context(), "SELECT step FROM pending WHERE seq = ?", a).Scan(&got); err != nil || got != `{"stuck":true}` {
+		t.Errorf("stuck step %q, %v", got, err)
+	}
+	if err := s.db.conn.QueryRowContext(t.Context(), "SELECT step FROM pending WHERE seq = ? AND stuck = 1", b).Scan(&got); err != nil || got != `{"a":2}` {
+		t.Errorf("rest of the change %q, %v", got, err)
+	}
+
+	_, w, e := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
+		seq := step(t, tx, `{"c":1}`)
+		f.fail[seq] = true
+		return nil, nil, core.Conflict(core.RuleClaimed, []int64{1}, nil, "@1 is claimed")
+	})
+	if e == nil || len(w) != 1 || w[0].Message != "0 2" {
+		t.Errorf("refused: %+v, %+v", e, w)
 	}
 }
 

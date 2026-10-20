@@ -106,6 +106,8 @@ func (l logSteps) Carry(rows []Pending) Outcome {
 	return out
 }
 
+func (logSteps) Warnings(live, stuck []Pending) []cli.Warning { return nil }
+
 // startHelper runs the test binary as a helper.
 func startHelper(t *testing.T, home, kind, arg string) *exec.Cmd {
 	t.Helper()
