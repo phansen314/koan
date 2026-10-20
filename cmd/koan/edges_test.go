@@ -393,7 +393,9 @@ func TestTaskCreateEdges(t *testing.T) {
 	r = fails(t, home, "conflict", "cycle", "task", "create", "d", "--blocked-by", "2", "--blocks", "6")
 	golden(t, r, "task-create-cycle")
 	// The next ID would be the task's own.
-	fails(t, home, "invalid-input", "", "task", "create", "d", "--blocked-by", "7")
+	if r := fails(t, home, "invalid-input", "", "task", "create", "d", "--blocked-by", "7"); problemFields(r) != "/blocked_by/0" {
+		t.Errorf("its own ID: %s", r.Line())
+	}
 	fails(t, home, "not-found", "", "task", "create", "d", "--blocked-by", "/web.start")
 	if r := ok(t, home, "task", "create", "d"); r.Result()["id"] != json.Number("7") {
 		t.Errorf("a refused create issued an ID: %s", r.Line())
