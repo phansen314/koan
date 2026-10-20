@@ -99,7 +99,7 @@ A reference is a string, or an ID given as a JSON integer. Every form takes the 
 
 ## Invocation
 
-A command line is `koan <command> [<subject>] [<options>]`, and every command reads and writes the root at `~/koan-root`. There is no setting for the root: to keep it elsewhere, make `~/koan-root` a symlink before `koan init`. Tests point `HOME` at a scratch directory.
+A command line is `koan <command> [<subject>] [<options>]`, and every command reads and writes the root at `~/koan-root`. There is no setting for the root; PRD Layout says how to keep it elsewhere. Tests point `HOME` at a scratch directory.
 
 **Two ways to give the input, never both.** Every command has an input schema (under Commands).
 
@@ -874,7 +874,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### init
 
-`koan init [--ids-from]`. Makes `~/koan-root`, its `tree/` and `archived/`, and the database; run again, it changes nothing that is there and reports what it found. `--ids-from` sets the first ID a new root issues; given for a root that already has a database, it is refused with `exists`. koan's own names in the root are `koan.db`, `koan.db-wal`, `koan.db-shm`, `koan.db-journal` (the rollback journal SQLite writes while init creates the database, before WAL mode is set, and may leave behind when init is cut short) as regular files, and `tree/` and `archived/` as directories, byte for byte, without following a symlink; anything else is `not-a-root`, with every such path in `paths`, in byte order, and a `~/koan-root` that isn't a directory is `not-a-root` with the root as its path. not-a-root is checked before `exists`. init takes the write lock once the root directory exists, so it can fail with `busy`. A database with format 0 and no tables is an unfinished init, which init finishes and lists in `created`; any other database in another format, or a corrupt one, fails init as it fails every command. init checks the database it finds, and `--ids-from`, before it makes `tree/`, `archived/` or anything else, so an init that fails for what it found makes nothing. Refused: `not-a-root`, `exists`.
+`koan init [--ids-from]`. Makes `~/koan-root`, its `tree/` and `archived/`, and the database; run again, it changes nothing that is there and reports what it found. `--ids-from` sets the first ID a new root issues; given for a root that already has a database, which has issued IDs already, it is refused with `exists`. koan's own names in the root are `koan.db`, `koan.db-wal`, `koan.db-shm`, `koan.db-journal` (the rollback journal SQLite writes while init creates the database, before WAL mode is set, and may leave behind when init is cut short) as regular files, and `tree/` and `archived/` as directories, byte for byte, without following a symlink; anything else is `not-a-root`, with every such path in `paths`, in byte order, and a `~/koan-root` that isn't a directory is `not-a-root` with the root as its path. not-a-root is checked before `exists`. init takes the write lock once the root directory exists, so it can fail with `busy`. A database with format 0 and no tables is an unfinished init, which init finishes and lists in `created`; any other database in another format, or a corrupt one, fails init as it fails every command. init checks the database it finds, and `--ids-from`, before it makes `tree/`, `archived/` or anything else, so an init that fails for what it found makes nothing. Refused: `not-a-root`, `exists`.
 
 ```json
 { "$id": "init", "$defs": {
