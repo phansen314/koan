@@ -15,7 +15,7 @@
   "properties": {
     "ref": {
       "type": "string",
-      "description": "The kept-text pair, such as @41:docs/plan.md (/work/api:docs/plan.md); / for the root."
+      "description": "The kept-text pair, such as @41:docs/plan.md (/work/api:docs/plan.md); / for the root; /:<material> for material in the root."
     },
     "kind": {
       "enum": [

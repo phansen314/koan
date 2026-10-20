@@ -37,7 +37,7 @@ koan is task management for one person on one machine, driven mostly by agents s
 | A folder's `blocked_by`, inherited by everything in it; done when its contents are | Folders are containment only. Ordering is edges between tasks, and a folder orders work through its two gate tasks, `@F.start` and `@F.done`, made when first named |
 | `folder block`, `folder unblock`, `folder why` | Gone: a folder is ordered through its gates, with `task block` and `task why` |
 | `task done`, “done” | `task complete`, “complete”; the done gate keeps its name |
-| Writes report `dependents` on delete only | Every write reports `released` and `reblocked`, and `gates_made` |
+| Writes report `dependents` on delete only | Writes report what they released and blocked again, and the gates they made: `released`, `reblocked` and `gates_made` |
 | Git as the undo, with rules against branching | No git. Archive for finished work, `koan backup` for everything |
 | `doctor` tolerates damaged files of every kind | The database can't hold most of them; `doctor` checks the tree against it |
 | Claims in `~/.config/koan/state.json` | Claims in `koan.db` |
@@ -174,7 +174,7 @@ A write commits the database first and changes the tree after, from a list of fi
 1. Check the input's shape: fields, patterns, references as written. Nothing is read yet.
 2. Take the lock, and finish any filesystem steps an earlier write left pending, skipping stuck ones.
 3. `BEGIN IMMEDIATE`. Resolve every reference against the database as it stands.
-4. Check the tree for what the change needs: a destination path is free, a folder to delete holds no material unless `force`.
+4. Check the tree for what the change needs: a destination path is free, a folder to delete holds no material unless `force`. A destination is checked on disk as well: listing its parent directory, an entry by that name, or one differing from it only in case, refuses the change as `exists`, with that entry's path. A case-only rename's own directory is not in its way.
 5. Change the rows, check for cycles, and insert into `pending` the filesystem steps that bring the tree in line.
 6. `COMMIT`.
 7. Carry out the steps, fsync each directory they concern, whether this write changed it or found the step already done, then delete their rows in one transaction.
@@ -189,7 +189,7 @@ A write commits the database first and changes the tree after, from a list of fi
 | Make a folder's directory | it exists, holding `@notes.md` | `mkdir`, then an empty `@notes.md`, making whichever is missing |
 | Write notes | the file exists | writing the content the step holds to a temp file (below), then one `rename` into place |
 | Move notes or a directory | the source is gone and the destination exists | one `rename`, atomic on one filesystem; a case-only rename takes two, through a temporary name (below) |
-| Remove notes or a directory | the path is gone | `unlink`, or a recursive remove that can be run again. Unless its change was forced, a directory remove first looks for material, as step 4 does, and finding any it removes nothing and is stuck (below). |
+| Remove notes or a directory | the path is gone | `unlink`, or a recursive remove that can be run again. Unless its change was forced, a directory remove first looks for material, counted as a delete counts it (rules doc, Changes), as step 4 does, and finding any it removes nothing and is stuck (below). |
 | Archive | it sits in the archive | making the directories above it, writing its JSON through a temp file renamed into place beside where it goes, then one rename out of the tree |
 
 **Done when is judged by listing the parent directory** and comparing names byte for byte, never by `stat`. On a filesystem that ignores case, `@work` and `@Work` stat as one entry, so a case-only rename would find both its source and its destination.
@@ -208,7 +208,7 @@ A write commits the database first and changes the tree after, from a list of fi
 
 **Notes files.** Creating a task writes its `@<id>.md`, empty unless the input gives notes, so that it shows in Zed straight away. A missing notes file still reads as empty notes (T3).
 
-**Issuing IDs in a change.** A change issues IDs in the order it makes things: its folders, parents first, in tree order; then its tasks, in input order; then the gates its edges name, in the order those edges are given, each task's `blocked_by` before its `blocks`. A batch follows the same order, below.
+**Issuing IDs in a change.** A change issues IDs in the order it makes things: its folders, parents first, in tree order; then its tasks, in input order; then the gates its edges name: first the task `task block` is given, when that is a gate the folder lacks, then the rest in the order those edges are given, each task's `blocked_by` before its `blocks`. A batch follows the same order, below.
 
 **Making a gate.** When an edge names a gate the folder lacks, the same transaction issues it an ID, inserts its row with the default fields (`Start` or `Done`, `null` priority, no tags, empty extra), and adds a step writing an empty `@start.md` or `@done.md`. The result lists the gates it made. A @start.md or @done.md already there, made by hand, becomes the gate's notes, since the step is done once the file exists.
 
@@ -224,7 +224,7 @@ A write commits the database first and changes the tree after, from a list of fi
 
 Any refusal refuses the whole batch, and nothing is written.
 
-**Archiving.** One transaction removes the rows of everything that leaves, and every edge between it and what stays; sets each leaving ID's `issued.state` to `archived` and its `archive` to the path; and adds the archive step. The step carries the removed rows. It makes the directories above the item in the archive, writes the rows as JSON to a temp file renamed into place beside where the item will go, then renames the item out of the tree. A task whose notes file is missing is archived as its JSON alone, since a missing file reads as empty notes.
+**Archiving.** One transaction removes the rows of everything that leaves, and every edge between it and what stays; sets each leaving ID's `issued.state` to `archived` and its `archive` to the path (for a task archived without a notes file, its JSON); and adds the archive step. The step carries the removed rows. It makes the directories above the item in the archive, writes the rows as JSON to a temp file renamed into place beside where the item will go, then renames the item out of the tree. A task whose notes file is missing is archived as its JSON alone, since a missing file reads as empty notes.
 
 ## Concurrency
 
@@ -240,7 +240,7 @@ Writes are serialized by one lock; reads never wait on a writer or on that lock.
 | **Per connection** | `foreign_keys = ON`, `busy_timeout` and the three sync pragmas above are set on every open, since SQLite doesn't store them; `journal_mode = WAL` is stored in the file by `init`. |
 
 - **`doctor` reads one snapshot and takes no koan lock**, so no writer waits for it. `repair` is a write, and takes the lock like any other.
-- **A reader may see a change whose filesystem steps are still running**, between the commit and the last step. It then reports `pending-filesystem` beside any path it returns, and the path it gives is where the file is going. If steps are pending, the reader tries the lock without waiting. If it gets it, it checks pending again, since a write may have finished in between, and releases the lock at once. Steps still pending have no write carrying them out, because one crashed or failed a step, so the reader reports pending-step instead; the next write or repair finishes them.
+- **A reader may see a change whose filesystem steps are still running**, between the commit and the last step. It then reports `pending-filesystem` beside any path it returns, and the path it gives is where the file is going. If steps are pending, the reader tries the lock without waiting. If it gets it, it checks pending again, since a write may have finished in between, and releases the lock at once. Steps still pending have no write carrying them out, because one crashed or failed a step, or they wait behind an earlier change's step on the same paths, so the reader reports pending-step instead; the next write or repair finishes them.
 
 ## Invariants, enforced and tested
 
@@ -272,15 +272,15 @@ The surface is today's, with `task done` renamed `task complete`, and the folder
 
 | Command | Does | Result reports | Refused when |
 | --- | --- | --- | --- |
-| `task create <title>` | Makes a task in `--folder` (the root by default), with `--priority`, `--tags`, `--extra`, `--notes`, `--blocked-by`, `--blocks` | its ID; `gates_made`; `reblocked`; the `complete-blocker` warning | `cycle` |
+| `task create <title>` | Makes a task in `--folder` (the root by default), with `--priority`, `--tags`, `--extra`, `--notes`, `--blocked-by`, `--blocks` | its ID; `gates_made`; `reblocked`; the `complete-blocker` and `claimed-blocked` warnings | `cycle` |
 | `task show <ref>` | Reads one task: its fields, folder and path, gate, readiness, blockers with their state, what it blocks, claim, notes path | the record |  |
-| `task list` | Tasks in tree order, open ones unless `--state` says otherwise, gates included; filtered by `--folder` (a subtree), `--tags`, `--claimed`, with `--limit` (100 by default) and `--fields` | records; the total |  |
+| `task list` | Tasks in tree order, open ones unless `--state` says otherwise, gates included; filtered by `--folder` (a subtree, or with `--recursive=false` the folder alone), `--readiness`, `--tags-any`, `--tags-all`, `--claimed`, with `--limit` (100 by default) and `--fields` | records; the total |  |
 | `task frontier` | Ready, unclaimed tasks in work order, under `--folder` or everywhere, with `--limit` (100 by default) | records; the total |  |
 | `task why <ref>` | What a task waits on: its open blockers, and the ready tasks it waits on at any depth, which are what to work on | blockers; ready tasks |  |
 | `task update <ref>` | Changes title, priority, tags (add and remove) and `extra` (merged) | its ID |  |
 | `task complete <ref>` | Marks it complete and ends its claim | its ID; `released` |  |
-| `task reopen <ref>` | Marks it open again | its ID; `reblocked` |  |
-| `task block <ref>` | Adds edges, by `--blocked-by` and `--blocks` | its ID; `gates_made`; `reblocked`; the `complete-blocker` warning | `cycle` |
+| `task reopen <ref>` | Marks it open again | its ID; `reblocked`; the `claimed-blocked` warning |  |
+| `task block <ref>` | Adds edges, by `--blocked-by` and `--blocks` | its ID; `gates_made`; `reblocked`; the `complete-blocker` and `claimed-blocked` warnings | `cycle` |
 | `task unblock <ref>` | Removes edges, by the same options | its ID; `released` |  |
 | `task move <ref> --to <folder>` | Puts it in another folder or the root | its ID; its notes path; the `moved-claimed` warning | `gate` |
 | `task delete <ref>` | Removes it, its notes, its claim and its edges | `released` |  |
@@ -309,7 +309,7 @@ The surface is today's, with `task done` renamed `task complete`, and the folder
 | `where [path]` | Says which folder or task a path is in, in the tree or in a bound worktree | the kept-text pair, ID and path |  |
 | `context [path]` | Briefs an agent on the folder a path is in: its notes, its gates, its open tasks | the brief |  |
 | `marker bind <ref>`, `marker unbind` | Binds a directory, `--dir` or the current one, to a folder, or removes the binding | the marker | see Markers |
-| `init` | Makes `~/koan-root`, its `tree/` and `archived/`, and the database, issuing IDs from --ids-from; changes nothing that is there | the paths | `not-a-root` |
+| `init` | Makes `~/koan-root`, its `tree/` and `archived/`, and the database, issuing IDs from --ids-from; changes nothing that is there | the paths | `not-a-root`, `exists` |
 | `info`, `version` | Report the root's paths, format, state and next ID, and the binary's version; no lock | the report |  |
 | `doctor` | Checks the database and the tree against it; changes nothing | findings |  |
 | `repair` | Fixes the findings that lose nothing, by `--kinds` | what it fixed |  |
@@ -321,7 +321,7 @@ Every command prints exactly one line of JSON to standard output, and exits 0 on
 
 ```json
 {"ok": true,  "result": { … }, "warnings": [ … ]}
-{"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "…", "ids": [8, 10, 57], "paths": []}, "warnings": [ … ]}
+{"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "…", "ids": [8, 10, 57], "paths": [], "problems": [ … ], "archived": []}, "warnings": [ … ]}
 ```
 
 - **Writes return identities; reads return records.** A write's result names what it changed by ID, ready to pass to the next command. A record is exact only as of the call.
@@ -344,7 +344,7 @@ Every command prints exactly one line of JSON to standard output, and exits 0 on
 | `gates_made` | any change that writes edges | each gate made: folder, `start` or `done`, its new ID |
 | `labels` | batch | each label and the ID it got |
 | `removed` | delete | every task and folder removed, by ID |
-| `archived` | archive | where in the archive it went |
+| `archive`, `json`, `left` | archive | where in the archive it went, its JSON, and every ID that left |
 
 With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
@@ -353,8 +353,8 @@ With edges in an indexed table, finding what a change released or blocked again 
 | Warning | When |
 | --- | --- |
 | `pending-filesystem` | a path returned belongs to a change whose filesystem steps are still running |
-| `pending-step` | filesystem steps are pending with no write carrying them out: this write failed one, or an earlier write crashed; the next write or repair finishes them |
-| `stuck-step` | a step is set aside as stuck; every result carries it until a person keeps one copy and repair clears it |
+| `pending-step` | filesystem steps are pending with no write carrying them out: this write failed one, an earlier write crashed, or a step waits behind an earlier change's step on the same paths; the next write or repair finishes them |
+| `stuck-step` | a step is set aside as stuck; every result carries it until a person keeps one copy or moves the material out, and repair clears it |
 | `missing-notes` | a read of one task or folder (show, context) finds no file at its notes path; it reads as empty notes, and doctor looks for the file |
 | `complete-blocker` | an edge was added to the `blocked_by` of a complete task, which therefore holds nothing back |
 | `claimed-blocked` | the change made a claimed task wait again |
@@ -373,7 +373,7 @@ Every failure has one kind. Each refusal in the rules doc maps to one, and a `co
 | `conflict` | The input is valid, but the tree's state refuses it. Its `rule` says why. |
 | `busy` | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry. |
 | `not-initialized` | There is no root, or no database in it. Run `init`. |
-| `corrupt` | The database failed doctor's `integrity_check` or `foreign_key_check`, or SQLite reported `SQLITE_CORRUPT` or `SQLITE_NOTADB` while a command ran. No other command checks the whole database. |
+| `corrupt` | SQLite reported `SQLITE_CORRUPT` or `SQLITE_NOTADB` while a command ran, doctor included. When doctor's own `integrity_check` or `foreign_key_check` fails, doctor still succeeds and reports it as the `corrupt` finding. No other command checks the whole database. |
 | `unsupported-format` | The database is in a format this binary doesn't read. |
 | `io` | The operating system refused something. |
 | `internal` | A bug in koan. |
@@ -386,9 +386,9 @@ Every failure has one kind. Each refusal in the rules doc maps to one, and a `co
 | `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it. |
 | `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents`. |
 | `has-material` | Deleting a folder that holds material, without `--force`. The error lists it. |
-| `gate` | Moving a gate out of its folder. |
+| `gate` | Moving a gate, even to its own folder. |
 | `into-itself` | Moving a folder inside itself (I3). |
-| `exists` | The destination is taken: a path for a move or a create, a directory for a backup. |
+| `exists` | The destination is taken: a path for a move or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from. |
 | `not-a-root` | `init` found `~/koan-root` holding something that isn't koan's. |
 | `checkout` | marker bind on a directory whose .git is a directory, a checkout rather than a worktree, without --force. |
 | `foreign-files` | marker bind or marker unbind on a .koan/ that holds files that aren't koan's. |
@@ -402,13 +402,14 @@ A marker binds a directory outside the tree, usually a code worktree, to a folde
 - **The nearest marker is the one.** A path outside the tree is in the folder of the nearest marker at or above it, as with `.git`. The look stops at the first `marker.json`, whatever its state, so an unusable one is never passed over for one further up.
 - **Inside the tree, markers are never looked at.** Where a path sits already says which folder it is in.
 - **The ID decides; the path is a hint.** A marker follows its folder through moves and renames. A `path` that no longer matches is a `stale-marker` warning, and binding again refreshes it.
-- **A marker whose folder is gone binds nothing.** For an archived folder, `where` and `context` say where in the archive it went, from the index; for a deleted one, that it was deleted. `marker bind` replaces such a marker freely, as it does one for the same folder or one in a format it doesn't read, which binds nothing either; replacing one bound to another live folder needs --force (bound).
+- **A marker whose folder is gone binds nothing.** For an archived folder, `where` and `context` say where in the archive it went, from the index; for a deleted one, that it was deleted. Nor does a marker bind anything when it was copied or moved (its `dir` isn't where it is), can't be read as JSON, lacks a field, or is in a format koan doesn't read. Every marker that binds nothing is treated alike: `where` and `context` fail with `not-found`, the message saying why, and the look still stops there. `marker bind` replaces such a marker freely, as it does one for the same folder; replacing one bound to another live folder needs --force (bound).
 - **koan keeps no list of markers.** A worktree is removed by git or `rm` without koan knowing, so a list would go stale at once. A folder deleted or archived under a bound worktree shows when the worktree is next used, through `where` and `context`.
 - **Reads never write a marker.** Only `marker bind` and `marker unbind` do.
 - **Out of git's way.** The `*` in `.koan/.gitignore` matches everything there, itself included, so `git status` never shows it and `git worktree remove` needs no `--force`.
 - **Bind worktrees, not checkouts.** A marker binds every directory under it with no nearer one, so `marker bind` refuses a directory whose `.git` is a directory, unless forced (checkout).
 - **`.koan/` holds only koan's own files.** `marker bind` and `marker unbind` refuse to touch a `.koan/` that holds anything else (foreign-files).
-- **Written whole.** `.gitignore` first, then `marker.json` through a temp file renamed into place.
+- **Written whole.** `.gitignore` first, then `marker.json` through a temp file renamed into place. `marker unbind` removes them in the other order, `marker.json`, then `.gitignore`, then `.koan/` itself.
+- **Checked in order.** `marker bind` checks a directory under `~/koan-root` (`invalid-input`) first, then `foreign-files`, then `checkout`, then `bound`.
 
 ## Operations
 
@@ -422,7 +423,7 @@ koan init
 ```
 
 - **One binary, no system libraries.** The SQLite driver is `modernc.org/sqlite`, SQLite translated to Go, so there is no cgo and no C compiler at install time. It adds several MB to the binary and lengthens the first build. **Chosen** over `ncruces/go-sqlite3` (SQLite as WebAssembly), which would also work.
-- **`init`** makes `~/koan-root`, its `tree/` and `archived/`, and `koan.db` in WAL mode with the current format. Run again, it changes nothing that is there and reports what it found. init --ids-from N makes the root issue IDs from N; info reports the next ID a root would issue, which is the N to pass when a new root replaces it. It refuses a root that holds anything else (`not-a-root`): koan's own names there are exactly `koan.db`, `koan.db-wal`, `koan.db-shm`, `koan.db-journal`, and `tree/` and `archived/` as directories, compared byte for byte, and a `~/koan-root` that isn't a directory is not a root either. After making the root directory, init takes the write lock for the rest, like any write. It makes the database in one transaction, schema, format and `root` row together, so a crash leaves either no database or one with format 0 and no tables at all; init takes that one as unfinished and finishes it, while every other command sees it as `unsupported-format`. To keep the root elsewhere, make `~/koan-root` a symlink first.
+- **`init`** makes `~/koan-root`, its `tree/` and `archived/`, and `koan.db` in WAL mode with the current format. Run again, it changes nothing that is there and reports what it found. init --ids-from N makes the root issue IDs from N; info reports the next ID a root would issue, which is the N to pass when a new root replaces it. Given --ids-from for a root that already has a database, it refuses (`exists`), since that root has issued IDs already. It refuses a root that holds anything else (`not-a-root`), and checks that first: koan's own names there are exactly `koan.db`, `koan.db-wal`, `koan.db-shm`, `koan.db-journal`, and `tree/` and `archived/` as directories, compared byte for byte, and a `~/koan-root` that isn't a directory is not a root either. After making the root directory, init takes the write lock for the rest, like any write. It makes the database in one transaction, schema, format and `root` row together, so a crash leaves either no database or one with format 0 and no tables at all; init takes that one as unfinished and finishes it, while every other command sees it as `unsupported-format`. To keep the root elsewhere, make `~/koan-root` a symlink first.
 - **`backup <dir>`** writes a copy of everything into an empty directory, without holding the write lock while it copies. It takes the lock just long enough for `VACUUM INTO`, copies the tree and the archive as files, then runs doctor on the copy and on the live root. Findings the live root has too, such as a stuck step, are copied faithfully and reported, not fixed. Findings only the copy has mean a write landed mid-copy, at worst a folder moved and missed altogether; backup then copies once more, holding the lock throughout. A writer kept waiting more than 5 seconds by that copy fails with busy, which is safe to retry; it happens only in this rare fallback, and is not a bug. If that copy still has findings of its own, backup reports them and stops. Files are copied, never hard-linked, since an editor that writes in place would change the backup too. Copying `koan.db` by hand while koan runs is not a backup.
 - **Restoring** is putting a backup in place of `~/koan-root` and running `koan doctor`. A backup carries the claims of its moment, which a restore brings back with it.
 - **Uninstalling** is removing the binary, and `~/koan-root` if its work isn't wanted.
@@ -436,14 +437,14 @@ The only outside changes left are hand changes to `@` entries in the tree (a ren
 | Finding | Means | `repair` |
 | --- | --- | --- |
 | `pending-step` | A change's filesystem steps were cut short | Carries them out, as the next write would. |
-| `stuck-step` | A step found both its source and destination holding content, or neither, or a remove found material | — a person keeps one copy, or moves the material out; repair then retries every stuck change, in seq order |
+| `stuck-step` | A step found both its source and destination holding content, or neither, or a remove found material | — a person keeps one copy, or moves the material out; repair then retries every stuck change, in seq order. The finding is never marked repairable, since a person must act first, but repair retries it all the same, and a change that now succeeds is fixed |
 | `stray-directory` | An `@<name>` directory that is no folder at that path (T2), often a folder renamed by hand. An `@.case-<seq>` directory named by a pending step is that step's, and shows as `pending-step` | Moves it back to a folder whose directory is missing, when exactly one stray and one such folder match: they share a parent (a rename in Zed), or every @\<id>.md in it, at least one, belongs to that folder (a drag). Otherwise reports it, and never decides by name alone. Works top-down, so a parent moved back takes its subfolders with it. |
 | `missing-directory` | A folder has no directory at its path (T1) | Makes an empty one. Its notes and material are gone, and the finding says so. |
 | `case-differs` | A folder's directory is spelled in another case (T1) | Renames it to the folder's name, through a temporary name as a case-only rename is. |
 | `misplaced-notes` | A task's notes sit in another folder's directory (T4) | Moves them back, unless notes are already there. |
 | `orphan-notes` | An `@<id>.md` with no live task, whether deleted, archived or never issued, or a `@start.md` or `@done.md` with no gate (T4, T6). The finding says which | Removes them when empty; otherwise leaves them. |
-| `stray-entry` | Any other `@` entry, such as a hand-made `@Notes.md` (T6). An `@.tmp-<seq>` file named by a pending step is that step's, and shows as `pending-step` | — reported only |
-| `invalid-row` | A row breaks a rule SQL can't check, such as a name pattern, a cycle or a gate's placement, after a hand edit of the database | — a person fixes it |
+| `stray-entry` | Any other `@` entry, such as a hand-made `@Notes.md`, or an `@<id>.md` whose ID is a live folder's (T6). An `@.tmp-<seq>` file named by a pending step is that step's, and shows as `pending-step` | — reported only |
+| `invalid-row` | A row breaks an invariant SQL can't check, after a hand edit of the database. Doctor checks I3 (every parent chain reaches the root), I4, I6, I7, I9 (names, tags, titles, timestamps and integers), I11 and I12, and names the invariant broken | — a person fixes it |
 | `corrupt` | The database fails `PRAGMA integrity_check` or `foreign_key_check` | — restore from a backup |
 
 Repair runs only when asked: as `repair`, and for its own pending steps, as the first thing a write does. Reads never repair; they report what they trip over beside their results. repair takes the kinds in the order of the table, so a directory renamed by hand is moved back before an empty one could be made in its place.

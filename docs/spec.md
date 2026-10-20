@@ -150,7 +150,7 @@ Every command prints one envelope: `ok`, then either `result` or `error`, then `
 
 ```json
 {"ok": true,  "result": {"id": 57, "changed": true, "released": [58]}, "warnings": []}
-{"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "@8 would wait on itself through @10 and @57", "ids": [8, 10, 57], "paths": [], "problems": [], "archived": []}, "warnings": []}
+{"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "@8 would wait on itself through @10 and @57", "ids": [8, 10, 57], "paths": [], "problems": [{"field": "/blocked_by/0", "reason": "closes the cycle"}], "archived": []}, "warnings": []}
 ```
 
 ```json
@@ -306,7 +306,7 @@ What `where` returns: what a reference or a path on disk names, both ways.
   "type": "object",
   "required": ["ref", "kind", "id", "folder", "gate", "material", "file", "marker"],
   "properties": {
-    "ref":      { "type": "string", "description": "The kept-text pair, such as @41:docs/plan.md (/work/api:docs/plan.md); / for the root." },
+    "ref":      { "type": "string", "description": "The kept-text pair, such as @41:docs/plan.md (/work/api:docs/plan.md); / for the root; /:<material> for material in the root." },
     "kind":     { "enum": ["task", "folder", "root", "material"] },
     "id":       { "anyOf": [ { "$ref": "types#/$defs/id" }, { "type": "null" } ], "description": "The task's or folder's ID; for material, its folder's; null for the root." },
     "folder":   { "$ref": "types#/$defs/folder-at", "description": "The folder it is, or is in." },
@@ -333,7 +333,7 @@ What `doctor` reports and `repair` acts on. The kinds are the PRD's.
 | `misplaced-notes` | null | the task | where they are, where they belong | yes, unless notes are already there |
 | `orphan-notes` | `deleted`, `archived`, `never-issued` or `no-gate` | the ID in the name, if any | the file | when empty |
 | `stray-entry` | null |  | the entry | no |
-| `invalid-row` | the rule broken | the rows |  | no |
+| `invalid-row` | the invariant broken: `I3`, `I4`, `I6`, `I7`, `I9`, `I11` or `I12` | the rows |  | no |
 | `corrupt` | `integrity` or `foreign-key` |  | the database | no |
 
 ```json
@@ -362,7 +362,7 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | --- | --- | --- | --- | --- |
 | `pending-filesystem` | A path returned belongs to a change whose filesystem steps are still running | any read | the tasks and folders whose paths are pending | the paths returned, where they are going |
 | `pending-step` | Steps are pending with no write carrying them out: this write failed one, an earlier write crashed, or a step waits behind an earlier change's step on the same path | any command |  | the paths the steps touch |
-| `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination when it has one, in seq order: the steps that found both or neither, not the rest of their changes |
+| `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination when it has one, in seq order: the steps that found both, neither or material, not the rest of their changes |
 | `missing-notes` | No file at a notes path; it reads as empty notes | `task show`, `folder show`, `context` | the task or folder | its notes path |
 | `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `batch` | the complete tasks |  |
 | `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |
@@ -430,7 +430,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
 | `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
 | `not-initialized` | 1 | There is no root, or no database in it. Run `init` | `paths`: what is missing: the root when there is none, else the database |
-| `corrupt` | 1 | `doctor`'s integrity or foreign-key check failed, or SQLite reported the file corrupt while a command ran | `paths`: the database |
+| `corrupt` | 1 | SQLite reported the file corrupt while a command ran, `doctor` included. A failed integrity or foreign-key check in `doctor` is its `corrupt` finding, not this error | `paths`: the database |
 | `unsupported-format` | 1 | The database is in a format this binary doesn't read | the message names both formats |
 | `io` | 1 | The operating system refused something | `paths`: what it refused |
 | `internal` | 1 | A bug in koan |  |
@@ -444,10 +444,10 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `claimed` | The task already has a claim | the task |  |
 | `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it | the open tasks |  |
 | `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | its direct contents, its gates left out |  |
-| `has-material` | Deleting a folder that holds material, at any depth, without `--force` |  | the top-level material entries of its directory and of each folder under it, each as a material reference by path in the tree, such as `/work/api:docs`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it |
-| `gate` | Moving a gate out of its folder | the gate |  |
+| `has-material` | Deleting a folder that holds material, at any depth, without `--force`. Material here is as the rules doc's Changes counts it for a delete: stray `@` entries and other tasks' notes that hold content count, and `.DS_Store` never does |  | the top-level material entries of its directory and of each folder under it, each written as the folder's path, `:`, then the entry's name, such as `/work/api:docs` or `/work/api:@Notes.md`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it |
+| `gate` | Moving a gate, even to its own folder | the gate |  |
 | `into-itself` | Moving a folder inside itself | the folder | the destination |
-| `exists` | The destination is taken: a path for a move or a create, a directory for a backup, a database for init --ids-from |  | the taken path |
+| `exists` | The destination is taken: a path for a move or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from |  | the taken path: a folder path when a folder has it, else the entry's path on disk |
 | `not-a-root` | `init` found `~/koan-root` holding something that isn't koan's |  | what it found |
 | `checkout` | `marker bind` on a directory whose `.git` is a directory, without `--force` |  | the directory |
 | `foreign-files` | `marker bind` or `marker unbind` on a `.koan/` that holds files that aren't koan's |  | those files |
@@ -458,9 +458,9 @@ For `cycle`, `problems` also names every input field whose new edge lies on that
 
 ## Commands
 
-Each command has one schema, named after it, holding its `input` and its `result`. Options are the input's fields in kebab-case; the subject is the field marked as such. Every command can also fail with `not-found` and `invalid-input`, and give `pending-step`, `stuck-step` and `pending-filesystem`; only the warnings and refusals beyond those are listed.
+Each command has one schema, named after it, holding its `input` and its `result`. Options are the input's fields in kebab-case; the subject is the field marked as such. Every command can also fail with `not-found` and `invalid-input`, and with `case-mismatch` wherever it takes a path; every command can give `pending-step` and `stuck-step`, and every read `pending-filesystem`. Only the warnings and refusals beyond those are listed.
 
-A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. changed is in the result of every write that can change nothing: task and folder update, complete, reopen, block, unblock, release, and both moves, which change nothing when the destination is where the item already is.
+A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. changed is in the result of every write that can change nothing: task and folder update, complete, reopen, block, unblock, release, and both moves, which change nothing when the destination is where the item already is. A gate is the exception: `task move` refuses it (`gate`) even to its own folder.
 
 ### Tasks
 
@@ -600,7 +600,7 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
 
 #### task block, task unblock
 
-`koan task block <task> [--blocked-by] [--blocks]` adds edges; `koan task unblock <task> [--blocked-by] [--blocks]` removes them. At least one list must hold an entry. Block makes any gate it names, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unblock never makes a gate: naming one the folder lacks is `not-found`.
+`koan task block <task> [--blocked-by] [--blocks]` adds edges; `koan task unblock <task> [--blocked-by] [--blocks]` removes them. At least one list must hold an entry. Block makes any gate it names, its subject included, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unblock never makes a gate: naming one the folder lacks is `not-found`.
 
 ```json
 { "$id": "task-block", "$defs": {
@@ -755,7 +755,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder move
 
-`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created. A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`.
+`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created. A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`, checked in that order.
 
 ```json
 { "$id": "folder-move", "$defs": {
@@ -816,6 +816,10 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 `koan where <ref>` or `koan where --file <path>`: exactly one. Says what a reference or a path on disk names, both ways. A path outside the tree is found through the nearest marker; with none above it, it is not-found. A path elsewhere under \~/koan-root is not-found too, and one inside archived/ comes with archived filled in, from the ID in its name. An archived ID is `not-found`, with where it went. Warns `stale-marker`.
 
+- **A path found through a marker** is `kind` `folder`, with the bound folder's `id`, `ref` and `folder`, `material` null, `file` the path as given, and `marker` the marker.json. A marker that binds nothing, for whatever reason, is `not-found`, with a message saying why.
+- **A path in the tree** names what koan keeps there: a folder's directory is the folder; its `@notes.md` is the folder; an `@<id>.md` where that task's notes belong, or a gate's `@start.md` or `@done.md`, is the task; an `@.tmp-<seq>` or `@.case-<seq>` is the folder whose directory holds it; and a path whose first part below a folder's directory doesn't start with `@` is material. Anything else is `not-found`: an `@<id>.md` where its task's notes don't belong, a stray `@` entry, an `@` directory that is no folder, or an `@` name koan doesn't have. A directory spelled in another case than its folder's name is `case-mismatch`. A path need not exist on disk.
+- **A path in `archived/`** is `not-found`, with `archived` filled in for the nearest name on the path, from the item upward, that carries an ID.
+
 ```json
 { "$id": "where", "$defs": {
   "input": { "type": "object", "properties": {
@@ -840,7 +844,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 ### Markers
 
-`koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, one whose folder is gone, or one in a schema it doesn't know, since that binds nothing; replacing one bound to another live folder needs --force. `koan marker unbind [--dir]` removes the binding; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both).
+`koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, or one that binds nothing: its folder is gone, it was copied or moved, it can't be read as JSON, it lacks a field, or it is in a schema koan doesn't know. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `--dir` that doesn't exist is `io`. `koan marker unbind [--dir]` removes the binding: `marker.json`, then `.gitignore`, then `.koan/`; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). Bind checks the directory under the root first, then `foreign-files`, then `checkout`, then `bound`.
 
 ```json
 { "$id": "marker-bind", "$defs": {
@@ -917,7 +921,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### doctor, repair
 
-`koan doctor` reads one snapshot and reports every finding, in the order of the kinds in Finding, then by path. `koan repair [--kinds]` fixes the repairable findings of the kinds given, all of them when left out, in that same order, and reports what it fixed and what it left. `stuck-step` is repaired only after a person has kept one copy: repair then retries every stuck change in order.
+`koan doctor` reads one snapshot and reports every finding, in the order of the kinds in Finding, then by path, then by IDs. A failed integrity or foreign-key check is the `corrupt` finding, and doctor still succeeds. `koan repair [--kinds]` fixes the repairable findings of the kinds given, all of them when left out, in that same order, and reports what it fixed and what it left. `stuck-step` is never repairable, since a person must act first, by keeping one copy or moving the material out; but when its kind is given, or none are, repair retries every stuck change in seq order all the same. A change that now succeeds goes in `fixed`, the rest in `left`.
 
 ```json
 { "$id": "doctor", "$defs": {
@@ -937,7 +941,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### backup
 
-`koan backup <dir>`. Copies the database, the tree and the archive into an empty or new directory, then checks the copy with `doctor` against the live root. `clean` is false when the copy, even after the second copy under the lock, has findings the live root doesn't; `findings` lists them, with the live root's own. Refused: `exists`, when the directory holds anything. A directory under \~/koan-root is invalid-input, since the copy would copy itself.
+`koan backup <dir>`. Copies the database, the tree and the archive into an empty or new directory, then checks the copy with `doctor` against the live root. `clean` is false when the copy, even after the second copy under the lock, has findings the live root doesn't; `findings` lists them, with the live root's own. Two findings are the same when their kind, detail and IDs match and their paths match relative to each root; `findings` gives the copy's paths. The directory takes the root's layout: `koan.db`, `tree/` and `archived/`. `files` and `bytes` count every regular file copied, the database included. Refused: `exists`, when the directory holds anything. A directory under \~/koan-root is invalid-input, since the copy would copy itself.
 
 ```json
 { "$id": "backup", "$defs": {
