@@ -595,3 +595,13 @@ func TestMoveFolderOrder(t *testing.T) {
 	wantErr(t, err, core.KindConflict, core.RuleExists)
 	checked(t, tr)
 }
+
+// .DS_Store is never material to a delete.
+func TestDeleteFolderDSStore(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/f/sub", nil, nil)) // @1, @2
+	tr.PutMaterial(2, ".DS_Store")
+	tr.PutMaterial(1, ".DS_Store")
+	must[Removed](t)(tr.DeleteFolder("/f", true, false))
+	checked(t, tr)
+}

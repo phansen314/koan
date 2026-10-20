@@ -878,7 +878,8 @@ func (t *Tree) DeleteFolder(folder string, contents, force bool) (out Removed, e
 		tasks, folders := c.under(f.ID)
 		if !force {
 			// In tree order: each folder's own entries, byte for byte,
-			// before those of the folders under it.
+			// before those of the folders under it. .DS_Store is never
+			// material to the check.
 			under := map[int64]bool{}
 			for _, id := range folders {
 				under[id] = true
@@ -887,7 +888,9 @@ func (t *Tree) DeleteFolder(folder string, contents, force bool) (out Removed, e
 			for _, id := range c.TreeOrder() {
 				if under[id] {
 					for _, name := range sortedKeys(c.Folders[id].Material) {
-						material = append(material, c.Path(id)+":"+name)
+						if name != ".DS_Store" {
+							material = append(material, c.Path(id)+":"+name)
+						}
 					}
 				}
 			}
