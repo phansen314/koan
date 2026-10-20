@@ -759,7 +759,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder move
 
-`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created. A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`, checked in that order.
+`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created; each is a destination, so an entry on disk at its path refuses the move as `exists`. A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`, checked in that order.
 
 ```json
 { "$id": "folder-move", "$defs": {
