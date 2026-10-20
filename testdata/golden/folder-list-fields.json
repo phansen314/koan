@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "result": {
+    "folders": [
+      {
+        "id": 5,
+        "name": "x",
+        "finished": true,
+        "dir": "$HOME/koan-root/tree/@alpha/@a/@x"
+      }
+    ],
+    "total": 1,
+    "truncated": false
+  },
+  "warnings": []
+}

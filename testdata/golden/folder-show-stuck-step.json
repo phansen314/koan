@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": null,
+      "ref": "/",
+      "name": null,
+      "path": "/",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": null,
+        "done": null
+      },
+      "open": 0,
+      "complete": 0,
+      "finished": true,
+      "notes_path": null,
+      "dir": "$HOME/koan-root/tree"
+    }
+  },
+  "warnings": [
+    {
+      "kind": "stuck-step",
+      "message": "A filesystem step found both its source and its destination holding content, or neither, or a remove found material, and is set aside with the rest of its change. Keep one copy, or move the material out, then run koan repair.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@1.md",
+        "$HOME/koan-root/tree/@work/@1.md"
+      ]
+    }
+  ]
+}

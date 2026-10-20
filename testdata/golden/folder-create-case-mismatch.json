@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "case-mismatch",
+    "message": "/Work/API differs from /Work/api only in case",
+    "ids": [
+      2
+    ],
+    "paths": [
+      "/Work/API",
+      "/Work/api"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

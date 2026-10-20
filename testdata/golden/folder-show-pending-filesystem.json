@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": 2,
+      "ref": "@2 (/work/api)",
+      "name": "api",
+      "path": "/work/api",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": null,
+        "done": null
+      },
+      "open": 0,
+      "complete": 0,
+      "finished": true,
+      "notes_path": "$HOME/koan-root/tree/@work/@api/@notes.md",
+      "dir": "$HOME/koan-root/tree/@work/@api"
+    }
+  },
+  "warnings": [
+    {
+      "kind": "pending-filesystem",
+      "message": "Filesystem steps are still being carried out for these paths. Each path given is where the file is going.",
+      "ids": [
+        2
+      ],
+      "paths": [
+        "$HOME/koan-root/tree/@work/@api/@notes.md",
+        "$HOME/koan-root/tree/@work/@api"
+      ]
+    },
+    {
+      "kind": "missing-notes",
+      "message": "There is no file at $HOME/koan-root/tree/@work/@api/@notes.md. It reads as empty notes.",
+      "ids": [
+        2
+      ],
+      "paths": [
+        "$HOME/koan-root/tree/@work/@api/@notes.md"
+      ]
+    }
+  ]
+}

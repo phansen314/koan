@@ -1,0 +1,26 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"/work/-bad\": \"-bad\" is not a folder name",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/path",
+        "reason": "\"/work/-bad\": \"-bad\" is not a folder name"
+      },
+      {
+        "field": "/title",
+        "reason": "a title holds 1 to 200 characters after trimming, not 0"
+      },
+      {
+        "field": "/extra",
+        "reason": "extra must be a JSON object"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}
