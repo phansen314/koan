@@ -15,7 +15,7 @@ It comes third. The rules doc, koan: invariants and rules, says what must hold; 
 - **Fields print in the order the schema lists them**, so output can be diffed.
 - **ID lists are ascending**, unless the schema names another order, such as work order or cycle order.
 - **Paths on disk are absolute,** and under `~/koan-root` as written: through the symlink when the root is one, never the real path behind it. A check of whether a path lies under the root, as backup and marker bind make, compares real paths, so no second route gets past it. Folder paths are from the root, such as `/work/api`.
-- **Text is UTF-8.** Names, tags and IDs are ASCII by their patterns. Text given on the command line or read by `--notes-file` that isn't UTF-8 is `invalid-input`, pointing at its field, as it could never be through `--input`.
+- **Text is UTF-8.** Names, tags and IDs are ASCII by their patterns. Text given on the command line or read by `--notes-file` that isn't UTF-8 is `invalid-input`, pointing at its field. An `--input` that isn't UTF-8 isn't JSON, which must be, and is refused as any other that isn't JSON.
 
 ## Shared types
 

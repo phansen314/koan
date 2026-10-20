@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Kind says how an option's text on the command line becomes the value
@@ -269,7 +271,7 @@ func (o *Option) value(text string) any {
 			return text == "true"
 		}
 	case JSON:
-		if v, err := decodeOne(strings.NewReader(text)); err == nil {
+		if v, err := decodeOne([]byte(text)); err == nil {
 			return v
 		}
 	}
@@ -292,8 +294,13 @@ func jsonInteger(text string) bool {
 }
 
 // decodeOne reads exactly one JSON value, numbers kept as json.Number.
-func decodeOne(r io.Reader) (any, error) {
-	dec := json.NewDecoder(r)
+// JSON is UTF-8, so other bytes aren't JSON, though Go's decoder would
+// quietly replace them.
+func decodeOne(data []byte) (any, error) {
+	if !utf8.Valid(data) {
+		return nil, errNotUTF8
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	var v any
 	if err := dec.Decode(&v); err != nil {
@@ -310,6 +317,8 @@ type trailingError struct{}
 func (trailingError) Error() string { return "more than one JSON value" }
 
 var errTrailing = trailingError{}
+
+var errNotUTF8 = errors.New("it isn't UTF-8")
 
 // readFile reads a file whole, or standard input for -. A file it can't
 // read is io with its absolute path; standard input, io with no path.
@@ -355,7 +364,7 @@ func readInput(env *Env, name string) (Input, *Error) {
 	if e != nil {
 		return nil, e
 	}
-	v, err := decodeOne(bytes.NewReader(data))
+	v, err := decodeOne(data)
 	if err != nil {
 		return nil, InvalidInput("the input is not JSON: "+err.Error(), Problem{Field: "", Reason: "not JSON: " + err.Error()})
 	}

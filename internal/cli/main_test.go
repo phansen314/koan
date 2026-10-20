@@ -120,6 +120,7 @@ func TestMainInputRefused(t *testing.T) {
 		{"two values", []string{"-i", "-"}, `{} {}`, KindInvalidInput, "", ""},
 		{"not an object", []string{"-i", "-"}, `["t"]`, KindInvalidInput, "", ""},
 		{"empty", []string{"-i", "-"}, ``, KindInvalidInput, "", ""},
+		{"not UTF-8", []string{"-i", "-"}, "{\"title\":\"t\xff\"}", KindInvalidInput, "", ""},
 		{"unknown field", []string{"-i", "-"}, `{"title":"t","frob":1}`, KindInvalidInput, "/frob", ""},
 	}
 	for _, c := range cases {

@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -41,7 +40,7 @@ var bare = &Command{
 
 func parseJSON(t *testing.T, s string) Input {
 	t.Helper()
-	v, err := decodeOne(strings.NewReader(s))
+	v, err := decodeOne([]byte(s))
 	if err != nil {
 		t.Fatalf("bad want %q: %v", s, err)
 	}
