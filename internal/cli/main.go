@@ -83,6 +83,9 @@ func lookup(commands []*Command, args []string) (*Command, []string, *Error) {
 
 // usage is the command's line of usage text.
 func (c *Command) usage() string {
+	if c.Subject == nil && len(c.Options) == 0 && len(c.Files) == 0 && len(c.Fields) > 0 {
+		return "usage: koan " + c.Name + " -i <file|->\n"
+	}
 	var b strings.Builder
 	b.WriteString("usage: koan " + c.Name)
 	if s := c.Subject; s != nil {

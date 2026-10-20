@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"encoding/json"
+
 	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
@@ -59,19 +61,11 @@ func TaskCreate() *cli.Command {
 				if err != nil {
 					return nil, nil, err
 				}
-				id, err := tx.Issue(core.NodeTask)
+				id, notesPath, err := makeTask(tx, folder, title, priority, tags, extra, notes)
 				if err != nil {
 					return nil, nil, err
 				}
-				row := store.TaskRow{ID: id, Folder: folder, Title: title, Priority: priority, Extra: extra}
-				if err := tx.InsertTask(row, tags); err != nil {
-					return nil, nil, err
-				}
 				path := tx.Path(folder)
-				notesPath := fsstep.TaskNotesPath(path, id, core.EndNone)
-				if _, err := fsstep.Add(tx, fsstep.Step{Op: fsstep.OpWrite, To: notesPath, Content: notes}); err != nil {
-					return nil, nil, err
-				}
 				w := newEdges(tx)
 				w.new[id] = true
 				es, err := w.resolve(id, edgesIn, true)
@@ -90,4 +84,23 @@ func TaskCreate() *cli.Command {
 			})
 		},
 	}
+}
+
+// makeTask makes a task in a folder or the root, with the step writing
+// its notes file. It gives the task's ID and its notes path, as a step's
+// path.
+func makeTask(tx *store.Tx, folder int64, title string, priority *int64, tags []string, extra json.RawMessage, notes string) (int64, string, error) {
+	id, err := tx.Issue(core.NodeTask)
+	if err != nil {
+		return 0, "", err
+	}
+	row := store.TaskRow{ID: id, Folder: folder, Title: title, Priority: priority, Extra: extra}
+	if err := tx.InsertTask(row, tags); err != nil {
+		return 0, "", err
+	}
+	notesPath := fsstep.TaskNotesPath(tx.Path(folder), id, core.EndNone)
+	if _, err := fsstep.Add(tx, fsstep.Step{Op: fsstep.OpWrite, To: notesPath, Content: notes}); err != nil {
+		return 0, "", err
+	}
+	return id, notesPath, nil
 }

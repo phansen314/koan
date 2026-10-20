@@ -88,7 +88,9 @@ type Command struct {
 	Subject *Option
 	Options []Option
 	Files   []File
-	Run     func(env *Env, in Input) (result any, warnings []Warning, err *Error)
+	// Fields are input fields only --input gives, with no option.
+	Fields []string
+	Run    func(env *Env, in Input) (result any, warnings []Warning, err *Error)
 }
 
 // fields is every input field the command takes.
@@ -99,6 +101,9 @@ func (c *Command) fields() map[string]bool {
 	}
 	for _, o := range c.Options {
 		f[o.Field] = true
+	}
+	for _, name := range c.Fields {
+		f[name] = true
 	}
 	return f
 }

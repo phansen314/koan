@@ -18,10 +18,23 @@ type input struct {
 	in       cli.Input
 	problems []cli.Problem
 	message  string
+	// prefix is the pointer to the object read, "" for the whole input;
+	// a part's faults go to up, the input holding it.
+	prefix string
+	up     *input
+	// batch is whether labels are taken, where an edge names a task.
+	batch bool
 }
+
+// at is the JSON Pointer to a field of the object read.
+func (r *input) at(field string) string { return r.prefix + cli.Pointer(field) }
 
 // fault records a fault at a pointer.
 func (r *input) fault(pointer, format string, args ...any) {
+	if r.up != nil {
+		r.up.fault(pointer, format, args...)
+		return
+	}
 	reason := fmt.Sprintf(format, args...)
 	if r.message == "" {
 		r.message = reason
@@ -43,11 +56,48 @@ func (r *input) value(field string) (any, bool) {
 	return v, ok
 }
 
+// part is an object in the input, at pointer, read as an input of its
+// own whose faults are this one's. A field it doesn't take, one of
+// fields, is a fault at that field. ok is false when it isn't an object.
+func (r *input) part(pointer string, v any, fields ...string) (*input, bool) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		r.fault(pointer, "%s must be an object", pointer)
+		return nil, false
+	}
+	p := &input{in: m, prefix: pointer, up: r, batch: r.batch}
+	var unknown []string
+	for k := range m {
+		if !slices.Contains(fields, k) {
+			unknown = append(unknown, k)
+		}
+	}
+	slices.Sort(unknown)
+	for _, k := range unknown {
+		p.fault(p.at(k), "unknown field %s", k)
+	}
+	return p, true
+}
+
+// label is a batch label field, or "" when it isn't given.
+func (r *input) label(field string) string {
+	v, ok := r.value(field)
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok || !core.ValidLabel(s) {
+		r.fault(r.at(field), "%v is not a label: $ then 1 to 64 letters, digits and hyphens, not starting or ending with a hyphen", printed(v))
+		return ""
+	}
+	return s
+}
+
 // required is a field's value, or a fault when it isn't given.
 func (r *input) required(field string) (any, bool) {
 	v, ok := r.in[field]
 	if !ok {
-		r.fault(cli.Pointer(field), "%s is required", field)
+		r.fault(r.at(field), "%s is required", field)
 	}
 	return v, ok
 }
@@ -61,9 +111,9 @@ func (r *input) text(field, def string) string {
 	s, ok := v.(string)
 	switch {
 	case !ok:
-		r.fault(cli.Pointer(field), "%s must be a string", field)
+		r.fault(r.at(field), "%s must be a string", field)
 	case !utf8.ValidString(s):
-		r.fault(cli.Pointer(field), "%s is not UTF-8", field)
+		r.fault(r.at(field), "%s is not UTF-8", field)
 	}
 	return s
 }
@@ -76,12 +126,12 @@ func (r *input) title(field string) *string {
 	}
 	s, ok := v.(string)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be a string or null", field)
+		r.fault(r.at(field), "%s must be a string or null", field)
 		return nil
 	}
 	t, err := core.CheckTitle(s)
 	if err != nil {
-		r.fault(cli.Pointer(field), "%s", reason(err))
+		r.fault(r.at(field), "%s", reason(err))
 		return nil
 	}
 	return &t
@@ -95,12 +145,12 @@ func (r *input) object(field string) json.RawMessage {
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be a JSON object", field)
+		r.fault(r.at(field), "%s must be a JSON object", field)
 		return nil
 	}
 	b, err := marshal(m)
 	if err != nil {
-		r.fault(cli.Pointer(field), "%s: %v", field, err)
+		r.fault(r.at(field), "%s: %v", field, err)
 	}
 	return b
 }
@@ -113,7 +163,7 @@ func (r *input) boolean(field string, def bool) bool {
 	}
 	b, ok := v.(bool)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be true or false", field)
+		r.fault(r.at(field), "%s must be true or false", field)
 	}
 	return b
 }
@@ -135,7 +185,7 @@ func (r *input) limit(field string, def int64) *int64 {
 		i, err = core.ParseInt(string(n))
 	}
 	if !isNum || err != nil || i < 1 {
-		r.fault(cli.Pointer(field), "%s must be an integer of 1 or more, or null", field)
+		r.fault(r.at(field), "%s must be an integer of 1 or more, or null", field)
 		return nil
 	}
 	return &i
@@ -154,7 +204,7 @@ func (r *input) ref(field string, want core.Want, def string) core.Ref {
 	} else if got, ok := r.value(field); ok {
 		v = got
 	}
-	return r.refAt(cli.Pointer(field), field, v, want)
+	return r.refAt(r.at(field), field, v, want)
 }
 
 // refs is a list of references, each checked as ref checks one, or none
@@ -166,7 +216,7 @@ func (r *input) refs(field string, want core.Want) []core.Ref {
 	}
 	out := []core.Ref{}
 	for i, v := range list {
-		out = append(out, r.refAt(fmt.Sprintf("%s/%d", cli.Pointer(field), i), field, v, want))
+		out = append(out, r.refAt(fmt.Sprintf("%s/%d", r.at(field), i), field, v, want))
 	}
 	return out
 }
@@ -189,7 +239,7 @@ func (r *input) refAt(at, field string, v any, want core.Want) core.Ref {
 	}
 	ref, err := core.ParseRef(s)
 	if err == nil {
-		err = core.CheckShape(ref, want, false)
+		err = core.CheckShape(ref, want, r.batch)
 	}
 	if err != nil {
 		r.fault(at, "%s", reason(err))
@@ -221,12 +271,12 @@ func (r *input) taskTitle(field string) string {
 	}
 	s, ok := v.(string)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be a string", field)
+		r.fault(r.at(field), "%s must be a string", field)
 		return ""
 	}
 	t, err := core.CheckTitle(s)
 	if err != nil {
-		r.fault(cli.Pointer(field), "%s", reason(err))
+		r.fault(r.at(field), "%s", reason(err))
 	}
 	return t
 }
@@ -240,12 +290,12 @@ func (r *input) priority(field string) *int64 {
 	}
 	n, ok := v.(json.Number)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be an integer or null", field)
+		r.fault(r.at(field), "%s must be an integer or null", field)
 		return nil
 	}
 	i, err := core.ParseInt(string(n))
 	if err != nil {
-		r.fault(cli.Pointer(field), "%s", reason(err))
+		r.fault(r.at(field), "%s", reason(err))
 		return nil
 	}
 	return &i
@@ -260,7 +310,7 @@ func (r *input) list(field string) ([]any, bool) {
 	}
 	list, ok := v.([]any)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be a list", field)
+		r.fault(r.at(field), "%s must be a list", field)
 	}
 	return list, ok
 }
@@ -279,7 +329,7 @@ func (r *input) choices(field string, allowed, def []string) []string {
 	}
 	out := r.strings(field, func(s string) bool { return slices.Contains(allowed, s) }, fmt.Sprintf("is not one of %v", allowed))
 	if list, ok := r.in[field].([]any); ok && len(list) == 0 {
-		r.fault(cli.Pointer(field), "%s must name at least one of %v", field, allowed)
+		r.fault(r.at(field), "%s must name at least one of %v", field, allowed)
 	}
 	return out
 }
@@ -294,7 +344,7 @@ func (r *input) strings(field string, valid func(string) bool, bad string) []str
 		return out
 	}
 	for i, item := range list {
-		at := fmt.Sprintf("%s/%d", cli.Pointer(field), i)
+		at := fmt.Sprintf("%s/%d", r.at(field), i)
 		s, ok := item.(string)
 		switch {
 		case !ok || !valid(s):
@@ -326,7 +376,7 @@ func (r *input) nullBool(field string) *bool {
 	}
 	b, ok := v.(bool)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be true, false or null", field)
+		r.fault(r.at(field), "%s must be true, false or null", field)
 		return nil
 	}
 	return &b
@@ -340,7 +390,7 @@ func (r *input) path(field string) core.Ref {
 	}
 	s, ok := v.(string)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be a folder path", field)
+		r.fault(r.at(field), "%s must be a folder path", field)
 		return core.Ref{}
 	}
 	ref, err := core.ParseRef(s)
@@ -348,7 +398,7 @@ func (r *input) path(field string) core.Ref {
 		err = fmt.Errorf("%q is not a folder path from the root, such as /work/api", s)
 	}
 	if err != nil {
-		r.fault(cli.Pointer(field), "%s", reason(err))
+		r.fault(r.at(field), "%s", reason(err))
 	}
 	return ref
 }
@@ -362,12 +412,12 @@ func (r *input) fields(field string, names []string) []string {
 	}
 	list, ok := v.([]any)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be a list of field names", field)
+		r.fault(r.at(field), "%s must be a list of field names", field)
 		return nil
 	}
 	out := []string{}
 	for i, item := range list {
-		at := fmt.Sprintf("%s/%d", cli.Pointer(field), i)
+		at := fmt.Sprintf("%s/%d", r.at(field), i)
 		s, ok := item.(string)
 		switch {
 		case !ok || !slices.Contains(names, s):

@@ -68,7 +68,7 @@ func (r *input) objectMap(field string) map[string]any {
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		r.fault(cli.Pointer(field), "%s must be a JSON object", field)
+		r.fault(r.at(field), "%s must be a JSON object", field)
 		return nil
 	}
 	return m
@@ -80,7 +80,7 @@ func (r *input) both(field, verb string, added func(string) bool) {
 	list, _ := r.in[field].([]any)
 	for i, item := range list {
 		if s, ok := item.(string); ok && added(s) && slices.Index(list, item) == i {
-			r.fault(fmt.Sprintf("%s/%d", cli.Pointer(field), i), "%q is both %s and removed", s, verb)
+			r.fault(fmt.Sprintf("%s/%d", r.at(field), i), "%q is both %s and removed", s, verb)
 		}
 	}
 }

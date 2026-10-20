@@ -32,7 +32,7 @@ func (r *input) edgeRefs() []edgeIn {
 	var out []edgeIn
 	for _, field := range []string{"blocked_by", "blocks"} {
 		for i, ref := range r.refs(field, core.WantEdge) {
-			out = append(out, edgeIn{ref: ref, blocks: field == "blocks", at: fmt.Sprintf("%s/%d", cli.Pointer(field), i)})
+			out = append(out, edgeIn{ref: ref, blocks: field == "blocks", at: fmt.Sprintf("%s/%d", r.at(field), i)})
 		}
 	}
 	return out
@@ -46,11 +46,13 @@ type edge struct {
 
 // edges is what one change does to edges: the gates it made, in the
 // order it made them, and the tasks it made, which were neither ready
-// nor blocked before it.
+// nor blocked before it. In a batch, labels maps each label to its task,
+// and every refusal of an edge points at it.
 type edges struct {
-	tx   *store.Tx
-	made []GateMade
-	new  map[int64]bool
+	tx     *store.Tx
+	made   []GateMade
+	new    map[int64]bool
+	labels map[string]int64
 }
 
 func newEdges(tx *store.Tx) *edges { return &edges{tx: tx, made: []GateMade{}, new: map[int64]bool{}} }
@@ -94,7 +96,14 @@ func (w *edges) subject(ref core.Ref, make bool) (int64, error) {
 func (w *edges) resolve(task int64, in []edgeIn, make bool) ([]edge, error) {
 	var out []edge
 	for _, e := range in {
-		res, err := resolveAt(w.tx, e.ref, core.WantEdge, e.at)
+		var res core.Resolved
+		var err error
+		if w.labels != nil {
+			res, err = core.Resolve(w.tx, e.ref, core.WantEdge, w.labels)
+			err = pointAt(err, e.at)
+		} else {
+			res, err = resolveAt(w.tx, e.ref, core.WantEdge, e.at)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -266,6 +275,15 @@ func (w *watched) reblocked() ([]int64, []cli.Warning, error) {
 		message = core.FormatIDs(claimed) + " are claimed, and wait again; their claims stay."
 	}
 	return out, []cli.Warning{{Kind: "claimed-blocked", Message: message, IDs: claimed}}, nil
+}
+
+// pointAt points a refusal at the field at fault, as a batch's refusals
+// point at its parts.
+func pointAt(err error, at string) error {
+	if e, ok := err.(*core.Error); ok && !slices.Contains(e.Problems, at) {
+		e.Problems = append(e.Problems, at)
+	}
+	return err
 }
 
 func nonNil(ids []int64) []int64 {
