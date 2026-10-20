@@ -178,3 +178,7 @@ func Kept(id int64, path string, end End) string {
 func KeptMaterial(id int64, path, material string) string {
 	return fmt.Sprintf("@%d:%s (%s:%s)", id, material, path, material)
 }
+
+// KeptRootMaterial writes material in the root as kept text: the root has
+// no ID, and its path never changes, so there is no hint.
+func KeptRootMaterial(material string) string { return "/:" + material }

@@ -133,6 +133,7 @@ func TestKeptText(t *testing.T) {
 		{KeptMaterial(9, "/work/phase2", "docs/plan.md"), "@9:docs/plan.md (/work/phase2:docs/plan.md)"},
 		{Kept(57, "/work/api", EndDone), "@57 (/work/api.done)"},
 		{Kept(56, "/work/api", EndStart), "@56 (/work/api.start)"},
+		{KeptRootMaterial("docs/plan.md"), "/:docs/plan.md"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
