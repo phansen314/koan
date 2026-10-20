@@ -427,7 +427,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | Kind | Exit | Means | Carries |
 | --- | --- | --- | --- |
 | `usage` | 2 | The command line couldn't be turned into an input | `problems`: the argument at fault |
-| `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer. A fault in how fields go together, such as `tags_replace_all` with `tags_add`, nothing to change, or no edge given, points at the object holding them: `""`, or the batch part. A duplicate in a list points at its later occurrence. Two paths that differ only in case point at both references, in input order |
+| `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer. A fault in how fields go together, such as `tags_replace_all` with `tags_add`, nothing to change, or no edge given, points at the object holding them: `""`, or the batch part. A duplicate in a list points at its later occurrence. Two paths that differ only in case point at both references, in input order. A field the command doesn't take, such as `priority` on `folder update`, points at that field |
 | `not-found` | 1 | A reference names nothing | `ids` and `paths` that name nothing, a gate its folder lacks as its folder's path and end, such as `/work.start`; `archived` for those that were archived. The message says which were deleted, archived or never issued, and that an ID below the root's first ID came from an earlier root |
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
 | `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
@@ -963,7 +963,7 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
 - **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch as `exists`; missing parents are made, as `folder create` makes them.
 - **Tasks** go in their own `folder`, or the batch's `folder`, or the root. A task's folder can be one the batch makes.
 - **Labels** name a task within the batch only. Each is defined once, and takes no end and no material: `$a.start` is `invalid-input`. Labels are never stored.
-- **Edges** are written from either end, as on the command line, with labels allowed wherever an `edge-ref` is.
+- **Edges** are written from either end, as on the command line, with labels allowed wherever an `edge-ref` is, and nowhere else: a label where a folder or a task subject is taken is `invalid-input`.
 
 ```json
 {

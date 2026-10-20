@@ -161,6 +161,7 @@ func TestResolveRefusals(t *testing.T) {
 		{"label outside a batch", "$a", WantEdge, nil, KindInvalidInput, "", nil, nil},
 		{"label never defined", "$b", WantEdge, map[string]int64{"$a": 200}, KindInvalidInput, "", nil, nil},
 		{"label where a folder is taken", "$a", WantFolder, map[string]int64{"$a": 200}, KindInvalidInput, "", nil, nil},
+		{"label where a task is taken", "$a", WantTask, map[string]int64{"$a": 200}, KindInvalidInput, "", nil, nil},
 		{"end on a task", "@4.done", WantEdge, nil, KindInvalidInput, "", nil, nil},
 		{"end on a gate", "@52.done", WantEdge, nil, KindInvalidInput, "", nil, nil},
 		{"end where a folder is taken", "@9.start", WantFolder, nil, KindInvalidInput, "", nil, nil},

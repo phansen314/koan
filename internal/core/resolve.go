@@ -193,9 +193,10 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 
 // CheckShape refuses what the reference patterns refuse where want is
 // taken, before anything resolves, since it is the input's shape:
-// material but where anything is taken, a label outside a batch, a path
-// with no end where a task is, an end where a folder is, and the root
-// where a task or an edge is. inBatch is whether labels are taken.
+// material but where anything is taken, a label outside a batch or
+// anywhere but an edge, a path with no end where a task is, an end where
+// a folder is, and the root where a task or an edge is. inBatch is
+// whether labels are taken.
 func CheckShape(ref Ref, want Want, inBatch bool) error {
 	path := ref.Kind == TargetPath || ref.Kind == TargetAnchored
 	switch {
@@ -203,8 +204,8 @@ func CheckShape(ref Ref, want Want, inBatch bool) error {
 		return invalid("%q: material isn't taken here", ref.Raw)
 	case ref.Kind == TargetLabel && !inBatch:
 		return invalid("%q: a label names a task only within its batch", ref.Raw)
-	case ref.Kind == TargetLabel && want != WantEdge && want != WantTask:
-		return invalid("%q: a label names a task, and a task isn't taken here", ref.Raw)
+	case ref.Kind == TargetLabel && want != WantEdge:
+		return invalid("%q: a label is taken only where an edge names a task", ref.Raw)
 	case ref.IsRoot() && (want == WantTask || want == WantEdge):
 		return invalid("%q: the root is not a task, and no edge can name it", ref.Raw)
 	case want == WantTask && path && ref.End == EndNone:
