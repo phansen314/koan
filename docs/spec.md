@@ -119,7 +119,7 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 - **Values** follow their option as the next argument, taken as typed even when it starts with `-`, or after `=`: `--title -x` and `--title=-x` are the same. `-i` takes only the next argument.
 - **Once each.** An option that isn't a list can be given once.
 
-**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, a missing or extra subject, an option without its value, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. Its problem names the argument at fault as typed, or `""` when the fault is something missing, such as the command or the subject. Every check of a value is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
+**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, a missing or extra subject, an option without its value, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. Its problem names the argument at fault as typed, the later of the two for `--notes` and `--notes-file`, or `""` when the fault is something missing, such as the command or the subject. Every check of a value is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
 
 **Conveniences**, which need a shell's files or working directory. Through `--input`, give what they stand for.
 
@@ -427,7 +427,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | Kind | Exit | Means | Carries |
 | --- | --- | --- | --- |
 | `usage` | 2 | The command line couldn't be turned into an input | `problems`: the argument at fault |
-| `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer. A fault in how fields go together, such as `tags_replace_all` with `tags_add`, nothing to change, or no edge given, points at the object holding them: `""`, or the batch part. A duplicate in a list points at its later occurrence. Two paths that differ only in case point at both references, in input order. A field the command doesn't take, such as `priority` on `folder update`, points at that field |
+| `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer. A fault in how fields go together, such as `tags_replace_all` with `tags_add`, nothing to change, or no edge given, points at the object holding them: `""`, or the batch part. A duplicate in a list points at its later occurrence. Two paths that differ only in case point at both references, in input order. A required field that isn't given points at that field, such as `/folder`. A field the command doesn't take, such as `priority` on `folder update`, points at that field |
 | `not-found` | 1 | A reference names nothing | `ids` and `paths` that name nothing, a gate its folder lacks as its folder's path and end, such as `/work.start`; `archived` for those that were archived. The message says which were deleted, archived or never issued, and that an ID below the root's first ID came from an earlier root |
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
 | `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
@@ -730,7 +730,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 { "$id": "folder-list", "$defs": {
   "input": { "type": "object", "properties": {
     "folder":    { "$ref": "types#/$defs/folder-ref", "default": "/" },
-    "recursive": { "type": "boolean", "default": true },
+    "recursive": { "type": "boolean", "default": true, "description": "false: only the folders directly in the folder." },
     "limit":     { "type": ["integer", "null"], "minimum": 1, "default": 100, "description": "null: every match." },
     "fields":    { "type": "array", "items": { "$ref": "folder#/$defs/field" }, "uniqueItems": true } } },
   "result": { "type": "object", "required": ["folders", "total", "truncated"], "properties": {

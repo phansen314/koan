@@ -11,7 +11,8 @@
         },
         "recursive": {
           "type": "boolean",
-          "default": true
+          "default": true,
+          "description": "false: only the folders directly in the folder."
         },
         "limit": {
           "type": [
