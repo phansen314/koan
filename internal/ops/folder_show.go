@@ -91,9 +91,15 @@ func resolveFolder(tx *store.Tx, ref core.Ref, field string) (int64, error) {
 // invalid-input, such as a path anchored at a task, points at the field,
 // as every invalid-input names its faults.
 func resolve(tx *store.Tx, ref core.Ref, want core.Want, field string) (core.Resolved, error) {
+	return resolveAt(tx, ref, want, cli.Pointer(field))
+}
+
+// resolveAt is resolve for a reference at a JSON Pointer, such as an
+// entry of a list.
+func resolveAt(tx *store.Tx, ref core.Ref, want core.Want, at string) (core.Resolved, error) {
 	res, err := core.Resolve(tx, ref, want, nil)
 	if e, ok := err.(*core.Error); ok && e.Kind == core.KindInvalidInput && len(e.Problems) == 0 {
-		e.Problems = []string{cli.Pointer(field)}
+		e.Problems = []string{at}
 	}
 	return res, err
 }

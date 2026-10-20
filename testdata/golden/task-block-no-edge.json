@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "at least one edge is needed, by --blocked-by or --blocks",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "at least one edge is needed, by --blocked-by or --blocks"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

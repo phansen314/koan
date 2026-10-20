@@ -129,3 +129,41 @@ func (t *Tx) Claims() (map[int64]ClaimRow, error) {
 	}
 	return out, rows.Err()
 }
+
+// HasEdge reports whether from waits on to.
+func (t *Tx) HasEdge(from, to int64) (bool, error) {
+	var n int
+	err := t.QueryRow("SELECT count(*) FROM edge WHERE task = ? AND blocker = ?", from, to).Scan(&n)
+	return n > 0, err
+}
+
+// AddEdge writes an edge, from waiting on to, and gives from a new
+// updated_at, since its blocked_by gains an entry.
+func (t *Tx) AddEdge(from, to int64) error {
+	if _, err := t.Exec("INSERT INTO edge (task, blocker) VALUES (?, ?)", from, to); err != nil {
+		return err
+	}
+	_, err := t.Exec("UPDATE task SET updated_at = ? WHERE id = ?", t.Now, from)
+	return err
+}
+
+// RemoveEdge removes an edge, from waiting on to, giving from a new
+// updated_at when there was one. It reports whether there was.
+func (t *Tx) RemoveEdge(from, to int64) (bool, error) {
+	res, err := t.Exec("DELETE FROM edge WHERE task = ? AND blocker = ?", from, to)
+	if err != nil {
+		return false, err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return false, err
+	}
+	_, err = t.Exec("UPDATE task SET updated_at = ? WHERE id = ?", t.Now, from)
+	return err == nil, err
+}
+
+// Claimed reports whether a task has a claim.
+func (t *Tx) Claimed(id int64) (bool, error) {
+	var n int
+	err := t.QueryRow("SELECT count(*) FROM claim WHERE task = ?", id).Scan(&n)
+	return n > 0, err
+}

@@ -26,11 +26,24 @@ func TestCommandsMatchSchemas(t *testing.T) {
 		}
 		var want, subjects []string
 		// An input's fields are its own and those of the fragments it
-		// builds on through allOf, such as task list's filter.
+		// builds on through allOf, such as task list's filter, or of the
+		// input it is through $ref, such as task why's.
+		at := func(doc, ref string) (string, *testrun.Node) {
+			name, ptr, _ := strings.Cut(ref, "#")
+			if name == "" {
+				name = doc
+			}
+			return name, s.Doc(name).At(ptr)
+		}
+		doc := id
+		for input.Str("$ref") != "" {
+			doc, input = at(doc, input.Str("$ref"))
+		}
 		parts := []*testrun.Node{input}
 		for _, a := range input.Get("allOf").List() {
-			if ref := a.Str("$ref"); strings.HasPrefix(ref, "#") {
-				parts = append(parts, s.Doc(id).At(ref[1:]))
+			if ref := a.Str("$ref"); ref != "" {
+				_, part := at(doc, ref)
+				parts = append(parts, part)
 			}
 		}
 		for _, part := range parts {

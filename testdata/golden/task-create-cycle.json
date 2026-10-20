@@ -1,0 +1,26 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "cycle",
+    "message": "@6 would wait on itself through @7, @2",
+    "ids": [
+      6,
+      7,
+      2
+    ],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/blocks/0",
+        "reason": "@6 would wait on itself through @7, @2"
+      },
+      {
+        "field": "/blocked_by/0",
+        "reason": "@6 would wait on itself through @7, @2"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

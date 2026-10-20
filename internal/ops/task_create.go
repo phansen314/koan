@@ -1,8 +1,6 @@
 package ops
 
 import (
-	"fmt"
-
 	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
@@ -18,14 +16,8 @@ type TaskCreateResult struct {
 	Reblocked []int64    `json:"reblocked"`
 }
 
-// GateMade is a gate a change made because an edge named it.
-type GateMade struct {
-	ID     int64    `json:"id"`
-	Folder FolderAt `json:"folder"`
-	End    string   `json:"end"`
-}
-
-// TaskCreate makes a task in a folder or the root, with its notes file.
+// TaskCreate makes a task in a folder or the root, with its notes file
+// and its edges, making any gate they name.
 func TaskCreate() *cli.Command {
 	return &cli.Command{
 		Name:    "task create",
@@ -46,16 +38,12 @@ func TaskCreate() *cli.Command {
 			folderRef := r.ref("folder", core.WantFolder, "/")
 			priority := r.priority("priority")
 			tags := r.tags("tags")
-			blockedBy := r.refs("blocked_by", core.WantEdge)
-			blocks := r.refs("blocks", core.WantEdge)
+			edgesIn := r.edgeRefs()
 			extra := r.object("extra")
 			notes := r.text("notes", "")
 			refs, at := []core.Ref{folderRef}, []string{"/folder"}
-			for i, ref := range blockedBy {
-				refs, at = append(refs, ref), append(at, fmt.Sprintf("/blocked_by/%d", i))
-			}
-			for i, ref := range blocks {
-				refs, at = append(refs, ref), append(at, fmt.Sprintf("/blocks/%d", i))
+			for _, e := range edgesIn {
+				refs, at = append(refs, e.ref), append(at, e.at)
 			}
 			r.sameCase(refs, at)
 			if e := r.err(); e != nil {
@@ -84,14 +72,21 @@ func TaskCreate() *cli.Command {
 				if _, err := fsstep.Add(tx, fsstep.Step{Op: fsstep.OpWrite, To: notesPath, Content: notes}); err != nil {
 					return nil, nil, err
 				}
-				// Edges aren't written yet: blockedBy and blocks have only
-				// had their shape checked. They go here, blocked_by then
-				// blocks, after the task's own row and step.
+				w := newEdges(tx)
+				w.new[id] = true
+				es, err := w.resolve(id, edgesIn, true)
+				if err != nil {
+					return nil, nil, err
+				}
+				_, reblocked, warnings, err := w.add(es)
+				if err != nil {
+					return nil, nil, err
+				}
 				return TaskCreateResult{
 					ID: id, Ref: core.Kept(id, path, core.EndNone),
 					NotesPath: fsstep.Abs(s.Root, notesPath),
-					GatesMade: []GateMade{}, Reblocked: []int64{},
-				}, nil, nil
+					GatesMade: w.made, Reblocked: reblocked,
+				}, warnings, nil
 			})
 		},
 	}
