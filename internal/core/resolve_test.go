@@ -167,6 +167,15 @@ func TestResolveRefusals(t *testing.T) {
 		{"missing gate outside an edge", "@1.start", WantTask, nil, KindNotFound, "", nil, []string{"/work.start"}},
 		{"material where none is taken", "@9:x", WantFolder, nil, KindInvalidInput, "", nil, nil},
 		{"material in a task", "@4:x", WantAny, nil, KindInvalidInput, "", nil, nil},
+		// What the task-ref and folder-ref patterns refuse is the input's
+		// shape, refused before any reference resolves.
+		{"a path with no end where a task is taken", "/work/phase2", WantTask, nil, KindInvalidInput, "", nil, nil},
+		{"an anchored path with no end where a task is taken", "@1/phase2", WantTask, nil, KindInvalidInput, "", nil, nil},
+		{"an anchored path without @ where a task is taken", "1/phase2", WantTask, nil, KindInvalidInput, "", nil, nil},
+		{"a path to nothing with no end where a task is taken", "/nope/x", WantTask, nil, KindInvalidInput, "", nil, nil},
+		{"the root where a task is taken", "/", WantTask, nil, KindInvalidInput, "", nil, nil},
+		{"an end on a path to nothing where a folder is taken", "/nope.start", WantFolder, nil, KindInvalidInput, "", nil, nil},
+		{"an end on an ID of nothing where a folder is taken", "@300.done", WantFolder, nil, KindInvalidInput, "", nil, nil},
 	}
 	tree := newFakeTree()
 	for _, tt := range tests {

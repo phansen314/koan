@@ -94,6 +94,15 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 	if ref.HasMaterial && want != WantAny {
 		return Resolved{}, invalid("%q: material isn't taken here", ref.Raw)
 	}
+	// What the task-ref and folder-ref patterns refuse is the input's
+	// shape, refused before anything resolves.
+	path := ref.Kind == TargetPath || ref.Kind == TargetAnchored
+	switch {
+	case want == WantTask && path && ref.End == EndNone:
+		return Resolved{}, invalid("%q: a path names a task only as a folder's gate, ending .start or .done", ref.Raw)
+	case want == WantFolder && ref.End != EndNone:
+		return Resolved{}, invalid("%q: an end isn't taken where a folder is", ref.Raw)
+	}
 
 	// Step 3: the target.
 	var res Resolved
@@ -174,8 +183,6 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 	case ResolvedFolder:
 		end := ref.End
 		switch {
-		case want == WantFolder && end != EndNone:
-			return Resolved{}, invalid("%q: an end isn't taken where a folder is", ref.Raw)
 		case want == WantTask && end == EndNone:
 			return Resolved{}, NotFound([]int64{res.ID}, nil, "@%d is a folder, not a task", res.ID)
 		case want == WantEdge && end == EndNone:
