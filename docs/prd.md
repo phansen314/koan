@@ -56,7 +56,7 @@ Each folder row has a directory at its path, and each task row its notes in its 
 
 | What | Path | Written by |
 | --- | --- | --- |
-| **Database:** tasks, folders, edges, tags, claims, the ID counter, the archive index, pending filesystem steps | `~/koan-root/koan.db`, with its `-wal` and `-shm` files | koan only |
+| **Database:** tasks, folders, edges, tags, claims, the ID counter, the archive index, pending filesystem steps | `~/koan-root/koan.db`, with its `-wal` and `-shm` files, and the `-journal` SQLite writes while init creates it | koan only |
 | **Tree:** a directory per folder, folder notes, task and gate notes, material | `~/koan-root/tree/` | koan for `@` entries; anyone for file contents |
 | **Archive:** what was archived, as files | `~/koan-root/archived/` | koan only |
 | **Markers:** which folder a code worktree is for | `.koan/` in that worktree | koan only |

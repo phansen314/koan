@@ -228,6 +228,18 @@ func TestUnfinishedInit(t *testing.T) {
 	}
 	s.Close()
 
+	// An init cut short can leave SQLite's rollback journal beside the
+	// database, made before WAL mode is set; it is koan's, and init
+	// finishes the root.
+	home = t.TempDir()
+	root = filepath.Join(home, "koan-root")
+	os.Mkdir(root, 0o755)
+	os.WriteFile(filepath.Join(root, "koan.db"), nil, 0o644)
+	os.WriteFile(filepath.Join(root, "koan.db-journal"), nil, 0o644)
+	if _, created, _, e := Init(home, nil); e != nil || !slices.Equal(created, []string{"tree", "archive", "database"}) {
+		t.Fatalf("init with a journal: %v %+v", created, e)
+	}
+
 	// Format 0 with a table in it is not koan's to finish.
 	home = t.TempDir()
 	root = filepath.Join(home, "koan-root")

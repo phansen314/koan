@@ -27,8 +27,12 @@ var ownNames = map[string]bool{
 	DatabaseName:          false,
 	DatabaseName + "-wal": false,
 	DatabaseName + "-shm": false,
-	TreeName:              true,
-	ArchiveName:           true,
+	// SQLite's rollback journal, written while init creates the database
+	// and before WAL mode is set. Another init can see it, and one cut
+	// short can leave it behind for SQLite to roll back.
+	DatabaseName + "-journal": false,
+	TreeName:                  true,
+	ArchiveName:               true,
 }
 
 // Init makes the root, its tree and archive, and the database, issuing IDs
