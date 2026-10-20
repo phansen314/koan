@@ -1,10 +1,11 @@
 package model
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"maps"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -1103,4 +1104,11 @@ func equalPtr[T comparable](a, b *T) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
-func equalJSON(a, b map[string]any) bool { return reflect.DeepEqual(a, b) }
+// equalJSON reports whether two extras would print the same. koan never
+// interprets extra, so a number spelled differently, such as 1.0 for 1,
+// given as a json.Number, is a change.
+func equalJSON(a, b map[string]any) bool {
+	x, errA := json.Marshal(a)
+	y, errB := json.Marshal(b)
+	return errA == nil && errB == nil && bytes.Equal(x, y)
+}

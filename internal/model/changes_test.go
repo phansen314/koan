@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -145,6 +146,16 @@ func TestUpdate(t *testing.T) {
 	_, err = tr.UpdateTask("1", Update{TagsAdd: []string{"c", "d"}, TagsRemove: []string{"e", "d"}, ExtraMerge: map[string]any{"k": 1.0}, ExtraRemove: []string{"k"}})
 	if e, _ := err.(*core.Error); e == nil || !reflect.DeepEqual(e.Problems, []string{"/tags_remove/1", "/extra_remove/0"}) {
 		t.Errorf("added and removed: %v", err)
+	}
+	// extra changes when it would print differently: 1.0 and 1 are
+	// different spellings, so replacing one with the other is a change.
+	for i, c := range []struct {
+		n    string
+		want bool
+	}{{"1.0", true}, {"1.0", false}, {"1", true}} {
+		if got := must[bool](t)(tr.UpdateTask("1", Update{ExtraMerge: map[string]any{"n": json.Number(c.n)}})); got != c.want {
+			t.Errorf("extra spelling %d (%s): changed %v", i, c.n, got)
+		}
 	}
 
 	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))

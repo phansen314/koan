@@ -168,6 +168,22 @@ func TestTaskUpdate(t *testing.T) {
 	if r := input(t, home, "task update", `{"task":1,"tags_add":[]}`); fmt.Sprint(r.Result()) != "map[changed:false id:1]" {
 		t.Errorf("an empty list: %s", r.Line())
 	}
+	// extra changes when it would print differently, so a number spelled
+	// another way is a change, and is kept as spelled.
+	for _, c := range []struct{ merge, want string }{
+		{`{"n":1.0}`, `{"changed":true,"id":1}`},
+		{`{"n":1.0}`, `{"changed":false,"id":1}`},
+		{`{"n":1}`, `{"changed":true,"id":1}`},
+	} {
+		r := ok(t, home, "task", "update", "1", "--extra-merge", c.merge)
+		if got, _ := json.Marshal(r.Result()); string(got) != c.want {
+			t.Errorf("extra %s: %s", c.merge, r.Line())
+		}
+	}
+	ok(t, home, "task", "update", "1", "--extra-merge", `{"n":1.0}`)
+	if r := ok(t, home, "task", "show", "1"); !strings.Contains(r.Line(), `"extra":{"n":1.0}`) {
+		t.Errorf("extra as spelled: %s", r.Line())
+	}
 	// A gate's fields change like any task's.
 	ok(t, home, "folder", "create", "/w")                         // 2
 	ok(t, home, "task", "block", "1", "--blocked-by", "/w.start") // 3

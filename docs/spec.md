@@ -462,7 +462,7 @@ For `cycle`, `problems` also names every input field whose new edge lies on that
 
 Each command has one schema, named after it, holding its `input` and its `result`. Options are the input's fields in kebab-case; the subject is the field marked as such. Every command can also fail with `not-found` and `invalid-input`, and with `case-mismatch` wherever it takes a path; every command can give `pending-step` and `stuck-step`, and every read `pending-filesystem`. Only the warnings and refusals beyond those are listed.
 
-A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. changed is in the result of every write that can change nothing: task and folder update, complete, reopen, block, unblock, release, and both moves, which change nothing when the destination is where the item already is. A gate is the exception: `task move` refuses it (`gate`) even to its own folder.
+A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. An `extra` changes when it would print differently, since koan never interprets it: replacing `1.0` with `1` is a change. changed is in the result of every write that can change nothing: task and folder update, complete, reopen, block, unblock, release, and both moves, which change nothing when the destination is where the item already is. A gate is the exception: `task move` refuses it (`gate`) even to its own folder.
 
 ### Tasks
 
