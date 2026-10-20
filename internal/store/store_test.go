@@ -689,3 +689,70 @@ func TestOpenNeedsSteps(t *testing.T) {
 		t.Errorf("opened with no steps: %+v", e)
 	}
 }
+
+// init checks the database it finds, and --ids-from, before it makes
+// anything, so an init that fails for what it found makes nothing.
+func TestInitRefusedMakesNothing(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		db      func(t *testing.T, home string)
+		idsFrom *int64
+		kind    string
+	}{
+		{"exists", func(t *testing.T, home string) {}, ptr(int64(5)), cli.KindConflict},
+		{"corrupt", func(t *testing.T, home string) {
+			os.WriteFile(filepath.Join(home, "koan-root", "koan.db"), []byte(strings.Repeat("not a database ", 100)), 0o644)
+		}, nil, cli.KindCorrupt},
+		{"unsupported-format", func(t *testing.T, home string) {
+			if _, err := rawDB(t, home).Exec("PRAGMA user_version = 2"); err != nil {
+				t.Fatal(err)
+			}
+		}, nil, cli.KindUnsupportedFormat},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			home, s := newRoot(t, 1)
+			s.Close()
+			root := filepath.Join(home, "koan-root")
+			c.db(t, home)
+			os.Remove(filepath.Join(root, "tree"))
+			os.Remove(filepath.Join(root, "archived"))
+			_, _, _, e := Init(home, c.idsFrom)
+			if e == nil || e.Kind != c.kind {
+				t.Fatalf("init: %+v", e)
+			}
+			for _, d := range []string{"tree", "archived"} {
+				if _, err := os.Lstat(filepath.Join(root, d)); err == nil {
+					t.Errorf("a refused init made %s", d)
+				}
+			}
+		})
+	}
+}
+
+// koan's database names count as its own only as regular files: a
+// directory or a symlink under one is not-a-root, and nothing is made.
+func TestInitDatabaseNotAFile(t *testing.T) {
+	for _, name := range []string{"koan.db", "koan.db-wal", "koan.db-shm", "koan.db-journal"} {
+		for _, kind := range []string{"directory", "symlink"} {
+			t.Run(name+" "+kind, func(t *testing.T) {
+				home := t.TempDir()
+				root := filepath.Join(home, "koan-root")
+				os.Mkdir(root, 0o755)
+				p := filepath.Join(root, name)
+				if kind == "directory" {
+					os.Mkdir(p, 0o755)
+				} else {
+					os.WriteFile(filepath.Join(home, "elsewhere"), nil, 0o644)
+					os.Symlink(filepath.Join(home, "elsewhere"), p)
+				}
+				_, _, _, e := Init(home, nil)
+				if e == nil || e.Kind != cli.KindConflict || *e.Rule != cli.RuleNotARoot || !slices.Equal(e.Paths, []string{p}) {
+					t.Errorf("init: %+v", e)
+				}
+				if entries, _ := os.ReadDir(root); len(entries) != 1 {
+					t.Errorf("a refused init made %v", entries)
+				}
+			})
+		}
+	}
+}

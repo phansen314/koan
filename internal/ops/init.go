@@ -36,7 +36,11 @@ func Init() *cli.Command {
 				}
 				idsFrom = &id
 			}
-			root, created, first, e := store.Init(env.Home, idsFrom)
+			home, e := env.Home()
+			if e != nil {
+				return nil, nil, e
+			}
+			root, created, first, e := store.Init(home, idsFrom)
 			if e != nil {
 				return nil, nil, e
 			}

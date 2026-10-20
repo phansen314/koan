@@ -3,8 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -38,14 +36,6 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 	}
 
 	env := &Env{Stdin: stdin}
-	home, err := os.UserHomeDir()
-	if err == nil && !filepath.IsAbs(home) {
-		err = fmt.Errorf("HOME is %q, not an absolute path", home)
-	}
-	if err != nil {
-		return write(stdout, stderr, nil, IO("could not find the home directory: "+err.Error()), nil)
-	}
-	env.Home = filepath.Clean(home)
 
 	in := l.in
 	if l.hasInput {

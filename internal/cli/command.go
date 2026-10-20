@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -56,13 +57,18 @@ type Input map[string]any
 
 // Env is what a command may know about where it runs.
 type Env struct {
-	Home  string
 	Stdin io.Reader
 }
 
-// Root is ~/koan-root as written, through the symlink when it is one.
-func (e *Env) Root() string {
-	return filepath.Join(e.Home, "koan-root")
+// Home is ~, from HOME. A command that uses the root finds it as part of
+// checking the root's state, after the input's shape; HOME unset, empty
+// or not an absolute path is io, with no path.
+func (e *Env) Home() (string, *Error) {
+	home := os.Getenv("HOME")
+	if home == "" || !filepath.IsAbs(home) {
+		return "", IO(fmt.Sprintf("could not find the home directory: HOME is %q, not an absolute path", home))
+	}
+	return filepath.Clean(home), nil
 }
 
 // Command is one koan command: its name, its subject and options, and

@@ -32,7 +32,11 @@ func Info() *cli.Command {
 	return &cli.Command{
 		Name: "info",
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			root, exists, e := store.FindRoot(env.Home)
+			home, e := env.Home()
+			if e != nil {
+				return nil, nil, e
+			}
+			root, exists, e := store.FindRoot(home)
 			if e != nil {
 				return nil, nil, e
 			}

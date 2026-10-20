@@ -22,7 +22,8 @@ const (
 )
 
 // ownNames are koan's own names in the root, byte for byte, and whether
-// each must be a directory.
+// each must be a directory; the rest must be regular files. Neither is a
+// symlink.
 var ownNames = map[string]bool{
 	DatabaseName:          false,
 	DatabaseName + "-wal": false,
@@ -83,6 +84,25 @@ func Init(home string, idsFrom *int64) (r Root, created []string, firstID int64,
 	for _, de := range entries {
 		have[de.Name()] = true
 	}
+
+	// The database it finds is checked before anything is made, so an
+	// init that fails for what it found makes nothing.
+	file := filepath.Join(r.Dir, DatabaseName)
+	first := int64(1)
+	if idsFrom != nil {
+		first = *idsFrom
+	}
+	finish := !have[DatabaseName]
+	if !finish {
+		var got int64
+		if finish, got, e = existingDatabase(r, idsFrom); e != nil {
+			return r, nil, 0, e
+		}
+		if !finish {
+			first = got
+		}
+	}
+
 	for _, d := range []struct{ name, made, path string }{
 		{TreeName, MadeTree, r.Tree},
 		{ArchiveName, MadeArchive, r.Archive},
@@ -96,29 +116,11 @@ func Init(home string, idsFrom *int64) (r Root, created []string, firstID int64,
 		created = append(created, d.made)
 	}
 
-	file := filepath.Join(r.Dir, DatabaseName)
-	first := int64(1)
-	if idsFrom != nil {
-		first = *idsFrom
-	}
-	if !have[DatabaseName] {
+	if finish {
 		if e := createDatabase(file, r.Database, first); e != nil {
 			return r, nil, 0, e
 		}
 		created = append(created, MadeDatabase)
-	} else {
-		finish, got, e := existingDatabase(r, idsFrom)
-		if e != nil {
-			return r, nil, 0, e
-		}
-		if finish {
-			if e := createDatabase(file, r.Database, first); e != nil {
-				return r, nil, 0, e
-			}
-			created = append(created, MadeDatabase)
-		} else {
-			first = got
-		}
 	}
 	if len(created) > 0 && created[0] == MadeRoot {
 		if e := syncDir(filepath.Dir(r.Dir), filepath.Dir(r.Path)); e != nil {
@@ -138,7 +140,7 @@ func checkOwn(r Root, entries []fs.DirEntry) *cli.Error {
 	var foreign []string
 	for _, de := range entries {
 		dir, own := ownNames[de.Name()]
-		if !own || dir && !de.IsDir() {
+		if !own || dir && !de.IsDir() || !dir && !de.Type().IsRegular() {
 			foreign = append(foreign, filepath.Join(r.Path, de.Name()))
 		}
 	}

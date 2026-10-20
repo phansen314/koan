@@ -164,15 +164,6 @@ func TestMainOutputFails(t *testing.T) {
 	}
 }
 
-func TestMainHome(t *testing.T) {
-	t.Setenv("HOME", "relative")
-	var out, errw bytes.Buffer
-	code := Main([]string{"version"}, strings.NewReader(""), &out, &errw, []*Command{bare})
-	if code != ExitFailure || !strings.Contains(out.String(), `"kind":"io"`) {
-		t.Errorf("got %d %s", code, out.String())
-	}
-}
-
 func TestMainHelp(t *testing.T) {
 	r := runMain(t, "", []*Command{fake, bare}, "--help")
 	if r.code != 0 || !strings.Contains(r.stdout, "thing make") || !strings.Contains(r.stdout, "version") {
@@ -185,5 +176,42 @@ func TestMainHelp(t *testing.T) {
 	r = runMain(t, "", []*Command{fake}, "thing", "make", "t", "--help")
 	if r.code != ExitUsage {
 		t.Errorf("--help with more: %d %q", r.code, r.stdout)
+	}
+}
+
+// HOME is found as part of the root's state, after the input's shape,
+// and only by a command that uses the root: unset, empty or relative, it
+// is io with no path.
+func TestMainHome(t *testing.T) {
+	rooted := &Command{Name: "rooted", Run: func(env *Env, in Input) (any, []Warning, *Error) {
+		home, e := env.Home()
+		if e != nil {
+			return nil, nil, e
+		}
+		return map[string]string{"home": home}, nil, nil
+	}}
+	for _, home := range []string{"", "relative/dir"} {
+		t.Setenv("HOME", home)
+		var out, errw bytes.Buffer
+		code := Main([]string{"rooted"}, strings.NewReader(""), &out, &errw, []*Command{rooted})
+		if want := `{"ok":false,"error":{"kind":"io","rule":null,`; code != ExitFailure || !strings.HasPrefix(out.String(), want) || !strings.Contains(out.String(), `"paths":[]`) {
+			t.Errorf("HOME %q: %d %s", home, code, out.String())
+		}
+		// A command that doesn't use the root never reads it.
+		out.Reset()
+		if code := Main([]string{"version"}, strings.NewReader(""), &out, &errw, []*Command{bare}); code != ExitOK {
+			t.Errorf("HOME %q: version: %d %s", home, code, out.String())
+		}
+		// The input's shape comes first.
+		out.Reset()
+		if code := Main([]string{"rooted", "-i", "-"}, strings.NewReader("[1]"), &out, &errw, []*Command{rooted}); code != ExitFailure || !strings.Contains(out.String(), `"kind":"invalid-input"`) {
+			t.Errorf("HOME %q: shape: %d %s", home, code, out.String())
+		}
+	}
+	t.Setenv("HOME", "/some/home/")
+	var out, errw bytes.Buffer
+	Main([]string{"rooted"}, strings.NewReader(""), &out, &errw, []*Command{rooted})
+	if !strings.Contains(out.String(), `"home":"/some/home"`) {
+		t.Errorf("HOME set: %s", out.String())
 	}
 }

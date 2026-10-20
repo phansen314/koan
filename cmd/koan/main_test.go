@@ -193,6 +193,14 @@ func TestHelp(t *testing.T) {
 			t.Errorf("koan %q: exit %d: %q", args, r.Exit, r.Stdout)
 		}
 	}
+	// --help with anything else is an unknown option, and the line prints
+	// an envelope, which the runner decodes.
+	for _, args := range [][]string{{"version", "x", "--help"}, {"info", "--contents", "--help"}} {
+		r := testrun.Koan(t, args...)
+		if r.Exit != 2 || r.Envelope == nil || r.OK() {
+			t.Errorf("koan %q: exit %d: %q", args, r.Exit, r.Stdout)
+		}
+	}
 }
 
 // Exit 3: koan couldn't write the envelope.

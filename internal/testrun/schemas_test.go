@@ -42,3 +42,27 @@ func TestECMARegexp(t *testing.T) {
 		t.Errorf("escaped backslash: %v", err)
 	}
 }
+
+// Only --help alone, or after a command, prints usage text instead of an
+// envelope.
+func TestHelpLine(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--help"}, true},
+		{[]string{"version", "--help"}, true},
+		{[]string{"task", "create", "--help"}, true},
+		{[]string{"task", "--help"}, false},
+		{[]string{"version", "x", "--help"}, false},
+		{[]string{"task", "create", "x", "--help"}, false},
+		{[]string{"info", "--contents", "--help"}, false},
+		{[]string{"version"}, false},
+		{[]string{"nope", "--help"}, false},
+		{nil, false},
+	} {
+		if got := helpLine(c.args); got != c.want {
+			t.Errorf("%q: %v", c.args, got)
+		}
+	}
+}
