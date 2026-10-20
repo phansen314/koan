@@ -432,29 +432,31 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
 | `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
 | `not-initialized` | 1 | There is no root, or no database in it. Run `init` | `paths`: what is missing: the root when there is none, else the database |
-| `corrupt` | 1 | SQLite reported the file corrupt while a command ran, `doctor` included. A failed integrity or foreign-key check in `doctor` is its `corrupt` finding, not this error | `paths`: the database |
+| `corrupt` | 1 | SQLite reported the file corrupt, as `SQLITE_CORRUPT` or `SQLITE_NOTADB`, while a command ran, `doctor` included. No command but `doctor` checks the whole database. A failed integrity or foreign-key check in `doctor` is its `corrupt` finding, not this error | `paths`: the database |
 | `unsupported-format` | 1 | The database is in a format this binary doesn't read | the message names both formats |
 | `io` | 1 | The operating system refused something | `paths`: what it refused |
 | `internal` | 1 | A bug in koan |  |
 
 ### Conflict rules
 
-| Rule | Refused because | `ids` | `paths` |
-| --- | --- | --- | --- |
-| `case-mismatch` | A path matched a folder only ignoring case, or a new name differs from a sibling's only in case | the folder | the path as given, up to the part that matched only ignoring case, then that path as it is |
-| `cycle` | The change would close a cycle | one such cycle, in order: the task whose blocked\_by gains the closing edge, then the task it now waits on, then each task the one before waits on; the last waits on the first |  |
-| `claimed` | The task already has a claim | the task |  |
-| `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it | the open tasks |  |
-| `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | its direct contents, its gates left out |  |
-| `has-material` | Deleting a folder that holds material, at any depth, without `--force`. Material here is as the rules doc's Changes counts it for a delete: stray `@` entries and other tasks' notes that hold content count, and `.DS_Store` never does |  | the top-level material entries of its directory and of each folder under it, each written as the folder's path, `:`, then the entry's name, such as `/work/api:docs` or `/work/api:@Notes.md`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it |
-| `gate` | Moving a gate, even to its own folder | the gate |  |
-| `into-itself` | Moving a folder inside itself | the folder | the destination |
-| `exists` | The destination is taken: a path for a move or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from |  | the taken path: a folder path when a folder has it, else the entry's path on disk |
-| `not-a-root` | `init` found `~/koan-root` holding something that isn't koan's |  | what it found |
-| `checkout` | `marker bind` on a directory whose `.git` is a directory, without `--force` |  | the directory |
-| `foreign-files` | `marker bind` or `marker unbind` on a `.koan/` that holds files that aren't koan's |  | those files |
-| `complete` | Claiming a task that is complete | the task |  |
-| `bound` | marker bind on a directory already bound to another live folder, without --force | the folder it is bound to | the marker.json |
+Each rule is a refusal the rules doc or the PRD makes, in the section its row names; this table says what the error carries.
+
+| Rule | Refused because | From | `ids` | `paths` |
+| --- | --- | --- | --- | --- |
+| `case-mismatch` | A path matched a folder only ignoring case, or a new name differs from a sibling's only in case | rules Case, I4 | the folder | the path as given, up to the part that matched only ignoring case, then that path as it is |
+| `cycle` | The change would close a cycle | rules I7 | one such cycle, in order: the task whose blocked\_by gains the closing edge, then the task it now waits on, then each task the one before waits on; the last waits on the first |  |
+| `claimed` | The task already has a claim | rules Claims | the task |  |
+| `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it | rules Archiving | the open tasks |  |
+| `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | rules Changes | its direct contents, its gates left out |  |
+| `has-material` | Deleting a folder that holds material, at any depth, without `--force`. Material here is as the rules doc's Changes counts it for a delete: stray `@` entries and other tasks' notes that hold content count, and `.DS_Store` never does | rules Changes |  | the top-level material entries of its directory and of each folder under it, each written as the folder's path, `:`, then the entry's name, such as `/work/api:docs` or `/work/api:@Notes.md`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it |
+| `gate` | Moving a gate, even to its own folder | rules I11 | the gate |  |
+| `into-itself` | Moving a folder inside itself | rules I3 | the folder | the destination |
+| `exists` | The destination is taken: a path for a move or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from | rules Changes, for a path; PRD Install, init, backup and restore otherwise |  | the taken path: a folder path when a folder has it, else the entry's path on disk |
+| `not-a-root` | `init` found `~/koan-root` holding something that isn't koan's | PRD Install, init, backup and restore |  | what it found |
+| `checkout` | `marker bind` on a directory whose `.git` is a directory, without `--force` | PRD Markers |  | the directory |
+| `foreign-files` | `marker bind` or `marker unbind` on a `.koan/` that holds files that aren't koan's | PRD Markers |  | those files |
+| `complete` | Claiming a task that is complete | rules Claims | the task |  |
+| `bound` | marker bind on a directory already bound to another live folder, without --force | PRD Markers | the folder it is bound to | the marker.json |
 
 For `cycle`, `problems` also names every input field whose new edge lies on that cycle, in cycle order.
 

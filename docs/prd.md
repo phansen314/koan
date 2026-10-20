@@ -266,7 +266,7 @@ Every invariant of the rules doc has a mechanism that keeps it and a test that s
 
 ### Commands
 
-The surface is today's, with `task done` renamed `task complete`, and the folder blocking commands gone: a folder is ordered through its gates, which are tasks. Refusals are listed beyond the usual `not-found` and `invalid-input`; each is a `conflict` rule (see Errors).
+The surface is today's, with `task done` renamed `task complete`, and the folder blocking commands gone: a folder is ordered through its gates, which are tasks. Refusals are listed beyond the usual `not-found` and `invalid-input`; each is a `conflict` rule (spec Errors → Conflict rules).
 
 **Tasks**
 
@@ -360,40 +360,6 @@ With edges in an indexed table, finding what a change released or blocked again 
 | `claimed-blocked` | the change made a claimed task wait again |
 | `stale-marker` | a marker's path hint no longer matches its folder |
 | `moved-claimed` | a task or folder move changed the notes path of a claimed task; the warning lists those tasks |
-
-### Errors
-
-Every failure has one kind. Each refusal in the rules doc maps to one, and a `conflict` also names its `rule`. A command reports one error; input is checked first, then the root's state, then `busy`. A stuck filesystem step never fails a write: the write returns ok, with stuck-step.
-
-| Kind | Meaning |
-| --- | --- |
-| `usage` | The command line could not be turned into an input. Exit 2. |
-| `invalid-input` | The input breaks a rule or the command's schema: a bad name, title, value or reference; an end where none is taken; a label misused; two paths in one input that differ only in case; text that isn't UTF-8, given on the command line or read from a file. |
-| `not-found` | A reference names nothing. For a deleted or archived ID the message says so, and for an archived one, where it went. |
-| `conflict` | The input is valid, but the tree's state refuses it. Its `rule` says why. |
-| `busy` | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry. |
-| `not-initialized` | There is no root, or no database in it. Run `init`. |
-| `corrupt` | SQLite reported `SQLITE_CORRUPT` or `SQLITE_NOTADB` while a command ran, doctor included. When doctor's own `integrity_check` or `foreign_key_check` fails, doctor still succeeds and reports it as the `corrupt` finding. No other command checks the whole database. |
-| `unsupported-format` | The database is in a format this binary doesn't read. |
-| `io` | The operating system refused something. |
-| `internal` | A bug in koan. |
-
-| `conflict` rule | Refused because |
-| --- | --- |
-| `case-mismatch` | A path matched a folder only ignoring case, or a new name differs from a sibling's only in case (I4). |
-| `cycle` | The change would close a cycle (I7). The error's `ids` are one such cycle, in order. |
-| `claimed` | The task already has a claim. |
-| `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it. |
-| `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents`. |
-| `has-material` | Deleting a folder that holds material, without `--force`. The error lists it. |
-| `gate` | Moving a gate, even to its own folder. |
-| `into-itself` | Moving a folder inside itself (I3). |
-| `exists` | The destination is taken: a path for a move or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from. |
-| `not-a-root` | `init` found `~/koan-root` holding something that isn't koan's. |
-| `checkout` | marker bind on a directory whose .git is a directory, a checkout rather than a worktree, without --force. |
-| `foreign-files` | marker bind or marker unbind on a .koan/ that holds files that aren't koan's. |
-| `complete` | Claiming a task that is complete. |
-| `bound` | marker bind on a directory already bound to another live folder, without --force. |
 
 ## Markers
 
