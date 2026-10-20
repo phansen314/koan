@@ -31,6 +31,7 @@ func FolderShow() *cli.Command {
 			}
 			defer s.Close()
 			var res FolderShowResult
+			var making bool
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
 				id, err := resolveFolder(tx, ref)
 				if err != nil {
@@ -41,12 +42,17 @@ func FolderShow() *cli.Command {
 					return nil, err
 				}
 				res.Folder = f.record(id)
+				if id != core.RootID {
+					if making, err = fsstep.Makes(tx, fsstep.FolderNotesPath(res.Folder.Path)); err != nil {
+						return nil, err
+					}
+				}
 				return recordPaths(Cut[Folder]{Record: res.Folder}), nil
 			})
 			if e != nil {
 				return nil, nil, e
 			}
-			if res.Folder.ID != nil {
+			if res.Folder.ID != nil && !making {
 				w, e := missingNotes(s.Root, *res.Folder.ID, fsstep.FolderNotesPath(res.Folder.Path))
 				if e != nil {
 					return nil, nil, e

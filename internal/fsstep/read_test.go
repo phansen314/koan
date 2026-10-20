@@ -122,3 +122,29 @@ func TestReadStuck(t *testing.T) {
 		t.Errorf("stuck and pending: %s", describe(w))
 	}
 }
+
+// Makes is true for a path a pending step, stuck or not, makes, or makes
+// a directory above; never for a path it only takes away.
+func TestMakes(t *testing.T) {
+	home, s := newRoot(t)
+	files(t, s, "tree/@1.md=a", "tree/@b/@1.md=b")
+	write(t, s, Step{Op: OpMove, From: "tree/@1.md", To: "tree/@b/@1.md"})
+	leave(t, home, Step{Op: OpMkdir, To: "tree/@a"}, Step{Op: OpMove, From: "tree/@c", To: "tree/@d", Dir: true})
+	for _, c := range []struct {
+		rel  string
+		want bool
+	}{
+		{"tree/@a", true},
+		{"tree/@a/@notes.md", true},
+		{"tree/@d/@notes.md", true},
+		{"tree/@b/@1.md", true},
+		{"tree/@c/@notes.md", false},
+		{"tree/@ab/@notes.md", false},
+		{"tree/@b/@notes.md", false},
+	} {
+		var got bool
+		if e := s.Read(func(tx *store.Tx) (err error) { got, err = Makes(tx, c.rel); return err }); e != nil || got != c.want {
+			t.Errorf("%s: got %v %v", c.rel, got, e)
+		}
+	}
+}

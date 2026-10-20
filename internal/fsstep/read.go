@@ -97,3 +97,26 @@ func (c *Steps) pendingFilesystem(live []store.Pending, paths []Path) (cli.Warni
 	}
 	return w, len(w.Paths) > 0
 }
+
+// Makes reports whether a pending step, stuck or not, is still to make a
+// path: one whose target is the path or a directory above it. A read
+// gives no missing-notes for such notes, since the step's own warning
+// says why the file isn't there.
+func Makes(tx *store.Tx, rel string) (bool, error) {
+	live, stuck, err := tx.Pending()
+	if err != nil {
+		return false, err
+	}
+	for _, r := range append(live, stuck...) {
+		s, err := Parse(r.Step)
+		if err != nil {
+			continue
+		}
+		for _, t := range s.targets() {
+			if rel == t || strings.HasPrefix(rel, t+"/") {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
