@@ -58,3 +58,15 @@ func TestCommandsMatchSchemas(t *testing.T) {
 		}
 	}
 }
+
+// Every input is closed: the schema refuses a field the command doesn't
+// take, as the command does.
+func TestInputsClosed(t *testing.T) {
+	s := testrun.Load(t)
+	for _, c := range Commands() {
+		id := strings.ReplaceAll(c.Name, " ", "-")
+		if err := s.Validate(id, "/$defs/input", `{"no_such_field":1}`); err == nil {
+			t.Errorf("%s: schema takes an unknown field", c.Name)
+		}
+	}
+}

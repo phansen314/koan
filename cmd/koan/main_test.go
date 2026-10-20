@@ -76,6 +76,22 @@ func TestInfoSymlinkRoot(t *testing.T) {
 	r.Golden(t, "info-missing-root", *update, nil)
 }
 
+// A root that isn't a directory is the operating system refusing, not a
+// state: info fails with io.
+func TestInfoRootNotADirectory(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "koan-root")
+	if err := os.WriteFile(root, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := testrun.Run{Home: home}.Koan(t, "info")
+	r.Check(t, "info")
+	paths, _ := r.Error()["paths"].([]any)
+	if r.Exit != 1 || r.Kind() != "io" || len(paths) != 1 || paths[0] != root {
+		t.Errorf("exit %d: %s", r.Exit, r.Line())
+	}
+}
+
 func TestInput(t *testing.T) {
 	home := t.TempDir()
 	file := filepath.Join(home, "in.json")
