@@ -24,7 +24,7 @@
       "minLength": 1,
       "maxLength": 200,
       "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+$",
-      "description": "As stored. Input is trimmed of whitespace first, then checked. Lengths count code points."
+      "description": "As stored. Input is trimmed of Unicode White_Space first, then checked. Lengths count code points."
     },
     "priority": {
       "type": [

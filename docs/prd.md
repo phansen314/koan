@@ -202,6 +202,8 @@ A write commits the database first and changes the tree after, from a list of fi
 
 **Notes files.** Creating a task writes its `@<id>.md`, empty unless the input gives notes, so that it shows in Zed straight away. A missing notes file still reads as empty notes (T3).
 
+**Issuing IDs in a change.** A change issues IDs in the order it makes things: its folders, parents first, in tree order; then its tasks, in input order; then the gates its edges name, in the order those edges are given, each task's `blocked_by` before its `blocks`. A batch follows the same order, below.
+
 **Making a gate.** When an edge names a gate the folder lacks, the same transaction issues it an ID, inserts its row with the default fields (`Start` or `Done`, `null` priority, no tags, empty extra), and adds a step writing an empty `@start.md` or `@done.md`. The result lists the gates it made. A @start.md or @done.md already there, made by hand, becomes the gate's notes, since the step is done once the file exists.
 
 **Removing rows.** Before a task row is deleted, the transaction looks up the tasks that wait on it through `edge_blocker`, gives each a new `updated_at`, and reports in `released` those it leaves ready. `ON DELETE CASCADE` then removes the edges; it is a backstop, never the only record that an edge went. Delete and archive both work this way.
