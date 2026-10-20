@@ -426,7 +426,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `invalid-input` | 1 | The input breaks a rule or its schema: a bad name, title or value, an end where none is taken, a label misused, two paths that differ only in case | `problems`: every fault found, by JSON Pointer |
 | `not-found` | 1 | A reference names nothing | `ids` and `paths` that name nothing; `archived` for those that were archived. The message says which were deleted, archived or never issued, and that an ID below the root's first ID came from an earlier root |
 | `conflict` | 1 | The input is valid, but the tree's state refuses it | `rule`, and what the rule's row below says |
-| `busy` | 1 | The lock was held for 5 seconds. Always safe to retry |  |
+| `busy` | 1 | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry |  |
 | `not-initialized` | 1 | There is no root, or no database in it. Run `init` | `paths`: what is missing |
 | `corrupt` | 1 | `doctor`'s integrity or foreign-key check failed, or SQLite reported the file corrupt while a command ran | `paths`: the database |
 | `unsupported-format` | 1 | The database is in a format this binary doesn't read | the message names both formats |
@@ -501,7 +501,7 @@ Makes a task, with its notes file, in a folder or the root. Its edges are writte
 
 `koan task list [--folder] [--recursive] [--state] [--readiness] [--tags-any] [--tags-all] [--claimed] [--limit] [--fields]`
 
-Tasks in tree order: open ones unless `--state` says otherwise, gates included. `total` counts every match; `truncated` says `--limit` cut the list.
+Tasks in tree order: open ones unless `--state` says otherwise, gates included. At most 100 unless `--limit` says otherwise; `--limit null` lists every match. `total` counts every match; `truncated` says `--limit` cut the list.
 
 ```json
 { "$id": "task-list", "$defs": {
@@ -515,7 +515,7 @@ Tasks in tree order: open ones unless `--state` says otherwise, gates included. 
     "readiness": { "type": "array", "items": { "enum": ["ready", "blocked"] }, "uniqueItems": true, "minItems": 1,
                    "default": ["ready", "blocked"], "description": "Applies to open tasks; complete tasks that --state lets in pass through." },
     "claimed":   { "type": ["boolean", "null"], "default": null, "description": "true: only claimed; false: only unclaimed; null: both." },
-    "limit":     { "type": ["integer", "null"], "minimum": 1, "default": null },
+    "limit":     { "type": ["integer", "null"], "minimum": 1, "default": 100, "description": "null: every match." },
     "fields":    { "type": "array", "items": { "$ref": "task#/$defs/field" }, "uniqueItems": true,
                    "description": "Left out: every field." } } },
   "result": { "type": "object", "required": ["tasks", "total", "truncated"], "properties": {
@@ -526,12 +526,12 @@ Tasks in tree order: open ones unless `--state` says otherwise, gates included. 
 
 #### task frontier
 
-`koan task frontier [--folder] [--recursive] [--tags-any] [--tags-all] [--limit] [--fields]`. Ready, unclaimed tasks in work order, gates included.
+`koan task frontier [--folder] [--recursive] [--tags-any] [--tags-all] [--limit] [--fields]`. Ready, unclaimed tasks in work order, gates included. At most 100 unless `--limit` says otherwise, as for task list.
 
 ```json
 { "$id": "task-frontier", "$defs": {
   "input": { "type": "object", "allOf": [ { "$ref": "task-list#/$defs/filter" } ], "properties": {
-    "limit":  { "type": ["integer", "null"], "minimum": 1, "default": null },
+    "limit":  { "type": ["integer", "null"], "minimum": 1, "default": 100, "description": "null: every match." },
     "fields": { "type": "array", "items": { "$ref": "task#/$defs/field" }, "uniqueItems": true } } },
   "result": { "$ref": "task-list#/$defs/result" } } }
 ```
@@ -720,14 +720,14 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder list
 
-`koan folder list [--folder] [--recursive] [--limit] [--fields]`. The folders under `--folder`, itself left out, in tree order.
+`koan folder list [--folder] [--recursive] [--limit] [--fields]`. The folders under `--folder`, itself left out, in tree order. At most 100 unless `--limit` says otherwise; `--limit null` lists every match.
 
 ```json
 { "$id": "folder-list", "$defs": {
   "input": { "type": "object", "properties": {
     "folder":    { "$ref": "types#/$defs/folder-ref", "default": "/" },
     "recursive": { "type": "boolean", "default": true },
-    "limit":     { "type": ["integer", "null"], "minimum": 1, "default": null },
+    "limit":     { "type": ["integer", "null"], "minimum": 1, "default": 100, "description": "null: every match." },
     "fields":    { "type": "array", "items": { "$ref": "folder#/$defs/field" }, "uniqueItems": true } } },
   "result": { "type": "object", "required": ["folders", "total", "truncated"], "properties": {
     "folders":   { "type": "array", "items": { "$ref": "folder#/$defs/partial" } },

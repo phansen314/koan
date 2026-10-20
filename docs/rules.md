@@ -290,7 +290,7 @@ These hold whenever no change is in progress.
 
 ## Case
 
-A tree behaves the same on Linux, whose filesystems tell case apart, and on macOS, whose default filesystem ignores it. koan gets there by never relying on either: it keeps every name exactly as given, and refuses anything whose meaning would depend on the filesystem.
+A tree behaves the same on a filesystem that tells case apart, as most Linux filesystems do, and on one that ignores it, as macOS's default filesystem and Linux directories with casefolding do. The root may be on either. koan gets there by never relying on either: it keeps every name exactly as given, and refuses anything whose meaning would depend on the filesystem.
 
 | Rule | So that |
 | --- | --- |
@@ -298,8 +298,8 @@ A tree behaves the same on Linux, whose filesystems tell case apart, and on macO
 | **Siblings never differ only in case** (I4). With `/work` there, creating `/Work` beside it is refused. | Every tree is valid on a filesystem that ignores case, so a tree made on Linux moves to a Mac intact. |
 | **A path names a folder only in its exact case, on every platform.** A part that matches only ignoring case is `case-mismatch`, and the error spells the folder as it is. | `/Work` never reaches `/work`, even on a Mac where the filesystem would open it. A command means the same thing on both. |
 | **One input never names two paths that differ only in case** in the same part, such as `/Proj/a` and `/proj/b`: `invalid-input`. | One command can't mean two folders on Linux and one on a Mac. |
-| **Changing a folder's case is a move:** `folder move /work --to /Work`. It is the one input allowed to name both spellings. | A case-only rename has one way to happen, and works on both filesystems. |
+| **Changing a folder's case is a move:** `folder move /work --to /Work`. It is the one input allowed to name both spellings. | A case-only rename has one way to happen, and works on both kinds of filesystem. |
 | **A folder's directory is spelled exactly as its name** (T1). | What Zed shows matches what koan says. |
-| **koan's own names are matched exactly:** `@notes.md`, `@start.md`, `@done.md`, `@<id>.md`. Any other spelling is a stray entry. | A hand-made `@Notes.md` is never taken for a folder's notes. |
+| **koan's own names are matched exactly:** `@notes.md`, `@start.md`, `@done.md`, `@<id>.md`, and `@.case-<seq>`, the temporary name a case-only rename passes through, which belongs to the pending step that named it. Any other spelling is a stray entry. | A hand-made `@Notes.md` is never taken for a folder's notes. |
 | **Tags are lowercase only, and IDs are digits.** | Matching them never involves case. |
 | **Material names are never compared.** The part after `:` in a reference is not resolved against the disk. | Case in your own files is the filesystem's business, not koan's. |

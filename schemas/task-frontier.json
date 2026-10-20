@@ -16,7 +16,8 @@
             "null"
           ],
           "minimum": 1,
-          "default": null
+          "default": 100,
+          "description": "null: every match."
         },
         "fields": {
           "type": "array",

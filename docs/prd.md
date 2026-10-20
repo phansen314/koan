@@ -23,7 +23,7 @@ koan is task management for one person on one machine, driven mostly by agents s
 - **Git.** koan neither uses nor supports git on its tree: no history, branches, worktrees or merges of the tree. Archiving is how finished work leaves; `koan backup` is how the whole of it is kept.
 - **More than one machine or one tree.** No sync, no shared trees, no second tree per user.
 - **Migrating today's trees.** The rewrite starts fresh with `koan init`.
-- **Windows.** Linux and macOS only.
+- **Windows.** Linux and macOS only. The root may be on any local filesystem of theirs, whether it ignores case or not.
 
 ## What changes from today
 
@@ -177,7 +177,7 @@ A write commits the database first and changes the tree after, from a list of fi
 4. Check the tree for what the change needs: a destination path is free, a folder to delete holds no material unless `force`.
 5. Change the rows, check for cycles, and insert into `pending` the filesystem steps that bring the tree in line.
 6. `COMMIT`.
-7. Carry out the steps, fsync each directory they touched, then delete their rows in one transaction.
+7. Carry out the steps, fsync each directory they touched, then delete their rows in one transaction, which needn't be durable (see Concurrency).
 8. Release the lock.
 
 **Once COMMIT succeeds, the command succeeds.** It returns `ok` with its result whatever then happens to the filesystem steps, so an agent never retries a change that was made. The lock keeps other writers out, but not Zed or a person: a step fails when the operating system refuses it, or when a hand change got to its path first. A failed step stays pending, the result carries `pending-step`, and the next write finishes it. A step the operating system keeps refusing stays pending: every later write retries it, fails again and returns `pending-step`, until the cause is fixed. That is by design. A crash between the commit and the output is the one case left to the agent, which reads the tree to see what happened.
@@ -188,11 +188,13 @@ A write commits the database first and changes the tree after, from a list of fi
 | --- | --- | --- |
 | Make a folder's directory | it exists | `mkdir`, then an empty `@notes.md` |
 | Write notes | the file exists | writing the content the step holds to a temp file, then one `rename` into place |
-| Move notes or a directory | the source is gone and the destination exists | one `rename`, atomic on one filesystem |
+| Move notes or a directory | the source is gone and the destination exists | one `rename`, atomic on one filesystem; a case-only rename takes two, through a temporary name (below) |
 | Remove notes or a directory | the path is gone | `unlink`, or a recursive remove that can be run again |
 | Archive | it sits in the archive | making the directories above it, writing its JSON through a temp file renamed into place beside where it goes, then one rename out of the tree |
 
 **Done when is judged by listing the parent directory** and comparing names byte for byte, never by `stat`. On a filesystem that ignores case, `@work` and `@Work` stat as one entry, so a case-only rename would find both its source and its destination.
+
+**A case-only rename** goes through a temporary name on every filesystem, since one that ignores case returns success from `rename("@work", "@Work")` and leaves the old spelling in place. The step renames `@work` to `@.case-<seq>`, with its own `seq`, then `@.case-<seq>` to `@Work`. It records all three names, so a step cut short resumes from whichever of them the listing shows. It is done when the listing shows the new spelling, byte for byte, and neither of the others.
 
 **A move that finds both** its source and its destination finishes when one side is empty: a zero-byte notes file, or a directory holding nothing but zero-byte `@` notes files. Any other file is content, however small, since material is full of meaningful empty files such as `__init__.py` and `.gitkeep`. An empty source is removed, an empty destination replaced. The usual case is an agent writing notes at a task's new path before the move ran, while the old file is still the empty one create wrote.
 
@@ -218,18 +220,18 @@ Any refusal refuses the whole batch, and nothing is written.
 
 ## Concurrency
 
-Writes are serialized by one lock; reads never wait. Each CLI invocation is a short-lived process with its own connection.
+Writes are serialized by one lock; reads never wait on a writer or on that lock. Each CLI invocation is a short-lived process with its own connection.
 
 | Rule | How |
 | --- | --- |
 | **One writer at a time, for the whole change** | A `flock` on `~/koan-root`, taken before the transaction and released after the change's last filesystem step. SQLite's own write lock ends at `COMMIT`, too early to cover the tree. |
 | **A write decides on current state** | Inside the lock, the database work runs in `BEGIN IMMEDIATE`, and every reference is resolved there. A plain `BEGIN` that reads then writes can fail on a snapshot that went stale, which `busy_timeout` doesn't retry. |
-| **Reads see one committed state, and never wait** | WAL mode: a read transaction sees the snapshot it started with, and takes no lock beyond the brief try below, made only when steps are pending. |
-| **Waiting is bounded** | A writer that finds the lock held waits up to 5 seconds, then fails with `busy`, which is always safe to retry. `busy_timeout = 5000` is the same backstop inside SQLite, for other writers of the file such as the `sqlite3` tool. |
-| **Commits are durable** | `synchronous = FULL`, and `fullfsync = ON`, without which macOS doesn't flush the drive. A rename is made durable by fsyncing its directories before its step's row is deleted. |
-| **Per connection** | `foreign_keys = ON` and `busy_timeout` are set on every open; `journal_mode = WAL` is stored in the file by `init`. |
+| **Reads see one committed state, and never wait on a writer** | WAL mode: a read transaction sees the snapshot it started with, and takes koan's lock only for the brief try below, made only when steps are pending. SQLite may still make a reader wait briefly while it tidies its own files: the last connection to close checkpoints the WAL and deletes it, and the next to open rebuilds its index. `busy_timeout` makes that a wait, not an error; S0 measured waits of up to 54 ms (docs/spikes.md). |
+| **Waiting is bounded** | A writer that finds the lock held waits up to 5 seconds, then fails with `busy`, which is always safe to retry. `busy_timeout = 5000` is the same backstop inside SQLite, for other writers of the file such as the `sqlite3` tool, and for SQLite's own tidying; a command that SQLite keeps busy for 5 seconds also fails with `busy`. |
+| **Commits are durable** | `synchronous = FULL`, `fullfsync = ON` and `checkpoint_fullfsync = ON`, without which macOS doesn't flush the drive. A rename is made durable by fsyncing its directories, with `F_FULLFSYNC` on macOS, before its step's row is deleted. The one commit that needn't be durable is the one deleting finished steps' rows: every step can be carried out twice, so losing it to a power cut only means redoing them. It runs with `synchronous = NORMAL`, saving a flush. |
+| **Per connection** | `foreign_keys = ON`, `busy_timeout` and the three sync pragmas above are set on every open, since SQLite doesn't store them; `journal_mode = WAL` is stored in the file by `init`. |
 
-- **`doctor` reads one snapshot and takes no lock**, so nothing waits for it. `repair` is a write, and takes the lock like any other.
+- **`doctor` reads one snapshot and takes no koan lock**, so no writer waits for it. `repair` is a write, and takes the lock like any other.
 - **A reader may see a change whose filesystem steps are still running**, between the commit and the last step. It then reports `pending-filesystem` beside any path it returns, and the path it gives is where the file is going. If steps are pending, the reader tries the lock without waiting. If it gets it, it checks pending again, since a write may have finished in between, and releases the lock at once. Steps still pending have no write carrying them out, because one crashed or failed a step, so the reader reports pending-step instead; the next write or repair finishes them.
 
 ## Invariants, enforced and tested
@@ -264,8 +266,8 @@ The surface is today's, with `task done` renamed `task complete`, and the folder
 | --- | --- | --- | --- |
 | `task create <title>` | Makes a task in `--folder` (the root by default), with `--priority`, `--tags`, `--extra`, `--notes`, `--blocked-by`, `--blocks` | its ID; `gates_made`; `reblocked`; the `complete-blocker` warning | `cycle` |
 | `task show <ref>` | Reads one task: its fields, folder and path, gate, readiness, blockers with their state, what it blocks, claim, notes path | the record |  |
-| `task list` | Tasks in tree order, open ones unless `--state` says otherwise, gates included; filtered by `--folder` (a subtree), `--tags`, `--claimed`, with `--limit` and `--fields` | records; the total |  |
-| `task frontier` | Ready, unclaimed tasks in work order, under `--folder` or everywhere | records |  |
+| `task list` | Tasks in tree order, open ones unless `--state` says otherwise, gates included; filtered by `--folder` (a subtree), `--tags`, `--claimed`, with `--limit` (100 by default) and `--fields` | records; the total |  |
+| `task frontier` | Ready, unclaimed tasks in work order, under `--folder` or everywhere, with `--limit` (100 by default) | records; the total |  |
 | `task why <ref>` | What a task waits on: its open blockers, and the ready tasks it waits on at any depth, which are what to work on | blockers; ready tasks |  |
 | `task update <ref>` | Changes title, priority, tags (add and remove) and `extra` (merged) | its ID |  |
 | `task complete <ref>` | Marks it complete and ends its claim | its ID; `released` |  |
@@ -285,7 +287,7 @@ The surface is today's, with `task done` renamed `task complete`, and the folder
 | --- | --- | --- | --- |
 | `folder create <path>` | Makes the folder and any missing parents, with `--title` and `--extra`; no gates | the IDs of folders made | `case-mismatch`, `exists` |
 | `folder show <ref>` | Reads one folder: fields, path, its gates and their state, open and complete counts under it, whether it is finished, its notes path and directory | the record |  |
-| `folder list` | Folders in tree order under `--folder`, with `--limit` and `--fields` | records |  |
+| `folder list` | Folders in tree order under `--folder`, with `--limit` (100 by default) and `--fields` | records; the total |  |
 | `folder update <ref>` | Changes title and `extra` | its ID |  |
 | `folder move <ref> --to <path>` | Moves or renames it, everything under it included, making any missing parents | its ID; its new path; the moved-claimed warning | `into-itself`, `case-mismatch`, `exists` |
 | `folder delete <ref>` | Removes it and everything under it, with `--contents` when it holds tasks or folders, `--force` when it holds material | what it removed; `released` | `not-empty`, `has-material` |
@@ -361,7 +363,7 @@ Every failure has one kind. Each refusal in the rules doc maps to one, and a `co
 | `invalid-input` | The input breaks a rule or the command's schema: a bad name, title, value or reference; an end where none is taken; a label misused; two paths in one input that differ only in case. |
 | `not-found` | A reference names nothing. For a deleted or archived ID the message says so, and for an archived one, where it went. |
 | `conflict` | The input is valid, but the tree's state refuses it. Its `rule` says why. |
-| `busy` | The lock was held for 5 seconds. Always safe to retry. |
+| `busy` | The write lock, or the database itself, stayed busy for 5 seconds. Always safe to retry. |
 | `not-initialized` | There is no root, or no database in it. Run `init`. |
 | `corrupt` | The database failed doctor's `integrity_check` or `foreign_key_check`, or SQLite reported `SQLITE_CORRUPT` or `SQLITE_NOTADB` while a command ran. No other command checks the whole database. |
 | `unsupported-format` | The database is in a format this binary doesn't read. |
@@ -419,7 +421,7 @@ koan init
 
 ### Doctor and repair
 
-`doctor` compares the tree with the database and checks the database itself; it reads one snapshot, takes no lock and changes nothing. `repair` puts the tree back to what the database says, for the kinds it is given. It never changes the database to match the tree, never invents a task or folder from what it finds on disk, and never deletes anything that holds content.
+`doctor` compares the tree with the database and checks the database itself; it reads one snapshot, takes no koan lock and changes nothing. `repair` puts the tree back to what the database says, for the kinds it is given. It never changes the database to match the tree, never invents a task or folder from what it finds on disk, and never deletes anything that holds content.
 
 The only outside changes left are hand changes to `@` entries in the tree (a rename or a drag in Zed) and hand edits of the database file. Editing a file's contents is never one.
 
@@ -427,9 +429,9 @@ The only outside changes left are hand changes to `@` entries in the tree (a ren
 | --- | --- | --- |
 | `pending-step` | A change's filesystem steps were cut short | Carries them out, as the next write would. |
 | `stuck-step` | A step found both its source and destination holding content, or neither | — a person keeps one copy; repair then retries every stuck change, in seq order |
-| `stray-directory` | An `@<name>` directory that is no folder at that path (T2), often a folder renamed by hand | Moves it back to a folder whose directory is missing, when exactly one stray and one such folder match: they share a parent (a rename in Zed), or every @\<id>.md in it, at least one, belongs to that folder (a drag). Otherwise reports it, and never decides by name alone. Works top-down, so a parent moved back takes its subfolders with it. |
+| `stray-directory` | An `@<name>` directory that is no folder at that path (T2), often a folder renamed by hand. An `@.case-<seq>` directory named by a pending step is that step's, and shows as `pending-step` | Moves it back to a folder whose directory is missing, when exactly one stray and one such folder match: they share a parent (a rename in Zed), or every @\<id>.md in it, at least one, belongs to that folder (a drag). Otherwise reports it, and never decides by name alone. Works top-down, so a parent moved back takes its subfolders with it. |
 | `missing-directory` | A folder has no directory at its path (T1) | Makes an empty one. Its notes and material are gone, and the finding says so. |
-| `case-differs` | A folder's directory is spelled in another case (T1) | Renames it to the folder's name. |
+| `case-differs` | A folder's directory is spelled in another case (T1) | Renames it to the folder's name, through a temporary name as a case-only rename is. |
 | `misplaced-notes` | A task's notes sit in another folder's directory (T4) | Moves them back, unless notes are already there. |
 | `orphan-notes` | An `@<id>.md` with no live task, whether deleted, archived or never issued, or a `@start.md` or `@done.md` with no gate (T4, T6). The finding says which | Removes them when empty; otherwise leaves them. |
 | `stray-entry` | Any other `@` entry, such as a hand-made `@Notes.md` (T6) | — reported only |
@@ -456,9 +458,9 @@ These are the tests named in the Tested by column of Invariants, enforced and te
 | **A reference model** | A small in-memory model of the rules doc answers readiness, the frontier, `released` and `reblocked` for the same random sequences; koan must agree with it on every answer. |
 | **Crash points** | A fault injected before and after the commit, and at each filesystem step. Readers never see part of a change, and the next write, or `repair`, brings the tree back to T1–T6. |
 | **Concurrency** | Hundreds of processes writing and reading one root at once. No claim is ever handed out twice, every read sees a committed state, and `busy` appears only after 5 seconds of waiting. |
-| **Case** | The Case section's rules as table tests, run in CI on Linux and on macOS with its default case-insensitive filesystem. On macOS they include a case-only folder move and the case-differs repair, with a crash at each step. |
+| **Case** | The Case section's rules as table tests, run in CI on Linux and on macOS with its default case-insensitive filesystem. On both they include a case-only folder move and the case-differs repair, with a crash at each step. |
 | **Output** | Every command's JSON checked against its schema, and golden results for each refusal. |
-| **Performance** | Benchmarks at 1,000 and 10,000 live tasks. CI fails when a command passes the budget set in Goals. |
+| **Performance** | Benchmarks at 1,000 and 10,000 live tasks. CI fails on the Linux runner when a command passes the budget set in Goals. macOS runs the same benchmarks and reports them, but doesn't fail the build until its numbers have been measured (docs/spikes.md). |
 | **Repair** | Each finding made by hand on a fresh root. doctor reports it under the right kind, repair does what the table says, and a second doctor reports only what repair leaves to a person. |
 | **Markers** | The nearest marker wins and stops the look; a copied or moved marker binds nothing; archived and deleted folders give their messages; git ignores .koan/; checkout and foreign-files refuse. |
 | **Backup and restore** | A backup taken during the concurrency run restores to a root doctor finds clean; a folder moved mid-copy makes backup copy again under the lock. |
@@ -485,7 +487,10 @@ Anything that would change a rule goes to the rules doc, not to this list.
 | `modernc.org/sqlite` | `ncruces/go-sqlite3` |
 | A `flock` on the root as the write lock | SQLite's write lock alone, which ends too early |
 | A 5-second wait before `busy` | another bound |
-| `synchronous = FULL`, with `fullfsync = ON` on macOS | `NORMAL`, which can lose the last commits on power loss |
+| `synchronous = FULL`, with `fullfsync = ON` and `checkpoint_fullfsync = ON` on macOS, whatever the cost there turns out to be | `NORMAL`, which can lose the last commits on power loss |
+| `synchronous = NORMAL` for deleting finished steps' rows | a durable delete, one more flush for a commit that can be redone |
+| Every case-only rename through a temporary name | one `rename`, which a Linux directory that ignores case turns into a silent no-op |
+| `task list`, `task frontier` and `folder list` return 100 results unless `--limit` says otherwise | everything, 3 MB of JSON at 10,000 tasks for an agent to take in |
 | The archive laid out by path, items named by ID | an archive laid out by ID only |
 | An empty notes file written at task create | notes made on first edit |
 | 100 ms at 10,000 live tasks; 1 s for `doctor` and `repair`; 100 ms plus 1 ms a part for `batch`; none for `backup` | another budget |
