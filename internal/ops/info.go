@@ -1,12 +1,8 @@
 package ops
 
 import (
-	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
-
 	"github.com/phansen314/koan/internal/cli"
+	"github.com/phansen314/koan/internal/store"
 )
 
 // InfoResult is info's result, in its schema's order.
@@ -26,72 +22,59 @@ type InfoResult struct {
 	Error    *cli.Error `json:"error"`
 }
 
+// StateUsable is info's state for a root other commands can use.
+const StateUsable = "usable"
+
 // Info reports the root and its state, without the lock. It never fails
 // for the root's state: it reports it.
 func Info() *cli.Command {
 	return &cli.Command{
 		Name: "info",
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			root := env.Root()
-			r := InfoResult{
-				Root:     root,
-				Tree:     filepath.Join(root, "tree"),
-				Archive:  filepath.Join(root, "archived"),
-				Database: filepath.Join(root, "koan.db"),
-			}
-			dir, e := resolveRoot(env)
+			root, exists, e := store.FindRoot(env.Home)
 			if e != nil {
 				return nil, nil, e
 			}
-			if dir == "" {
-				return notInitialized(r, root), nil, nil
+			r := InfoResult{Root: root.Path, Tree: root.Tree, Archive: root.Archive, Database: root.Database}
+			if !exists {
+				return r.failed(store.NotInitialized(root.Path), -1), nil, nil
 			}
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				return nil, nil, cli.IO("could not list the root: "+err.Error(), root)
+			has, e := root.HasDatabase()
+			if e != nil {
+				return nil, nil, e
 			}
-			for _, de := range entries {
-				if de.Name() == "koan.db" {
-					return nil, nil, cli.NewError(cli.KindInternal, "info can't read a database yet")
+			if !has {
+				return r.failed(store.NotInitialized(root.Database), -1), nil, nil
+			}
+			s, format, e := store.OpenDatabase(root)
+			if e != nil {
+				if e.Kind == cli.KindUnsupportedFormat || e.Kind == cli.KindCorrupt {
+					return r.failed(e, format), nil, nil
 				}
+				return nil, nil, e
 			}
-			return notInitialized(r, r.Database), nil, nil
+			defer s.Close()
+			st, e := s.Stats()
+			if e != nil {
+				if e.Kind == cli.KindCorrupt {
+					return r.failed(e, format), nil, nil
+				}
+				return nil, nil, e
+			}
+			r.State, r.Format = StateUsable, &format
+			r.NextID, r.Tasks, r.Folders, r.Claims = &st.NextID, &st.Tasks, &st.Folders, &st.Claims
+			r.Pending, r.Stuck = &st.Pending, &st.Stuck
+			return r, nil, nil
 		},
 	}
 }
 
-func notInitialized(r InfoResult, missing string) InfoResult {
-	r.State = cli.KindNotInitialized
-	r.Error = cli.NewError(cli.KindNotInitialized, missing+" does not exist. Run koan init.")
-	r.Error.Paths = []string{missing}
+// failed reports a root other commands fail on: the state is the error's
+// kind, and format is the database's, or -1 when it can't be read.
+func (r InfoResult) failed(e *cli.Error, format int) InfoResult {
+	r.State, r.Error = e.Kind, e
+	if format >= 0 {
+		r.Format = &format
+	}
 	return r
-}
-
-// resolveRoot gives the directory the root is, following ~/koan-root when
-// it is a symlink and no further link; "" when there is none.
-func resolveRoot(env *cli.Env) (string, *cli.Error) {
-	root := env.Root()
-	fi, err := os.Lstat(root)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	}
-	if err != nil {
-		return "", cli.IO("could not read the root: "+err.Error(), root)
-	}
-	if fi.Mode()&fs.ModeSymlink == 0 {
-		return root, nil
-	}
-	target, err := os.Readlink(root)
-	if err != nil {
-		return "", cli.IO("could not read the root's symlink: "+err.Error(), root)
-	}
-	if !filepath.IsAbs(target) {
-		target = filepath.Join(env.Home, target)
-	}
-	if _, err := os.Lstat(target); errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	} else if err != nil {
-		return "", cli.IO("could not read the root: "+err.Error(), root)
-	}
-	return target, nil
 }

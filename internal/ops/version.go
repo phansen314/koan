@@ -5,10 +5,8 @@ import (
 	"runtime/debug"
 
 	"github.com/phansen314/koan/internal/cli"
+	"github.com/phansen314/koan/internal/store"
 )
-
-// DatabaseFormat is the one database format this binary reads.
-const DatabaseFormat = 1
 
 // VersionResult is version's result, in its schema's order.
 type VersionResult struct {
@@ -23,7 +21,7 @@ func Version() *cli.Command {
 	return &cli.Command{
 		Name: "version",
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := VersionResult{Version: "(devel)", Go: runtime.Version(), Format: DatabaseFormat}
+			r := VersionResult{Version: "(devel)", Go: runtime.Version(), Format: store.Format}
 			if bi, ok := debug.ReadBuildInfo(); ok {
 				if bi.Main.Version != "" {
 					r.Version = bi.Main.Version
