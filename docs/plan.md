@@ -75,7 +75,7 @@ Three short experiments whose answers the rest depends on. Write the findings to
 
 ## S3. Storage and the write protocol
 
-**Read:** PRD Layout, Storage, Writes (the steps of a write, Removing rows, Making a gate), Concurrency; spec Operations → init, info.
+**Read:** PRD Layout, Storage, Writes (the steps of a write, Removing rows, Making a gate), Concurrency; spec Operations → init, info and version; spec Errors.
 
 **Build** `internal/store`:
 - The schema exactly as in PRD Storage, with `user_version`, the pragmas on every open, and `unsupported-format`.
@@ -118,25 +118,25 @@ No filesystem steps yet: step 7 calls an interface S4 fills in.
 Each sub-slice is its own task.
 
 **Read for all of them:**
-- the spec's Commands entries for the commands named;
+- the spec's Commands entries for the commands named, with the Commands intro (the common errors and warnings, and `changed`) and, for folder commands, the Folders intro;
 - the spec's Records, Warnings and Errors;
-- the rows of the rules doc's Changes table for those commands;
+- the rows of the rules doc's Changes table for those commands, with the paragraph before the table and the bullets after it;
 - the sections in the slice's "Also read" column, which hold rules the Changes rows only point to.
 
 **Done when** every command in the slice passes its schema, and each refusal and warning it lists has a golden test.
 
 | Slice | Commands | Also covers | Also read |
 |---|---|---|---|
-| S5a | `folder create`, `folder show`, `folder list`, `task create`, `task show`, `task list` (no edges yet) | missing parents, notes files written at create, `missing-notes`, `--fields`, tree order | rules Fields, Case |
-| S5b | `task block`, `task unblock`, `task create` with edges, `task why`, `task frontier` | gates made with their notes file, `gates_made`, `cycle`, `released`, `reblocked`, `complete-blocker`, `claimed-blocked` | rules Readiness; PRD Writes → Making a gate |
-| S5c | `task complete`, `task reopen`, `task update`, `folder update`, `task claim`, `task claim-next`, `task release` | `changed`, `complete` and `claimed`, claims ending on complete and delete | rules Claims |
-| S5d | `task move`, `folder move`, `task delete`, `folder delete` | missing parents on move, case-only rename, `moved-claimed`, `gate`, `into-itself`, `not-empty`, `has-material` | rules Case |
-| S5e | `batch` | labels, the batch read as the tree it leaves, the five steps of Resolving a batch (PRD Writes), `problems` pointing at parts | spec Input formats → Batch file |
-| S5f | `task archive`, `folder archive` | archive layout, JSON beside each item, lone-gate names, the index, `not-found` with `archived` filled in | rules Archiving; PRD Layout → The archive, Writes → Archiving; spec On-disk formats → Archive JSON |
+| S5a | `folder create`, `folder show`, `folder list`, `task create`, `task show`, `task list` (no edges yet) | missing parents, notes files written at create, `missing-notes`, `--fields`, tree order | rules Fields, Case, Readiness → Orders; PRD Writes → Notes files, Issuing IDs in a change; spec Invocation → Conveniences |
+| S5b | `task block`, `task unblock`, `task create` with edges, `task why`, `task frontier` | gates made with their notes file, `gates_made`, `cycle`, `released`, `reblocked`, `complete-blocker`, `claimed-blocked` | rules Readiness, Resolution, Claims; PRD Writes → Making a gate, Issuing IDs in a change |
+| S5c | `task complete`, `task reopen`, `task update`, `folder update`, `task claim`, `task claim-next`, `task release` | `changed`, `complete` and `claimed`, claims ending on complete and delete | rules Claims, Fields, Readiness → Orders |
+| S5d | `task move`, `folder move`, `task delete`, `folder delete` | missing parents on move, case-only rename, `moved-claimed`, `gate`, `into-itself`, `not-empty`, `has-material` | rules Case, Fields, The tree on disk; PRD Writes → Issuing IDs in a change, Removing rows |
+| S5e | `batch` | labels, the batch read as the tree it leaves, the five steps of Resolving a batch (PRD Writes), `problems` pointing at parts | spec Input formats → Batch file; PRD Writes → Resolving a batch, Issuing IDs in a change; rules Resolution, Case |
+| S5f | `task archive`, `folder archive` | archive layout, JSON beside each item, lone-gate names, the index, `not-found` with `archived` filled in | rules Archiving; PRD Layout → The archive, Writes → Archiving; spec On-disk formats (its intro) → Archive JSON; PRD Writes → Removing rows |
 
 ## S6. Locating and markers
 
-**Read:** PRD Markers, Layout → Markers on disk; spec Locating, Markers, On-disk formats → marker.json.
+**Read:** PRD Markers, Layout → Markers on disk, Testing (the Markers row); spec Introduction, Invocation → Conveniences, Records → Location and Brief, Warnings, Errors, Locating, Markers, On-disk formats → marker.json; rules References, Resolution, The tree on disk.
 
 **Build** `where`, `context`, `marker bind` and `marker unbind`. That covers:
 - the nearest marker, and the lookup stopping at the first one found;
@@ -151,7 +151,7 @@ Each sub-slice is its own task.
 
 ## S7. Recovery
 
-**Read:** PRD Operations (all of it); spec Records → Finding, Operations → doctor, repair, backup.
+**Read:** PRD Operations (all of it), Writes, Concurrency, Testing (the Repair and Backup and restore rows); spec Introduction, Records → Finding, Errors, Operations → doctor, repair, backup; rules Fields, Invariants, The tree on disk, Case.
 
 **Build** `internal/doctor`:
 - `doctor`, with every finding kind.
@@ -166,7 +166,7 @@ Each sub-slice is its own task.
 
 ## S8. Hardening
 
-**Read:** PRD Testing, Invariants enforced and tested; rules Invariants, The tree on disk (where I1–I12 and T1–T6 are defined).
+**Read:** PRD Goals and non-goals, Testing, Invariants, enforced and tested; rules Changes, Case, Invariants, The tree on disk (where I1–I12 and T1–T6 are defined).
 
 **Build** the remaining test suites:
 - **Properties:** random command sequences checked against `internal/model`, with `doctor` clean and I1–I12 and T1–T6 holding after every command.
@@ -197,8 +197,9 @@ Give each agent this, filled in, and nothing else of the plan:
 
 ```
 Slice: S5b — edges
-Read: spec Commands → task block/unblock, task create, task why, task frontier;
-      spec Records, Warnings, Errors; rules Readiness, Changes (Block, unblock; Create a task)
+Read: spec Commands → task block, task unblock, task create, task why, task frontier;
+      spec Records, Warnings, Errors; rules Readiness, Changes (Block, unblock; Create a task);
+      PRD Writes → Making a gate, Issuing IDs in a change
 Build: (the slice's Build list)
 Done when: (the slice's Done when)
 Don't: touch other slices' commands; add dependencies; add behaviour the docs don't have.
