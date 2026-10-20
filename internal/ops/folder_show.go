@@ -33,7 +33,7 @@ func FolderShow() *cli.Command {
 			var res FolderShowResult
 			var making bool
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
-				id, err := resolveFolder(tx, ref)
+				id, err := resolveFolder(tx, ref, "folder")
 				if err != nil {
 					return nil, err
 				}
@@ -74,9 +74,10 @@ func openStore(env *cli.Env) (*store.Store, *cli.Error) {
 	return fsstep.Open(home)
 }
 
-// resolveFolder resolves a folder-ref to a folder, or the root's RootID.
-func resolveFolder(tx *store.Tx, ref core.Ref) (int64, error) {
-	res, err := core.Resolve(tx, ref, core.WantFolder, nil)
+// resolveFolder resolves a folder-ref, given at field, to a folder, or
+// the root's RootID.
+func resolveFolder(tx *store.Tx, ref core.Ref, field string) (int64, error) {
+	res, err := resolve(tx, ref, core.WantFolder, field)
 	if err != nil {
 		return 0, err
 	}
@@ -84,6 +85,17 @@ func resolveFolder(tx *store.Tx, ref core.Ref) (int64, error) {
 		return core.RootID, nil
 	}
 	return res.ID, nil
+}
+
+// resolve resolves a reference given at field. A refusal that is
+// invalid-input, such as a path anchored at a task, points at the field,
+// as every invalid-input names its faults.
+func resolve(tx *store.Tx, ref core.Ref, want core.Want, field string) (core.Resolved, error) {
+	res, err := core.Resolve(tx, ref, want, nil)
+	if e, ok := err.(*core.Error); ok && e.Kind == core.KindInvalidInput && len(e.Problems) == 0 {
+		e.Problems = []string{cli.Pointer(field)}
+	}
+	return res, err
 }
 
 // missingNotes is the missing-notes warning for notes with no file at

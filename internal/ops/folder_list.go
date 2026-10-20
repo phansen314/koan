@@ -41,7 +41,7 @@ func FolderList() *cli.Command {
 			defer s.Close()
 			res := FolderListResult{Folders: []Cut[Folder]{}}
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
-				id, err := resolveFolder(tx, ref)
+				id, err := resolveFolder(tx, ref, "folder")
 				if err != nil {
 					return nil, err
 				}

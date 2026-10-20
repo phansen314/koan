@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "result": {
+    "task": {
+      "id": 2,
+      "ref": "@2 (/work)",
+      "gate": null,
+      "title": "Book flights",
+      "priority": -3,
+      "folder": {
+        "id": 1,
+        "path": "/work"
+      },
+      "created_at": "$NOW",
+      "completed_at": null,
+      "updated_at": "$NOW",
+      "state": "open",
+      "readiness": "ready",
+      "blocked_by": [],
+      "blocks": [],
+      "tags": [
+        "a-1",
+        "home",
+        "urgent"
+      ],
+      "extra": {
+        "a": [
+          1,
+          2.50
+        ],
+        "z": "<x>"
+      },
+      "claim": null,
+      "notes_path": "$HOME/koan-root/tree/@work/@2.md"
+    }
+  },
+  "warnings": []
+}

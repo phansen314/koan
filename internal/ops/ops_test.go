@@ -25,8 +25,19 @@ func TestCommandsMatchSchemas(t *testing.T) {
 			continue
 		}
 		var want, subjects []string
-		props := input.Get("properties")
-		if props != nil {
+		// An input's fields are its own and those of the fragments it
+		// builds on through allOf, such as task list's filter.
+		parts := []*testrun.Node{input}
+		for _, a := range input.Get("allOf").List() {
+			if ref := a.Str("$ref"); strings.HasPrefix(ref, "#") {
+				parts = append(parts, s.Doc(id).At(ref[1:]))
+			}
+		}
+		for _, part := range parts {
+			props := part.Get("properties")
+			if props == nil {
+				continue
+			}
 			want = append(want, props.Keys...)
 			for _, k := range props.Keys {
 				if strings.HasPrefix(props.Get(k).Str("description"), "Subject.") {

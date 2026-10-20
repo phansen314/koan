@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "result": {
+    "task": {
+      "id": 4,
+      "ref": "@4 (/work.done)",
+      "gate": "done",
+      "title": "T",
+      "priority": null,
+      "folder": {
+        "id": 1,
+        "path": "/work"
+      },
+      "created_at": "2026-10-20T10:00:00Z",
+      "completed_at": null,
+      "updated_at": "2026-10-20T10:00:00Z",
+      "state": "open",
+      "readiness": "blocked",
+      "blocked_by": [
+        {
+          "id": 5,
+          "ref": "@5 (/work/api)",
+          "state": "open"
+        },
+        {
+          "id": 7,
+          "ref": "@7 (/work/api)",
+          "state": "open"
+        }
+      ],
+      "blocks": [],
+      "tags": [],
+      "extra": {},
+      "claim": null,
+      "notes_path": "$HOME/koan-root/tree/@work/@done.md"
+    }
+  },
+  "warnings": []
+}

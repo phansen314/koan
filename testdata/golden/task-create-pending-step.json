@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "ref": "@2 (/work)",
+    "notes_path": "$HOME/koan-root/tree/@work/@2.md",
+    "gates_made": [],
+    "reblocked": []
+  },
+  "warnings": [
+    {
+      "kind": "pending-step",
+      "message": "1 filesystem steps are pending with no write carrying them out. The next write, or koan repair, finishes them.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@work/@2.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "a title holds 1 to 200 characters after trimming, not 0",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/title",
+        "reason": "a title holds 1 to 200 characters after trimming, not 0"
+      },
+      {
+        "field": "/folder",
+        "reason": "\"/work.done\": an end isn't taken where a folder is"
+      },
+      {
+        "field": "/priority",
+        "reason": "priority must be an integer or null"
+      },
+      {
+        "field": "/tags/1",
+        "reason": "\"Bad\" is not a tag: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen"
+      },
+      {
+        "field": "/tags/2",
+        "reason": "\"ok\" given twice"
+      },
+      {
+        "field": "/blocked_by/0",
+        "reason": "\"/a:docs\": material isn't taken here"
+      },
+      {
+        "field": "/blocks/0",
+        "reason": "\"/\": the root is not a task, and no edge can name it"
+      },
+      {
+        "field": "/extra",
+        "reason": "extra must be a JSON object"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

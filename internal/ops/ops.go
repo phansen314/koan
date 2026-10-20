@@ -6,6 +6,9 @@ import "github.com/phansen314/koan/internal/cli"
 // Commands is every command koan has.
 func Commands() []*cli.Command {
 	return []*cli.Command{
+		TaskCreate(),
+		TaskShow(),
+		TaskList(),
 		FolderCreate(),
 		FolderShow(),
 		FolderList(),
