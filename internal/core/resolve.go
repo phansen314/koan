@@ -52,6 +52,12 @@ type Deletions interface {
 	Deleted(id int64) bool
 }
 
+// Origin is implemented by a Tree that knows its root's first ID, below
+// which every ID came from an earlier root.
+type Origin interface {
+	FirstID() int64
+}
+
 // Want is what a command takes in the place a reference is written.
 type Want int
 
@@ -231,6 +237,8 @@ func ResolveString(t Tree, s string, want Want, labels map[string]int64) (Resolv
 	return Resolve(t, ref, want, labels)
 }
 
+// lookup finds an ID, or says why it names nothing: archived, deleted,
+// never issued, or from an earlier root.
 func lookup(t Tree, id int64) (Node, error) {
 	if n, ok := t.Node(id); ok {
 		return n, nil
@@ -240,8 +248,14 @@ func lookup(t Tree, id int64) (Node, error) {
 		e.Archived = []int64{id}
 		return Node{}, e
 	}
-	if d, ok := t.(Deletions); ok && d.Deleted(id) {
-		return Node{}, NotFound([]int64{id}, nil, "@%d was deleted", id)
+	if o, ok := t.(Origin); ok && id < o.FirstID() {
+		return Node{}, NotFound([]int64{id}, nil, "@%d is below this root's first ID, %d, so came from an earlier root", id, o.FirstID())
+	}
+	if d, ok := t.(Deletions); ok {
+		if d.Deleted(id) {
+			return Node{}, NotFound([]int64{id}, nil, "@%d was deleted", id)
+		}
+		return Node{}, NotFound([]int64{id}, nil, "@%d was never issued", id)
 	}
 	return Node{}, NotFound([]int64{id}, nil, "@%d names nothing", id)
 }

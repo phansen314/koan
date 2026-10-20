@@ -206,20 +206,36 @@ func TestResolveArchived(t *testing.T) {
 	}
 }
 
-// deletedTree is a tree that deleted @98.
-type deletedTree struct{ *fakeTree }
+// deletedTree is a tree that deleted @98, in a root whose first ID is
+// first.
+type deletedTree struct {
+	*fakeTree
+	first int64
+}
 
 func (deletedTree) Deleted(id int64) bool { return id == 98 }
+func (d deletedTree) FirstID() int64      { return d.first }
 
-// A not-found message says an ID was deleted, as against never issued.
+// A not-found message says an ID was deleted, as against never issued,
+// and that one below the root's first ID came from an earlier root.
 func TestResolveDeleted(t *testing.T) {
-	tr := deletedTree{newFakeTree()}
+	tr := deletedTree{newFakeTree(), 1}
 	_, err := ResolveString(tr, "@98", WantTask, nil)
 	if e, ok := err.(*Error); !ok || e.Kind != KindNotFound || e.Message != "@98 was deleted" || !reflect.DeepEqual(e.IDs, []int64{98}) {
 		t.Errorf("deleted: %v", err)
 	}
 	_, err = ResolveString(tr, "@97", WantTask, nil)
-	if e, ok := err.(*Error); !ok || e.Message != "@97 names nothing" {
+	if e, ok := err.(*Error); !ok || e.Message != "@97 was never issued" || !reflect.DeepEqual(e.IDs, []int64{97}) {
 		t.Errorf("never issued: %v", err)
+	}
+	tr.first = 97
+	for ref, want := range map[string]string{
+		"@97": "@97 was never issued",
+		"@96": "@96 is below this root's first ID, 97, so came from an earlier root",
+	} {
+		_, err = ResolveString(tr, ref, WantFolder, nil)
+		if e, ok := err.(*Error); !ok || e.Kind != KindNotFound || e.Message != want {
+			t.Errorf("%s: %v, want %q", ref, err, want)
+		}
 	}
 }

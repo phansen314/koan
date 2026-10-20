@@ -69,6 +69,8 @@ type Tree struct {
 	Archives []Archived
 	// Issued is the last ID issued; IDs are never issued twice.
 	Issued int64
+	// First is the root's first ID.
+	First int64
 	// Now gives the time for each change, as a timestamp.
 	Now func() string
 
@@ -80,7 +82,7 @@ func New(first int64, now func() string) *Tree {
 	return &Tree{
 		Tasks: map[int64]*Task{}, Folders: map[int64]*Folder{}, Claims: map[int64]*Claim{},
 		RootMaterial: map[string]bool{}, Index: map[int64]int{},
-		Issued: first - 1, Now: now,
+		Issued: first - 1, First: first, Now: now,
 	}
 }
 
@@ -206,10 +208,22 @@ func (t *Tree) Archived(id int64) bool {
 	return ok
 }
 
+// Deleted reports whether an ID was issued and is now neither live nor
+// archived.
+func (t *Tree) Deleted(id int64) bool {
+	_, task := t.Tasks[id]
+	_, folder := t.Folders[id]
+	return id >= t.First && id <= t.Issued && !task && !folder && !t.Archived(id)
+}
+
+func (t *Tree) FirstID() int64 { return t.First }
+
 var (
-	_ core.Tree    = (*Tree)(nil)
-	_ core.Archive = (*Tree)(nil)
-	_ core.Graph   = (*Tree)(nil)
+	_ core.Tree      = (*Tree)(nil)
+	_ core.Archive   = (*Tree)(nil)
+	_ core.Deletions = (*Tree)(nil)
+	_ core.Origin    = (*Tree)(nil)
+	_ core.Graph     = (*Tree)(nil)
 )
 
 // The core.Graph interface, so readiness reads the model.

@@ -13,6 +13,7 @@ var (
 	_ core.Tree      = (*Tx)(nil)
 	_ core.Archive   = (*Tx)(nil)
 	_ core.Deletions = (*Tx)(nil)
+	_ core.Origin    = (*Tx)(nil)
 	_ core.Graph     = (*Tx)(nil)
 )
 
@@ -112,6 +113,13 @@ func (t *Tx) Deleted(id int64) bool {
 	err := t.QueryRow("SELECT 1 FROM issued WHERE id = ? AND state = 'deleted'", id).Scan(&n)
 	t.fail(err)
 	return err == nil
+}
+
+// FirstID is the root's first ID.
+func (t *Tx) FirstID() int64 {
+	var id int64
+	t.fail(t.QueryRow("SELECT first_id FROM root").Scan(&id))
+	return id
 }
 
 // archivePath is where an archived ID went, from the index.

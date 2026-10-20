@@ -3,7 +3,7 @@
   "error": {
     "kind": "not-found",
     "rule": null,
-    "message": "@99 names nothing",
+    "message": "@99 was never issued",
     "ids": [
       99
     ],

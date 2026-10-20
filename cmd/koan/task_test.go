@@ -562,3 +562,36 @@ func TestTaskShowPendingSteps(t *testing.T) {
 		`INSERT INTO pending (seq, change, step) VALUES (2, 1, '{"op":"write","to":"tree/@2.md"}')`)
 	golden(t, koan(t, home, "task", "show", "1"), "task-show-pending-steps")
 }
+
+// An ID that names nothing is not-found, whatever command resolves it,
+// and the message says why: it was deleted, it was never issued, or it
+// is below the root's first ID and came from an earlier root.
+func TestNotFoundID(t *testing.T) {
+	home := t.TempDir()
+	if r := (testrun.Run{Home: home}).Koan(t, "init", "--ids-from", "100"); r.Exit != 0 {
+		t.Fatalf("init: %s", r.Line())
+	}
+	ok(t, home, "folder", "create", "/w") // 100
+	ok(t, home, "task", "create", "t")    // 101
+	ok(t, home, "task", "create", "u")    // 102
+	ok(t, home, "task", "delete", "102")
+	for _, c := range []struct {
+		args    []string
+		message string
+	}{
+		{[]string{"task", "show", "102"}, "@102 was deleted"},
+		{[]string{"task", "show", "103"}, "@103 was never issued"},
+		{[]string{"task", "show", "99"}, "@99 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"folder", "show", "@5"}, "@5 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"folder", "show", "@200"}, "@200 was never issued"},
+		{[]string{"task", "create", "x", "--folder", "@102"}, "@102 was deleted"},
+		{[]string{"task", "block", "101", "--blocked-by", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"task", "update", "150", "--title", "x"}, "@150 was never issued"},
+	} {
+		r := fails(t, home, "not-found", "", c.args...)
+		if r.Error()["message"] != c.message {
+			t.Errorf("koan %q: %s, want %q", c.args, r.Line(), c.message)
+		}
+	}
+	golden(t, fails(t, home, "not-found", "", "task", "show", "99"), "task-show-earlier-root")
+}
