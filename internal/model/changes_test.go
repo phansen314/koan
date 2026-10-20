@@ -366,6 +366,9 @@ func TestMoveFolder(t *testing.T) {
 
 	_, err := tr.MoveFolder("@1", "/archive/old/work2/api/x")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	if e := err.(*core.Error); !reflect.DeepEqual(e.IDs, []int64{1}) || !reflect.DeepEqual(e.Paths, []string{"/archive/old/work2/api/x"}) {
+		t.Errorf("into-itself names the folder and the destination: %v %v", e.IDs, e.Paths)
+	}
 	_, err = tr.MoveFolder("@1", "/other")
 	wantErr(t, err, core.KindConflict, core.RuleExists)
 	_, err = tr.MoveFolder("@1", "/OTHER")

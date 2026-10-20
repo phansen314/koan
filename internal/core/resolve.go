@@ -46,6 +46,12 @@ type Archive interface {
 	Archived(id int64) bool
 }
 
+// Deletions is implemented by a Tree that can tell a deleted ID from one
+// that was never issued.
+type Deletions interface {
+	Deleted(id int64) bool
+}
+
 // Want is what a command takes in the place a reference is written.
 type Want int
 
@@ -233,6 +239,9 @@ func lookup(t Tree, id int64) (Node, error) {
 		e := NotFound([]int64{id}, nil, "@%d was archived", id)
 		e.Archived = []int64{id}
 		return Node{}, e
+	}
+	if d, ok := t.(Deletions); ok && d.Deleted(id) {
+		return Node{}, NotFound([]int64{id}, nil, "@%d was deleted", id)
 	}
 	return Node{}, NotFound([]int64{id}, nil, "@%d names nothing", id)
 }

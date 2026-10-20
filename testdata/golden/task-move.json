@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "result": {
+    "id": 3,
+    "changed": true,
+    "notes_path": "$HOME/koan-root/tree/@b/@3.md"
+  },
+  "warnings": []
+}

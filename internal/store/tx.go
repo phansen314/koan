@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	_ core.Tree    = (*Tx)(nil)
-	_ core.Archive = (*Tx)(nil)
-	_ core.Graph   = (*Tx)(nil)
+	_ core.Tree      = (*Tx)(nil)
+	_ core.Archive   = (*Tx)(nil)
+	_ core.Deletions = (*Tx)(nil)
+	_ core.Graph     = (*Tx)(nil)
 )
 
 // parentArg is a parent as the folder and task tables hold it: NULL for
@@ -101,6 +102,14 @@ func (t *Tx) Path(folder int64) string {
 func (t *Tx) Archived(id int64) bool {
 	var n int
 	err := t.QueryRow("SELECT 1 FROM issued WHERE id = ? AND state = 'archived'", id).Scan(&n)
+	t.fail(err)
+	return err == nil
+}
+
+// Deleted reports whether an ID was deleted.
+func (t *Tx) Deleted(id int64) bool {
+	var n int
+	err := t.QueryRow("SELECT 1 FROM issued WHERE id = ? AND state = 'deleted'", id).Scan(&n)
 	t.fail(err)
 	return err == nil
 }

@@ -46,6 +46,9 @@ func (c *Steps) Encode(seq int64, step any) (json.RawMessage, error) {
 	if !ok {
 		return nil, fmt.Errorf("%T is not a filesystem step", step)
 	}
+	if s.Op == OpRemove && s.Dir && !s.Force && len(s.Owns) == 0 {
+		return nil, fmt.Errorf("a directory remove of %s that isn't forced records nothing it may remove", s.From)
+	}
 	if s.Op == OpMove && caseOnly(s.From, s.To) {
 		s.Via = path.Join(path.Dir(s.From), CaseName(seq))
 	}
@@ -461,6 +464,44 @@ func (w *work) holdsMaterial(rel string, owns []string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// MaterialIn is the material at the top level of a folder's directory,
+// counted as a delete counts it, as step 4 of a write checks it before
+// a directory remove that isn't forced: any entry not named with @ but
+// .DS_Store, an @ file owns doesn't record that holds content, and an @
+// directory owns doesn't record that holds material. An @ directory owns
+// records is a folder being deleted, whose entries are counted as its
+// own. Names come in byte order; a directory missing from its parent's
+// listing, as spelled, holds none.
+func MaterialIn(r store.Root, dir string, owns []string) ([]string, error) {
+	w := &work{root: r.Dir}
+	if ok, err := w.listed(dir); err != nil || !ok {
+		return nil, err
+	}
+	entries, err := os.ReadDir(w.abs(dir))
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, de := range entries {
+		p := path.Join(dir, de.Name())
+		folder := de.IsDir() && strings.HasPrefix(de.Name(), "@")
+		if folder && slices.Contains(owns, p) {
+			continue
+		}
+		m, err := material(p, de, owns)
+		if err == nil && !m && folder {
+			m, err = w.holdsMaterial(p, owns)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if m {
+			out = append(out, de.Name())
+		}
+	}
+	return out, nil
 }
 
 // removeKoan removes a directory bottom-up, never by a recursive remove: in each

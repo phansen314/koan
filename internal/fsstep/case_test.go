@@ -46,7 +46,7 @@ var caseCases = []caseCase{
 		[]string{"tree/@5.MD=by hand"}, []string{"pending-step"}},
 	{"a remove of a directory respelled by hand",
 		[]string{"tree/@Old/@notes.md="},
-		Step{Op: OpRemove, From: "tree/@old", Dir: true},
+		Step{Op: OpRemove, From: "tree/@old", Dir: true, Owns: []string{"tree/@old", "tree/@old/@notes.md"}},
 		[]string{"tree/@Old/", "tree/@Old/@notes.md="}, []string{"pending-step"}},
 	{"the archive uses a directory above as it finds it",
 		[]string{"tree/@2.md=two", "archived/Work/@1.md=", "archived/Work/@1.json={}"},

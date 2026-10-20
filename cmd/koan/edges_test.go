@@ -530,21 +530,29 @@ func TestTaskFrontier(t *testing.T) {
 	fails(t, home, "conflict", "case-mismatch", "task", "frontier", "--folder", "/A")
 }
 
-// The model's create, block, unblock, complete, reopen, claim, claim-next
-// and release, run beside koan on the same inputs, agree on every result
-// and refusal, and on readiness, edges, claims and the frontier after
-// each.
+// The model's create, block, unblock, complete, reopen, claim, claim-next,
+// release, move and delete, of tasks and of folders, run beside koan on
+// the same inputs, agree on every result and refusal, and on readiness,
+// edges, claims, the frontier and the folders after each.
 func TestEdgesModel(t *testing.T) {
 	seeds := []int64{1, 2, 3}
 	if testing.Short() {
 		seeds = seeds[:1]
 	}
+	// Every command must succeed somewhere in the sequences run.
+	succeeded := map[string]int{}
 	for _, seed := range seeds {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { edgesModel(t, seed) })
+		t.Run(fmt.Sprint(seed), func(t *testing.T) { edgesModel(t, seed, succeeded) })
+	}
+	for _, cmd := range []string{"task create", "task block", "task unblock", "task complete", "task reopen", "task claim",
+		"task claim-next", "task release", "task move", "task delete", "folder create", "folder move", "folder delete"} {
+		if succeeded[cmd] == 0 {
+			t.Errorf("no %s succeeded", cmd)
+		}
 	}
 }
 
-func edgesModel(t *testing.T, seed int64) {
+func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 	rng := rand.New(rand.NewSource(seed))
 	home := root(t)
 	m := model.New(1, func() string { return "2026-10-20T10:00:00Z" })
@@ -628,6 +636,40 @@ func edgesModel(t *testing.T, seed int64) {
 		}
 		return fmt.Sprint(out)
 	}
+	madeAt := func(made []model.FolderAt) []string {
+		out := []string{}
+		for _, f := range made {
+			out = append(out, fmt.Sprintf("%d %s", f.ID, f.Path))
+		}
+		return out
+	}
+	koanMade := func(v any) []string {
+		out := []string{}
+		for _, f := range v.([]any) {
+			f := f.(map[string]any)
+			out = append(out, fmt.Sprintf("%v %v", f["id"], f["path"]))
+		}
+		return out
+	}
+	// folderRef is mostly a folder there is, by path or ID; else one from
+	// a pool that may name nothing, or the root.
+	folderRef := func() string {
+		var live []int64
+		for _, id := range m.TreeOrder() {
+			if _, ok := m.Folders[id]; ok {
+				live = append(live, id)
+			}
+		}
+		if len(live) > 0 && rng.Intn(3) > 0 {
+			id := live[rng.Intn(len(live))]
+			if rng.Intn(2) == 0 {
+				return fmt.Sprint(id)
+			}
+			return m.Path(id)
+		}
+		return pick([]string{"/a", "/a/b", "/c", "/d", "@1", "@2", "/c/e", "/A", "/"})
+	}
+	folderPaths := []string{"/d", "/a/b/x", "/c/a", "/x/y", "/C", "/a/B", "/c", "/a", "/c/e", "/a/b"}
 	warnings := func(ws []model.Warning) string {
 		var out []string
 		for _, w := range ws {
@@ -645,12 +687,11 @@ func edgesModel(t *testing.T, seed int64) {
 	}
 
 	var made, refused int
-	succeeded := map[string]int{}
-	for step := range 80 {
+	for step := range 160 {
 		var args []string
 		var err error
 		var want string
-		switch op := rng.Intn(13); {
+		switch op := rng.Intn(18); {
 		case op < 3:
 			folder := pick([]string{"", "/a", "/a/b", "/c"})
 			bb, bl := edgeList(), edgeList()
@@ -674,6 +715,40 @@ func edgesModel(t *testing.T, seed int64) {
 			out, err = m.Unblock(x, bb, bl)
 			args = edgeArgs([]string{"task", "unblock", x}, bb, bl)
 			want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
+		case op == 13:
+			x, to := subject(), folderRef()
+			var changed bool
+			var ws []model.Warning
+			changed, ws, err = m.MoveTask(x, to)
+			args = []string{"task", "move", x, "--to", to}
+			want = fmt.Sprintf("%v %s", changed, warnings(ws))
+		case op == 14:
+			x := subject()
+			var out model.Removed
+			out, err = m.DeleteTask(x)
+			args = []string{"task", "delete", x}
+			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
+		case op >= 15:
+			// Creates come most often and deletes least, so the folders
+			// the other parts name come back.
+			switch x, to := folderRef(), pick(folderPaths); rng.Intn(8) {
+			case 0, 1, 2, 3:
+				var made []model.FolderAt
+				made, err = m.CreateFolder(to, nil, nil)
+				args = []string{"folder", "create", to}
+				want = fmt.Sprint(madeAt(made))
+			case 4, 5, 6:
+				var out model.FolderMoved
+				out, err = m.MoveFolder(x, to)
+				args = []string{"folder", "move", x, "--to", to}
+				want = fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, out.Path, madeAt(out.Created), warnings(out.Warnings))
+			default:
+				contents := rng.Intn(3) == 0
+				var out model.Removed
+				out, err = m.DeleteFolder(x, contents, false)
+				args = []string{"folder", "delete", x, fmt.Sprintf("--contents=%v", contents)}
+				want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
+			}
 		default:
 			x := subject()
 			switch rng.Intn(5) {
@@ -714,7 +789,7 @@ func edgesModel(t *testing.T, seed int64) {
 				refused++
 			} else {
 				made++
-				succeeded[args[1]]++
+				succeeded[args[0]+" "+args[1]]++
 			}
 			switch {
 			case err != nil:
@@ -728,6 +803,10 @@ func edgesModel(t *testing.T, seed int64) {
 				var got string
 				switch args[1] {
 				case "create":
+					if args[0] == "folder" {
+						got = fmt.Sprint(koanMade(res["created"]))
+						break
+					}
 					got = fmt.Sprintf("%v %s %v %s", res["id"], koanGates(r), res["reblocked"], koanWarnings(r))
 				case "block":
 					got = fmt.Sprintf("%v %v %s %v %s", res["id"], res["changed"], koanGates(r), res["reblocked"], koanWarnings(r))
@@ -744,6 +823,14 @@ func edgesModel(t *testing.T, seed int64) {
 					if c, _ := res["claim"].(map[string]any); c != nil {
 						got = fmt.Sprint(c["task"])
 					}
+				case "move":
+					if args[0] == "task" {
+						got = fmt.Sprintf("%v %s", res["changed"], koanWarnings(r))
+					} else {
+						got = fmt.Sprintf("%v %v %v %v %s", res["id"], res["changed"], res["path"], koanMade(res["created"]), koanWarnings(r))
+					}
+				case "delete":
+					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)
@@ -787,6 +874,19 @@ func edgesModel(t *testing.T, seed int64) {
 		if !slices.Equal(gotTasks, wantTasks) {
 			t.Fatalf("step %d: tasks: koan %v, model %v", step, gotTasks, wantTasks)
 		}
+		var wantFolders, gotFolders []string
+		for _, id := range m.TreeOrder() {
+			if _, isFolder := m.Folders[id]; isFolder {
+				wantFolders = append(wantFolders, fmt.Sprintf("%d %s", id, m.Path(id)))
+			}
+		}
+		for _, f := range ok(t, home, "folder", "list", "--limit", "null", "--fields", "path").Result()["folders"].([]any) {
+			f := f.(map[string]any)
+			gotFolders = append(gotFolders, fmt.Sprintf("%v %v", f["id"], f["path"]))
+		}
+		if !slices.Equal(gotFolders, wantFolders) {
+			t.Fatalf("step %d: folders: koan %v, model %v", step, gotFolders, wantFolders)
+		}
 		var front []string
 		for _, x := range ok(t, home, "task", "frontier", "--limit", "null", "--fields", "id").Result()["tasks"].([]any) {
 			front = append(front, fmt.Sprint(x.(map[string]any)["id"]))
@@ -798,11 +898,6 @@ func edgesModel(t *testing.T, seed int64) {
 	// The sequence must try both sides.
 	if made < 5 || refused < 5 {
 		t.Errorf("%d changes made, %d refused", made, refused)
-	}
-	for _, cmd := range []string{"create", "block", "unblock", "complete", "reopen", "claim", "claim-next", "release"} {
-		if succeeded[cmd] == 0 {
-			t.Errorf("no %s succeeded", cmd)
-		}
 	}
 	t.Logf("%d changes made, %d refused: %v", made, refused, succeeded)
 }

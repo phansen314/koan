@@ -199,10 +199,14 @@ func (r *input) refAt(at, field string, v any, want core.Want) core.Ref {
 }
 
 // sameCase refuses references that name paths differing only in case,
-// pointing at both, in input order; at is each one's pointer.
-func (r *input) sameCase(refs []core.Ref, at []string) {
+// pointing at both, in input order; at is each one's pointer. exempt,
+// when given, lets a pair through.
+func (r *input) sameCase(refs []core.Ref, at []string, exempt ...func(a, b core.Ref) bool) {
 	for _, p := range core.CasePairs(refs) {
 		a, b := refs[p[0]], refs[p[1]]
+		if len(exempt) > 0 && exempt[0](a, b) {
+			continue
+		}
 		reason := fmt.Sprintf("%q and %q differ only in case", a.Raw, b.Raw)
 		r.fault(at[p[0]], "%s", reason)
 		r.fault(at[p[1]], "%s", reason)

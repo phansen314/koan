@@ -54,12 +54,19 @@ func Abs(r store.Root, rel string) string { return filepath.Join(r.Path, filepat
 // then the first in byte order. A parent directory that is missing holds
 // nothing.
 func Taken(r store.Root, folder string) (entry string, ok bool, err error) {
+	return TakenBeside(r, folder, "")
+}
+
+// TakenBeside is Taken for a case-only rename, whose own directory, own,
+// given as a step's path, is not in its way.
+func TakenBeside(r store.Root, folder, own string) (entry string, ok bool, err error) {
 	dir := FolderDir(folder)
 	parent, name := path.Dir(dir), path.Base(dir)
 	listing, _, err := names(filepath.Join(r.Dir, filepath.FromSlash(parent)))
 	if err != nil {
 		return "", false, err
 	}
+	listing = slices.DeleteFunc(listing, func(n string) bool { return path.Join(parent, n) == own })
 	slices.Sort(listing)
 	i := slices.Index(listing, name)
 	if i < 0 {

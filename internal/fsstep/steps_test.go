@@ -507,7 +507,7 @@ func TestDoneStepsFlushed(t *testing.T) {
 		Step{Op: OpMkdir, To: "tree/@a"},
 		Step{Op: OpWrite, To: "tree/@a/@5.md", Content: "five"},
 		Step{Op: OpMove, From: "tree/@1.md", To: "tree/@a/@1.md"},
-		Step{Op: OpRemove, From: "tree/@gone", Dir: true},
+		Step{Op: OpRemove, From: "tree/@gone", Dir: true, Owns: []string{"tree/@gone"}},
 		Step{Op: OpArchive, From: "tree/@9.md", To: "archived/@9.md", File: "archived/@9.json", Rows: []byte(`{}`)},
 	)
 	slices.Sort(flushed)

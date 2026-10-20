@@ -127,3 +127,24 @@ func (t *Tx) SetFolderFields(f FolderRow) error {
 	_, err := t.Exec("UPDATE folder SET title = ?, extra = ? WHERE id = ?", f.Title, string(f.Extra), f.ID)
 	return err
 }
+
+// SetFolderPlace gives a folder a new parent and name, as a move does.
+func (t *Tx) SetFolderPlace(id, parent int64, name string) error {
+	_, err := t.Exec("UPDATE folder SET parent = ?, name = ? WHERE id = ?", parentArg(parent), name, id)
+	return err
+}
+
+// RemoveFolders deletes folder rows, as delete does, in the order given,
+// so each folder must come before its parent, and marks each ID deleted.
+// The tasks in them go first, through RemoveTasks.
+func (t *Tx) RemoveFolders(ids []int64) error {
+	for _, id := range ids {
+		if _, err := t.Exec("DELETE FROM folder WHERE id = ?", id); err != nil {
+			return err
+		}
+		if _, err := t.Exec("UPDATE issued SET state = 'deleted' WHERE id = ?", id); err != nil {
+			return err
+		}
+	}
+	return nil
+}

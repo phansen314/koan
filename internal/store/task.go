@@ -272,3 +272,10 @@ func (t *Tx) EndClaim(id int64) (bool, error) {
 	n, err := res.RowsAffected()
 	return n > 0, err
 }
+
+// SetTaskFolder puts a task in another folder, or the root, as a move
+// does. Its place isn't a field, so its updated_at stays.
+func (t *Tx) SetTaskFolder(id, folder int64) error {
+	_, err := t.Exec("UPDATE task SET folder = ? WHERE id = ?", parentArg(folder), id)
+	return err
+}

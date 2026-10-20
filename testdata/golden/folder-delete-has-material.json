@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "has-material",
+    "message": "@1 holds material; give force to delete it with the folder",
+    "ids": [],
+    "paths": [
+      "/w:@todo.md",
+      "/w:docs",
+      "/w/a:.git",
+      "/w/a:@stray",
+      "/w/b:@5.md",
+      "/w/b:__init__.py"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

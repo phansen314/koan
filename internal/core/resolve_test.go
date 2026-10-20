@@ -205,3 +205,21 @@ func TestResolveArchived(t *testing.T) {
 		t.Errorf("archived = %v, want [99]", e.Archived)
 	}
 }
+
+// deletedTree is a tree that deleted @98.
+type deletedTree struct{ *fakeTree }
+
+func (deletedTree) Deleted(id int64) bool { return id == 98 }
+
+// A not-found message says an ID was deleted, as against never issued.
+func TestResolveDeleted(t *testing.T) {
+	tr := deletedTree{newFakeTree()}
+	_, err := ResolveString(tr, "@98", WantTask, nil)
+	if e, ok := err.(*Error); !ok || e.Kind != KindNotFound || e.Message != "@98 was deleted" || !reflect.DeepEqual(e.IDs, []int64{98}) {
+		t.Errorf("deleted: %v", err)
+	}
+	_, err = ResolveString(tr, "@97", WantTask, nil)
+	if e, ok := err.(*Error); !ok || e.Message != "@97 names nothing" {
+		t.Errorf("never issued: %v", err)
+	}
+}

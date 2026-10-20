@@ -753,6 +753,10 @@ func (t *Tree) MoveFolder(folder, to string) (out FolderMoved, err error) {
 		}
 		n := len(dest.Names)
 		parent, made, err := c.parents(dest.Names[:n-1], f.ID)
+		if e, ok := err.(*core.Error); ok && e.Rule == core.RuleIntoItself {
+			// The rule's paths are the destination.
+			e.Paths = []string{dest.TargetString()}
+		}
 		if err != nil {
 			return err
 		}

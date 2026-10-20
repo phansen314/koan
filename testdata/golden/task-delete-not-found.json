@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "@2 was deleted",
+    "ids": [
+      2
+    ],
+    "paths": [],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}
