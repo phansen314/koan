@@ -111,16 +111,19 @@ func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 			out.Folders = append(out.Folders, made...)
 		}
 
+		// The batch's folder resolves whether or not a task takes it.
+		inBatch, err := core.Resolve(c, batchRef, core.WantFolder, labels)
+		if err != nil {
+			return problem(err, "/folder")
+		}
 		var edges []edgeIn
 		for i, x := range in.Tasks {
 			p := parts[i]
-			pointer := fmt.Sprintf("/tasks/%d/folder", i)
-			if x.Folder == "" {
-				pointer = "/folder"
-			}
-			r, err := core.Resolve(c, p.folder, core.WantFolder, labels)
-			if err != nil {
-				return problem(err, "%s", pointer)
+			r := inBatch
+			if x.Folder != "" {
+				if r, err = core.Resolve(c, p.folder, core.WantFolder, labels); err != nil {
+					return problem(err, "/tasks/%d/folder", i)
+				}
 			}
 			task := c.newTask(p.title, x.Priority, p.tags, x.Extra, r.ID)
 			out.Tasks = append(out.Tasks, task.ID)

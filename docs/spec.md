@@ -104,7 +104,7 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 **Two ways to give the input, never both.** Every command has an input schema (under Commands).
 
 - **Arguments and options.** Each option sets the input field of the same name, in kebab-case: `--blocked-by` sets `blocked_by`.
-- **`-i, --input <file>`.** The whole input as one JSON object, from `<file>`, or from standard input when `<file>` is `-`. It is the only way to run `batch`. koan reads standard input only when `-` names it, so it is safe inside a loop that feeds standard input to something else.
+- **`-i, --input <file>`.** The whole input as one JSON object, from `<file>`, or from standard input when `<file>` is `-`. It is the only way to run `batch`: without it, `batch`'s input is `{}`, which holds no parts, and is `invalid-input`. koan reads standard input only when `-` names it, so it is safe inside a loop that feeds standard input to something else.
 
 **The command line.**
 
@@ -969,7 +969,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 parts, folders and tasks together. The batch is read as the tree it would leave, so a part can name a folder or a label that another part makes, in any order.
 
 - **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch as `exists`; missing parents are made, as `folder create` makes them. Each folder made, a missing parent included, is a destination (rules doc, Changes).
-- **Tasks** go in their own `folder`, or the batch's `folder`, or the root. A task's folder can be one the batch makes.
+- **Tasks** go in their own `folder`, or the batch's `folder`, or the root. A task's folder can be one the batch makes. The batch's `folder` is resolved whether or not a task takes it, so one that names nothing is `not-found`.
 - **Labels** name a task within the batch only. Each is defined once, and takes no end and no material: `$a.start` is `invalid-input`. Labels are never stored.
 - **Edges** are written from either end, as on the command line, with labels allowed wherever an `edge-ref` is, and nowhere else: a label where a folder or a task subject is taken is `invalid-input`.
 

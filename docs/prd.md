@@ -213,7 +213,7 @@ A write commits the database first and changes the tree after, from a list of fi
 
 1. Check every part's shape, and that no label is defined twice.
 2. Make the batch's folders, parents first, in tree order.
-3. Make its tasks, resolving each one's folder against the tree as it now stands, issuing IDs in input order and binding each label to its task's ID.
+3. Make its tasks: resolve the batch's `folder` against the tree as it now stands, whether or not a task takes it, then make each task, resolving its own folder the same way, issuing IDs in input order and binding each label to its task's ID.
 4. Resolve every edge's references against the tree as it now stands, labels included, and write every edge, making any gate named. A label no part defines is found here, as `invalid-input` pointing at the edge, since step 1 checks only that no label is defined twice.
 5. Check for cycles over every edge the batch added.
 

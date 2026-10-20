@@ -298,6 +298,8 @@ func TestBatch(t *testing.T) {
 		{BatchInput{Folders: []BatchFolder{{Path: "/work"}}}, core.KindConflict, core.RuleExists, []string{"/folders/0/path"}},
 		{BatchInput{Folders: []BatchFolder{{Path: "/new"}, {Path: "/new"}}}, core.KindConflict, core.RuleExists, []string{"/folders/1/path"}},
 		{BatchInput{Folders: []BatchFolder{{Path: "/new/x"}, {Path: "/New/y"}}}, core.KindInvalidInput, "", []string{"/folders/0/path", "/folders/1/path"}},
+		// The batch's folder resolves though no task takes it.
+		{BatchInput{Folders: []BatchFolder{{Path: "/fresh"}}, Folder: "/nope"}, core.KindNotFound, "", []string{"/folder"}},
 		// A cycle over the whole batch, across parts.
 		{BatchInput{Tasks: []BatchTask{
 			{Label: "$a", TaskInput: TaskInput{Title: "a", BlockedBy: []string{"$b"}}},
