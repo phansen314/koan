@@ -145,24 +145,41 @@ func parseNames(s, joined string) ([]string, error) {
 // the same part, such as /Proj/a and /proj/b. Paths are compared only from
 // the same start: the root, or the same anchoring ID.
 func CheckCase(refs []Ref) error {
+	if pairs := CasePairs(refs); pairs != nil {
+		a, b := refs[pairs[0][0]], refs[pairs[0][1]]
+		return invalid("%q and %q differ only in case", a.Raw, b.Raw)
+	}
+	return nil
+}
+
+// CasePairs is every pair of refs, by index, earlier first, that name two
+// paths differing only in case in the same part, compared as CheckCase
+// compares them.
+func CasePairs(refs []Ref) [][2]int {
+	var out [][2]int
 	for i := range refs {
 		for j := i + 1; j < len(refs); j++ {
-			a, b := refs[i], refs[j]
-			if a.Kind != b.Kind || (a.Kind != TargetPath && a.Kind != TargetAnchored) || a.ID != b.ID {
-				continue
-			}
-			for k := 0; k < len(a.Names) && k < len(b.Names); k++ {
-				if a.Names[k] == b.Names[k] {
-					continue
-				}
-				if strings.EqualFold(a.Names[k], b.Names[k]) {
-					return invalid("%q and %q differ only in case", a.Raw, b.Raw)
-				}
-				break
+			if SpelledTwice(refs[i], refs[j]) {
+				out = append(out, [2]int{i, j})
 			}
 		}
 	}
-	return nil
+	return out
+}
+
+// SpelledTwice reports whether two refs name paths that differ only in
+// case in the same part.
+func SpelledTwice(a, b Ref) bool {
+	if a.Kind != b.Kind || (a.Kind != TargetPath && a.Kind != TargetAnchored) || a.ID != b.ID {
+		return false
+	}
+	for k := 0; k < len(a.Names) && k < len(b.Names); k++ {
+		if a.Names[k] == b.Names[k] {
+			continue
+		}
+		return strings.EqualFold(a.Names[k], b.Names[k])
+	}
+	return false
 }
 
 // Kept writes a target as kept text: its ID, then its path as a hint.

@@ -11,20 +11,6 @@ import (
 	"github.com/phansen314/koan/internal/core"
 )
 
-// parse parses references and refuses two that differ only in case in the
-// same part: one input names one spelling of each path.
-func parse(ss ...string) ([]core.Ref, error) {
-	refs := make([]core.Ref, len(ss))
-	for i, s := range ss {
-		r, err := core.ParseRef(s)
-		if err != nil {
-			return nil, err
-		}
-		refs[i] = r
-	}
-	return refs, core.CheckCase(refs)
-}
-
 func invalid(format string, args ...any) error {
 	return &core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf(format, args...)}
 }
@@ -39,20 +25,6 @@ func pathRef(s string) (core.Ref, error) {
 		return r, invalid("%q is not a folder path from the root", s)
 	}
 	return r, nil
-}
-
-func checkTags(tags []string) (map[string]bool, error) {
-	out := map[string]bool{}
-	for _, tag := range tags {
-		if !core.ValidTag(tag) {
-			return nil, invalid("%q is not a tag", tag)
-		}
-		if out[tag] {
-			return nil, invalid("tag %q given twice", tag)
-		}
-		out[tag] = true
-	}
-	return out, nil
 }
 
 func checkPriority(p *int64) error {
@@ -140,11 +112,10 @@ func (c *Tree) createFolder(ref core.Ref, title *string, extra map[string]any) (
 // lists every folder made, parents first, this one last.
 func (t *Tree) CreateFolder(path string, title *string, extra map[string]any) (made []FolderAt, err error) {
 	err = t.change(func(c *Tree) error {
-		ref, err := pathRef(path)
-		if err != nil {
-			return err
-		}
-		if title, err = checkFolderTitle(title); err != nil {
+		var s shape
+		ref := s.path("/path", path)
+		title := s.folderTitle("/title", title)
+		if err := s.done(nil); err != nil {
 			return err
 		}
 		made, err = c.createFolder(ref, title, extra)
@@ -184,14 +155,15 @@ type edge struct {
 }
 
 // resolveEdges resolves edges, making each missing gate they name when make
-// is set, and refusing it as not-found otherwise.
-func (c *Tree) resolveEdges(in []edgeIn, labels map[string]int64, make bool) ([]edge, []GateMade, error) {
+// is set, and refusing it as not-found otherwise. In a batch, a refusal
+// points at the edge.
+func (c *Tree) resolveEdges(in []edgeIn, labels map[string]int64, make, batch bool) ([]edge, []GateMade, error) {
 	var out []edge
 	var made []GateMade
 	for _, e := range in {
 		r, err := core.Resolve(c, e.ref, core.WantEdge, labels)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, pointAt(err, e.pointer, batch)
 		}
 		if r.MissingGate() {
 			// An earlier edge in this change may have made it.
@@ -203,7 +175,7 @@ func (c *Tree) resolveEdges(in []edgeIn, labels map[string]int64, make bool) ([]
 				r.ID = g.ID
 			} else {
 				p := c.Path(r.Folder) + "." + string(r.End)
-				return nil, nil, core.NotFound(nil, []string{p}, "@%d (%s) has no %s gate", r.Folder, c.Path(r.Folder), r.End)
+				return nil, nil, pointAt(core.NotFound(nil, []string{p}, "@%d (%s) has no %s gate", r.Folder, c.Path(r.Folder), r.End), e.pointer, batch)
 			}
 		}
 		x := core.Edge{From: e.task, To: r.ID}
@@ -285,26 +257,27 @@ type TaskCreated struct {
 	Warnings  []Warning
 }
 
-// newTask checks a task's fields and makes it, with no edges yet.
-func (c *Tree) newTask(in TaskInput, folder int64) (*Task, error) {
-	title, err := core.CheckTitle(in.Title)
-	if err != nil {
-		return nil, err
-	}
-	if err := checkPriority(in.Priority); err != nil {
-		return nil, err
-	}
-	tags, err := checkTags(in.Tags)
-	if err != nil {
-		return nil, err
-	}
+// newTask makes a task from fields already checked, with no edges yet.
+func (c *Tree) newTask(title string, priority *int64, tags map[string]bool, extra map[string]any, folder int64) *Task {
 	x := &Task{
-		ID: c.issue(), Folder: folder, Title: title, Priority: in.Priority,
+		ID: c.issue(), Folder: folder, Title: title, Priority: priority,
 		CreatedAt: c.now, UpdatedAt: c.now,
-		BlockedBy: map[int64]bool{}, Tags: tags, Extra: orEmpty(in.Extra),
+		BlockedBy: map[int64]bool{}, Tags: tags, Extra: orEmpty(extra),
 	}
 	c.Tasks[x.ID] = x
-	return x, nil
+	return x
+}
+
+// edgeRefs checks the shape of a task's edges, at prefix/blocked_by/i and
+// prefix/blocks/i.
+func (s *shape) edgeRefs(prefix string, blockedBy, blocks []string, inBatch bool) (bb, bl []core.Ref) {
+	for i, r := range blockedBy {
+		bb = append(bb, s.ref(fmt.Sprintf("%s/blocked_by/%d", prefix, i), r, core.WantEdge, inBatch))
+	}
+	for i, r := range blocks {
+		bl = append(bl, s.ref(fmt.Sprintf("%s/blocks/%d", prefix, i), r, core.WantEdge, inBatch))
+	}
+	return bb, bl
 }
 
 func edgeInputs(task int64, refs []core.Ref, blocks bool, prefix string) []edgeIn {
@@ -319,10 +292,12 @@ func edgeInputs(task int64, refs []core.Ref, blocks bool, prefix string) []edgeI
 	return out
 }
 
-func (c *Tree) resolveFolder(ref core.Ref) (int64, error) {
+// resolveFolder resolves a folder-ref whose shape is checked; a refusal
+// that is invalid-input points at pointer.
+func (c *Tree) resolveFolder(ref core.Ref, pointer string) (int64, error) {
 	r, err := core.Resolve(c, ref, core.WantFolder, nil)
 	if err != nil {
-		return 0, err
+		return 0, pointAt(err, pointer, false)
 	}
 	return r.ID, nil
 }
@@ -335,23 +310,24 @@ func (t *Tree) CreateTask(in TaskInput) (out TaskCreated, err error) {
 		if folderRef == "" {
 			folderRef = "/"
 		}
-		refs, err := parse(slices.Concat([]string{folderRef}, in.BlockedBy, in.Blocks)...)
-		if err != nil {
+		var s shape
+		title := s.title("/title", in.Title)
+		fref := s.ref("/folder", folderRef, core.WantFolder, false)
+		s.priority("/priority", in.Priority)
+		tags := s.tags("/tags", in.Tags)
+		bb, bl := s.edgeRefs("", in.BlockedBy, in.Blocks, false)
+		if err := s.done(nil); err != nil {
 			return err
 		}
-		folder, err := c.resolveFolder(refs[0])
+		folder, err := c.resolveFolder(fref, "/folder")
 		if err != nil {
 			return err
 		}
 		before := c.readySet()
-		x, err := c.newTask(in, folder)
-		if err != nil {
-			return err
-		}
-		nb := len(in.BlockedBy)
+		x := c.newTask(title, in.Priority, tags, in.Extra, folder)
 		edges, made, err := c.resolveEdges(slices.Concat(
-			edgeInputs(x.ID, refs[1:1+nb], false, ""),
-			edgeInputs(x.ID, refs[1+nb:], true, "")), nil, true)
+			edgeInputs(x.ID, bb, false, ""),
+			edgeInputs(x.ID, bl, true, "")), nil, true, false)
 		if err != nil {
 			return err
 		}
@@ -366,11 +342,21 @@ func (t *Tree) CreateTask(in TaskInput) (out TaskCreated, err error) {
 	return out, err
 }
 
-// resolveTask resolves a task-ref.
-func (c *Tree) resolveTask(s string) (*Task, error) {
-	r, err := core.ResolveString(c, s, core.WantTask, nil)
-	if err != nil {
+// subjectTask checks the shape of a task subject, then resolves it.
+func (c *Tree) subjectTask(task string) (*Task, error) {
+	var s shape
+	ref := s.ref("/task", task, core.WantTask, false)
+	if err := s.done(nil); err != nil {
 		return nil, err
+	}
+	return c.resolveTask(ref)
+}
+
+// resolveTask resolves a task-ref whose shape is checked.
+func (c *Tree) resolveTask(ref core.Ref) (*Task, error) {
+	r, err := core.Resolve(c, ref, core.WantTask, nil)
+	if err != nil {
+		return nil, pointAt(err, "/task", false)
 	}
 	return c.Tasks[r.ID], nil
 }
@@ -392,10 +378,22 @@ type Update struct {
 	ExtraReplaceAll map[string]any // nil: not given
 }
 
-func applyExtra(extra map[string]any, u Update) (map[string]any, error) {
+// none reports whether an update gives nothing to change.
+func (u Update) none() bool {
+	return !u.SetTitle && !u.SetPriority && u.TagsAdd == nil && u.TagsRemove == nil && u.TagsReplaceAll == nil &&
+		u.ExtraMerge == nil && u.ExtraRemove == nil && u.ExtraReplaceAll == nil
+}
+
+// extra checks an update's extra fields: extra_remove holds no key twice,
+// and extra_replace_all goes with neither of the others.
+func (s *shape) extra(u Update) {
+	s.unique("/extra_remove", u.ExtraRemove)
 	if u.ExtraReplaceAll != nil && (u.ExtraMerge != nil || u.ExtraRemove != nil) {
-		return nil, invalid("extra_replace_all can't go with extra_merge or extra_remove")
+		s.faultf("", "extra_replace_all can't go with extra_merge or extra_remove")
 	}
+}
+
+func applyExtra(extra map[string]any, u Update) map[string]any {
 	out := maps.Clone(extra)
 	if u.ExtraReplaceAll != nil {
 		out = maps.Clone(u.ExtraReplaceAll)
@@ -404,57 +402,60 @@ func applyExtra(extra map[string]any, u Update) (map[string]any, error) {
 	for _, k := range u.ExtraRemove {
 		delete(out, k)
 	}
-	return out, nil
+	return out
 }
 
 // UpdateTask changes a task's title, priority, tags or extra. It reports
 // whether anything changed; updated_at moves only then.
 func (t *Tree) UpdateTask(task string, u Update) (changed bool, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.resolveTask(task)
+		var s shape
+		ref := s.ref("/task", task, core.WantTask, false)
+		if u.none() {
+			s.faultf("", "nothing to change")
+		}
+		var title string
+		if u.SetTitle {
+			if u.Title == nil {
+				s.faultf("/title", "a task's title can't be null")
+			} else {
+				title = s.title("/title", *u.Title)
+			}
+		}
+		if u.SetPriority {
+			s.priority("/priority", u.Priority)
+		}
+		add := s.tags("/tags_add", u.TagsAdd)
+		remove := s.tags("/tags_remove", u.TagsRemove)
+		replace := s.tags("/tags_replace_all", u.TagsReplaceAll)
+		if u.TagsReplaceAll != nil && (u.TagsAdd != nil || u.TagsRemove != nil) {
+			s.faultf("", "tags_replace_all can't go with tags_add or tags_remove")
+		}
+		s.extra(u)
+		if err := s.done(nil); err != nil {
+			return err
+		}
+		x, err := c.resolveTask(ref)
 		if err != nil {
 			return err
 		}
 		before := *x
 		if u.SetTitle {
-			if u.Title == nil {
-				return invalid("a task's title can't be null")
-			}
-			if x.Title, err = core.CheckTitle(*u.Title); err != nil {
-				return err
-			}
+			x.Title = title
 		}
 		if u.SetPriority {
-			if err := checkPriority(u.Priority); err != nil {
-				return err
-			}
 			x.Priority = u.Priority
-		}
-		if u.TagsReplaceAll != nil && (u.TagsAdd != nil || u.TagsRemove != nil) {
-			return invalid("tags_replace_all can't go with tags_add or tags_remove")
 		}
 		tags := maps.Clone(x.Tags)
 		if u.TagsReplaceAll != nil {
-			if tags, err = checkTags(u.TagsReplaceAll); err != nil {
-				return err
-			}
-		}
-		add, err := checkTags(u.TagsAdd)
-		if err != nil {
-			return err
-		}
-		remove, err := checkTags(u.TagsRemove)
-		if err != nil {
-			return err
+			tags = replace
 		}
 		maps.Copy(tags, add)
 		for tag := range remove {
 			delete(tags, tag)
 		}
 		x.Tags = tags
-		if x.Extra, err = applyExtra(x.Extra, u); err != nil {
-			return err
-		}
+		x.Extra = applyExtra(x.Extra, u)
 		changed = x.Title != before.Title || !equalPtr(x.Priority, before.Priority) ||
 			!maps.Equal(x.Tags, before.Tags) || !equalJSON(x.Extra, before.Extra)
 		if changed {
@@ -465,15 +466,25 @@ func (t *Tree) UpdateTask(task string, u Update) (changed bool, err error) {
 	return changed, err
 }
 
-// resolveSubjectFolder resolves a folder subject; the root can be read but
-// not changed.
-func (c *Tree) resolveSubjectFolder(s string) (*Folder, error) {
-	r, err := core.ResolveString(c, s, core.WantFolder, nil)
-	if err != nil {
+// subjectFolder checks the shape of a folder subject, then resolves it.
+func (c *Tree) subjectFolder(folder string) (*Folder, error) {
+	var s shape
+	ref := s.ref("/folder", folder, core.WantFolder, false)
+	if err := s.done(nil); err != nil {
 		return nil, err
 	}
+	return c.resolveSubjectFolder(ref)
+}
+
+// resolveSubjectFolder resolves a folder subject whose shape is checked;
+// the root can be read but not changed.
+func (c *Tree) resolveSubjectFolder(ref core.Ref) (*Folder, error) {
+	r, err := core.Resolve(c, ref, core.WantFolder, nil)
+	if err != nil {
+		return nil, pointAt(err, "/folder", false)
+	}
 	if r.Kind == core.ResolvedRoot {
-		return nil, invalid("the root can't be changed")
+		return nil, problem(invalid("the root can't be changed"), "/folder")
 	}
 	return c.Folders[r.ID], nil
 }
@@ -481,22 +492,39 @@ func (c *Tree) resolveSubjectFolder(s string) (*Folder, error) {
 // UpdateFolder changes a folder's title or extra.
 func (t *Tree) UpdateFolder(folder string, u Update) (changed bool, err error) {
 	err = t.change(func(c *Tree) error {
-		f, err := c.resolveSubjectFolder(folder)
+		var s shape
+		ref := s.ref("/folder", folder, core.WantFolder, false)
+		if u.none() {
+			s.faultf("", "nothing to change")
+		}
+		var title *string
+		if u.SetTitle {
+			title = s.folderTitle("/title", u.Title)
+		}
+		if u.SetPriority {
+			s.faultf("/priority", "a folder has no priority")
+		}
+		for _, f := range []struct {
+			name string
+			tags []string
+		}{{"tags_add", u.TagsAdd}, {"tags_remove", u.TagsRemove}, {"tags_replace_all", u.TagsReplaceAll}} {
+			if f.tags != nil {
+				s.faultf("/"+f.name, "a folder has no tags")
+			}
+		}
+		s.extra(u)
+		if err := s.done(nil); err != nil {
+			return err
+		}
+		f, err := c.resolveSubjectFolder(ref)
 		if err != nil {
 			return err
 		}
-		if u.SetPriority || u.TagsAdd != nil || u.TagsRemove != nil || u.TagsReplaceAll != nil {
-			return invalid("a folder has no priority and no tags")
-		}
 		before := *f
 		if u.SetTitle {
-			if f.Title, err = checkFolderTitle(u.Title); err != nil {
-				return err
-			}
+			f.Title = title
 		}
-		if f.Extra, err = applyExtra(f.Extra, u); err != nil {
-			return err
-		}
+		f.Extra = applyExtra(f.Extra, u)
 		changed = !equalPtr(f.Title, before.Title) || !equalJSON(f.Extra, before.Extra)
 		return nil
 	})
@@ -513,26 +541,34 @@ type EdgeResult struct {
 	Warnings  []Warning
 }
 
+// edgeChange checks the shape of block's or unblock's input, then
+// resolves its task.
+func (c *Tree) edgeChange(task string, blockedBy, blocks []string) (*Task, []core.Ref, []core.Ref, error) {
+	var s shape
+	ref := s.ref("/task", task, core.WantTask, false)
+	if len(blockedBy)+len(blocks) == 0 {
+		s.faultf("", "at least one edge is needed")
+	}
+	bb, bl := s.edgeRefs("", blockedBy, blocks, false)
+	if err := s.done(nil); err != nil {
+		return nil, nil, nil, err
+	}
+	x, err := c.resolveTask(ref)
+	return x, bb, bl, err
+}
+
 // Block adds edges: task waits on each of blockedBy, and each of blocks
 // waits on task. A gate an edge names is made.
 func (t *Tree) Block(task string, blockedBy, blocks []string) (out EdgeResult, err error) {
 	err = t.change(func(c *Tree) error {
-		if len(blockedBy)+len(blocks) == 0 {
-			return invalid("block needs at least one edge")
-		}
-		refs, err := parse(slices.Concat([]string{task}, blockedBy, blocks)...)
-		if err != nil {
-			return err
-		}
-		r, err := core.Resolve(c, refs[0], core.WantTask, nil)
+		x, bb, bl, err := c.edgeChange(task, blockedBy, blocks)
 		if err != nil {
 			return err
 		}
 		before := c.readySet()
-		nb := len(blockedBy)
 		edges, made, err := c.resolveEdges(slices.Concat(
-			edgeInputs(r.ID, refs[1:1+nb], false, ""),
-			edgeInputs(r.ID, refs[1+nb:], true, "")), nil, true)
+			edgeInputs(x.ID, bb, false, ""),
+			edgeInputs(x.ID, bl, true, "")), nil, true, false)
 		if err != nil {
 			return err
 		}
@@ -540,7 +576,7 @@ func (t *Tree) Block(task string, blockedBy, blocks []string) (out EdgeResult, e
 		if err != nil {
 			return err
 		}
-		out = EdgeResult{ID: r.ID, Changed: changed, GatesMade: made, Reblocked: c.reblocked(before)}
+		out = EdgeResult{ID: x.ID, Changed: changed, GatesMade: made, Reblocked: c.reblocked(before)}
 		out.Warnings = append(warnings, c.claimedBlocked(out.Reblocked)...)
 		return nil
 	})
@@ -550,26 +586,18 @@ func (t *Tree) Block(task string, blockedBy, blocks []string) (out EdgeResult, e
 // Unblock removes edges. It never makes a gate.
 func (t *Tree) Unblock(task string, blockedBy, blocks []string) (out EdgeResult, err error) {
 	err = t.change(func(c *Tree) error {
-		if len(blockedBy)+len(blocks) == 0 {
-			return invalid("unblock needs at least one edge")
-		}
-		refs, err := parse(slices.Concat([]string{task}, blockedBy, blocks)...)
-		if err != nil {
-			return err
-		}
-		r, err := core.Resolve(c, refs[0], core.WantTask, nil)
+		x, bb, bl, err := c.edgeChange(task, blockedBy, blocks)
 		if err != nil {
 			return err
 		}
 		before, existed := c.readySet(), c.taskIDs()
-		nb := len(blockedBy)
 		edges, _, err := c.resolveEdges(slices.Concat(
-			edgeInputs(r.ID, refs[1:1+nb], false, ""),
-			edgeInputs(r.ID, refs[1+nb:], true, "")), nil, false)
+			edgeInputs(x.ID, bb, false, ""),
+			edgeInputs(x.ID, bl, true, "")), nil, false, false)
 		if err != nil {
 			return err
 		}
-		out.ID = r.ID
+		out.ID = x.ID
 		for _, e := range edges {
 			from := c.Tasks[e.From]
 			if from.BlockedBy[e.To] {
@@ -596,7 +624,7 @@ type CompleteResult struct {
 // Complete marks a task complete and ends its claim.
 func (t *Tree) Complete(task string) (out CompleteResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.resolveTask(task)
+		x, err := c.subjectTask(task)
 		if err != nil {
 			return err
 		}
@@ -617,7 +645,7 @@ func (t *Tree) Complete(task string) (out CompleteResult, err error) {
 // Reopen marks a task open again; whatever waits on it waits again.
 func (t *Tree) Reopen(task string) (out CompleteResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.resolveTask(task)
+		x, err := c.subjectTask(task)
 		if err != nil {
 			return err
 		}
@@ -637,21 +665,22 @@ func (t *Tree) Reopen(task string) (out CompleteResult, err error) {
 // MoveTask puts a task in another folder or the root. No edge changes.
 func (t *Tree) MoveTask(task, to string) (changed bool, warnings []Warning, err error) {
 	err = t.change(func(c *Tree) error {
-		refs, err := parse(task, to)
+		var s shape
+		tref := s.ref("/task", task, core.WantTask, false)
+		dest := s.ref("/to", to, core.WantFolder, false)
+		if err := s.done(nil); err != nil {
+			return err
+		}
+		x, err := c.resolveTask(tref)
 		if err != nil {
 			return err
 		}
-		r, err := core.Resolve(c, refs[0], core.WantTask, nil)
+		folder, err := c.resolveFolder(dest, "/to")
 		if err != nil {
 			return err
 		}
-		x := c.Tasks[r.ID]
 		if x.Gate != core.EndNone {
 			return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
-		}
-		folder, err := c.resolveFolder(refs[1])
-		if err != nil {
-			return err
 		}
 		if folder == x.Folder {
 			return nil
@@ -676,15 +705,17 @@ type FolderMoved struct {
 
 // MoveFolder moves or renames a folder to its whole new path, everything
 // under it included. Missing parents are made. A case-only rename is a
-// move, and the one input allowed to name both spellings.
+// move, and the one input allowed to name both spellings, and only of the
+// folder's own name.
 func (t *Tree) MoveFolder(folder, to string) (out FolderMoved, err error) {
 	err = t.change(func(c *Tree) error {
-		// No CheckCase: the subject and the destination may differ in case.
-		f, err := c.resolveSubjectFolder(folder)
-		if err != nil {
+		var s shape
+		subject := s.ref("/folder", folder, core.WantFolder, false)
+		dest := s.path("/to", to)
+		if err := s.done(respells); err != nil {
 			return err
 		}
-		dest, err := pathRef(to)
+		f, err := c.resolveSubjectFolder(subject)
 		if err != nil {
 			return err
 		}
@@ -723,6 +754,14 @@ func (t *Tree) MoveFolder(folder, to string) (out FolderMoved, err error) {
 		return nil
 	})
 	return out, err
+}
+
+// respells reports whether a destination only respells its subject's own
+// name: the same path but for the case of its last name.
+func respells(subject, dest core.Ref) bool {
+	n := len(subject.Names)
+	return subject.Kind == core.TargetPath && dest.Kind == core.TargetPath && n > 0 && len(dest.Names) == n &&
+		slices.Equal(subject.Names[:n-1], dest.Names[:n-1]) && strings.EqualFold(subject.Names[n-1], dest.Names[n-1])
 }
 
 // remove takes tasks and folders out of the tree with every edge to and
@@ -785,7 +824,7 @@ type Removed struct {
 // never splices: what waited on it isn't passed its blockers.
 func (t *Tree) DeleteTask(task string) (out Removed, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.resolveTask(task)
+		x, err := c.subjectTask(task)
 		if err != nil {
 			return err
 		}
@@ -800,7 +839,7 @@ func (t *Tree) DeleteTask(task string) (out Removed, err error) {
 // DeleteFolder removes a folder and everything under it, gates included.
 func (t *Tree) DeleteFolder(folder string, contents, force bool) (out Removed, err error) {
 	err = t.change(func(c *Tree) error {
-		f, err := c.resolveSubjectFolder(folder)
+		f, err := c.subjectFolder(folder)
 		if err != nil {
 			return err
 		}
@@ -875,7 +914,7 @@ func (c *Tree) archive(id int64, tasks, folders []int64) []int64 {
 // ArchiveTask archives a complete task. It returns every ID that left.
 func (t *Tree) ArchiveTask(task string) (left []int64, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.resolveTask(task)
+		x, err := c.subjectTask(task)
 		if err != nil {
 			return err
 		}
@@ -891,7 +930,7 @@ func (t *Tree) ArchiveTask(task string) (left []int64, err error) {
 // ArchiveFolder archives a finished folder with everything under it.
 func (t *Tree) ArchiveFolder(folder string) (left []int64, err error) {
 	err = t.change(func(c *Tree) error {
-		f, err := c.resolveSubjectFolder(folder)
+		f, err := c.subjectFolder(folder)
 		if err != nil {
 			return err
 		}
@@ -914,7 +953,7 @@ func (t *Tree) ArchiveFolder(folder string) (left []int64, err error) {
 // ClaimTask claims an open task with no claim.
 func (t *Tree) ClaimTask(task string, extra map[string]any) (claim Claim, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.resolveTask(task)
+		x, err := c.subjectTask(task)
 		if err != nil {
 			return err
 		}
@@ -969,19 +1008,14 @@ func (t *Tree) ScopedFrontier(s Scope) ([]int64, error) {
 	if ref == "" {
 		ref = "/"
 	}
-	refs, err := parse(ref)
-	if err != nil {
+	var sh shape
+	fref := sh.ref("/folder", ref, core.WantFolder, false)
+	anyTags := sh.tags("/tags_any", s.TagsAny)
+	allTags := sh.tags("/tags_all", s.TagsAll)
+	if err := sh.done(nil); err != nil {
 		return nil, err
 	}
-	folder, err := t.resolveFolder(refs[0])
-	if err != nil {
-		return nil, err
-	}
-	anyTags, err := checkTags(s.TagsAny)
-	if err != nil {
-		return nil, err
-	}
-	allTags, err := checkTags(s.TagsAll)
+	folder, err := t.resolveFolder(fref, "/folder")
 	if err != nil {
 		return nil, err
 	}
@@ -1020,7 +1054,7 @@ func hasAll(have, want map[string]bool) bool {
 // Release ends a task's claim, whoever made it.
 func (t *Tree) Release(task string) (changed bool, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.resolveTask(task)
+		x, err := c.subjectTask(task)
 		if err != nil {
 			return err
 		}

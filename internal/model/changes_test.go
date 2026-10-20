@@ -94,19 +94,24 @@ func TestCreateTask(t *testing.T) {
 	if !reflect.DeepEqual(e.Problems, []string{"/blocks/0", "/blocked_by/0"}) {
 		t.Errorf("problems %v", e.Problems)
 	}
-	for _, in := range []TaskInput{
-		{Title: ""},
-		{Title: "a\nb"},
-		{Title: "t", Tags: []string{"Bad"}},
-		{Title: "t", Tags: []string{"a", "a"}},
-		{Title: "t", Priority: ptr(core.MaxInt + 1)},
-		{Title: "t", BlockedBy: []string{"$a"}},
-		{Title: "t", BlockedBy: []string{"/"}},
-		{Title: "t", Folder: "@2"}, // a task where a folder is taken: not-found
-		{Title: "t", BlockedBy: []string{"2.start"}},
+	for _, c := range []struct {
+		in       TaskInput
+		kind     string
+		problems []string
+	}{
+		{TaskInput{Title: ""}, core.KindInvalidInput, []string{"/title"}},
+		{TaskInput{Title: "a\nb"}, core.KindInvalidInput, []string{"/title"}},
+		{TaskInput{Title: "t", Tags: []string{"Bad"}}, core.KindInvalidInput, []string{"/tags/0"}},
+		{TaskInput{Title: "t", Tags: []string{"a", "a"}}, core.KindInvalidInput, []string{"/tags/1"}},
+		{TaskInput{Title: "t", Priority: ptr(core.MaxInt + 1)}, core.KindInvalidInput, []string{"/priority"}},
+		{TaskInput{Title: "t", BlockedBy: []string{"$a"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
+		{TaskInput{Title: "t", BlockedBy: []string{"/"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
+		{TaskInput{Title: "t", Folder: "@2"}, core.KindNotFound, nil}, // a task where a folder is taken
+		{TaskInput{Title: "t", BlockedBy: []string{"2.start"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
 	} {
-		if _, err := tr.CreateTask(in); err == nil {
-			t.Errorf("%+v succeeded", in)
+		_, err := tr.CreateTask(c.in)
+		if e := wantErr(t, err, c.kind, ""); !reflect.DeepEqual(e.Problems, c.problems) {
+			t.Errorf("%+v: problems %q, want %q", c.in, e.Problems, c.problems)
 		}
 	}
 	if tr.Issued != 4 {
@@ -262,29 +267,37 @@ func TestBatch(t *testing.T) {
 	}
 
 	issued := tr.Issued
-	refused := []BatchInput{
-		{},
-		{Tasks: []BatchTask{{Label: "$a", TaskInput: TaskInput{Title: "a"}}, {Label: "$a", TaskInput: TaskInput{Title: "b"}}}},
-		{Tasks: []BatchTask{{TaskInput: TaskInput{Title: "a", BlockedBy: []string{"$nope"}}}}},
-		{Tasks: []BatchTask{{Label: "$a", TaskInput: TaskInput{Title: "a", BlockedBy: []string{"$a.start"}}}}},
-		{Folders: []BatchFolder{{Path: "/work"}}},
-		{Folders: []BatchFolder{{Path: "/new"}, {Path: "/new"}}},
-		{Folders: []BatchFolder{{Path: "/new/x"}, {Path: "/New/y"}}},
+	refused := []struct {
+		in         BatchInput
+		kind, rule string
+		problems   []string
+	}{
+		{BatchInput{}, core.KindInvalidInput, "", []string{""}},
+		{BatchInput{Tasks: []BatchTask{{Label: "$a", TaskInput: TaskInput{Title: "a"}}, {Label: "$a", TaskInput: TaskInput{Title: "b"}}}},
+			core.KindInvalidInput, "", []string{"/tasks/1/label"}},
+		{BatchInput{Tasks: []BatchTask{{TaskInput: TaskInput{Title: "a", BlockedBy: []string{"$nope"}}}}},
+			core.KindInvalidInput, "", []string{"/tasks/0/blocked_by/0"}},
+		{BatchInput{Tasks: []BatchTask{{Label: "$a", TaskInput: TaskInput{Title: "a", BlockedBy: []string{"$a.start"}}}}},
+			core.KindInvalidInput, "", []string{"/tasks/0/blocked_by/0"}},
+		{BatchInput{Folders: []BatchFolder{{Path: "/work"}}}, core.KindConflict, core.RuleExists, []string{"/folders/0/path"}},
+		{BatchInput{Folders: []BatchFolder{{Path: "/new"}, {Path: "/new"}}}, core.KindConflict, core.RuleExists, []string{"/folders/1/path"}},
+		{BatchInput{Folders: []BatchFolder{{Path: "/new/x"}, {Path: "/New/y"}}}, core.KindInvalidInput, "", []string{"/folders/0/path", "/folders/1/path"}},
 		// A cycle over the whole batch, across parts.
-		{Tasks: []BatchTask{
+		{BatchInput{Tasks: []BatchTask{
 			{Label: "$a", TaskInput: TaskInput{Title: "a", BlockedBy: []string{"$b"}}},
 			{Label: "$b", TaskInput: TaskInput{Title: "b", BlockedBy: []string{"$a"}}},
-		}},
+		}}, core.KindConflict, core.RuleCycle, []string{"/tasks/1/blocked_by/0", "/tasks/0/blocked_by/0"}},
 	}
-	for i, in := range refused {
-		if _, err := tr.Batch(in); err == nil {
-			t.Errorf("batch %d succeeded", i)
+	for i, c := range refused {
+		_, err := tr.Batch(c.in)
+		if e := wantErr(t, err, c.kind, c.rule); !reflect.DeepEqual(e.Problems, c.problems) {
+			t.Errorf("batch %d: problems %q, want %q", i, e.Problems, c.problems)
 		}
 	}
 	if tr.Issued != issued || len(tr.Folders) != 7 {
 		t.Error("a refused batch made something")
 	}
-	_, err := tr.Batch(refused[len(refused)-1])
+	_, err := tr.Batch(refused[len(refused)-1].in)
 	if e := wantErr(t, err, core.KindConflict, core.RuleCycle); !reflect.DeepEqual(e.Problems, []string{"/tasks/1/blocked_by/0", "/tasks/0/blocked_by/0"}) {
 		t.Errorf("cycle %v problems %v", e.IDs, e.Problems)
 	}

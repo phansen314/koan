@@ -44,68 +44,67 @@ type BatchResult struct {
 // input order, then edges.
 func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 	err = t.change(func(c *Tree) error {
+		// Every part's shape first, in the batch file's field order.
+		var s shape
 		if n := len(in.Folders) + len(in.Tasks); n < 1 || n > 1000 {
-			return invalid("a batch holds 1 to 1000 parts, not %d", n)
+			s.faultf("", "a batch holds 1 to 1000 parts, not %d", n)
+		}
+		folderRefs := make([]core.Ref, len(in.Folders))
+		titles := make([]*string, len(in.Folders))
+		for i, f := range in.Folders {
+			folderRefs[i] = s.path(fmt.Sprintf("/folders/%d/path", i), f.Path)
+			titles[i] = s.folderTitle(fmt.Sprintf("/folders/%d/title", i), f.Title)
 		}
 		batchFolder := in.Folder
 		if batchFolder == "" {
 			batchFolder = "/"
 		}
-
-		// Every reference in the input, so one input never names two
-		// spellings of a path.
-		all := []string{batchFolder}
-		for _, f := range in.Folders {
-			all = append(all, f.Path)
+		batchRef := s.ref("/folder", batchFolder, core.WantFolder, true)
+		type part struct {
+			title  string
+			folder core.Ref
+			tags   map[string]bool
+			bb, bl []core.Ref
 		}
-		for _, x := range in.Tasks {
-			if x.Folder != "" {
-				all = append(all, x.Folder)
-			}
-			all = append(all, x.BlockedBy...)
-			all = append(all, x.Blocks...)
-		}
-		if _, err := parse(all...); err != nil {
-			return err
-		}
-
+		parts := make([]part, len(in.Tasks))
 		labels := map[string]int64{}
 		for i, x := range in.Tasks {
-			if x.Label == "" {
-				continue
+			prefix := fmt.Sprintf("/tasks/%d", i)
+			if x.Label != "" {
+				switch _, ok := labels[x.Label]; {
+				case !core.ValidLabel(x.Label):
+					s.faultf(prefix+"/label", "%q is not a label", x.Label)
+				case ok:
+					s.faultf(prefix+"/label", "label %s is defined twice", x.Label)
+				}
+				labels[x.Label] = 0
 			}
-			if !core.ValidLabel(x.Label) {
-				return problem(invalid("%q is not a label", x.Label), "/tasks/%d/label", i)
+			p := &parts[i]
+			p.title = s.title(prefix+"/title", x.Title)
+			p.folder = batchRef
+			if x.Folder != "" {
+				p.folder = s.ref(prefix+"/folder", x.Folder, core.WantFolder, true)
 			}
-			if _, ok := labels[x.Label]; ok {
-				return problem(invalid("label %s is defined twice", x.Label), "/tasks/%d/label", i)
-			}
-			labels[x.Label] = 0
+			s.priority(prefix+"/priority", x.Priority)
+			p.tags = s.tags(prefix+"/tags", x.Tags)
+			p.bb, p.bl = s.edgeRefs(prefix, x.BlockedBy, x.Blocks, true)
+		}
+		if err := s.done(nil); err != nil {
+			return err
 		}
 
 		// Folders are made parents first, in tree order, whatever the
 		// input's order.
-		folderRefs := make([]core.Ref, len(in.Folders))
 		order := make([]int, len(in.Folders))
-		for i, f := range in.Folders {
-			ref, err := pathRef(f.Path)
-			if err != nil {
-				return problem(err, "/folders/%d/path", i)
-			}
-			folderRefs[i], order[i] = ref, i
+		for i := range order {
+			order[i] = i
 		}
 		slices.SortStableFunc(order, func(a, b int) int {
 			return slices.Compare(folderRefs[a].Names, folderRefs[b].Names)
 		})
-
 		before := c.readySet()
 		for _, i := range order {
-			f := in.Folders[i]
-			title, err := checkFolderTitle(f.Title)
-			if err != nil {
-				return problem(err, "/folders/%d/title", i)
-			}
-			made, err := c.createFolder(folderRefs[i], title, f.Extra)
+			made, err := c.createFolder(folderRefs[i], titles[i], in.Folders[i].Extra)
 			if err != nil {
 				return problem(err, "/folders/%d/path", i)
 			}
@@ -114,36 +113,26 @@ func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 
 		var edges []edgeIn
 		for i, x := range in.Tasks {
-			folderRef, pointer := x.Folder, fmt.Sprintf("/tasks/%d/folder", i)
-			if folderRef == "" {
-				folderRef, pointer = batchFolder, "/folder"
+			p := parts[i]
+			pointer := fmt.Sprintf("/tasks/%d/folder", i)
+			if x.Folder == "" {
+				pointer = "/folder"
 			}
-			r, err := core.ResolveString(c, folderRef, core.WantFolder, labels)
+			r, err := core.Resolve(c, p.folder, core.WantFolder, labels)
 			if err != nil {
 				return problem(err, "%s", pointer)
 			}
-			task, err := c.newTask(x.TaskInput, r.ID)
-			if err != nil {
-				return problem(err, "/tasks/%d", i)
-			}
+			task := c.newTask(p.title, x.Priority, p.tags, x.Extra, r.ID)
 			out.Tasks = append(out.Tasks, task.ID)
 			if x.Label != "" {
 				labels[x.Label] = task.ID
 			}
 			prefix := fmt.Sprintf("/tasks/%d", i)
-			for _, group := range []struct {
-				refs   []string
-				blocks bool
-			}{{x.BlockedBy, false}, {x.Blocks, true}} {
-				refs, err := parse(group.refs...)
-				if err != nil {
-					return err
-				}
-				edges = append(edges, edgeInputs(task.ID, refs, group.blocks, prefix)...)
-			}
+			edges = append(edges, edgeInputs(task.ID, p.bb, false, prefix)...)
+			edges = append(edges, edgeInputs(task.ID, p.bl, true, prefix)...)
 		}
 
-		resolved, made, err := c.resolveEdges(edges, labels, true)
+		resolved, made, err := c.resolveEdges(edges, labels, true, true)
 		if err != nil {
 			return err
 		}
