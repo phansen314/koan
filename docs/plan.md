@@ -128,11 +128,11 @@ Each sub-slice is its own task.
 | Slice | Commands | Also covers | Also read |
 |---|---|---|---|
 | S5a | `folder create`, `folder show`, `folder list`, `task create`, `task show`, `task list` (no edges yet) | missing parents, notes files written at create, `missing-notes`, `--fields`, tree order | rules Fields, Case |
-| S5b | `task block`, `task unblock`, `task create` with edges, `task why`, `task frontier` | gates made with their notes file, `gates_made`, `cycle`, `released`, `reblocked`, `complete-blocker`, `claimed-blocked` | rules Readiness |
+| S5b | `task block`, `task unblock`, `task create` with edges, `task why`, `task frontier` | gates made with their notes file, `gates_made`, `cycle`, `released`, `reblocked`, `complete-blocker`, `claimed-blocked` | rules Readiness; PRD Writes → Making a gate |
 | S5c | `task complete`, `task reopen`, `task update`, `folder update`, `task claim`, `task claim-next`, `task release` | `changed`, `complete` and `claimed`, claims ending on complete and delete | rules Claims |
 | S5d | `task move`, `folder move`, `task delete`, `folder delete` | missing parents on move, case-only rename, `moved-claimed`, `gate`, `into-itself`, `not-empty`, `has-material` | rules Case |
 | S5e | `batch` | labels, the batch read as the tree it leaves, the five steps of Resolving a batch (PRD Writes), `problems` pointing at parts | spec Input formats → Batch file |
-| S5f | `task archive`, `folder archive` | archive layout, JSON beside each item, lone-gate names, the index, `not-found` with `archived` filled in | rules Archiving; PRD Layout → The archive, Writes → Archiving |
+| S5f | `task archive`, `folder archive` | archive layout, JSON beside each item, lone-gate names, the index, `not-found` with `archived` filled in | rules Archiving; PRD Layout → The archive, Writes → Archiving; spec On-disk formats → Archive JSON |
 
 ## S6. Locating and markers
 
