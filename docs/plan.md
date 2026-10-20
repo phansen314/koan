@@ -45,15 +45,16 @@ Three short experiments whose answers the rest depends on. Write the findings to
 **Read:** spec Introduction, Shared types, Invocation, Envelope, Errors, Input formats → Option values; PRD Command surface → Output, Errors.
 
 **Build**
-- The Go module, `cmd/koan`, `internal/cli`.
+- The Go module, `github.com/phansen314/koan`: the PRD's install path, and the name koan keeps once the rewrite replaces it. There is no remote yet; the module builds and tests locally without one.
+- `cmd/koan`, `internal/cli`.
 - The envelope, every error kind, exit codes 0–3, the standard-error line.
 - The command-line rules: one subject, lists, `null` only for nullable fields, booleans, JSON values, `--`, and `usage` versus `invalid-input`.
 - `-i/--input` for every command.
 - `version`, and `info` on a missing root.
 - **The test runner:** builds the binary, runs it with `HOME` set to a temp directory, parses the one line of output, and validates it against `schemas/` by command name. Golden results go in `testdata/`.
-- CI on Linux and macOS, including `scripts/extract-schemas.py --check`.
+- CI for Linux and macOS, including `scripts/extract-schemas.py --check`, written as a workflow file. It can't run until the repo has a remote; until then, run its steps locally on Linux.
 
-**Done when** `version` and `info` pass their schemas on both systems, and a table of malformed command lines gives `usage` with exit 2.
+**Done when** `version` and `info` pass their schemas on Linux, the CI workflow's steps pass when run locally, and a table of malformed command lines gives `usage` with exit 2. The macOS run waits for a remote, with S0's macOS measurements.
 
 ## S2. Core: pure logic, no I/O
 
