@@ -238,6 +238,9 @@ func (c *Command) parse(args []string) (*line, *Error) {
 	}
 	if len(subjects) == 1 {
 		c.Subject.set(l.in, subjects[0])
+		if c.Subject.Kind == Path {
+			l.paths = append(l.paths, c.Subject.Field)
+		}
 	} else if c.Subject != nil && c.Subject.Required {
 		return nil, Usage("", c.Name+" needs a subject: "+c.Subject.Field)
 	}
