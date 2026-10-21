@@ -110,21 +110,23 @@ type place struct {
 	parts []string
 	// marker is the nearest marker outside the root, when there is one.
 	marker *markers.Found
+	// rootReal is the root's real path.
+	rootReal string
 }
 
 // findPlace finds where a path on disk lies. Outside the root it looks
 // for the nearest marker.
 func findPlace(root store.Root, file string) (place, error) {
-	real, _, err := markers.Real(file)
+	rootReal, _, err := markers.Real(root.Path, "")
 	if err != nil {
 		return place{}, lookIO(err)
 	}
-	rootReal, _, err := markers.Real(root.Path)
+	real, _, err := markers.Real(file, rootReal)
 	if err != nil {
 		return place{}, lookIO(err)
 	}
 	if !markers.Under(real, rootReal) {
-		p := place{kind: outside, printed: file}
+		p := place{kind: outside, printed: file, rootReal: rootReal}
 		f, ok, err := markers.Look(file)
 		if err != nil {
 			return place{}, lookIO(err)
@@ -343,7 +345,7 @@ func archivedPath(tx *store.Tx, p place) error {
 // names no live folder, that ID.
 func (t *tasks) locateMarker(tx *store.Tx, p place) (Location, int64, []cli.Warning, error) {
 	f := p.marker
-	real, _, err := markers.Real(f.Dir)
+	real, _, err := markers.Real(f.Dir, p.rootReal)
 	if err != nil {
 		return Location{}, 0, nil, lookIO(err)
 	}

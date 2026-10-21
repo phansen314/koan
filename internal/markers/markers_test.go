@@ -40,18 +40,110 @@ func TestReal(t *testing.T) {
 		{d + "/rel/up/up", d + "/a/b", true},
 		{d + "/abs/missing/x", d + "/a/missing/x", false},
 		{d + "/a/f/x", d + "/a/f/x", false},
-		// A name is found byte for byte, never by the filesystem's case
-		// rules, so this holds on macOS too.
-		{d + "/A/b", d + "/A/b", false},
 	} {
-		got, exists, err := Real(c.in)
+		got, exists, err := Real(c.in, "")
 		if err != nil || got != c.want || exists != c.exists {
 			t.Errorf("Real(%s) = %s, %v, %v; want %s, %v", c.in, got, exists, err, c.want, c.exists)
 		}
 	}
-	if _, _, err := Real(d + "/hop/x"); err == nil {
+	if _, _, err := Real(d+"/hop/x", ""); err == nil {
 		t.Errorf("a symlink loop resolves")
 	}
+}
+
+// ignoresCase reports whether the filesystem holding dir ignores case.
+func ignoresCase(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "probe")
+	if err := os.WriteFile(probe, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(probe)
+	_, err := os.Lstat(filepath.Join(dir, "PROBE"))
+	return err == nil
+}
+
+// fold makes sameFile answer same for the rest of the test, recording
+// what it was asked.
+func fold(t *testing.T, same bool) *[][2]string {
+	t.Helper()
+	asked := new([][2]string)
+	old := sameFile
+	sameFile = func(a, b string) bool {
+		*asked = append(*asked, [2]string{a, b})
+		return same
+	}
+	t.Cleanup(func() { sameFile = old })
+	return asked
+}
+
+func TestRealFold(t *testing.T) {
+	check := func(t *testing.T, in, root, want string, wantExists bool) {
+		t.Helper()
+		got, exists, err := Real(in, root)
+		if err != nil || got != want || exists != wantExists {
+			t.Errorf("Real(%s, %q) = %s, %v, %v; want %s, %v", in, root, got, exists, err, want, wantExists)
+		}
+	}
+	t.Run("same file is taken as on disk", func(t *testing.T) {
+		d := realTemp(t)
+		os.MkdirAll(filepath.Join(d, "code", "wt"), 0o755)
+		asked := fold(t, true)
+		check(t, d+"/Code/wt", "", d+"/code/wt", true)
+		want := [][2]string{{d + "/code", d + "/Code"}}
+		if !slices.Equal(*asked, want) {
+			t.Errorf("sameFile asked %v; want %v", *asked, want)
+		}
+	})
+	t.Run("another file is not", func(t *testing.T) {
+		d := realTemp(t)
+		os.MkdirAll(filepath.Join(d, "code", "wt"), 0o755)
+		fold(t, false)
+		check(t, d+"/Code/wt", "", d+"/Code/wt", false)
+	})
+	t.Run("an exact match wins", func(t *testing.T) {
+		d := realTemp(t)
+		os.MkdirAll(filepath.Join(d, "code", "wt"), 0o755)
+		asked := fold(t, true)
+		check(t, d+"/code/wt", "", d+"/code/wt", true)
+		if !ignoresCase(t, d) {
+			os.MkdirAll(filepath.Join(d, "Code", "wt"), 0o755)
+			check(t, d+"/Code/wt", "", d+"/Code/wt", true)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("sameFile asked %v for exact matches", *asked)
+		}
+	})
+	t.Run("below the root nothing is folded", func(t *testing.T) {
+		d := realTemp(t)
+		root := filepath.Join(d, "koan-root")
+		os.MkdirAll(filepath.Join(root, "tree", "work"), 0o755)
+		fold(t, true)
+		check(t, root+"/tree/Work", root, root+"/tree/Work", false)
+		check(t, root+"/Tree/work", root, root+"/Tree/work", false)
+		// The root's own name, and what is above it, fold.
+		check(t, d+"/KOAN-ROOT/tree/work", root, root+"/tree/work", true)
+		check(t, d+"/KOAN-ROOT/tree/Work", root, root+"/tree/Work", false)
+		// A symlink out of the root leaves it.
+		os.MkdirAll(filepath.Join(d, "out", "wt"), 0o755)
+		os.Symlink(filepath.Join(d, "out"), filepath.Join(root, "tree", "link"))
+		check(t, root+"/tree/link/WT", root, d+"/out/wt", true)
+	})
+	t.Run("the filesystem decides", func(t *testing.T) {
+		// No seam: on Linux code and Code are two directories, never
+		// taken for each other; on macOS they are one.
+		d := realTemp(t)
+		os.MkdirAll(filepath.Join(d, "code", "wt"), 0o755)
+		if ignoresCase(t, d) {
+			check(t, d+"/Code/wt", "", d+"/code/wt", true)
+			return
+		}
+		check(t, d+"/Code/wt", "", d+"/Code/wt", false)
+		os.MkdirAll(filepath.Join(d, "Code", "wt"), 0o755)
+		check(t, d+"/Code/wt", "", d+"/Code/wt", true)
+		check(t, d+"/code/wt", "", d+"/code/wt", true)
+		check(t, d+"/CODE/wt", "", d+"/CODE/wt", false)
+	})
 }
 
 func TestUnder(t *testing.T) {

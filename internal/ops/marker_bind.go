@@ -99,10 +99,11 @@ func MarkerBind() *cli.Command {
 // markers there are never read, and it is a directory that exists. It
 // gives the directory's real path.
 func markerDir(root store.Root, dir string) (string, *cli.Error) {
-	real, exists, err := markers.Real(dir)
+	rootReal, _, err := markers.Real(root.Path, "")
+	var real string
+	var exists bool
 	if err == nil {
-		var rootReal string
-		if rootReal, _, err = markers.Real(root.Path); err == nil && markers.Under(real, rootReal) {
+		if real, exists, err = markers.Real(dir, rootReal); err == nil && markers.Under(real, rootReal) {
 			reason := dir + " is under " + root.Path + ", where markers are never read"
 			return "", cli.InvalidInput(reason, cli.Problem{Field: "/dir", Reason: reason})
 		}

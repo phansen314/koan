@@ -669,3 +669,66 @@ func TestUnresolvableWorkingDirectory(t *testing.T) {
 		t.Errorf("absolute: %s", r.Stdout)
 	}
 }
+
+// ignoresCase reports whether the filesystem holding dir ignores case.
+func ignoresCase(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "probe")
+	if err := os.WriteFile(probe, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(probe)
+	_, err := os.Lstat(filepath.Join(dir, "PROBE"))
+	return err == nil
+}
+
+// Outside the tree, a name in another case is the directory on disk only
+// when the filesystem says it is the same one: on macOS a path spelled
+// in another case reaches its marker and the root, and on Linux two
+// directories that differ in case are never taken for each other.
+func TestCaseOutsideTheTree(t *testing.T) {
+	home := realRoot(t)
+	ok(t, home, "folder", "create", "/work")
+	ok(t, home, "folder", "create", "/home")
+	wt := mkdir(t, home, "code", "wt")
+	ok(t, home, "marker", "bind", "/work", "--dir", wt)
+	upper := filepath.Join(home, "Code", "wt")
+	notes := treeAt(home, "@work", "@notes.md")
+	wrongRoot := filepath.Join(home, "KOAN-ROOT", "tree")
+
+	if ignoresCase(t, home) {
+		file := upper + "/x"
+		if got, want := location(ok(t, home, "where", "--file", file)), "folder 1 @1 (/work) 1:/work <nil> <nil> "+file+" "+upper+"/.koan/marker.json"; got != want {
+			t.Errorf("where:\n got %s\nwant %s", got, want)
+		}
+		if id := ok(t, home, "context", "--file", file).Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
+			t.Errorf("context: folder %v", id)
+		}
+		r := ok(t, home, "marker", "bind", "/work", "--dir", upper)
+		if r.Result()["file"] != upper+"/.koan/marker.json" || r.Result()["marker"].(map[string]any)["dir"] != wt {
+			t.Errorf("bind: %s", r.Line())
+		}
+		// A wrongly-cased route to the root is under it.
+		fails(t, home, "invalid-input", "", "marker", "bind", "/work", "--dir", wrongRoot)
+		if got, want := location(ok(t, home, "where", "--file", wrongRoot+"/@work/@notes.md")), "folder 1 @1 (/work) 1:/work <nil> <nil> "+notes+" <nil>"; got != want {
+			t.Errorf("where through the root:\n got %s\nwant %s", got, want)
+		}
+		return
+	}
+
+	other := mkdir(t, upper)
+	ok(t, home, "marker", "bind", "/home", "--dir", other)
+	for dir, want := range map[string]string{wt: "folder 1 ", other: "folder 2 "} {
+		if got := location(ok(t, home, "where", "--file", dir+"/x")); !strings.HasPrefix(got, want) {
+			t.Errorf("where --file %s/x: %s", dir, got)
+		}
+	}
+	for _, dir := range []string{wt, other} {
+		if d := checkMarker(t, dir)["dir"]; d != dir {
+			t.Errorf("%s's marker has dir %v", dir, d)
+		}
+	}
+	fails(t, home, "io", "", "marker", "bind", "/work", "--dir", filepath.Join(home, "CODE", "wt"))
+	fails(t, home, "io", "", "marker", "bind", "/work", "--dir", wrongRoot)
+	fails(t, home, "not-found", "", "where", "--file", wrongRoot+"/@work/@notes.md")
+}

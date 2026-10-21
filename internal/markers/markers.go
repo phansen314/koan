@@ -70,13 +70,42 @@ func entry(dir, name string) (fs.DirEntry, error) {
 // operating system does.
 const maxLinks = 255
 
+// sameFile reports whether two paths name one file, its own entry if a
+// symlink. A test may replace it to act as a filesystem that ignores case.
+var sameFile = func(a, b string) bool {
+	ai, err := os.Lstat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Lstat(b)
+	return err == nil && os.SameFile(ai, bi)
+}
+
+// folded is the entry in dir whose name matches name ignoring case and
+// which the filesystem says is the same file as name, or nil.
+func folded(dir, name string) (fs.DirEntry, error) {
+	list, err := entries(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range list {
+		if strings.EqualFold(e.Name(), name) && sameFile(filepath.Join(dir, e.Name()), filepath.Join(dir, name)) {
+			return e, nil
+		}
+	}
+	return nil, nil
+}
+
 // Real is the real path of an absolute path: every symlink on it
-// followed, and every name found byte for byte in a listing of the
-// directory above it, so a name spelled in another case is never taken
-// for the entry on a filesystem that ignores case. From the first name not
-// found, the rest is kept as written; exists reports whether all of it
-// was found.
-func Real(p string) (real string, exists bool, err error) {
+// followed, and every name spelled as the listing of the directory above
+// it spells it. root is the root's real path, or "" while that is what
+// is being worked out. Below root a name is found byte for byte, so a
+// name spelled in another case is never taken for the entry on a
+// filesystem that ignores case. Elsewhere, a name not found byte for byte
+// is taken in the listing's spelling when an entry matches it ignoring
+// case and is the same file. From the first name not found, the rest is
+// kept as written; exists reports whether all of it was found.
+func Real(p, root string) (real string, exists bool, err error) {
 	todo := split(p)
 	cur := string(filepath.Separator)
 	links := 0
@@ -91,13 +120,16 @@ func Real(p string) (real string, exists bool, err error) {
 			continue
 		}
 		e, err := entry(cur, name)
+		if err == nil && e == nil && (root == "" || !Under(cur, root)) {
+			e, err = folded(cur, name)
+		}
 		if err != nil {
 			return "", false, err
 		}
-		next := filepath.Join(cur, name)
 		if e == nil {
-			return filepath.Join(append([]string{next}, todo...)...), false, nil
+			return filepath.Join(append([]string{cur, name}, todo...)...), false, nil
 		}
+		next := filepath.Join(cur, e.Name())
 		if e.Type()&fs.ModeSymlink == 0 {
 			cur = next
 			continue
