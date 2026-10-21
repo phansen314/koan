@@ -46,6 +46,12 @@ type Archive interface {
 	Archived(id int64) bool
 }
 
+// ArchiveIndex is implemented by an Archive that knows, from the index,
+// where in the archive each archived ID went.
+type ArchiveIndex interface {
+	ArchivedAt(id int64) string
+}
+
 // Deletions is implemented by a Tree that can tell a deleted ID from one
 // that was never issued.
 type Deletions interface {
@@ -245,6 +251,9 @@ func lookup(t Tree, id int64) (Node, error) {
 	}
 	if a, ok := t.(Archive); ok && a.Archived(id) {
 		e := NotFound([]int64{id}, nil, "@%d was archived", id)
+		if x, ok := t.(ArchiveIndex); ok {
+			e.Message = fmt.Sprintf("@%d was archived, to %s", id, x.ArchivedAt(id))
+		}
 		e.Archived = []int64{id}
 		return Node{}, e
 	}

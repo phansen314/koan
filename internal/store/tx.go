@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -122,11 +123,13 @@ func (t *Tx) FirstID() int64 {
 	return id
 }
 
-// archivePath is where an archived ID went, from the index.
-func (t *Tx) archivePath(id int64) string {
-	var path string
-	t.QueryRow("SELECT archive FROM issued WHERE id = ?", id).Scan(&path)
-	return path
+// ArchivedAt is where an archived ID went, from the index, under the
+// root as written. The index holds it relative to the root's directory,
+// with / between names, as a step's paths are.
+func (t *Tx) ArchivedAt(id int64) string {
+	var rel string
+	t.QueryRow("SELECT archive FROM issued WHERE id = ?", id).Scan(&rel)
+	return filepath.Join(t.root, filepath.FromSlash(rel))
 }
 
 // Open reports whether a task exists and is open.
@@ -211,7 +214,8 @@ func (t *Tx) MakeGate(folder int64, end core.End) (int64, error) {
 // the tasks that wait on them through edge_blocker and gives each a new
 // updated_at, since its blocked_by loses an entry; then it deletes the
 // edges, claims, tags and rows, and marks each ID deleted, or, when
-// archive is given, archived to where archive says that ID itself went.
+// archive is given, archived to where archive says that ID itself went,
+// relative to the root's directory.
 // It returns the open tasks it left ready that were blocked before,
 // lowest ID first.
 func (t *Tx) RemoveTasks(ids []int64, archive map[int64]string) (released []int64, err error) {

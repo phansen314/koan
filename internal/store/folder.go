@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"github.com/phansen314/koan/internal/core"
 )
@@ -134,15 +135,26 @@ func (t *Tx) SetFolderPlace(id, parent int64, name string) error {
 	return err
 }
 
-// RemoveFolders deletes folder rows, as delete does, in the order given,
-// so each folder must come before its parent, and marks each ID deleted.
-// The tasks in them go first, through RemoveTasks.
-func (t *Tx) RemoveFolders(ids []int64) error {
+// RemoveFolders deletes folder rows, as delete and archive do, in the
+// order given, so each folder must come before its parent, and marks each
+// ID deleted, or, when archive is given, archived to where archive says
+// that ID itself went, relative to the root's directory. The tasks in
+// them go first, through RemoveTasks.
+func (t *Tx) RemoveFolders(ids []int64, archive map[int64]string) error {
 	for _, id := range ids {
+		if _, ok := archive[id]; archive != nil && !ok {
+			return fmt.Errorf("no archive path for folder %d", id)
+		}
+	}
+	for _, id := range ids {
+		state, path := "deleted", any(nil)
+		if archive != nil {
+			state, path = "archived", archive[id]
+		}
 		if _, err := t.Exec("DELETE FROM folder WHERE id = ?", id); err != nil {
 			return err
 		}
-		if _, err := t.Exec("UPDATE issued SET state = 'deleted' WHERE id = ?", id); err != nil {
+		if _, err := t.Exec("UPDATE issued SET state = ?, archive = ? WHERE id = ?", state, path, id); err != nil {
 			return err
 		}
 	}

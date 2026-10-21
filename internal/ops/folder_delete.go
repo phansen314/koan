@@ -105,7 +105,7 @@ func FolderDelete() *cli.Command {
 				// Each folder goes before its parent.
 				gone := slices.Clone(folders)
 				slices.Reverse(gone)
-				if err := tx.RemoveFolders(gone); err != nil {
+				if err := tx.RemoveFolders(gone, nil); err != nil {
 					return nil, nil, err
 				}
 				step := fsstep.Step{Op: fsstep.OpRemove, From: fsstep.FolderDir(t.paths[id]), Dir: true, Force: force, Owns: owns}

@@ -531,11 +531,12 @@ func TestTaskFrontier(t *testing.T) {
 }
 
 // The model's create, block, unblock, complete, reopen, claim, claim-next,
-// release, move and delete, of tasks and of folders, and batch, run beside koan on
+// release, move, delete and archive, of tasks and of folders, and batch, run beside koan on
 // the same inputs, agree on every result and refusal, and on readiness,
 // edges, claims, the frontier and the folders after each.
 func TestEdgesModel(t *testing.T) {
-	seeds := []int64{1, 2, 3}
+	// The first seed alone makes every command succeed, for -short.
+	seeds := []int64{11, 1, 2}
 	if testing.Short() {
 		seeds = seeds[:1]
 	}
@@ -545,7 +546,8 @@ func TestEdgesModel(t *testing.T) {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { edgesModel(t, seed, succeeded) })
 	}
 	for _, cmd := range []string{"task create", "task block", "task unblock", "task complete", "task reopen", "task claim",
-		"task claim-next", "task release", "task move", "task delete", "folder create", "folder move", "folder delete", "batch"} {
+		"task claim-next", "task release", "task move", "task delete", "task archive", "folder create", "folder move",
+		"folder delete", "folder archive", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -620,7 +622,12 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 		for _, p := range got["problems"].([]any) {
 			problems = append(problems, p.(map[string]any)["field"].(string))
 		}
+		var archived []any
+		for _, a := range got["archived"].([]any) {
+			archived = append(archived, a.(map[string]any)["id"])
+		}
 		return r.Kind() == e.Kind && rule == e.Rule && fmt.Sprint(got["ids"]) == fmt.Sprint(nonNil(e.IDs)) &&
+			fmt.Sprint(archived) == fmt.Sprint(e.Archived) &&
 			fmt.Sprint(got["paths"]) == fmt.Sprint(nonNilS(e.Paths)) && fmt.Sprint(problems) == fmt.Sprint(e.Problems)
 	}
 	gates := func(made []model.GateMade) string {
@@ -767,12 +774,12 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 		var stdin string
 		var err error
 		var want string
-		op := 18
+		op := -1
 		if brng.Intn(8) > 0 {
-			op = rng.Intn(18)
+			op = rng.Intn(20)
 		}
 		switch {
-		case op == 18:
+		case op == -1:
 			was := rng
 			rng = brng
 			in, file := batchIn()
@@ -818,6 +825,18 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 			out, err = m.DeleteTask(x)
 			args = []string{"task", "delete", x}
 			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
+		case op >= 18:
+			var left []int64
+			if op == 18 {
+				x := subject()
+				left, err = m.ArchiveTask(x)
+				args = []string{"task", "archive", x}
+			} else {
+				x := folderRef()
+				left, err = m.ArchiveFolder(x)
+				args = []string{"folder", "archive", x}
+			}
+			want = fmt.Sprint(nonNil(left))
 		case op >= 15:
 			// Creates come most often and deletes least, so the folders
 			// the other parts name come back.
@@ -931,6 +950,8 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 					}
 				case "delete":
 					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
+				case "archive":
+					got = fmt.Sprint(res["left"])
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)

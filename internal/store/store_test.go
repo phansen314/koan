@@ -612,12 +612,14 @@ func TestRemoveTasks(t *testing.T) {
 		t.Errorf("issued state %s", state)
 	}
 
-	// Archived, each ID is not-found with where it itself went.
+	// Archived, each ID is not-found with where it itself went, under the
+	// root as written: the index holds it relative to the root.
 	write(t, s, func(tx *Tx) error {
-		_, err := tx.RemoveTasks([]int64{d, x}, map[int64]string{d: "/archive/f/@d.md", x: "/archive/f/@sub/@x.md"})
+		_, err := tx.RemoveTasks([]int64{d, x}, map[int64]string{d: "archived/@9_f/@d.md", x: "archived/@9_f/@sub/@x.md"})
 		return err
 	})
-	for id, want := range map[int64]string{d: "/archive/f/@d.md", x: "/archive/f/@sub/@x.md"} {
+	for id, want := range map[int64]string{d: "archived/@9_f/@d.md", x: "archived/@9_f/@sub/@x.md"} {
+		want = filepath.Join(s.Root.Path, filepath.FromSlash(want))
 		_, _, er := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
 			_, err := core.ResolveString(tx, "@"+itoa(id), core.WantTask, nil)
 			return nil, nil, err
@@ -628,11 +630,60 @@ func TestRemoveTasks(t *testing.T) {
 	}
 	// Archiving needs a path for every ID.
 	_, _, er := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
-		_, err := tx.RemoveTasks([]int64{a, c}, map[int64]string{a: "/archive/a"})
+		_, err := tx.RemoveTasks([]int64{a, c}, map[int64]string{a: "archived/a"})
 		return nil, nil, err
 	})
 	if er == nil || er.Kind != cli.KindInternal {
 		t.Errorf("an ID with no archive path: %+v", er)
+	}
+}
+
+// Archived folders get state archived and their own place in the index,
+// as their tasks do; deleted ones state deleted and none. Archiving needs
+// a place for every folder.
+func TestRemoveFolders(t *testing.T) {
+	home, s := newRoot(t, 1)
+	db := rawDB(t, home)
+	var f, g, h int64
+	write(t, s, func(tx *Tx) error {
+		var err error
+		if f, err = addFolder(tx, core.RootID, "f"); err != nil {
+			return err
+		}
+		if g, err = addFolder(tx, f, "g"); err != nil {
+			return err
+		}
+		h, err = addFolder(tx, core.RootID, "h")
+		return err
+	})
+	_, _, er := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
+		return nil, nil, tx.RemoveFolders([]int64{g, f}, map[int64]string{f: "archived/@1_f"})
+	})
+	if er == nil || er.Kind != cli.KindInternal {
+		t.Errorf("a folder with no archive path: %+v", er)
+	}
+	write(t, s, func(tx *Tx) error {
+		if err := tx.RemoveFolders([]int64{g, f}, map[int64]string{f: "archived/@1_f", g: "archived/@1_f/@g"}); err != nil {
+			return err
+		}
+		return tx.RemoveFolders([]int64{h}, nil)
+	})
+	for id, want := range map[int64]string{f: "archived archived/@1_f", g: "archived archived/@1_f/@g", h: "deleted <nil>"} {
+		var state string
+		var archive sql.NullString
+		db.QueryRow("SELECT state, archive FROM issued WHERE id = ?", id).Scan(&state, &archive)
+		got := state + " <nil>"
+		if archive.Valid {
+			got = state + " " + archive.String
+		}
+		if got != want {
+			t.Errorf("@%d: %s, want %s", id, got, want)
+		}
+	}
+	var n int
+	db.QueryRow("SELECT count(*) FROM folder").Scan(&n)
+	if n != 0 {
+		t.Errorf("%d folders left", n)
 	}
 }
 

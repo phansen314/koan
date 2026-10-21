@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -201,10 +202,22 @@ func TestResolveArchived(t *testing.T) {
 	if !IsKind(err, KindNotFound, "") {
 		t.Fatalf("got %v, want not-found", err)
 	}
-	if e := err.(*Error); !reflect.DeepEqual(e.Archived, []int64{99}) {
-		t.Errorf("archived = %v, want [99]", e.Archived)
+	if e := err.(*Error); !reflect.DeepEqual(e.Archived, []int64{99}) || e.Message != "@99 was archived" {
+		t.Errorf("archived = %v, %q, want [99]", e.Archived, e.Message)
+	}
+	// With the index, the message says where it went.
+	_, err = ResolveString(indexedTree{newFakeTree()}, "@99", WantTask, nil)
+	if e := err.(*Error); e.Message != "@99 was archived, to /r/archived/@99.md" {
+		t.Errorf("message %q", e.Message)
 	}
 }
+
+// indexedTree knows where each archived ID went.
+type indexedTree struct{ *fakeTree }
+
+func (indexedTree) ArchivedAt(id int64) string { return fmt.Sprintf("/r/archived/@%d.md", id) }
+
+var _ ArchiveIndex = indexedTree{}
 
 // deletedTree is a tree that deleted @98, in a root whose first ID is
 // first.

@@ -116,7 +116,7 @@ func (s *Store) write(change Change) (any, []cli.Warning, *cli.Error) {
 		err = tx.err
 	}
 	if err != nil {
-		e := asError(err, s.Root.Database, tx.archivePath)
+		e := asError(err, s.Root.Database, tx.ArchivedAt)
 		tx.exec("ROLLBACK")
 		return nil, nil, e
 	}
@@ -161,7 +161,7 @@ func (s *Store) Read(fn func(tx *Tx) error) *cli.Error {
 		err = tx.err
 	}
 	if err != nil {
-		return asError(err, s.Root.Database, tx.archivePath)
+		return asError(err, s.Root.Database, tx.ArchivedAt)
 	}
 	return nil
 }
@@ -171,7 +171,7 @@ func (s *Store) begin(stmt string) (*Tx, *cli.Error) {
 	if _, err := s.db.conn.ExecContext(ctx, stmt); err != nil {
 		return nil, sqliteError(err, s.Root.Database)
 	}
-	return &Tx{conn: s.db.conn, ctx: ctx, Now: core.FormatTimestamp(time.Now()), encode: s.steps.Encode}, nil
+	return &Tx{conn: s.db.conn, ctx: ctx, Now: core.FormatTimestamp(time.Now()), encode: s.steps.Encode, root: s.Root.Path}, nil
 }
 
 // querier is a connection or a transaction.
@@ -267,6 +267,9 @@ type Tx struct {
 	change int64
 	// encode is the store's Steps' Encode.
 	encode func(seq int64, step any) (json.RawMessage, error)
+	// root is the root's path as written, which the archive index's
+	// paths are relative to.
+	root string
 }
 
 // Exec runs a statement in the transaction.

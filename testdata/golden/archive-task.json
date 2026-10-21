@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "kind": "task",
+  "archived_at": "$NOW",
+  "path": "/work/HOME-777",
+  "folders": [],
+  "tasks": [
+    {
+      "id": 3,
+      "gate": null,
+      "folder": {
+        "id": 2,
+        "path": "/work/HOME-777"
+      },
+      "title": "Book flights",
+      "priority": 2,
+      "created_at": "2026-10-20T10:00:00Z",
+      "completed_at": "2026-10-20T10:00:00Z",
+      "updated_at": "2026-10-20T10:00:00Z",
+      "tags": [
+        "a",
+        "trip"
+      ],
+      "extra": {
+        "a": "x",
+        "z": 1
+      }
+    }
+  ],
+  "edges": [
+    {
+      "task": 3,
+      "blocker": 5
+    },
+    {
+      "task": 4,
+      "blocker": 3
+    }
+  ]
+}

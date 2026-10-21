@@ -150,6 +150,11 @@ type casefoldResult struct {
 	Pending   int64    `json:"pending"`
 	// Cases is what each of caseCases gave.
 	Cases map[string]caseResult `json:"cases"`
+	// ArchiveDir is the spelling found above an archived item beside a
+	// directory differing in case, and There whether notes under the
+	// renamed directory are there as spelled before it.
+	ArchiveDir string `json:"archive_dir"`
+	There      bool   `json:"there"`
 }
 
 // casefoldHelper runs inside a case-insensitive mount: it checks the
@@ -201,6 +206,18 @@ func casefoldHelper(home string) int {
 	st, _ := s.Stats()
 	r.Pending = st.Pending
 	var err error
+	os.Mkdir(filepath.Join(s.Root.Dir, "archived", "Work"), 0o755)
+	if e := s.Read(func(tx *store.Tx) error {
+		r.ArchiveDir, err = ArchiveDir(tx, s.Root, "archived/work/api")
+		return err
+	}); e != nil {
+		fmt.Fprintln(os.Stderr, e.Message)
+		return 1
+	}
+	if r.There, err = There(s.Root, "tree/@work/"+FolderNotes); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	if r.Cases, err = caseHomes(home); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -242,6 +259,9 @@ HOME="$1/home" KOAN_FSSTEP_HELPER=casefold exec "$2" -test.run='^$'`
 	}
 	if !slices.Equal(r.Listing, []string{"@Work"}) || len(r.Warnings) != 0 || r.Pending != 0 {
 		t.Errorf("case-only rename: %+v", r)
+	}
+	if r.ArchiveDir != "archived/Work/api" || r.There {
+		t.Errorf("archive dir %s, there %v", r.ArchiveDir, r.There)
 	}
 	for _, c := range caseCases {
 		if got, ok := r.Cases[c.name]; !ok {

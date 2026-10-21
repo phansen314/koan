@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "archive": "$HOME/koan-root/archived/Work/@2.md",
+    "json": "$HOME/koan-root/archived/Work/@2.json",
+    "left": [
+      2
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "pending-step",
+      "message": "1 filesystem step is pending with no write carrying it out. The next write, or koan repair, finishes it.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@Work/@2.md",
+        "$HOME/koan-root/archived/Work/@2.json",
+        "$HOME/koan-root/archived/Work/@2.md"
+      ]
+    }
+  ]
+}
