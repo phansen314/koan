@@ -314,7 +314,7 @@ The only outside changes left are hand changes to `@` entries in the tree (a ren
 | `misplaced-notes` | A task's notes sit in another folder's directory (T4) | Moves them back, unless notes are already there. |
 | `orphan-notes` | An `@<id>.md` with no live task, whether deleted, archived or never issued, or a `@start.md` or `@done.md` with no gate (T4, T6). The finding says which | Removes them when empty; otherwise leaves them. |
 | `stray-entry` | Any other `@` entry, such as a hand-made `@Notes.md`, or an `@<id>.md` whose ID is a live folder's (T6). An `@.tmp-<seq>` file named by a pending step is that step's, and shows as `pending-step` | — reported only |
-| `invalid-row` | A row breaks an invariant SQL can't check, after a hand edit of the database. Doctor checks I3 (every parent chain reaches the root), I4, I6, I7, I9 (names, tags, titles, timestamps and integers), I11 and I12, and names the invariant broken | — a person fixes it |
+| `invalid-row` | A row breaks an invariant, after a hand edit of the database. Doctor checks I3 (every parent chain reaches the root), I4, I6, I7, I9 (names, tags, titles, timestamps and integers), I11 and I12, and names the invariant broken. The parts the schema's CHECK constraints hold, such as I6 and a gate in the root, fail `PRAGMA integrity_check` first and are found as `corrupt`; only an edit of the schema itself gets past them | — a person fixes it |
 | `corrupt` | The database fails `PRAGMA integrity_check` or `foreign_key_check` | — restore from a backup |
 
 A `corrupt` finding stops doctor there: rows that fail either check can't be trusted, so it reports only them and the pending and stuck steps, checking no other row and comparing nothing with the tree.

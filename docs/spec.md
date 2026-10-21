@@ -129,6 +129,7 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 | `--file <path>`, relative | `where`, `context` | `file`, made absolute from the working directory |
 | no subject | `context` | `file`, the working directory |
 | `--dir <path>`, relative or left out | `marker bind`, `marker unbind` | `dir`, made absolute; the working directory when left out |
+| `<dir>`, relative | `backup` | `dir`, made absolute from the working directory |
 
 A file koan can't read, or a working directory it can't resolve, is `io`, with the file's absolute path; standard input that can't be read is `io` with no path. koan reads a convenience's file as it turns the command line into an input, as it reads `--input`'s, so that `io` comes before any fault in the input's shape.
 
@@ -363,8 +364,8 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | Kind | When | Given by | `ids` | `paths` |
 | --- | --- | --- | --- | --- |
 | `pending-filesystem` | A path returned belongs to a change whose filesystem steps are still running | any read | the tasks and folders whose paths are pending | the paths returned, where they are going |
-| `pending-step` | Steps are pending with no write carrying them out: this write failed one, an earlier write crashed, or a step waits behind an earlier change's step on the same path | any command |  | the paths the steps touch |
-| `stuck-step` | A step is set aside as stuck | every command, until repair clears it |  | each stuck step's source, then its destination when it has one, in seq order: the steps that found both, neither or material, not the rest of their changes |
+| `pending-step` | Steps are pending with no write carrying them out: this write failed one, an earlier write crashed, or a step waits behind an earlier change's step on the same path | every command but `init`, `info`, `version`, `doctor` and `backup` |  | the paths the steps touch |
+| `stuck-step` | A step is set aside as stuck | every command but `init`, `info`, `version`, `doctor` and `backup`, until repair clears it |  | each stuck step's source, then its destination when it has one, in seq order: the steps that found both, neither or material, not the rest of their changes |
 | `missing-notes` | No file at a notes path; it reads as empty notes. Not given while a pending or stuck step is still to make the path, making it or a directory above it, since that step's own warning says why | `task show`, `folder show`, `context` | the task or folder | its notes path |
 | `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `batch` | the complete tasks |  |
 | `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |
