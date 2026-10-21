@@ -282,6 +282,15 @@ func TestTaskBlockRefused(t *testing.T) {
 	ok(t, home, "folder", "create", "/Work") // 1
 	ok(t, home, "task", "create", "a")       // 2
 	golden(t, fails(t, home, "not-found", "", "task", "block", "2", "--blocked-by", "99"), "task-block-not-found")
+	// Only the first reference that names nothing, in input order.
+	r := fails(t, home, "not-found", "", "task", "block", "2", "--blocked-by", "/nope,99", "--blocks", "98")
+	if fmt.Sprint(r.Error()["ids"], r.Error()["paths"]) != "[] [/nope]" {
+		t.Errorf("first only: %s", r.Line())
+	}
+	r = fails(t, home, "not-found", "", "task", "block", "97", "--blocked-by", "99")
+	if fmt.Sprint(r.Error()["ids"], r.Error()["paths"]) != "[97] []" {
+		t.Errorf("subject first: %s", r.Line())
+	}
 	fails(t, home, "not-found", "", "task", "block", "99", "--blocked-by", "2")
 	fails(t, home, "not-found", "", "task", "block", "@1", "--blocked-by", "2")
 	fails(t, home, "not-found", "", "task", "block", "2", "--blocks", "/Work/api")

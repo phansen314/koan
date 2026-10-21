@@ -247,6 +247,9 @@ func TestBatchNotFound(t *testing.T) {
 		`{"tasks": [{"title": "a", "blocked_by": ["/w/x.start"]}]}`:               "/tasks/0/blocked_by/0",
 		`{"tasks": [{"title": "a", "blocked_by": ["@1/x"]}, {"title": "b"}]}`:     "/tasks/0/blocked_by/0",
 		`{"tasks": [{"label": "$a", "title": "a"}, {"title": "b", "folder": 3}]}`: "/tasks/1/folder",
+		// Only the first named, in the order the batch resolves: every
+		// task's folder before any edge.
+		`{"tasks": [{"title": "a", "blocked_by": [98]}, {"title": "b", "folder": "/nope"}]}`: "/tasks/1/folder",
 	} {
 		batchFails(t, home, "not-found", "", fields, in)
 	}
