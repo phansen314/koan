@@ -1067,3 +1067,16 @@ func TestCaseFromDifferentStarts(t *testing.T) {
 		`{"folders": [{"path": "/work/Proj"}], "tasks": [{"title": "t", "folder": "@1/proj"}]}`)
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=")
 }
+
+// When several new edges close a cycle together, the closing one is the
+// first that closes it, blocked_by before blocks whatever the order on
+// the command line.
+func TestCycleClosingEdge(t *testing.T) {
+	home := root(t)
+	ok(t, home, "task", "create", "a") // 1
+	ok(t, home, "task", "create", "b") // 2
+	r := fails(t, home, "conflict", "cycle", "task", "block", "1", "--blocks", "2", "--blocked-by", "2")
+	if fmt.Sprint(r.Error()["ids"]) != "[2 1]" || problemFields(r) != "/blocks/0 /blocked_by/0" {
+		t.Errorf("closing edge: %s", r.Line())
+	}
+}

@@ -458,7 +458,7 @@ Each rule is a refusal the rules doc or the PRD makes, in the section its row na
 | `complete` | Claiming a task that is complete | rules Claims | the task |  |
 | `bound` | marker bind on a directory already bound to another live folder, without --force | PRD Markers | the folder it is bound to | the marker.json |
 
-For `cycle`, `problems` also names every input field whose new edge lies on that cycle, in cycle order. A refused change issues no ID, so a task or gate it was making is named in `ids` by the ID it would have had, which a later change may issue to something else: `problems` points at the part that made it.
+For `cycle`, the closing edge is the first new edge that closes a cycle with the tree's edges and the new edges before it, taken in the order they are given, as PRD Issuing IDs in a change orders them: each task's `blocked_by` before its `blocks`, a batch's parts in input order. `problems` also names every input field whose new edge lies on that cycle, in cycle order. A refused change issues no ID, so a task or gate it was making is named in `ids` by the ID it would have had, which a later change may issue to something else: `problems` points at the part that made it.
 
 ## Commands
 
