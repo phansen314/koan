@@ -1043,3 +1043,18 @@ func TestEdgeGivenTwice(t *testing.T) {
 		t.Errorf("unblock: %s", r.Line())
 	}
 }
+
+// Two spellings of a path written from different starts aren't compared
+// as the input's shape: the one the tree doesn't hold is case-mismatch
+// when it resolves.
+func TestCaseFromDifferentStarts(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/work/api") // 1, 2
+	r := fails(t, home, "conflict", "case-mismatch", "task", "block", "/work/api.start", "--blocked-by", "@1/API.done")
+	if fmt.Sprint(r.Error()["paths"]) != "[@1/API /work/api]" {
+		t.Errorf("paths: %s", r.Line())
+	}
+	batchFails(t, home, "conflict", "case-mismatch", "/tasks/0/folder",
+		`{"folders": [{"path": "/work/Proj"}], "tasks": [{"title": "t", "folder": "@1/proj"}]}`)
+	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=")
+}

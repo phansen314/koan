@@ -143,7 +143,9 @@ func parseNames(s, joined string) ([]string, error) {
 
 // CheckCase refuses one input naming two paths that differ only in case in
 // the same part, such as /Proj/a and /proj/b. Paths are compared only from
-// the same start: the root, or the same anchoring ID.
+// the same start: the root, or the same anchoring ID. Two written from
+// different starts are caught as they resolve, where the tree holds at most
+// one of the spellings, so the other is case-mismatch.
 func CheckCase(refs []Ref) error {
 	if pairs := CasePairs(refs); pairs != nil {
 		a, b := refs[pairs[0][0]], refs[pairs[0][1]]
