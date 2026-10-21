@@ -341,7 +341,7 @@ These are the tests named in the Tested by column of Invariants, enforced and te
 | **Concurrency** | Hundreds of processes writing and reading one root at once. No claim is ever handed out twice, every read sees a committed state, and `busy` appears only after 5 seconds of waiting. |
 | **Case** | The Case section's rules as table tests, run in CI on Linux and on macOS with its default case-insensitive filesystem. On both they include a case-only folder move and the case-differs repair, with a crash at each step. |
 | **Output** | Every command's JSON checked against its schema, and golden results for each refusal. |
-| **Performance** | Benchmarks at 1,000 and 10,000 live tasks. CI fails on the Linux runner when a command passes the budget set in Goals. macOS runs the same benchmarks and reports them, but doesn't fail the build until its numbers have been measured (docs/spikes.md). |
+| **Performance** | Benchmarks at 1,000 and 10,000 live tasks, run in CI on Linux and macOS and reported against the budget set in Goals. For now neither fails the build; the budget is enforced once performance is taken up again. |
 | **Repair** | Each finding made by hand on a fresh root. doctor reports it under the right kind, repair does what the table says, and a second doctor reports only what repair leaves to a person. |
 | **Markers** | The nearest marker wins and stops the look; a copied or moved marker binds nothing; archived and deleted folders give their messages; git ignores .koan/; checkout and foreign-files refuse. |
 | **Backup and restore** | A backup taken during the concurrency run restores to a root doctor finds clean; a folder moved mid-copy makes backup copy again under the lock. |

@@ -175,7 +175,7 @@ Each sub-slice is its own task.
 - **The full crash-point matrix.**
 - **Concurrency:** hundreds of processes at once.
 - **Case tests,** written to hold on macOS's case-insensitive filesystem too.
-- **Performance benchmarks,** with a test failing past the budget in PRD Goals.
+- **Performance benchmarks,** reported against the budget in PRD Goals.
 
 **Done when** every row of PRD Testing passes locally on Linux, bar what needs macOS or CI, and `go test -short` stays quick.
 
@@ -185,7 +185,7 @@ Each sub-slice is its own task.
 
 **Build:** CI that runs `go test ./...` on Linux and on macOS with its default case-insensitive filesystem, and:
 - the suite on APFS itself, where `TestCasefold` skips;
-- the performance budget measured on the CI Linux runner;
+- the performance budget reported on both CI runners, failing nothing for now;
 - the benchmarks on macOS, report-only, for the cost of `F_FULLFSYNC`;
 - the permission-refusal tests as a normal user.
 
