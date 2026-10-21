@@ -335,12 +335,14 @@ func TestBusy(t *testing.T) {
 	if !read.ok() || read.elapsed > time.Second {
 		t.Errorf("a read with the lock held: %v: %s", read.elapsed, read.line)
 	}
-	write := &proc{args: []string{"task", "create", "b"}}
-	write.run(bin, home)
+	began := time.Now()
+	write := koan(t, home, "task", "create", "b")
+	elapsed := time.Since(began)
 	lock.Release()
 	// The PRD's wait, plus slack for a loaded machine.
-	if write.kind() != "busy" || write.exit != 1 || write.elapsed < 5*time.Second || write.elapsed > 10*time.Second {
-		t.Errorf("a write with the lock held: %v: %s", write.elapsed, write.line)
+	if write.Kind() != "busy" || write.Exit != 1 || elapsed < 5*time.Second || elapsed > 10*time.Second {
+		t.Errorf("a write with the lock held: %v: %s", elapsed, write.Line())
 	}
+	golden(t, write, "busy")
 	ok(t, home, "task", "create", "b")
 }

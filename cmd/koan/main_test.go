@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/testrun"
 	_ "modernc.org/sqlite"
 )
@@ -58,6 +59,12 @@ func TestInfoMissingRoot(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(r.Home, "koan-root")); !os.IsNotExist(err) {
 		t.Errorf("info made the root: %v", err)
 	}
+	r = testrun.Run{Home: r.Home}.Koan(t, "task", "list")
+	r.Check(t, "task list")
+	if r.Exit != 1 || r.Kind() != "not-initialized" {
+		t.Errorf("task list: exit %d: %s", r.Exit, r.Line())
+	}
+	golden(t, r, "task-list-not-initialized")
 }
 
 func TestInfoRootWithoutDatabase(t *testing.T) {
@@ -370,6 +377,7 @@ func TestInfoUnsupportedFormat(t *testing.T) {
 	if r.Exit != 1 || r.Kind() != "unsupported-format" {
 		t.Errorf("init: exit %d: %s", r.Exit, r.Line())
 	}
+	golden(t, r, "init-unsupported-format")
 }
 
 func TestInfoCorrupt(t *testing.T) {
@@ -384,6 +392,7 @@ func TestInfoCorrupt(t *testing.T) {
 	if r.Exit != 1 || r.Kind() != "corrupt" {
 		t.Errorf("init: exit %d: %s", r.Exit, r.Line())
 	}
+	golden(t, r, "init-corrupt")
 }
 
 // An unfinished init, a database with format 0 and no tables, is
@@ -460,4 +469,53 @@ func TestIDsRunOut(t *testing.T) {
 		t.Errorf("doctor: %s", r.Line())
 	}
 	checkTree(t, home, "@999999999999999.md=", "@Work/", "@Work/@notes.md=")
+}
+
+// An unknown option is usage, exit 2.
+func TestUsageGolden(t *testing.T) {
+	r := koan(t, root(t), "task", "create", "t", "--colour", "red")
+	if r.Exit != 2 || r.Kind() != "usage" {
+		t.Fatalf("exit %d: %s", r.Exit, r.Line())
+	}
+	golden(t, r, "usage")
+}
+
+// PRD Testing's Output row: every kind of failure has a golden result,
+// and so does every conflict rule. internal is a bug in koan, and has
+// none.
+func TestGoldenEveryRefusal(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(testrun.Repo(), "testdata", "golden", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds, rules := map[string]bool{}, map[string]bool{}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var env struct {
+			Error *struct {
+				Kind string  `json:"kind"`
+				Rule *string `json:"rule"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(b, &env) != nil || env.Error == nil {
+			continue
+		}
+		kinds[env.Error.Kind] = true
+		if env.Error.Rule != nil {
+			rules[*env.Error.Rule] = true
+		}
+	}
+	for _, k := range cli.Kinds {
+		if !kinds[k] && k != cli.KindInternal {
+			t.Errorf("no golden result for %s", k)
+		}
+	}
+	for _, r := range cli.Rules {
+		if !rules[r] {
+			t.Errorf("no golden result for the rule %s", r)
+		}
+	}
 }

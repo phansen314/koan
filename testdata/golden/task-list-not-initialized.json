@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-initialized",
+    "rule": null,
+    "message": "$HOME/koan-root does not exist. Run koan init.",
+    "ids": [],
+    "paths": [
+      "$HOME/koan-root"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}
