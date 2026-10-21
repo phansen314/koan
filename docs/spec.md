@@ -921,8 +921,8 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 { "$id": "version", "$defs": {
   "input":  { "type": "object" },
   "result": { "type": "object", "required": ["version", "commit", "go", "format"], "properties": {
-    "version": { "type": "string", "description": "Such as v0.4.0; (devel) for a local build." },
-    "commit":  { "type": ["string", "null"] },
+    "version": { "type": "string", "description": "The version Go stamped on the build: the tag, such as v0.4.0, for go install at a tag or a build of a clean checkout at one; a pseudo-version, such as v0.0.0-20261021043753-563ff471b641, for a build elsewhere in a checkout, ending +dirty when it has changes not committed; (devel) when Go stamped none, as for go run or a build outside a checkout." },
+    "commit":  { "type": ["string", "null"], "description": "The commit Go stamped on a build in a checkout; null when it stamped none, as for go install at a tag or go run." },
     "go":      { "type": "string" },
     "format":  { "type": "integer", "description": "The database format this binary reads." } } } } }
 ```
