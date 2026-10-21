@@ -221,6 +221,10 @@ func TestCasefold(t *testing.T) {
 	if _, err := exec.LookPath("unshare"); err != nil {
 		t.Skip("no unshare")
 	}
+	// CI runners, among others, may forbid a user namespace.
+	if out, err := exec.Command("unshare", "-rm", "true").CombinedOutput(); err != nil {
+		t.Skipf("no user namespace here: %v: %s", err, out)
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	script := `mount -t tmpfs -o casefold=utf8-12.1.0 none "$1" && mkdir "$1/tmp" && chattr +F "$1/tmp" && ln -s "$1/tmp" "$1/link" || exit 99

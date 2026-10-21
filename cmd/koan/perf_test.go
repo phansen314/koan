@@ -396,9 +396,9 @@ func BenchmarkCommands(b *testing.B) {
 	}
 }
 
-// The PRD's budget, as a test: each command, run five times at each size,
-// takes no longer than Goals allows, by its median run, so one run slowed
-// by the machine fails nothing. -short skips it.
+// The PRD's budget, as a report: each command, run five times at each
+// size, by its median run, against what Goals allows. A command over it is
+// logged, not failed, as PRD Testing says for now. -short skips it.
 func TestPerformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds roots of 10,000 tasks")
@@ -433,8 +433,9 @@ func TestPerformance(t *testing.T) {
 				op.name, float64(median.Microseconds())/1000, float64(ds[len(ds)-1].Microseconds())/1000, budget))
 		}
 		t.Logf("%d live tasks, %s/%s:\n%s", n, runtime.GOOS, runtime.GOARCH, strings.Join(table, "\n"))
+		// Reported, not enforced, until the budget is taken up again.
 		for _, o := range over {
-			t.Errorf("%d live tasks: %s", n, o)
+			t.Logf("%d live tasks: %s", n, o)
 		}
 	}
 }
