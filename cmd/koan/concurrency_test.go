@@ -203,6 +203,9 @@ func TestConcurrency(t *testing.T) {
 
 	claimed := map[string]int{}
 	var nulls, busy int
+	// A write that waited out the lock changed nothing, so what it would
+	// have made, ended or claimed is counted apart, by command.
+	busyBy := map[string]int{}
 	for _, p := range append(order, backupRun) {
 		if p.err != nil {
 			t.Errorf("%q: %v", p.args, p.err)
@@ -210,6 +213,7 @@ func TestConcurrency(t *testing.T) {
 		}
 		if p.kind() == "busy" {
 			busy++
+			busyBy[p.args[0]+" "+p.args[1]]++
 			if p.elapsed < 5*time.Second {
 				t.Errorf("%q: busy after %v: %s", p.args, p.elapsed, p.line)
 			}
@@ -282,8 +286,10 @@ func TestConcurrency(t *testing.T) {
 			t.Errorf("@%s claimed %d times", id, n)
 		}
 	}
-	if len(claimed) != pool || nulls != claimers-pool {
-		t.Errorf("%d claimed, %d nulls", len(claimed), nulls)
+	// A claimer that got busy took nothing; the pool is claimed whole
+	// unless one did.
+	if b := busyBy["task claim-next"]; len(claimed)+nulls+b != claimers || len(claimed) > pool || b == 0 && len(claimed) != pool {
+		t.Errorf("%d claimed, %d nulls, %d busy", len(claimed), nulls, b)
 	}
 
 	// At the end the root is whole.
@@ -294,7 +300,8 @@ func TestConcurrency(t *testing.T) {
 		t.Errorf("invariants:\n%s", strings.Join(bad, "\n"))
 	}
 	r := ok(t, home, "info")
-	if want := pool + completers + movers + 3*batches + creators; r.Result()["tasks"] != json.Number(fmt.Sprint(want)) {
+	want := pool + completers + movers + 3*(batches-busyBy["batch -i"]) + creators - busyBy["task create"] + 2*busyBy["folder delete"]
+	if r.Result()["tasks"] != json.Number(fmt.Sprint(want)) {
 		t.Errorf("info: want %d tasks: %s", want, r.Line())
 	}
 
