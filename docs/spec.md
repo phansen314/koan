@@ -130,7 +130,7 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 | no subject | `context` | `file`, the working directory |
 | `--dir <path>`, relative or left out | `marker bind`, `marker unbind` | `dir`, made absolute; the working directory when left out |
 
-A file koan can't read, or a working directory it can't resolve, is `io`, with the file's absolute path; standard input that can't be read is `io` with no path.
+A file koan can't read, or a working directory it can't resolve, is `io`, with the file's absolute path; standard input that can't be read is `io` with no path. koan reads a convenience's file as it turns the command line into an input, as it reads `--input`'s, so that `io` comes before any fault in the input's shape.
 
 **The home directory.** `~` is `HOME`. A command that uses the root, which is every command but `version`, finds it as part of checking the root's state, after the input's shape: `HOME` unset, empty or not an absolute path is `io`, with no path. `version` never reads it.
 

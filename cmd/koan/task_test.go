@@ -95,6 +95,8 @@ func TestTaskCreateNotesFile(t *testing.T) {
 	if paths := r.Error()["paths"].([]any); len(paths) != 1 || paths[0] != filepath.Join(home, "missing.md") {
 		t.Errorf("io paths: %s", r.Line())
 	}
+	// The file is read as the input is made, before its shape is checked.
+	fails(t, home, "io", "", "task", "create", " ", "--priority", "x", "--notes-file", "missing.md")
 	r = koan(t, home, "task", "create", "c", "--notes-file", "n.md", "--notes", "x")
 	if r.Exit != 2 || r.Kind() != "usage" || r.Error()["problems"].([]any)[0].(map[string]any)["field"] != "--notes" {
 		t.Errorf("both: %s", r.Line())
