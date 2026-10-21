@@ -33,6 +33,7 @@ var (
 // that seed alone. -short runs one seed; the full run adds more, each
 // longer, from a seed of the moment, which it prints.
 func TestProperties(t *testing.T) {
+	t.Parallel()
 	// The first seed alone makes every command succeed, for -short.
 	seeds := []int64{59, 11, 1, 2}
 	steps := 200
