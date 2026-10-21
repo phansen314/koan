@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "result": {
+    "dir": "$HOME/backups/one",
+    "files": 11,
+    "bytes": "$BYTES",
+    "recopied": false,
+    "clean": true,
+    "findings": []
+  },
+  "warnings": []
+}

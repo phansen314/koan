@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-block",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "task"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "types#/$defs/task-ref",
+          "description": "Subject."
+        },
+        "blocked_by": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/edge-ref"
+          },
+          "default": []
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/edge-ref"
+          },
+          "default": []
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "blocked_by"
+          ],
+          "properties": {
+            "blocked_by": {
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "required": [
+            "blocks"
+          ],
+          "properties": {
+            "blocks": {
+              "minItems": 1
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "changed",
+        "gates_made",
+        "reblocked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "gates_made": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/gate-made"
+          }
+        },
+        "reblocked": {
+          "$ref": "types#/$defs/ids"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

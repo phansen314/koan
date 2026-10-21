@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "notes is not UTF-8",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/notes",
+        "reason": "notes is not UTF-8"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

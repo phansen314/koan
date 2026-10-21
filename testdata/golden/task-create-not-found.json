@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "no folder at /Work/web",
+    "ids": [],
+    "paths": [
+      "/Work/web"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "a batch holds 1 to 1000 parts, folders and tasks together, not 0",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "a batch holds 1 to 1000 parts, folders and tasks together, not 0"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

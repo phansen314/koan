@@ -1,0 +1,62 @@
+{
+  "ok": true,
+  "result": {
+    "task": {
+      "id": 5,
+      "ref": "@5 (/work/api)",
+      "gate": null,
+      "title": "T",
+      "priority": 7,
+      "folder": {
+        "id": 2,
+        "path": "/work/api"
+      },
+      "created_at": "2026-10-20T10:00:00Z",
+      "completed_at": null,
+      "updated_at": "2026-10-20T10:00:00Z",
+      "state": "open",
+      "readiness": "blocked",
+      "blocked_by": [
+        {
+          "id": 3,
+          "ref": "@3 (/work.start)",
+          "state": "open"
+        },
+        {
+          "id": 6,
+          "ref": "@6 (/)",
+          "state": "complete"
+        }
+      ],
+      "blocks": [
+        {
+          "id": 4,
+          "ref": "@4 (/work.done)",
+          "state": "open"
+        },
+        {
+          "id": 7,
+          "ref": "@7 (/work/api)",
+          "state": "open"
+        }
+      ],
+      "tags": [
+        "a",
+        "a-z",
+        "b"
+      ],
+      "extra": {
+        "status": "waiting"
+      },
+      "claim": {
+        "task": 5,
+        "claimed_at": "2026-10-20T10:00:00Z",
+        "extra": {
+          "by": "agent"
+        }
+      },
+      "notes_path": "$HOME/koan-root/tree/@work/@api/@5.md"
+    }
+  },
+  "warnings": []
+}

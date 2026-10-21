@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "exists",
+    "message": "/w is taken on disk by $HOME/koan-root/tree/@w",
+    "ids": [],
+    "paths": [
+      "$HOME/koan-root/tree/@w"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": [
+    {
+      "kind": "stuck-step",
+      "message": "A filesystem step found both its source and its destination holding content, or neither, or a remove found material, and is set aside with the rest of its change. Keep one copy, or move the material out, then run koan repair.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@w"
+      ]
+    }
+  ]
+}

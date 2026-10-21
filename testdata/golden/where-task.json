@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "result": {
+    "ref": "@3 (/work/api)",
+    "kind": "task",
+    "id": 3,
+    "folder": {
+      "id": 2,
+      "path": "/work/api"
+    },
+    "gate": null,
+    "material": null,
+    "file": "$HOME/koan-root/tree/@work/@api/@3.md",
+    "marker": null
+  },
+  "warnings": []
+}

@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "@2 (/work/api) has no start gate",
+    "ids": [],
+    "paths": [
+      "/work/api.start"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

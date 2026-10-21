@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-create",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "allOf": [
+            {
+              "$ref": "types#/$defs/path"
+            },
+            {
+              "not": {
+                "const": "/"
+              }
+            }
+          ],
+          "description": "Subject."
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra",
+          "default": {}
+        },
+        "notes": {
+          "type": "string",
+          "default": "",
+          "description": "The @notes.md's first content, written by the step that makes the directory."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "ref",
+        "dir",
+        "notes_path",
+        "created"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "ref": {
+          "$ref": "types#/$defs/kept"
+        },
+        "dir": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "notes_path": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-at"
+          },
+          "description": "Every folder made, parents first, this one last."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

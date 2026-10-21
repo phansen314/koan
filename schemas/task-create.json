@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-create",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Subject. Trimmed, then checked as a title."
+        },
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "default": "/"
+        },
+        "priority": {
+          "$ref": "types#/$defs/priority",
+          "default": null
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/tag"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "blocked_by": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/edge-ref"
+          },
+          "default": []
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/edge-ref"
+          },
+          "default": []
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra",
+          "default": {}
+        },
+        "notes": {
+          "type": "string",
+          "default": "",
+          "description": "The notes file's first content."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "ref",
+        "notes_path",
+        "gates_made",
+        "reblocked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "ref": {
+          "$ref": "types#/$defs/kept"
+        },
+        "notes_path": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "gates_made": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/gate-made"
+          }
+        },
+        "reblocked": {
+          "$ref": "types#/$defs/ids",
+          "description": "Ready tasks it made wait, through --blocks."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

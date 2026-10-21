@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/code/bad/.koan/marker.json binds nothing: @4 was archived, to $HOME/koan-root/archived/@4_archive",
+    "ids": [
+      4
+    ],
+    "paths": [
+      "$HOME/code/bad/.koan/marker.json"
+    ],
+    "problems": [],
+    "archived": [
+      {
+        "id": 4,
+        "archive": "$HOME/koan-root/archived/@4_archive"
+      }
+    ]
+  },
+  "warnings": []
+}

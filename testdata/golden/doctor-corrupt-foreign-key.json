@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "corrupt",
+        "detail": "foreign-key",
+        "message": "The database fails PRAGMA foreign_key_check: a row of edge names a missing row of task. Restore from a backup.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/koan.db"
+        ],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

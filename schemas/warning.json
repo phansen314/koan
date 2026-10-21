@@ -2,20 +2,37 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "warning",
   "type": "object",
-  "required": ["kind", "message", "ids", "paths"],
+  "required": [
+    "kind",
+    "message",
+    "ids",
+    "paths"
+  ],
   "properties": {
     "kind": {
-      "enum": ["unusable-file", "dangling-reference", "stale-marker"]
+      "enum": [
+        "pending-filesystem",
+        "pending-step",
+        "stuck-step",
+        "missing-notes",
+        "complete-blocker",
+        "claimed-blocked",
+        "moved-claimed",
+        "stale-marker"
+      ]
     },
-    "message": { "type": "string" },
+    "message": {
+      "type": "string"
+    },
     "ids": {
-      "type": "array",
-      "items": { "$ref": "task-file#/properties/id" }
+      "$ref": "types#/$defs/ids"
     },
     "paths": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "$ref": "types#/$defs/abs-path"
+      }
     }
   },
-  "additionalProperties": false
+  "unevaluatedProperties": false
 }

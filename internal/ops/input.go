@@ -4,334 +4,474 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"maps"
+	"path/filepath"
 	"slices"
-	"strings"
+	"unicode/utf8"
 
-	"github.com/phansen314/koan/internal/errs"
-	"github.com/phansen314/koan/internal/model"
+	"github.com/phansen314/koan/internal/cli"
+	"github.com/phansen314/koan/internal/core"
 )
 
-// input is a command's input object, read one field at a time so that every
-// problem in it is found, not just the first.
+// input reads a command's input field by field, collecting every fault in
+// its shape at its JSON Pointer, so that invalid-input names them all. The
+// error's message is the first fault's.
 type input struct {
-	m        map[string]json.RawMessage
-	used     map[string]bool
-	problems []errs.Problem
+	in       cli.Input
+	problems []cli.Problem
+	message  string
+	// prefix is the pointer to the object read, "" for the whole input;
+	// a part's faults go to up, the input holding it.
+	prefix string
+	up     *input
+	// batch is whether labels are taken, where an edge names a task.
+	batch bool
 }
 
-func parseInput(raw []byte) (*input, *errs.Error) {
-	in := &input{m: map[string]json.RawMessage{}, used: map[string]bool{}}
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return in, nil
+// at is the JSON Pointer to a field of the object read.
+func (r *input) at(field string) string { return r.prefix + cli.Pointer(field) }
+
+// fault records a fault at a pointer.
+func (r *input) fault(pointer, format string, args ...any) {
+	if r.up != nil {
+		r.up.fault(pointer, format, args...)
+		return
 	}
-	m, err := model.Keys(raw)
-	if err != nil {
-		return nil, errs.Invalid([]errs.Problem{{Field: "", Reason: "is not one JSON object: " + err.Error()}})
+	reason := fmt.Sprintf(format, args...)
+	if r.message == "" {
+		r.message = reason
 	}
-	in.m = m
-	return in, nil
+	r.problems = append(r.problems, cli.Problem{Field: pointer, Reason: reason})
 }
 
-func (in *input) bad(field, format string, args ...any) {
-	in.problems = append(in.problems, errs.Problem{Field: field, Reason: fmt.Sprintf(format, args...)})
-}
-
-// done reports every problem found, and every field no one asked for.
-func (in *input) done() *errs.Error {
-	in.top().unknown("this command")
-	if len(in.problems) == 0 {
+// err is invalid-input with every fault found, or nil.
+func (r *input) err() *cli.Error {
+	if len(r.problems) == 0 {
 		return nil
 	}
-	return errs.Invalid(in.problems)
+	return cli.InvalidInput(r.message, r.problems...)
 }
 
-func (in *input) has(k string) bool { _, ok := in.m[k]; return ok }
-
-// fields reads one object's fields: the input itself (at == ""), or one
-// entry of a batch. used holds the fields asked for.
-type fields struct {
-	in   *input
-	m    map[string]json.RawMessage
-	at   string
-	used map[string]bool
+// value is a field's value; ok is false when it isn't given.
+func (r *input) value(field string) (any, bool) {
+	v, ok := r.in[field]
+	return v, ok
 }
 
-func (in *input) top() fields { return fields{in: in, m: in.m, used: in.used} }
-
-// entry reads one entry of a batch, at the JSON pointer `at`. It returns
-// false when the entry is not an object, which it records.
-func (in *input) entry(raw json.RawMessage, at string) (fields, bool) {
-	m, err := model.Keys(raw)
-	if err != nil {
-		in.bad(at, "must be a JSON object")
-		return fields{}, false
-	}
-	return fields{in: in, m: m, at: at, used: map[string]bool{}}, true
-}
-
-// get decodes field k into v. It returns false when the field is absent, or
-// is wrong, which it records.
-func (f fields) get(k string, required bool, v any, what string) bool {
-	f.used[k] = true
-	raw, ok := f.m[k]
+// part is an object in the input, at pointer, read as an input of its
+// own whose faults are this one's. A field it doesn't take, one of
+// fields, is a fault at that field. ok is false when it isn't an object.
+func (r *input) part(pointer string, v any, fields ...string) (*input, bool) {
+	m, ok := v.(map[string]any)
 	if !ok {
-		if required {
-			f.in.bad(f.at+"/"+k, "is required")
-		}
-		return false
+		r.fault(pointer, "%s must be an object", pointer)
+		return nil, false
 	}
-	if err := model.Decode(raw, v); err != nil || string(raw) == "null" {
-		f.in.bad(f.at+"/"+k, "must be %s", what)
-		return false
-	}
-	return true
-}
-
-// unknown records every field of the object no one asked for, as not a
-// field of what.
-func (f fields) unknown(what string) {
-	for _, k := range slices.Sorted(maps.Keys(f.m)) {
-		if !f.used[k] {
-			f.in.bad(f.at+"/"+k, "is not a field of %s", what)
+	p := &input{in: m, prefix: pointer, up: r, batch: r.batch}
+	var unknown []string
+	for k := range m {
+		if !slices.Contains(fields, k) {
+			unknown = append(unknown, k)
 		}
 	}
+	slices.Sort(unknown)
+	for _, k := range unknown {
+		p.fault(p.at(k), "unknown field %s", k)
+	}
+	return p, true
 }
 
-func (f fields) has(k string) bool { _, ok := f.m[k]; return ok }
-
-// idOf reads an ID as an input may give it: an integer, or a string with or
-// without its `@`.
-func idOf(raw json.RawMessage) (model.ID, bool) {
-	var n model.ID
-	if model.Decode(raw, &n) == nil {
-		return n, model.ValidID(n)
-	}
-	var s string
-	if model.Decode(raw, &s) == nil {
-		return model.ParseIDRef(s)
-	}
-	return 0, false
-}
-
-func (f fields) id(k string, required bool) model.ID {
-	var raw json.RawMessage
-	if !f.get(k, required, &raw, "a task ID") {
-		return 0
-	}
-	n, ok := idOf(raw)
+// label is a batch label field, or "" when it isn't given.
+func (r *input) label(field string) string {
+	v, ok := r.value(field)
 	if !ok {
-		f.in.bad(f.at+"/"+k, "must be a task ID, like 42 or @42")
+		return ""
 	}
-	return n
+	s, ok := v.(string)
+	if !ok || !core.ValidLabel(s) {
+		r.fault(r.at(field), "%v is not a label: $ then 1 to 64 letters, digits and hyphens, not starting or ending with a hyphen", printed(v))
+		return ""
+	}
+	return s
 }
 
-// item is a task or a folder as a blocked_by or blocks entry names it: by
-// ID, whichever kind has it, or a folder by path.
-type item struct {
-	id   model.ID     // when not 0, the task or folder with this ID
-	path model.Folder // otherwise, the folder at this path
-	at   string       // where it is in the input
+// required is a field's value, or a fault when it isn't given.
+func (r *input) required(field string) (any, bool) {
+	v, ok := r.in[field]
+	if !ok {
+		r.fault(r.at(field), "%s is required", field)
+	}
+	return v, ok
 }
 
-// readItem reads one item, recording why it can't be one. A path is never
-// the root's, which has no ID to wait on.
-func (f fields) readItem(raw json.RawMessage, at string) (item, bool) {
-	var s string
-	if model.Decode(raw, &s) == nil && strings.HasPrefix(s, "/") {
-		folder, ok := model.ParseFolder(s)
-		switch {
-		case !ok:
-			f.in.bad(at, "must be a folder path like /proj/travel")
-		case folder == model.Root:
-			f.in.bad(at, "is the root, which has no ID to wait on")
-		default:
-			return item{path: folder, at: at}, true
-		}
-		return item{}, false
+// text is a string field, UTF-8, or def when it isn't given.
+func (r *input) text(field, def string) string {
+	v, ok := r.value(field)
+	if !ok {
+		return def
 	}
-	if id, ok := idOf(raw); ok {
-		return item{id: id, at: at}, true
+	s, ok := v.(string)
+	switch {
+	case !ok:
+		r.fault(r.at(field), "%s must be a string", field)
+	case !utf8.ValidString(s):
+		r.fault(r.at(field), "%s is not UTF-8", field)
 	}
-	f.in.bad(at, "must be a task or folder ID, like 42 or @42, or a folder path, like /proj/research")
-	return item{}, false
+	return s
 }
 
-// items reads a list of distinct tasks and folders: nil when the field is
-// absent.
-func (f fields) items(k string, required bool) []item {
-	var raws []json.RawMessage
-	if !f.get(k, required, &raws, "a list of task or folder IDs and folder paths") {
+// title is a folder's title: a title by the task rule, as stored, or null.
+func (r *input) title(field string) *string {
+	v, ok := r.value(field)
+	if !ok || v == nil {
 		return nil
 	}
-	out := []item{}
-	for i, raw := range raws {
-		at := fmt.Sprintf("%s/%s/%d", f.at, k, i)
-		it, ok := f.readItem(raw, at)
-		if !ok {
-			continue
+	s, ok := v.(string)
+	if !ok {
+		r.fault(r.at(field), "%s must be a string or null", field)
+		return nil
+	}
+	t, err := core.CheckTitle(s)
+	if err != nil {
+		r.fault(r.at(field), "%s", reason(err))
+		return nil
+	}
+	return &t
+}
+
+// object is a JSON object field, as stored, or {} when it isn't given.
+func (r *input) object(field string) json.RawMessage {
+	v, ok := r.value(field)
+	if !ok {
+		return json.RawMessage("{}")
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		r.fault(r.at(field), "%s must be a JSON object", field)
+		return nil
+	}
+	b, err := marshal(m)
+	if err != nil {
+		r.fault(r.at(field), "%s: %v", field, err)
+	}
+	return b
+}
+
+// boolean is a boolean field, or def when it isn't given.
+func (r *input) boolean(field string, def bool) bool {
+	v, ok := r.value(field)
+	if !ok {
+		return def
+	}
+	b, ok := v.(bool)
+	if !ok {
+		r.fault(r.at(field), "%s must be true or false", field)
+	}
+	return b
+}
+
+// limit is a limit field: an integer of 1 or more, or null for none; def
+// when it isn't given.
+func (r *input) limit(field string, def int64) *int64 {
+	v, ok := r.value(field)
+	if !ok {
+		return &def
+	}
+	if v == nil {
+		return nil
+	}
+	n, isNum := v.(json.Number)
+	var i int64
+	var err error
+	if isNum {
+		i, err = core.ParseInt(string(n))
+	}
+	if !isNum || err != nil || i < 1 {
+		r.fault(r.at(field), "%s must be an integer of 1 or more, or null", field)
+		return nil
+	}
+	return &i
+}
+
+// ref is a reference field, parsed and checked where want is taken: a
+// string, or an ID as a JSON integer. def is used when it isn't given, or
+// "" when it is required.
+func (r *input) ref(field string, want core.Want, def string) core.Ref {
+	var v any = def
+	if def == "" {
+		var ok bool
+		if v, ok = r.required(field); !ok {
+			return core.Ref{}
 		}
-		if slices.ContainsFunc(out, func(o item) bool { return o.id == it.id && o.path == it.path }) {
-			f.in.bad(at, "names the same task or folder as an earlier one")
-			continue
-		}
-		out = append(out, it)
+	} else if got, ok := r.value(field); ok {
+		v = got
+	}
+	return r.refAt(r.at(field), field, v, want)
+}
+
+// refs is a list of references, each checked as ref checks one, or none
+// when it isn't given.
+func (r *input) refs(field string, want core.Want) []core.Ref {
+	list, ok := r.list(field)
+	if !ok {
+		return nil
+	}
+	out := []core.Ref{}
+	for i, v := range list {
+		out = append(out, r.refAt(fmt.Sprintf("%s/%d", r.at(field), i), field, v, want))
 	}
 	return out
 }
 
-// folderRef is a folder as an input names it: by path, or by ID.
-type folderRef struct {
-	path model.Folder
-	id   model.ID // when not 0, the folder is the one with this ID
-}
-
-// folderRef reads a folder given by path, or by ID with or without its `@`.
-func (f fields) folderRef(k string, required bool, def folderRef) folderRef {
-	var raw json.RawMessage
-	if !f.get(k, required, &raw, "a folder path or ID") {
-		return def
-	}
+// refAt checks one reference value at a pointer.
+func (r *input) refAt(at, field string, v any, want core.Want) core.Ref {
 	var s string
-	if model.Decode(raw, &s) == nil && strings.HasPrefix(s, "/") {
-		if folder, ok := model.ParseFolder(s); ok {
-			return folderRef{path: folder}
+	switch v := v.(type) {
+	case string:
+		s = v
+	case json.Number:
+		if _, ok := core.ParseID(string(v)); !ok {
+			r.fault(at, "%s is not an ID", v)
+			return core.Ref{}
 		}
-	} else if id, ok := idOf(raw); ok {
-		return folderRef{id: id}
+		s = string(v)
+	default:
+		r.fault(at, "%s must be a reference: a string, or an ID", field)
+		return core.Ref{}
 	}
-	f.in.bad(f.at+"/"+k, "must be a folder path like /proj/travel, or a folder's ID like 41 or @41")
-	return def
+	ref, err := core.ParseRef(s)
+	if err == nil {
+		err = core.CheckShape(ref, want, r.batch)
+	}
+	if err != nil {
+		r.fault(at, "%s", reason(err))
+		return core.Ref{}
+	}
+	return ref
 }
 
-// folder reads a folder path: for a folder that may not exist yet, which
-// has no ID to give.
-func (f fields) folder(k string, required bool, def model.Folder) model.Folder {
-	var s string
-	if !f.get(k, required, &s, "a folder path") {
+// sameCase refuses references that name paths differing only in case,
+// pointing at both, in input order; at is each one's pointer. exempt,
+// when given, lets a pair through.
+func (r *input) sameCase(refs []core.Ref, at []string, exempt ...func(a, b core.Ref) bool) {
+	for _, p := range core.CasePairs(refs) {
+		a, b := refs[p[0]], refs[p[1]]
+		if len(exempt) > 0 && exempt[0](a, b) {
+			continue
+		}
+		reason := fmt.Sprintf("%q and %q differ only in case", a.Raw, b.Raw)
+		r.fault(at[p[0]], "%s", reason)
+		r.fault(at[p[1]], "%s", reason)
+	}
+}
+
+// absPath is a path on disk, absolute, cleaned; "" when it isn't given,
+// or a fault too when it is required.
+func (r *input) absPath(field string, required bool) string {
+	v, ok := r.value(field)
+	if !ok {
+		if required {
+			r.fault(r.at(field), "%s is required", field)
+		}
+		return ""
+	}
+	s, ok := v.(string)
+	switch {
+	case !ok:
+		r.fault(r.at(field), "%s must be a string", field)
+	case !utf8.ValidString(s):
+		r.fault(r.at(field), "%s is not UTF-8", field)
+	case !filepath.IsAbs(s):
+		r.fault(r.at(field), "%s must be an absolute path: %q isn't", field, s)
+	default:
+		return filepath.Clean(s)
+	}
+	return ""
+}
+
+// taskTitle is a task's title, required: trimmed, then checked.
+func (r *input) taskTitle(field string) string {
+	v, ok := r.required(field)
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		r.fault(r.at(field), "%s must be a string", field)
+		return ""
+	}
+	t, err := core.CheckTitle(s)
+	if err != nil {
+		r.fault(r.at(field), "%s", reason(err))
+	}
+	return t
+}
+
+// priority is a priority field: an integer within ±(2^53 − 1), or null;
+// null when it isn't given.
+func (r *input) priority(field string) *int64 {
+	v, ok := r.value(field)
+	if !ok || v == nil {
+		return nil
+	}
+	n, ok := v.(json.Number)
+	if !ok {
+		r.fault(r.at(field), "%s must be an integer or null", field)
+		return nil
+	}
+	i, err := core.ParseInt(string(n))
+	if err != nil {
+		r.fault(r.at(field), "%s", reason(err))
+		return nil
+	}
+	return &i
+}
+
+// list is a list field's items; ok is false when it isn't given, or
+// isn't a list.
+func (r *input) list(field string) ([]any, bool) {
+	v, ok := r.value(field)
+	if !ok {
+		return nil, false
+	}
+	list, ok := v.([]any)
+	if !ok {
+		r.fault(r.at(field), "%s must be a list", field)
+	}
+	return list, ok
+}
+
+// tags is a list of tags, each matching the tag pattern, none twice; empty
+// when it isn't given.
+func (r *input) tags(field string) []string {
+	return r.strings(field, func(s string) bool { return core.ValidTag(s) }, "is not a tag: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen")
+}
+
+// choices is a list of at least one of allowed, none twice; def when it
+// isn't given.
+func (r *input) choices(field string, allowed, def []string) []string {
+	if _, ok := r.value(field); !ok {
 		return def
 	}
-	folder, ok := model.ParseFolder(s)
+	out := r.strings(field, func(s string) bool { return slices.Contains(allowed, s) }, fmt.Sprintf("is not one of %v", allowed))
+	if list, ok := r.in[field].([]any); ok && len(list) == 0 {
+		r.fault(r.at(field), "%s must name at least one of %v", field, allowed)
+	}
+	return out
+}
+
+// strings is a list of strings that pass valid, none twice, a duplicate
+// pointing at its later occurrence; bad ends the fault for one that
+// doesn't pass.
+func (r *input) strings(field string, valid func(string) bool, bad string) []string {
+	list, ok := r.list(field)
+	out := []string{}
 	if !ok {
-		f.in.bad(f.at+"/"+k, "must be a folder path like /proj/travel")
-		return def
+		return out
 	}
-	return folder
-}
-
-func (f fields) boolean(k string, def bool) bool {
-	v := def
-	f.get(k, false, &v, "true or false")
-	return v
-}
-
-func (f fields) text(k string) (string, bool) {
-	var s string
-	ok := f.get(k, false, &s, "a string")
-	return s, ok
-}
-
-// title reads and trims a title.
-func (f fields) title(k string, required bool) (string, bool) {
-	var s string
-	if !f.get(k, required, &s, "a string") {
-		return "", false
-	}
-	title, reason := model.CleanTitle(s)
-	if reason != "" {
-		f.in.bad(f.at+"/"+k, "%s", reason)
-		return "", false
-	}
-	return title, true
-}
-
-// optTitle reads a title, trimmed, or null. set is false when the field is
-// absent, or is wrong, which it records.
-func (f fields) optTitle(k string) (title *string, set bool) {
-	raw, ok := f.m[k]
-	f.used[k] = true
-	if !ok {
-		return nil, false
-	}
-	if string(bytes.TrimSpace(raw)) == "null" {
-		return nil, true
-	}
-	t, ok := f.title(k, false)
-	if !ok {
-		return nil, false
-	}
-	return &t, true
-}
-
-// priority reads an integer or null. set is false when the field is absent.
-func (f fields) priority(k string) (p *int64, set bool) {
-	raw, ok := f.m[k]
-	f.used[k] = true
-	if !ok {
-		return nil, false
-	}
-	if string(bytes.TrimSpace(raw)) == "null" {
-		return nil, true
-	}
-	var n int64
-	if err := model.Decode(raw, &n); err != nil || n > model.MaxInt || n < -model.MaxInt {
-		f.in.bad(f.at+"/"+k, "must be an integer or null")
-		return nil, false
-	}
-	return &n, true
-}
-
-// tags reads a list of distinct tags.
-func (f fields) tags(k string) ([]string, bool) {
-	var ts []string
-	if !f.get(k, false, &ts, "a list of tags") {
-		return nil, false
-	}
-	seen := map[string]bool{}
-	for i, t := range ts {
+	for i, item := range list {
+		at := fmt.Sprintf("%s/%d", r.at(field), i)
+		s, ok := item.(string)
 		switch {
-		case !model.ValidTag(t):
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be a tag: lowercase letters, digits, and hyphens")
-		case seen[t]:
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "is repeated")
-		}
-		seen[t] = true
-	}
-	return ts, true
-}
-
-// object reads a JSON object.
-func (f fields) object(k string) (map[string]any, bool) {
-	var o map[string]any
-	if !f.get(k, false, &o, "a JSON object") {
-		return nil, false
-	}
-	return o, true
-}
-
-// strs reads a list of distinct strings.
-func (f fields) strs(k string) ([]string, bool) {
-	var ss []string
-	if !f.get(k, false, &ss, "a list of strings") {
-		return nil, false
-	}
-	seen := map[string]bool{}
-	for i, s := range ss {
-		if seen[s] {
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "is repeated")
-		}
-		seen[s] = true
-	}
-	return ss, true
-}
-
-// oneOf reads a list of distinct values, each one of allowed.
-func (f fields) oneOf(k string, allowed []string) ([]string, bool) {
-	ss, ok := f.strs(k)
-	for i, s := range ss {
-		if !slices.Contains(allowed, s) {
-			f.in.bad(fmt.Sprintf("%s/%s/%d", f.at, k, i), "must be one of %s", strings.Join(allowed, ", "))
+		case !ok || !valid(s):
+			r.fault(at, "%v %s", printed(item), bad)
+		case slices.Contains(out, s):
+			r.fault(at, "%q given twice", s)
+		default:
+			out = append(out, s)
 		}
 	}
-	return ss, ok
+	return out
+}
+
+// printed is a value as a fault names it: a string quoted, else as JSON.
+func printed(v any) string {
+	if s, ok := v.(string); ok {
+		return fmt.Sprintf("%q", s)
+	}
+	b, _ := marshal(v)
+	return string(b)
+}
+
+// nullBool is a field that is true, false or null; null when it isn't
+// given.
+func (r *input) nullBool(field string) *bool {
+	v, ok := r.value(field)
+	if !ok || v == nil {
+		return nil
+	}
+	b, ok := v.(bool)
+	if !ok {
+		r.fault(r.at(field), "%s must be true, false or null", field)
+		return nil
+	}
+	return &b
+}
+
+// path is a folder path to make: a path from the root, not the root.
+func (r *input) path(field string) core.Ref {
+	v, ok := r.required(field)
+	if !ok {
+		return core.Ref{}
+	}
+	s, ok := v.(string)
+	if !ok {
+		r.fault(r.at(field), "%s must be a folder path", field)
+		return core.Ref{}
+	}
+	ref, err := core.ParseRef(s)
+	if err == nil && (ref.Kind != core.TargetPath || ref.IsRoot() || ref.End != core.EndNone || ref.HasMaterial) {
+		err = fmt.Errorf("%q is not a folder path from the root, such as /work/api", s)
+	}
+	if err != nil {
+		r.fault(r.at(field), "%s", reason(err))
+	}
+	return ref
+}
+
+// fields is a --fields list: names from the record's fields, none twice.
+// nil means it isn't given: every field.
+func (r *input) fields(field string, names []string) []string {
+	v, ok := r.value(field)
+	if !ok {
+		return nil
+	}
+	list, ok := v.([]any)
+	if !ok {
+		r.fault(r.at(field), "%s must be a list of field names", field)
+		return nil
+	}
+	out := []string{}
+	for i, item := range list {
+		at := fmt.Sprintf("%s/%d", r.at(field), i)
+		s, ok := item.(string)
+		switch {
+		case !ok || !slices.Contains(names, s):
+			r.fault(at, "%v is not a field: the fields are %v", item, names)
+		case slices.Contains(out, s):
+			r.fault(at, "%q given twice", s)
+		default:
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// reason is an error's message without its kind.
+func reason(err error) string {
+	if e, ok := err.(*core.Error); ok {
+		return e.Message
+	}
+	return err.Error()
+}
+
+// marshal writes a value as JSON as the envelope does: without escaping
+// <, > and &.
+func marshal(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }

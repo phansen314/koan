@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown option --colour",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "--colour",
+        "reason": "unknown option --colour"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

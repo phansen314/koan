@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "brief",
+  "type": "object",
+  "required": [
+    "folder",
+    "ancestors",
+    "notes",
+    "tasks",
+    "marker"
+  ],
+  "properties": {
+    "folder": {
+      "$ref": "folder"
+    },
+    "ancestors": {
+      "type": "array",
+      "items": {
+        "$ref": "folder"
+      },
+      "description": "The folders above it, from the top, the root left out."
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Its @notes.md, whole; empty when the file is missing; null for the root."
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "task"
+      },
+      "description": "Its own open tasks, gates included, in tree order."
+    },
+    "marker": {
+      "anyOf": [
+        {
+          "$ref": "types#/$defs/abs-path"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The marker.json the folder was found by; null when found by path or reference."
+    }
+  },
+  "unevaluatedProperties": false
+}

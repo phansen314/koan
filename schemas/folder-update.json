@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-update",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "folder"
+      ],
+      "minProperties": 2,
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "description": "Subject."
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extra_merge": {
+          "$ref": "types#/$defs/extra"
+        },
+        "extra_remove": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "extra_replace_all": {
+          "$ref": "types#/$defs/extra"
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "extra_replace_all",
+              "extra_merge"
+            ]
+          },
+          {
+            "required": [
+              "extra_replace_all",
+              "extra_remove"
+            ]
+          }
+        ]
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "$ref": "task-update#/$defs/id-only"
+    }
+  }
+}

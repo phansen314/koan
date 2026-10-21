@@ -2,39 +2,135 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "error",
   "type": "object",
-  "required": ["kind", "rule", "message", "ids", "folders", "paths", "problems", "changed_paths"],
+  "required": [
+    "kind",
+    "rule",
+    "message",
+    "ids",
+    "paths",
+    "problems",
+    "archived"
+  ],
   "properties": {
     "kind": {
-      "enum": ["usage", "invalid-input", "not-initialized", "corrupt", "unsupported-format", "migration-pending", "busy", "not-found", "conflict", "io", "internal"]
+      "enum": [
+        "usage",
+        "invalid-input",
+        "not-found",
+        "conflict",
+        "busy",
+        "not-initialized",
+        "corrupt",
+        "unsupported-format",
+        "io",
+        "internal"
+      ]
     },
     "rule": {
-      "type": ["string", "null"],
-      "description": "For conflict, which rule refused the input; null for every other kind."
+      "enum": [
+        "case-mismatch",
+        "cycle",
+        "claimed",
+        "not-finished",
+        "not-empty",
+        "has-material",
+        "gate",
+        "into-itself",
+        "exists",
+        "not-a-root",
+        "checkout",
+        "foreign-files",
+        "complete",
+        "bound",
+        "no-ids",
+        null
+      ],
+      "description": "The conflict rule; null for every other kind."
     },
-    "message": { "type": "string", "description": "One sentence for a person. Not for parsing." },
+    "message": {
+      "type": "string",
+      "description": "One or two sentences for a person. Never parsed."
+    },
     "ids": {
       "type": "array",
-      "items": { "$ref": "task-file#/properties/id" }
-    },
-    "folders": {
-      "type": "array",
-      "items": { "$ref": "folder-path" }
+      "items": {
+        "$ref": "types#/$defs/id"
+      },
+      "description": "In the order the kind or rule gives."
     },
     "paths": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      },
+      "description": "Folder paths or paths on disk, as the kind or rule gives."
     },
     "problems": {
       "type": "array",
-      "description": "For invalid-input, the problems in the input; for corrupt, the rules the file breaks; for cycle, the input fields that close the cycle.",
-      "items": { "type": "object", "required": ["field", "reason"], "properties": { "field": { "type": "string", "description": "A JSON Pointer into the input or the file." }, "reason": { "type": "string" } }, "additionalProperties": false }
+      "items": {
+        "type": "object",
+        "required": [
+          "field",
+          "reason"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed, or \"\" when what is at fault is missing."
+          },
+          "reason": {
+            "type": "string",
+            "description": "For a person, never parsed: the fault, for usage and invalid-input; for any other kind, which points at fields without faulting them, the message."
+          }
+        },
+        "unevaluatedProperties": false
+      }
     },
-    "changed_paths": {
+    "archived": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "What the command created, rewrote, or removed before it failed."
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "archive"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "types#/$defs/id"
+          },
+          "archive": {
+            "$ref": "types#/$defs/abs-path"
+          }
+        },
+        "unevaluatedProperties": false
+      },
+      "description": "For not-found: where each archived ID the input named went, from the index."
     }
   },
-  "additionalProperties": false,
-  "allOf": [{ "if": { "properties": { "kind": { "const": "conflict" } } }, "then": { "properties": { "rule": { "type": "string" } } }, "else": { "properties": { "rule": { "type": "null" } } } }]
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "conflict"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "rule": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "rule": {
+            "const": null
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
 }

@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "case-mismatch",
+    "message": "/C differs from /c only in case",
+    "ids": [
+      3
+    ],
+    "paths": [
+      "/C",
+      "/c"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

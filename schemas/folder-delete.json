@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-delete",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "folder"
+      ],
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "description": "Subject."
+        },
+        "contents": {
+          "type": "boolean",
+          "default": false
+        },
+        "force": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "$ref": "task-delete#/$defs/result",
+      "description": "removed holds every task and folder removed."
+    }
+  }
+}

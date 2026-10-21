@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "result": {
+    "id": 5,
+    "changed": true,
+    "gates_made": [],
+    "reblocked": [
+      4,
+      6
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "complete-blocker",
+      "message": "@1, @2 are complete: edges added to their blocked_by don't reopen them, so what waits on them isn't held back.",
+      "ids": [
+        1,
+        2
+      ],
+      "paths": []
+    },
+    {
+      "kind": "claimed-blocked",
+      "message": "@4, @6 are claimed, and wait again; their claims stay.",
+      "ids": [
+        4,
+        6
+      ],
+      "paths": []
+    }
+  ]
+}

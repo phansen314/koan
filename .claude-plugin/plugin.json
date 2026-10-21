@@ -1,6 +1,6 @@
 {
   "name": "koan",
-  "description": "Track and work through your tasks with the koan CLI: a local, file-based task tree with dependencies.",
+  "description": "Track and work through your tasks with the koan CLI: a local task tree with dependencies, kept in SQLite, with notes as plain files.",
   "author": {
     "name": "phansen314"
   },

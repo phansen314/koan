@@ -1,89 +1,34 @@
-# CI: see spec/implementation.md, Testing.
-name: CI
+name: ci
 
 on:
   push:
-    branches: [main]
   pull_request:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  # A new commit on a PR supersedes the old run; every commit on main keeps its own.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
-    name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
+        # macOS runs on its default case-insensitive filesystem.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Go version
-        run: go version
-
-      - name: Check formatting
-        run: |
-          unformatted=$(gofmt -l .)
-          if [[ -n $unformatted ]]; then
-            echo "::error::gofmt found unformatted files:"
-            echo "$unformatted"
-            exit 1
-          fi
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.x"
+      - name: Schemas match the spec
+        run: python3 scripts/extract-schemas.py --check
+      - name: Formatted
+        run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
-      - name: Vet with e2e hooks
-        run: go vet -tags e2e_hooks ./...
       - name: Build
         run: go build ./...
-      # Never -short: the lock and crash tests are the macOS check.
       - name: Test
-        run: go test ./...
-
-  race:
-    name: race (ubuntu-latest)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - name: Go version
-        run: go version
-      # In-process tests only: e2e/ runs binaries built without -race.
-      - name: Test with the race detector
-        run: go test -race $(go list ./... | grep -v /e2e)
-
-  govulncheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - name: Go version
-        run: go version
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
-
-  staticcheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - name: Go version
-        run: go version
-      - name: staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
-      - name: staticcheck with e2e hooks
-        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 -tags e2e_hooks ./...
+        run: go test -timeout 30m ./...

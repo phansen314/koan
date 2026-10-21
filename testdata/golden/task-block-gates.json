@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "result": {
+    "id": 4,
+    "changed": true,
+    "gates_made": [
+      {
+        "id": 4,
+        "folder": {
+          "id": 2,
+          "path": "/work/api"
+        },
+        "end": "start"
+      },
+      {
+        "id": 5,
+        "folder": {
+          "id": 1,
+          "path": "/work"
+        },
+        "end": "start"
+      }
+    ],
+    "reblocked": [
+      3
+    ]
+  },
+  "warnings": []
+}

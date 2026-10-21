@@ -1,0 +1,129 @@
+{
+  "ok": true,
+  "result": {
+    "folders": [
+      {
+        "id": 3,
+        "ref": "@3 (/Zeta)",
+        "name": "Zeta",
+        "path": "/Zeta",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 0,
+        "complete": 0,
+        "finished": true,
+        "notes_path": "$HOME/koan-root/tree/@Zeta/@notes.md",
+        "dir": "$HOME/koan-root/tree/@Zeta"
+      },
+      {
+        "id": 1,
+        "ref": "@1 (/alpha)",
+        "name": "alpha",
+        "path": "/alpha",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 0,
+        "complete": 0,
+        "finished": true,
+        "notes_path": "$HOME/koan-root/tree/@alpha/@notes.md",
+        "dir": "$HOME/koan-root/tree/@alpha"
+      },
+      {
+        "id": 7,
+        "ref": "@7 (/alpha/C)",
+        "name": "C",
+        "path": "/alpha/C",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 0,
+        "complete": 0,
+        "finished": true,
+        "notes_path": "$HOME/koan-root/tree/@alpha/@C/@notes.md",
+        "dir": "$HOME/koan-root/tree/@alpha/@C"
+      },
+      {
+        "id": 4,
+        "ref": "@4 (/alpha/a)",
+        "name": "a",
+        "path": "/alpha/a",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 0,
+        "complete": 0,
+        "finished": true,
+        "notes_path": "$HOME/koan-root/tree/@alpha/@a/@notes.md",
+        "dir": "$HOME/koan-root/tree/@alpha/@a"
+      },
+      {
+        "id": 5,
+        "ref": "@5 (/alpha/a/x)",
+        "name": "x",
+        "path": "/alpha/a/x",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 0,
+        "complete": 0,
+        "finished": true,
+        "notes_path": "$HOME/koan-root/tree/@alpha/@a/@x/@notes.md",
+        "dir": "$HOME/koan-root/tree/@alpha/@a/@x"
+      },
+      {
+        "id": 2,
+        "ref": "@2 (/alpha/b)",
+        "name": "b",
+        "path": "/alpha/b",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 0,
+        "complete": 0,
+        "finished": true,
+        "notes_path": "$HOME/koan-root/tree/@alpha/@b/@notes.md",
+        "dir": "$HOME/koan-root/tree/@alpha/@b"
+      },
+      {
+        "id": 6,
+        "ref": "@6 (/beta)",
+        "name": "beta",
+        "path": "/beta",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 0,
+        "complete": 0,
+        "finished": true,
+        "notes_path": "$HOME/koan-root/tree/@beta/@notes.md",
+        "dir": "$HOME/koan-root/tree/@beta"
+      }
+    ],
+    "total": 7,
+    "truncated": false
+  },
+  "warnings": []
+}

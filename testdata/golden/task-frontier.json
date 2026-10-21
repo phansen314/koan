@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "result": {
+    "tasks": [
+      {
+        "id": 6,
+        "title": "b1",
+        "priority": 5,
+        "folder": {
+          "id": 2,
+          "path": "/a/b"
+        },
+        "readiness": "ready"
+      },
+      {
+        "id": 5,
+        "title": "a1",
+        "priority": 2,
+        "folder": {
+          "id": 1,
+          "path": "/a"
+        },
+        "readiness": "ready"
+      },
+      {
+        "id": 8,
+        "title": "r2",
+        "priority": -1,
+        "folder": {
+          "id": null,
+          "path": "/"
+        },
+        "readiness": "ready"
+      },
+      {
+        "id": 4,
+        "title": "r1",
+        "priority": null,
+        "folder": {
+          "id": null,
+          "path": "/"
+        },
+        "readiness": "ready"
+      },
+      {
+        "id": 12,
+        "title": "Start",
+        "priority": null,
+        "folder": {
+          "id": 3,
+          "path": "/c"
+        },
+        "readiness": "ready"
+      }
+    ],
+    "total": 5,
+    "truncated": false
+  },
+  "warnings": []
+}

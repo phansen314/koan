@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "checkout",
+    "message": "$HOME/co is a checkout: its .git is a directory, and a marker there would bind every directory under it. Bind a worktree, or use --force",
+    "ids": [],
+    "paths": [
+      "$HOME/co"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

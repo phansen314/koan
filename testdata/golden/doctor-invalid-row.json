@@ -1,0 +1,122 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "invalid-row",
+        "detail": "I6",
+        "message": "@3 waits on itself. A person fixes it in the database.",
+        "ids": [
+          3
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I7",
+        "message": "Tasks @3, @4 wait on each other in a cycle. A person fixes it in the database.",
+        "ids": [
+          3,
+          4
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I9",
+        "message": "Task @4: its title \" padded\" isn't a title; its priority \"1.5\" isn't an integer. A person fixes it in the database.",
+        "ids": [
+          4
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I9",
+        "message": "Task @5: its created_at \"yesterday\" isn't a timestamp; its tag \"BAD\" isn't a tag. A person fixes it in the database.",
+        "ids": [
+          5
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I12",
+        "message": "@5 is in the tree, and the index says it was archived. A person fixes it in the database.",
+        "ids": [
+          5
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I11",
+        "message": "Folder @1 has 2 start gates: @6, @11. A person fixes it in the database.",
+        "ids": [
+          6,
+          11
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I3",
+        "message": "Folders @7, @8 are each other's parents, so their parent chain never reaches the root. A person fixes it in the database.",
+        "ids": [
+          7,
+          8
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I9",
+        "message": "Folder @8: its name \"b b\" isn't a folder name. A person fixes it in the database.",
+        "ids": [
+          8
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I4",
+        "message": "Folders @9, @10 share a parent and have names equal ignoring case. A person fixes it in the database.",
+        "ids": [
+          9,
+          10
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I11",
+        "message": "@12 is a done gate in the root, which has none. A person fixes it in the database.",
+        "ids": [
+          12
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I12",
+        "message": "@13 is archived, and the index doesn't say where it went. A person fixes it in the database.",
+        "ids": [
+          13
+        ],
+        "paths": [],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

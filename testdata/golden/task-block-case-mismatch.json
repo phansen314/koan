@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "case-mismatch",
+    "message": "/work matches /Work only ignoring case",
+    "ids": [
+      1
+    ],
+    "paths": [
+      "/work",
+      "/Work"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

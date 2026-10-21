@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/phansen314/koan/actions/workflows/ci.yml/badge.svg)](https://github.com/phansen314/koan/actions/workflows/ci.yml)
 
-Task management on one machine, with the filesystem as the database: tasks are JSON files in nested folders, with dependencies between them, and a Markdown notes file each. No daemon, no index of the tree, no server. Every command prints one line of JSON, so it is built to be driven by an agent such as Claude Code or OpenCode, with `jq` for anything a person reads.
+Task management for one person on one machine, built to be driven by agents such as Claude Code and OpenCode. Tasks live in nested folders, with dependencies between them; the structure is kept in a SQLite database, and each task and folder has a plain Markdown notes file in a tree of directories you can open in any editor. No daemon, no server. Every command prints exactly one line of JSON.
 
 Linux and macOS only.
 
@@ -10,190 +10,140 @@ Linux and macOS only.
 
 ## Install
 
-Needs Go 1.25 or later.
+Needs Go 1.25 or later. The SQLite driver is SQLite translated to Go, so there is no cgo and no C compiler, just one binary.
 
-```sh
-GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest   # any GOBIN on your PATH
-koan init                                                                  # this machine's task tree
+```shell
+GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.4.0   # any GOBIN on your PATH
 ```
 
-Everything is under `~/koan-root`: the tree of work in use in `tree/`, finished work that was archived in `archived/`, and the ID counter in `@koan.json`. This machine's claims are at `~/.config/koan/state.json`. To keep it all somewhere else, make `~/koan-root` a symlink to it before running `init`.
+Then make this machine's root:
+
+```sh
+koan init
+```
+
+Everything is under `~/koan-root`:
+
+| Path | Holds |
+|---|---|
+| `koan.db` | the database: tasks, folders, the edges between tasks, claims. Only koan writes it |
+| `tree/` | a directory per folder, named `@<name>`, holding its notes `@notes.md`, each task's notes `@<id>.md`, and anything else you keep there (your *material*, which koan never reads) |
+| `archived/` | finished work that was archived, as files |
+
+Open `~/koan-root/tree` in your editor and edit any notes file. Rename or move folders with koan, not by hand: `koan doctor` finds a hand rename and `koan repair` puts it back.
+
+To keep the root somewhere else, make `~/koan-root` a symlink to it before `koan init`. It must be on a local filesystem, never a sync folder: SQLite's WAL mode and koan's lock need one.
+
+## Coming from the original koan
+
+There is no migration: this koan starts from a fresh root. `koan init` refuses a `~/koan-root` left by the original koan (versions up to v0.3.0), with `conflict`, rule `not-a-root`, listing what it found that isn't its own, such as `@koan.json`. Move the old root aside, and start a new one:
+
+```shell
+mv ~/koan-root ~/koan-root-v0.3   # the old tree stays readable: its notes are Markdown files
+koan init
+```
+
+Then recreate the work you still want, by hand or with `koan batch`. The original's claims file, `~/.config/koan/state.json`, is read by nothing now and can be deleted. Install this koan over the old binary with the `go install` above, update the Claude Code plugin with `claude plugin marketplace update koan` and `claude plugin update koan@koan`, and rerun `scripts/install.sh`, which also removes the old `koan migrate` permission rule.
 
 ## A taste
 
-Folders are made as needed, and folders and tasks share one ID sequence: below, `/work` gets 1, `/work/api` 2, and the first task 3.
+Folders and tasks share one ID sequence. On a new root:
 
 ```sh
-koan task create 'Design schema' --folder /work/api --priority 2 --tags db
-koan task create 'Write migrations' --folder /work/api --blocked-by 3
-koan task frontier --limit 10 --fields id,title   # what can be taken now, in work order
-koan task why 4                                   # .result.ready: the ready tasks 4 waits on
-koan task done 3
-koan folder list --folder /work --fields id,path,title
-jq -n '{folder: "/work/api", tasks: [              # a plan in one call: refs name earlier tasks
-  {ref: "endpoints", title: "Add endpoints"},
-  {title: "Document endpoints", blocked_by: ["endpoints"]}]}' | koan batch -i -
+koan folder create /work/api --title 'API rework'                        # makes /work too: @1, and /work/api @2
+koan task create 'Design the endpoints' --folder /work/api --priority 2  # @3
+koan task create 'Build them' --folder /work/api --blocked-by 3          # @4, which waits on @3
+koan task frontier --limit 10 --fields ref,title                         # what can be taken now: only @3
+koan task claim-next --extra '{"by":"me"}'                               # claims @3 and returns it, so no one else takes it
+koan task complete 3                                                     # .result.released: [4], now ready
+koan task show 4                                                         # the whole task, with its notes_path
 ```
 
-A write returns what it changed, by ID (`.result.id`); a read returns the whole record. A task's notes are a plain file, edited with any editor: `koan task show 4 | jq -r .result.task.notes_path` says where.
+A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`.
 
-Folder names use letters, digits, and hyphens, up to 64 characters, and a path matches a folder only in its exact case: with `/work` there, `/Work` is refused as `case-mismatch` on every platform, so a tree made on Linux always moves to a Mac intact. `koan folder move /work --to /Work` changes a folder's case. Tags are lowercase only, so matching one is always exact. See [Folders](spec/design.md#folders).
+### Ordering folders
 
-## Ordering folders
-
-A folder can wait on tasks and on other folders, and everything in it, at any depth, waits with it. A folder is done when every task under it is, so one phase of work can wait on another:
+Edges are only ever between tasks: where a task sits never orders it. To order whole folders, a folder has two **gates**, tasks of its own made the first time an edge names them: `/work/api.start`, which its work waits on, and `/work/api.done`, which waits on its work and which what comes after waits on. In an edge, a folder means its done gate.
 
 ```sh
-koan task create 'Prototype' --folder /work/phase1         # /work/phase1 gets 7, the task 8
-koan folder create /work/phase2 --blocked-by /work/phase1   # 9: nothing under phase2 is ready while phase1 has open work
-koan task create 'Ship it' --folder /work/phase2            # 10
-koan task show 10 | jq .result.task.inherited               # [{"folder":"/work/phase2","ids":[7]}]: what holds it back
-koan task block 4 --blocked-by /work/phase1                 # a task can wait on a folder too
-koan folder why /work/phase1 | jq .result.ready             # [8]: what to work on to finish phase1
+koan task create 'Announce it' --folder /work --blocked-by /work/api    # @5 waits on /work/api's done gate, made as @6
+koan task block /work/api.done --blocked-by 3,4                         # the done gate waits on the folder's work
+koan task why 5                                                         # .result.ready: [4], what to finish to move @5
 ```
 
-The order is continuous: a task added to a finished phase1 makes it not done again, and blocks phase2 again. An empty folder is done, so lay the work out before anything waits on it, or all at once with `koan batch`. koan refuses a cycle, including one that would close only once a task is added to a folder: nothing may wait on a folder that holds it. See [Dependencies](spec/design.md#dependencies).
+A plan with several tasks goes in at once, as one change, with labels for its tasks to name each other by:
+
+```sh
+koan batch -i - <<'EOF'
+{"folders": [{"path": "/home/trip", "title": "Lisbon in May"}],
+ "folder": "/home/trip",
+ "tasks": [{"label": "$flights", "title": "Book flights"},
+           {"title": "Book a hotel", "blocked_by": ["$flights"]}]}
+EOF
+```
+
+Several agents can work from one tree: a **claim** reserves a task, so two workers are never handed the same one. It never expires; `task complete` or `task release` ends it. Finished work leaves the tree with `koan task archive` and `koan folder archive`, into `~/koan-root/archived`, where `rg` finds it.
 
 ## Use it from Claude Code and OpenCode
 
-The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin (this repo is a Claude Code plugin marketplace):
+The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin; this repo is a Claude Code plugin marketplace:
 
-```sh
+```shell
 claude plugin marketplace add phansen314/koan
 claude plugin install koan@koan
 ```
 
-Then, from a clone of this repo, add the permission rules. They let koan run without prompting, except for `init`, the deletes, `repair`, and `migrate`, which still ask. For OpenCode the script also links the skill.
+Then, from a clone of this repo, add the permission rules. They let every koan command run without asking, except `koan init`, `koan task delete`, `koan folder delete` and `koan repair`, which always ask. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
 
-```sh
+```shell
 scripts/install.sh               # every agent whose CLI is on PATH
 scripts/install.sh --opencode    # or name them: --claude, --opencode
 scripts/install.sh --uninstall   # take it all out again
 ```
 
-[docs/agents.md](docs/agents.md) has the rules to add by hand, what the script changes, and how each agent picks up skill updates.
+The script is safe to rerun. It backs a settings file up, to `.bak.<timestamp>`, before changing it, and adds or removes only koan's rules. It never edits an `opencode.jsonc`, or an `opencode.json` that isn't plain JSON: it prints the rules to add by hand. It needs `jq`, and runs under macOS's `/bin/bash`.
 
-## Several agents, one tree
+## Backup and restore
 
-Two agents that each read the list of ready tasks would start the same one. A **claim** reserves a task: once it is claimed, no one else can claim it, and it leaves the frontier, until it is released or done.
-
-```sh
-koan task claim-next --folder /work --extra '{"worker":"w3"}'   # claim the first task of the frontier; task is null when it is empty
-koan task claim 42                                              # or this task; a second claim is refused: conflict, rule claimed
-koan task list --claimed --fields id,title,claim                # what is out, to whom, and since when
-koan task done 42                                               # ends the claim
-koan task release 42                                            # or give it back unfinished
-```
-
-A claim is a reservation and nothing more: it never expires, and every other command still works on a claimed task. See [Claims](spec/design.md#claims). [docs/coordination.md](docs/coordination.md) shows how a coordinator that starts its own workers builds safe edits on top of this, with a worked example for Claude Code subagents.
-
-## Checking and repairing the tree
-
-A crash, a git merge, or a hand edit can leave the tree damaged: a leftover temp file, a blocker that no longer exists, two tasks with one ID. Other commands report damage as warnings, or refuse to act on it; `doctor` finds all of it, and `repair` fixes what is safe to fix:
+`koan backup` copies the database, the tree and the archive into a new or empty directory, while koan keeps running, and checks the copy:
 
 ```sh
-koan doctor      # .result.healthy, and .result.findings: what is wrong, and whether repair can fix it
-koan repair      # fix what is safe to fix: leftovers, a low ID counter, a missing @folder.json, ...
-koan repair --kinds dangling-reference,stale-claim   # remove blockers on tasks and folders, and claims on tasks, that no longer exist
+koan backup ~/backups/koan-$(date +%F)   # .result.clean is true when the copy checks out
 ```
 
-`repair` never chooses between versions, and removes a link to a task that seems gone only when asked by name. [Doctor and repair](spec/design.md#doctor-and-repair) lists every kind and what `repair` does with it.
-
-## Keep the tree in git
-
-koan keeps no trash and no history; git is the way back. Git carries the tree as one straight line of snapshots: one branch, committed from the one machine that writes the tree, and pushed, if at all, to a private remote as a backup. It is for undo, history, and moving to a new machine, never for merging work on the tree.
-
-`git init` in `~/koan-root` and commit now and then. koan doesn't commit for you: do it by hand, or from a cron job or shell hook of your own:
+Copying `koan.db` by hand while koan runs is not a backup. To restore, put a backup in place of `~/koan-root` and run `koan doctor`:
 
 ```sh
-git -C ~/koan-root add -A && git -C ~/koan-root commit -q -m "koan $(date -u +%FT%TZ)"
+mv ~/koan-root ~/koan-root.before-restore
+cp -R ~/backups/koan-$(date +%F) ~/koan-root   # or whichever backup you want
+koan doctor                                    # .result.findings: what is wrong, if anything
 ```
 
-A crash can leave a `.koan-tmp-*` file; a root `.gitignore` with `.koan-tmp-*` keeps one out of a commit. A commit doesn't wait for koan's lock, so one taken while a command is writing can catch a change half done; restoring it leaves what a crash leaves, which `koan doctor` finds.
+A backup carries the claims of its moment, and a restore brings them back with it.
 
-- **Don't check out other branches at `~/koan-root`, or merge into it.** The ID counter is in `@koan.json`, so two branches issue the same IDs, and merging them conflicts there, on task files, and on `blocked_by` naming tasks deleted on the other branch. `koan doctor` finds what is left, but can't resolve it.
-- **Don't work on a checkout of the tree anywhere else.** koan only ever reads and writes `~/koan-root`; a clone or `git worktree` elsewhere is invisible to it.
-- **Restoring the whole tree to an older commit** takes its counter back too, so the IDs issued since are issued again. That is why koan IDs belong in notes and prompts, and not in commit messages or anything else kept outside the tree.
+## Checking and repairing
 
-### Undoing a delete
+A crash, or a folder renamed or dragged by hand in your editor, can leave the tree on disk out of step with the database. `koan doctor` finds it and changes nothing; `koan repair` fixes what it can without losing anything, and reports what it left for you. Every finding's message says what to do.
 
-`koan task delete` and `koan folder delete` remove files for good. With the tree in git, a delete can be undone back to the last commit:
+## Uninstalling
 
-```sh
-cd ~/koan-root/tree
-git log --diff-filter=D --oneline -- '*/@42.json' '@42.json'     # the commit that removed task 42, if committed
-git restore -- @proj/@42.json @proj/@42.md                        # not yet committed: from the last commit
-git restore --source=<commit>^ -- @proj/@42.json @proj/@42.md     # committed: from the commit before
-```
-
-Restore only the removed paths: restoring the whole tree would undo every other change since that commit. Then:
-
-- **Put back its blocks.** The delete took the task's ID out of the blockers of other tasks and of folders; its output lists them as `dependents`, to `koan task block` or `koan folder block` again.
-- **Run `koan doctor`.** A restored task may name blockers deleted since.
-
-A `folder delete` is undone the same way, restoring the folder's whole directory (`git restore -- @proj/@old`, or from `<commit>^`). It took out of every blocker the folder's ID, those of the folders under it, and those of its tasks: re-block each of its `dependents` with `koan task block` or `koan folder block`, on whichever of those IDs it named.
-
-git restores only what it tracked:
-
-- Untracked or ignored material (`.venv`, `.env`, build output) is gone for good, which is why `folder delete` lists it and removes it only with `--force`.
-- A folder with its own `.git` inside is not in the tree's history at all: git keeps only a pointer to the inner repository, and restoring it gives an empty directory. Remove that directory rather than letting `koan repair` give it a folder file.
-
-### More than one machine
-
-A tree is written from one machine, and a machine has one tree; keep separate bodies of work as top-level folders (`/work`, `/home`).
-
-To move a tree to another machine, clone or copy it to `~/koan-root` there and run `koan init`, which gives that machine its own state file for claims; the ID counter comes with the tree. After the move, write the tree from the new machine only. Two machines that both create tasks in copies of one tree will issue the same IDs; with git, merging them conflicts on `@koan.json`. A sync tool between two machines that both write the tree has no such check, so use one only as a backup.
-
-## Keeping the tree small
-
-Nothing indexes the tree: a command walks the folders it needs, so the tree's size is its speed. Rather than keep finished work in it, archive a body of work when it is done (a story shipped, a trip taken):
-
-```sh
-koan folder archive /work/HOME-12345     # the folder, everything under it, its material included
-koan task archive 42                     # one done task, out of a folder still in use
-```
-
-Only what is done is archived: a folder when every task under it is. It moves, as it is, to `~/koan-root/archived/`, where no command looks again, under the path it had: `archived/work/@41_HOME-12345/` for folder 41, `archived/work/HOME-777/@42.json` for a task. The ID on the archived item keeps a folder made again at the same path, and archived again, from colliding with the first. Other tasks lose its IDs from `blocked_by`, which changes no readiness, since done tasks never block.
-
-There is no unarchive. To work on it again, make new tasks from what the archive holds. To find something archived, search the files, or the index, one JSON line per item archived:
-
-```sh
-rg -l 'HOME-12345' ~/koan-root/archived
-jq -c 'select(.ids | index(57))' ~/koan-root/archived/@index.jsonl     # where task or folder 57 went
-```
-
-A command given an archived ID, or the path of an archived folder, fails `not-found`, saying where it went. A worktree bound to an archived folder names nothing: remove the worktree first.
-
-`koan folder delete` still removes a folder for good, for work not worth keeping; commit first, since git is the only way back ([Undoing a delete](#undoing-a-delete)).
-
-## Upgrading
-
-```sh
-GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest
-koan info | jq -r .result.state
-```
-
-When a release changes the files a tree is made of, `state` is `needs-migration`, and every command but `migrate`, `doctor`, `init`, `info`, and `version` refuses the tree until you run `koan migrate`. There are no migrations in reverse, so commit the tree first: that commit is the way back. `koan migrate --dry-run` reports what would change.
+Remove the binary, `scripts/install.sh --uninstall`, `claude plugin uninstall koan@koan`, and `~/koan-root` if its work isn't wanted.
 
 ## Docs
 
-- [spec/design.md](spec/design.md): the data model, invariants, concurrency, and crashes.
-- [spec/operations.md](spec/operations.md): every command's input, output, and refusals.
-- [spec/cli.md](spec/cli.md): how the command line maps onto the commands.
-- [spec/implementation.md](spec/implementation.md): how it is built and tested.
-- [schemas/](schemas): the JSON Schemas of every file, input, and output.
-- [docs/coordination.md](docs/coordination.md): coordinating workers on one tree.
-- [docs/agents.md](docs/agents.md): setting up an agent by hand.
-- [docs/deferred.md](docs/deferred.md): work decided on but not built yet.
+- [docs/rules.md](docs/rules.md): the invariants and rules every tree obeys.
+- [docs/prd.md](docs/prd.md): how koan is built: layout, storage, writes, concurrency, recovery.
+- [docs/spec.md](docs/spec.md): exactly what every command takes and prints.
+- [schemas/](schemas): the spec's JSON Schemas, one file each.
+- [claude/skills/koan/SKILL.md](claude/skills/koan/SKILL.md): the skill agents use.
 
 ## Development
 
-```sh
-go test ./...                          # unit and end-to-end tests
-go test -short ./...                   # without the 800-process lock test and the crash matrix
+```shell
+go test ./...                              # everything, the skill's and this README's examples included
+go test -short ./...                       # without the long concurrency and crash matrices
+python3 scripts/extract-schemas.py --check # schemas/ matches the spec
 ```
-
-[docs/releasing.md](docs/releasing.md) has the release steps.
 
 ## License
 

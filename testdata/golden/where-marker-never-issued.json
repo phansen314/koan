@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/code/bad/.koan/marker.json binds nothing: @99 was never issued",
+    "ids": [
+      99
+    ],
+    "paths": [
+      "$HOME/code/bad/.koan/marker.json"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "result": {
+    "id": 1,
+    "changed": true,
+    "reblocked": [
+      2,
+      3
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "claimed-blocked",
+      "message": "@2 is claimed, and waits again; its claim stays.",
+      "ids": [
+        2
+      ],
+      "paths": []
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "result": {
+    "fixed": [],
+    "left": [
+      {
+        "kind": "stray-entry",
+        "detail": null,
+        "message": "$HOME/koan-root/tree/@Notes.md is not one of koan's names. koan only reports it: rename it without the @, or move it out.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@Notes.md"
+        ],
+        "repairable": false
+      },
+      {
+        "kind": "stray-entry",
+        "detail": null,
+        "message": "$HOME/koan-root/tree/@work/@.tmp-9 is not one of koan's names. koan only reports it: rename it without the @, or move it out.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@.tmp-9"
+        ],
+        "repairable": false
+      },
+      {
+        "kind": "stray-entry",
+        "detail": null,
+        "message": "$HOME/koan-root/tree/@work/@1.md is named for @1, which is a folder, not a task. koan only reports it: rename it without the @, or move it out.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@1.md"
+        ],
+        "repairable": false
+      },
+      {
+        "kind": "stray-entry",
+        "detail": null,
+        "message": "$HOME/koan-root/tree/@work/@api/@todo is not one of koan's names. koan only reports it: rename it without the @, or move it out.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api/@todo"
+        ],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

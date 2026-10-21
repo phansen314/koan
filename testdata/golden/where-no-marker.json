@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/other/x is outside the tree, and no marker is at or above it; bind one with koan marker bind",
+    "ids": [],
+    "paths": [
+      "$HOME/other/x"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -1,0 +1,30 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "cycle",
+    "message": "@2 would wait on itself through @3, @1",
+    "ids": [
+      2,
+      3,
+      1
+    ],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/tasks/2/blocks/0",
+        "reason": "@2 would wait on itself through @3, @1"
+      },
+      {
+        "field": "/tasks/2/blocked_by/0",
+        "reason": "@2 would wait on itself through @3, @1"
+      },
+      {
+        "field": "/tasks/0/blocked_by/0",
+        "reason": "@2 would wait on itself through @3, @1"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

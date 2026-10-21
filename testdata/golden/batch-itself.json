@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "@3 can't wait on itself",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/tasks/1/blocks/1",
+        "reason": "@3 can't wait on itself"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

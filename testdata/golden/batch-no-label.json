@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"$nope\": no task in this batch has that label",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/tasks/0/blocked_by/1",
+        "reason": "\"$nope\": no task in this batch has that label"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-frontier",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "task-list#/$defs/filter"
+        }
+      ],
+      "properties": {
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": 100,
+          "description": "null: every match."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "task#/$defs/field"
+          },
+          "uniqueItems": true
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "$ref": "task-list#/$defs/result"
+    }
+  }
+}

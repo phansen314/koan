@@ -1,0 +1,78 @@
+{
+  "ok": true,
+  "result": {
+    "fixed": [
+      {
+        "kind": "orphan-notes",
+        "detail": "deleted",
+        "message": "$HOME/koan-root/tree/@7.md is the notes of @7, which was deleted. It is empty, and koan repair removes it.",
+        "ids": [
+          7
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@7.md"
+        ],
+        "repairable": true
+      },
+      {
+        "kind": "orphan-notes",
+        "detail": "no-gate",
+        "message": "$HOME/koan-root/tree/@start.md names a start gate the root can't have. It is empty, and koan repair removes it.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@start.md"
+        ],
+        "repairable": true
+      },
+      {
+        "kind": "orphan-notes",
+        "detail": "archived",
+        "message": "$HOME/koan-root/tree/@work/@api/@4.md is the notes of @4, which was archived to $HOME/koan-root/archived/work/api/@4.md. It is empty, and koan repair removes it.",
+        "ids": [
+          4
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api/@4.md"
+        ],
+        "repairable": true
+      },
+      {
+        "kind": "orphan-notes",
+        "detail": "no-gate",
+        "message": "$HOME/koan-root/tree/@work/@api/@done.md names a done gate its folder doesn't have. It is empty, and koan repair removes it.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api/@done.md"
+        ],
+        "repairable": true
+      }
+    ],
+    "left": [
+      {
+        "kind": "orphan-notes",
+        "detail": "never-issued",
+        "message": "$HOME/koan-root/tree/@99.md names @99, which was never issued. It holds content, so koan leaves it: keep what you want of it, then remove it.",
+        "ids": [
+          99
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@99.md"
+        ],
+        "repairable": false
+      },
+      {
+        "kind": "orphan-notes",
+        "detail": "deleted",
+        "message": "$HOME/koan-root/tree/@work/@3.md is the notes of @3, which was deleted. It holds content, so koan leaves it: keep what you want of it, then remove it.",
+        "ids": [
+          3
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@3.md"
+        ],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

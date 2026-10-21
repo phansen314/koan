@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "changed": true,
+    "gates_made": [
+      {
+        "id": 3,
+        "folder": {
+          "id": 1,
+          "path": "/work"
+        },
+        "end": "start"
+      }
+    ],
+    "reblocked": [
+      2
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "pending-step",
+      "message": "1 filesystem step is pending with no write carrying it out. The next write, or koan repair, finishes it.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@work/@start.md"
+      ]
+    }
+  ]
+}

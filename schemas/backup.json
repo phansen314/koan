@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "backup",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "dir"
+      ],
+      "properties": {
+        "dir": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "Subject."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "dir",
+        "files",
+        "bytes",
+        "recopied",
+        "clean",
+        "findings"
+      ],
+      "properties": {
+        "dir": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recopied": {
+          "type": "boolean",
+          "description": "Whether it copied a second time, holding the lock."
+        },
+        "clean": {
+          "type": "boolean"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "finding"
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

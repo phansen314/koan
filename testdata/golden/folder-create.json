@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "ref": "@2 (/work/api)",
+    "dir": "$HOME/koan-root/tree/@work/@api",
+    "notes_path": "$HOME/koan-root/tree/@work/@api/@notes.md",
+    "created": [
+      {
+        "id": 1,
+        "path": "/work"
+      },
+      {
+        "id": 2,
+        "path": "/work/api"
+      }
+    ]
+  },
+  "warnings": []
+}

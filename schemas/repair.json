@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repair",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "pending-step",
+              "stuck-step",
+              "stray-directory",
+              "missing-directory",
+              "case-differs",
+              "misplaced-notes",
+              "orphan-notes"
+            ]
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "fixed",
+        "left"
+      ],
+      "properties": {
+        "fixed": {
+          "type": "array",
+          "items": {
+            "$ref": "finding"
+          }
+        },
+        "left": {
+          "type": "array",
+          "items": {
+            "$ref": "finding"
+          },
+          "description": "Every finding still there, repairable or not."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

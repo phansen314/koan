@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "result": {
+    "task": {
+      "id": 4,
+      "ref": "@4 (/)",
+      "gate": null,
+      "title": "T",
+      "priority": null,
+      "folder": {
+        "id": null,
+        "path": "/"
+      },
+      "created_at": "2026-10-20T10:00:00Z",
+      "completed_at": null,
+      "updated_at": "2026-10-20T10:00:00Z",
+      "state": "open",
+      "readiness": "ready",
+      "blocked_by": [],
+      "blocks": [],
+      "tags": [],
+      "extra": {},
+      "claim": null,
+      "notes_path": "$HOME/koan-root/tree/@4.md"
+    }
+  },
+  "warnings": [
+    {
+      "kind": "stuck-step",
+      "message": "A filesystem step found both its source and its destination holding content, or neither, or a remove found material, and is set aside with the rest of its change. Keep one copy, or move the material out, then run koan repair.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@x.md",
+        "$HOME/koan-root/tree/@4.md"
+      ]
+    }
+  ]
+}

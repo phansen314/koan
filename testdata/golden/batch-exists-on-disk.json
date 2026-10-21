@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "exists",
+    "message": "/stray is taken on disk by $HOME/koan-root/tree/@Stray",
+    "ids": [],
+    "paths": [
+      "$HOME/koan-root/tree/@Stray"
+    ],
+    "problems": [
+      {
+        "field": "/folders/1/path",
+        "reason": "/stray is taken on disk by $HOME/koan-root/tree/@Stray"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

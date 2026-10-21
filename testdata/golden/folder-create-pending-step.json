@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "ref": "@2 (/work/api)",
+    "dir": "$HOME/koan-root/tree/@work/@api",
+    "notes_path": "$HOME/koan-root/tree/@work/@api/@notes.md",
+    "created": [
+      {
+        "id": 2,
+        "path": "/work/api"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "pending-step",
+      "message": "1 filesystem step is pending with no write carrying it out. The next write, or koan repair, finishes it.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@work/@api"
+      ]
+    }
+  ]
+}

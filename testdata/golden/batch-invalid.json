@@ -1,0 +1,42 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"/\" is not a folder path from the root, such as /work/api",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/folders/0/path",
+        "reason": "\"/\" is not a folder path from the root, such as /work/api"
+      },
+      {
+        "field": "/folders/1/title",
+        "reason": "a title holds 1 to 200 characters after trimming, not 0"
+      },
+      {
+        "field": "/folder",
+        "reason": "\"@1.start\": an end isn't taken where a folder is"
+      },
+      {
+        "field": "/tasks/0/title",
+        "reason": "a title holds 1 to 200 characters after trimming, not 0"
+      },
+      {
+        "field": "/tasks/1/label",
+        "reason": "label $a is defined twice"
+      },
+      {
+        "field": "/tasks/1/blocks/0",
+        "reason": "\"$a.done\": a label takes no end and no material"
+      },
+      {
+        "field": "/tasks/1/blocks/1",
+        "reason": "\"/\": the root is not a task, and no edge can name it"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

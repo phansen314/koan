@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "gate",
+    "message": "@3 is a gate, and stays in its folder",
+    "ids": [
+      3
+    ],
+    "paths": [],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

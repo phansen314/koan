@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/code/bad/.koan/marker.json binds nothing: it lacks dir",
+    "ids": [],
+    "paths": [
+      "$HOME/code/bad/.koan/marker.json"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}
