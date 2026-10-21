@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
@@ -96,7 +97,17 @@ func (w *walker) list(dir string) ([]fs.DirEntry, error) {
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
-	return entries, err
+	if err != nil {
+		return nil, w.refused("list", dir, err)
+	}
+	return entries, nil
+}
+
+// refused is the operating system refusing to let doctor look at a path,
+// relative to the root's directory.
+func (w *walker) refused(what, rel string, err error) error {
+	at := w.abs(rel)
+	return store.Err(cli.IO("could not "+what+" "+at+": "+err.Error(), at))
 }
 
 func depth(folder string) int { return strings.Count(folder, "/") }
@@ -232,7 +243,7 @@ func (w *walker) note(folder int64, dir string, e fs.DirEntry, id int64) error {
 		to := path.Join(home, want)
 		missing, err := fsstep.Missing(w.root, to)
 		if err != nil {
-			return err
+			return w.refused("list", path.Dir(to), err)
 		}
 		message := fmt.Sprintf("The notes of @%d sit in %s, and belong in %s. koan repair moves them back.", id, w.abs(p), w.abs(belongs))
 		if !missing {
@@ -269,7 +280,7 @@ func (w *walker) orphan(e fs.DirEntry, p, detail string, id int64, why string) e
 	if e.Type().IsRegular() {
 		info, err := e.Info()
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
+			return w.refused("read", p, err)
 		}
 		empty = err == nil && info.Size() == 0
 	}

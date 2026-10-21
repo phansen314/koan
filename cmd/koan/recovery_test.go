@@ -460,3 +460,19 @@ func TestDoctorClean(t *testing.T) {
 	r = repaired(t, home, nil)
 	golden(t, r, "repair-clean")
 }
+
+// A directory doctor can't list is the operating system refusing: io,
+// with its path.
+func TestDoctorRefused(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	home := base(t)
+	dir := filepath.Join(treeDir(home), "@work", "@api")
+	hand(t, os.Chmod(dir, 0o000))
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	r := fails(t, home, "io", "", "doctor")
+	if paths := r.Error()["paths"].([]any); len(paths) != 1 || paths[0] != dir {
+		t.Errorf("paths: %s", r.Line())
+	}
+}
