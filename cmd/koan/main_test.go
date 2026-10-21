@@ -425,3 +425,32 @@ func TestInitRace(t *testing.T) {
 		}
 	}
 }
+
+// A root that has issued its last ID refuses every change that would
+// issue another, as no-ids, writing nothing; changes that make nothing
+// still run, and info gives no next_id.
+func TestIDsRunOut(t *testing.T) {
+	home := t.TempDir()
+	testrun.Run{Home: home}.Koan(t, "init", "--ids-from", "999999999999998")
+	ok(t, home, "folder", "create", "/work") // 999999999999998
+	ok(t, home, "task", "create", "last")    // 999999999999999
+	r := fails(t, home, "conflict", "no-ids", "task", "create", "one more")
+	golden(t, r, "no-ids")
+	fails(t, home, "conflict", "no-ids", "folder", "create", "/web")
+	fails(t, home, "conflict", "no-ids", "folder", "move", "/work", "--to", "/a/work")
+	fails(t, home, "conflict", "no-ids", "task", "block", "999999999999999", "--blocked-by", "/work.start")
+	if r := batch(t, home, `{"tasks":[{"title":"t"}]}`); r.Kind() != "conflict" || r.Error()["rule"] != "no-ids" {
+		t.Errorf("batch: %s", r.Line())
+	}
+	ok(t, home, "task", "update", "999999999999999", "--title", "still")
+	ok(t, home, "folder", "move", "/work", "--to", "/Work")
+	ok(t, home, "task", "complete", "999999999999999")
+	r = ok(t, home, "info")
+	if r.Result()["next_id"] != nil || r.Result()["tasks"] != json.Number("1") || r.Result()["folders"] != json.Number("1") {
+		t.Errorf("info: %s", r.Line())
+	}
+	if r := ok(t, home, "doctor"); len(r.Result()["findings"].([]any)) != 0 {
+		t.Errorf("doctor: %s", r.Line())
+	}
+	checkTree(t, home, "@999999999999999.md=", "@Work/", "@Work/@notes.md=")
+}

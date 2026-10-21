@@ -26,6 +26,7 @@ const (
 	RuleCheckout     = "checkout"
 	RuleForeignFiles = "foreign-files"
 	RuleBound        = "bound"
+	RuleNoIDs        = "no-ids"
 )
 
 // Error is a failure with one kind from the spec. A conflict also names its

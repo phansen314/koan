@@ -46,12 +46,14 @@ const (
 	RuleForeignFiles = "foreign-files"
 	RuleComplete     = "complete"
 	RuleBound        = "bound"
+	RuleNoIDs        = "no-ids"
 )
 
 // Rules is every conflict rule, in the spec's order.
 var Rules = []string{
 	RuleCaseMismatch, RuleCycle, RuleClaimed, RuleNotFinished, RuleNotEmpty, RuleHasMaterial, RuleGate,
 	RuleIntoItself, RuleExists, RuleNotARoot, RuleCheckout, RuleForeignFiles, RuleComplete, RuleBound,
+	RuleNoIDs,
 }
 
 // Exit codes.

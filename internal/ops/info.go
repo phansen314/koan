@@ -2,6 +2,7 @@ package ops
 
 import (
 	"github.com/phansen314/koan/internal/cli"
+	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
 )
@@ -67,7 +68,11 @@ func Info() *cli.Command {
 				return nil, nil, e
 			}
 			r.State, r.Format = StateUsable, &format
-			r.NextID, r.Tasks, r.Folders, r.Claims = &st.NextID, &st.Tasks, &st.Folders, &st.Claims
+			r.Tasks, r.Folders, r.Claims = &st.Tasks, &st.Folders, &st.Claims
+			// No --ids-from follows the last ID.
+			if st.NextID <= core.MaxID {
+				r.NextID = &st.NextID
+			}
 			r.Pending, r.Stuck = &st.Pending, &st.Stuck
 			return r, nil, nil
 		},
