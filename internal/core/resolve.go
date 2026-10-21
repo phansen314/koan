@@ -270,9 +270,16 @@ func lookup(t Tree, id int64) (Node, error) {
 }
 
 // walk follows ref's names from the folder at, whose path is atPath, one
-// exact name at a time.
+// exact name at a time. A case-mismatch gives the path as written, its
+// anchoring ID with or without the "@".
 func walk(t Tree, ref Ref, at int64, atPath string) (int64, error) {
-	given := strings.TrimSuffix(ref.TargetString(), "/"+strings.Join(ref.Names, "/"))
+	given := ""
+	if ref.Kind == TargetAnchored {
+		given = fmt.Sprint(ref.ID)
+		if strings.HasPrefix(ref.Raw, "@") {
+			given = "@" + given
+		}
+	}
 	for _, name := range ref.Names {
 		given += "/" + name
 		if id, ok := t.Child(at, name); ok {

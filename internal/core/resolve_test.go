@@ -155,6 +155,7 @@ func TestResolveRefusals(t *testing.T) {
 		{"path matches only ignoring case", "/Work/phase2", WantFolder, nil, KindConflict, RuleCaseMismatch, []int64{1}, []string{"/Work", "/work"}},
 		{"deep part matches only ignoring case", "/work/Phase2", WantFolder, nil, KindConflict, RuleCaseMismatch, []int64{9}, []string{"/work/Phase2", "/work/phase2"}},
 		{"anchored part ignoring case", "@1/PHASE1", WantFolder, nil, KindConflict, RuleCaseMismatch, []int64{7}, []string{"@1/PHASE1", "/work/phase1"}},
+		{"anchored without @, as written", "1/PHASE1/x.start", WantTask, nil, KindConflict, RuleCaseMismatch, []int64{7}, []string{"1/PHASE1", "/work/phase1"}},
 		{"anchored on a task", "@4/x", WantFolder, nil, KindInvalidInput, "", nil, nil},
 		{"anchored on nothing", "@300/x", WantFolder, nil, KindNotFound, "", []int64{300}, nil},
 		{"the root in an edge", "/", WantEdge, nil, KindInvalidInput, "", nil, nil},
