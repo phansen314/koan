@@ -1,0 +1,14 @@
+{
+  "name": "koan",
+  "description": "koan: local task management for Claude Code.",
+  "owner": {
+    "name": "phansen314"
+  },
+  "plugins": [
+    {
+      "name": "koan",
+      "source": { "source": "github", "repo": "phansen314/koan", "ref": "v0.4.0" },
+      "description": "Track and work through your tasks with the koan CLI: a local task tree with dependencies, kept in SQLite, with notes as plain files."
+    }
+  ]
+}
