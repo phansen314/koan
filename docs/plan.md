@@ -10,12 +10,13 @@ Section names refer to `docs/rules.md` (rules), `docs/prd.md` (PRD) and `docs/sp
 S0 spikes ──► S1 harness ──► S3 storage ──► S4 filesystem steps ──► S5a-1 ─► S5a-2 ─► S5b ─► S5c ─► S5d ─► S5e ─► S5f ─┬─► S6 locating ─┐
                  │                                                                                                     └─► S7 recovery ─┤
 S2 core ─────────┴──── (needed by S3 onward)                                                                                            │
-                                                                         S9 ship ◄── S8 hardening ◄── all of S5, S6, S7 ────────────────┘
+                                                         S10 ship ◄── S9 macOS and CI ◄── S8 hardening ◄── all of S5, S6, S7 ───────────┘
 ```
 
 - S2 can run beside S1. Everything from S3 to S5f is in sequence: each slice extends the one before.
 - S6 and S7 start once S5f is done, and can run beside each other. Both need deleted and archived folders and IDs to exist: S6 for `where` and `context` on them, S7 for findings such as `orphan-notes` on archived IDs and for backing up `archived/`. Delete arrives in S5d and archive in S5f.
 - S8's test suites can be written alongside S5 to S7; they must pass before S9.
+- S8 hardens locally on Linux. S9 runs the same suites on macOS and in CI.
 
 ## Dependencies allowed
 
@@ -173,12 +174,24 @@ Each sub-slice is its own task.
 - **Properties:** random command sequences checked against `internal/model`, with `doctor` clean and I1–I12 and T1–T6 holding after every command.
 - **The full crash-point matrix.**
 - **Concurrency:** hundreds of processes at once.
-- **Case tests on macOS.**
-- **Performance benchmarks,** with CI failing past the budget in PRD Goals.
+- **Case tests,** written to hold on macOS's case-insensitive filesystem too.
+- **Performance benchmarks,** with a test failing past the budget in PRD Goals.
 
-**Done when** every row of PRD Testing passes in CI on both systems, and `go test -short` stays quick.
+**Done when** every row of PRD Testing passes locally on Linux, bar what needs macOS or CI, and `go test -short` stays quick.
 
-## S9. Ship
+## S9. macOS and CI
+
+**Read:** PRD Testing; S8's suites.
+
+**Build:** CI that runs `go test ./...` on Linux and on macOS with its default case-insensitive filesystem, and:
+- the suite on APFS itself, where `TestCasefold` skips;
+- the performance budget measured on the CI Linux runner;
+- the benchmarks on macOS, report-only, for the cost of `F_FULLFSYNC`;
+- the permission-refusal tests as a normal user.
+
+**Done when** every row of PRD Testing passes in CI on both systems.
+
+## S10. Ship
 
 **Read:** PRD Agents, Install, init, backup and restore; the spec's Commands.
 

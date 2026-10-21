@@ -206,7 +206,7 @@ A folder's place in the tree (its parent) is structure, not a field: moving it c
 
 ## Changes
 
-Every change is whole (I10), resolves its references inside itself (see Resolution), and is refused if it would break an invariant. This is what each one does. Beyond the refusals listed, any change is `not-found` for a reference that names nothing, `invalid-input` for a value that breaks its rule, and `no-ids` when it would issue an ID past the last a root can have, `999999999999999`, the largest of 15 digits, to a task, a folder or a gate it makes; each listed refusal is a `conflict`, named by its rule, unless it says `invalid-input`.
+Every change is whole (I10), resolves its references inside itself (see Resolution), and is refused if it would break an invariant. This is what each one does. Beyond the refusals listed, any change is `not-found` for a reference that names nothing, `invalid-input` for a value that breaks its rule, and a `no-ids` conflict when it would issue an ID past the last a root can have, `999999999999999`, the largest of 15 digits, to a task, a folder or a gate it makes; each listed refusal is a `conflict`, named by its rule, unless it says `invalid-input`.
 
 | Change | What it does | Refused when |
 | --- | --- | --- |
