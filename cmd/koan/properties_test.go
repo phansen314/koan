@@ -2,42 +2,86 @@ package main_test
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/model"
 	"github.com/phansen314/koan/internal/testrun"
 )
 
-// The model's create, block, unblock, complete, reopen, claim, claim-next,
-// release, move, delete and archive, of tasks and of folders, and batch, run beside koan on
-// the same inputs, agree on every result and refusal, and on readiness,
-// edges, claims, the frontier and the folders after each.
-func TestEdgesModel(t *testing.T) {
+var (
+	seedFlag  = flag.Int64("seed", 0, "run the property test with this seed alone")
+	stepsFlag = flag.Int("steps", 0, "how many commands each property run makes; 0 is the default")
+)
+
+// Invariants as properties, with the reference model: random sequences of
+// every write command, of tasks and of folders together, run against a
+// fresh root and beside the model on the same inputs. koan and the model
+// agree on every result and refusal, and on readiness, edges, claims,
+// fields, the frontier and the folders after each; doctor finds nothing,
+// and I1 to I12 and T1 to T6 hold, read directly from the database and
+// the disk. A failure prints its seed and the commands run; -seed N runs
+// that seed alone. -short runs one seed; the full run adds more, each
+// longer, from a seed of the moment, which it prints.
+func TestProperties(t *testing.T) {
 	// The first seed alone makes every command succeed, for -short.
-	seeds := []int64{11, 1, 2}
-	if testing.Short() {
+	seeds := []int64{59, 11, 1, 2}
+	steps := 200
+	switch {
+	case *seedFlag != 0:
+		seeds = []int64{*seedFlag}
+	case testing.Short():
 		seeds = seeds[:1]
+	default:
+		steps = 1000
+		now := time.Now().UnixNano()
+		t.Logf("seeds from %d", now)
+		for i := range int64(9) {
+			seeds = append(seeds, now+i)
+		}
+	}
+	if *stepsFlag != 0 {
+		steps = *stepsFlag
 	}
 	// Every command must succeed somewhere in the sequences run.
+	var mu sync.Mutex
 	succeeded := map[string]int{}
-	for _, seed := range seeds {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { edgesModel(t, seed, succeeded) })
+	t.Run("seeds", func(t *testing.T) {
+		for _, seed := range seeds {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				got := properties(t, seed, steps)
+				mu.Lock()
+				defer mu.Unlock()
+				for k, n := range got {
+					succeeded[k] += n
+				}
+			})
+		}
+	})
+	if t.Failed() || *seedFlag != 0 {
+		return
 	}
-	for _, cmd := range []string{"task create", "task block", "task unblock", "task complete", "task reopen", "task claim",
-		"task claim-next", "task release", "task move", "task delete", "task archive", "folder create", "folder move",
-		"folder delete", "folder archive", "batch"} {
+	for _, cmd := range []string{"task create", "task update", "task block", "task unblock", "task complete", "task reopen",
+		"task claim", "task claim-next", "task release", "task move", "task delete", "task archive", "folder create",
+		"folder update", "folder move", "folder move case", "folder delete", "folder delete force", "folder archive", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
 	}
 }
 
-func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
+func properties(t *testing.T, seed int64, steps int) map[string]int {
+	succeeded := map[string]int{}
 	rng := rand.New(rand.NewSource(seed))
 	// Batches draw from a source of their own, so that the other changes
 	// draw as they would without them.
@@ -251,17 +295,185 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 		return in, string(b)
 	}
 
+	var sequence []string
+	// The rest, updates, case-only moves, forced deletes and hand edits,
+	// draw from a source of their own too.
+	xrng := rand.New(rand.NewSource(seed + 1))
+	// dir is a folder's directory on disk, the root's for the root.
+	dir := func(id int64) string {
+		p := filepath.Join(home, "koan-root", "tree")
+		if id != core.RootID {
+			p = filepath.Join(p, strings.ReplaceAll(m.Path(id), "/", "/@"))
+		}
+		return p
+	}
+	liveFolders := func() []int64 {
+		var out []int64
+		for _, id := range m.TreeOrder() {
+			if _, ok := m.Folders[id]; ok {
+				out = append(out, id)
+			}
+		}
+		return out
+	}
+	// update is a random update, as the model and as options.
+	update := func(folder bool) (model.Update, []string) {
+		var u model.Update
+		var args []string
+		for len(args) == 0 {
+			if rng.Intn(2) == 0 {
+				title := pick([]string{"t", "u", " v ", "t"})
+				u.SetTitle, u.Title = true, &title
+				args = append(args, "--title", title)
+			}
+			if !folder && rng.Intn(3) == 0 {
+				u.SetPriority = true
+				if p := int64(rng.Intn(3)); p > 0 {
+					u.Priority = &p
+					args = append(args, "--priority", fmt.Sprint(p))
+				} else {
+					args = append(args, "--priority", "null")
+				}
+			}
+			if !folder && rng.Intn(3) == 0 {
+				switch tags := []string{pick([]string{"a", "b"}), pick([]string{"c", "a"})}; rng.Intn(3) {
+				case 0:
+					u.TagsAdd = slices.Compact(tags)
+					args = append(args, "--tags-add", strings.Join(u.TagsAdd, ","))
+				case 1:
+					u.TagsRemove = tags[:1]
+					args = append(args, "--tags-remove", tags[0])
+				default:
+					u.TagsReplaceAll = tags[1:]
+					args = append(args, "--tags-replace-all", tags[1])
+				}
+			}
+			if rng.Intn(3) == 0 {
+				k := pick([]string{"status", "n"})
+				if rng.Intn(3) == 0 {
+					u.ExtraRemove = []string{k}
+					args = append(args, "--extra-remove", k)
+				} else {
+					v := pick([]string{"todo", "done"})
+					u.ExtraMerge = map[string]any{k: v}
+					args = append(args, "--extra-merge", fmt.Sprintf(`{%q:%q}`, k, v))
+				}
+			}
+		}
+		return u, args
+	}
+	// extraOp is one of the rest: it returns the command run, and the
+	// name it counts under, or no command for a hand edit.
+	extraOp := func() (args []string, name, want string, err error) {
+		folders := liveFolders()
+		switch op := rng.Intn(10); {
+		case op < 3:
+			x := subject()
+			u, opts := update(false)
+			var changed bool
+			changed, err = m.UpdateTask(x, u)
+			return append([]string{"task", "update", x}, opts...), "task update", fmt.Sprint(changed), err
+		case op < 5:
+			x := folderRef()
+			u, opts := update(true)
+			var changed bool
+			changed, err = m.UpdateFolder(x, u)
+			return append([]string{"folder", "update", x}, opts...), "folder update", fmt.Sprint(changed), err
+		case op < 7 && len(folders) > 0:
+			// A case-only move: one letter of the folder's own name
+			// respelled, or now and then of a parent's, which names two
+			// spellings.
+			id := folders[rng.Intn(len(folders))]
+			p := []byte(m.Path(id))
+			i := strings.LastIndex(string(p), "/") + 1
+			if rng.Intn(5) == 0 {
+				i = 1
+			}
+			for ; i < len(p) && !('a' <= p[i]|0x20 && p[i]|0x20 <= 'z'); i++ {
+			}
+			if i == len(p) || p[i] == '/' {
+				return nil, "", "", nil
+			}
+			p[i] ^= 0x20
+			x := fmt.Sprint(id)
+			if rng.Intn(2) == 0 {
+				x = m.Path(id)
+			}
+			var out model.FolderMoved
+			out, err = m.MoveFolder(x, string(p))
+			return []string{"folder", "move", x, "--to", string(p)}, "folder move case",
+				fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, out.Path, madeAt(out.Created), warnings(out.Warnings)), err
+		case op == 7:
+			x := folderRef()
+			var out model.Removed
+			out, err = m.DeleteFolder(x, true, true)
+			return []string{"folder", "delete", x, "--contents", "--force"}, "folder delete force",
+				fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released)), err
+		case op == 8:
+			// Material, by hand, in a folder or the root.
+			id := core.RootID
+			if len(folders) > 0 && rng.Intn(4) > 0 {
+				id = folders[rng.Intn(len(folders))]
+			}
+			name := pick([]string{"docs", "main.go", ".git"})
+			p := filepath.Join(dir(id), name)
+			if name != "main.go" {
+				os.MkdirAll(p, 0o755)
+				p = filepath.Join(p, "x")
+			}
+			if e := os.WriteFile(p, []byte("material"), 0o644); e != nil {
+				t.Fatal(e)
+			}
+			sequence = append(sequence, "by hand: material "+p)
+			m.PutMaterial(id, name)
+		default:
+			// Notes, edited by hand.
+			ids := taskIDs()
+			if len(ids) == 0 {
+				break
+			}
+			x := m.Tasks[ids[rng.Intn(len(ids))]]
+			name := fmt.Sprintf("@%d.md", x.ID)
+			if x.Gate != core.EndNone {
+				name = "@" + string(x.Gate) + ".md"
+			}
+			p := filepath.Join(dir(x.Folder), name)
+			if e := os.WriteFile(p, []byte("notes"), 0o644); e != nil {
+				t.Fatal(e)
+			}
+			sequence = append(sequence, "by hand: notes "+p)
+		}
+		return nil, "", "", nil
+	}
+
+	// A failure prints the seed, and every command run to reach it.
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("seed %d; rerun with -run 'TestProperties/seeds/%d$' -seed %d -steps %d; the commands run:\n%s",
+				seed, seed, seed, steps, strings.Join(sequence, "\n"))
+		}
+	})
+	var prev *testrun.Snapshot
+
 	var made, refused int
-	for step := range 160 {
+	for step := range steps {
 		var args []string
 		var stdin string
 		var err error
 		var want string
+		var name string
 		op := -1
-		if brng.Intn(8) > 0 {
+		if xrng.Intn(5) == 0 {
+			op = -2
+		} else if brng.Intn(8) > 0 {
 			op = rng.Intn(20)
 		}
 		switch {
+		case op == -2:
+			was := rng
+			rng = xrng
+			args, name, want, err = extraOp()
+			rng = was
 		case op == -1:
 			was := rng
 			rng = brng
@@ -376,12 +588,16 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 			}
 		}
 		if args != nil {
-			name := args[0] + " " + args[1]
+			if name == "" {
+				name = args[0] + " " + args[1]
+			}
 			var r *testrun.Result
 			if stdin != "" {
 				name = args[0]
+				sequence = append(sequence, fmt.Sprintf("koan batch -i - <<< %s", stdin))
 				r = input(t, home, name, stdin)
 			} else {
+				sequence = append(sequence, fmt.Sprintf("koan %q", args))
 				r = koan(t, home, args...)
 			}
 			if err != nil {
@@ -412,6 +628,8 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 					got = fmt.Sprintf("%v %s %v %s", res["id"], koanGates(r), res["reblocked"], koanWarnings(r))
 				case "block":
 					got = fmt.Sprintf("%v %v %s %v %s", res["id"], res["changed"], koanGates(r), res["reblocked"], koanWarnings(r))
+				case "update":
+					got = fmt.Sprint(res["changed"])
 				case "unblock", "complete":
 					got = fmt.Sprintf("%v %v %v", res["id"], res["changed"], res["released"])
 				case "reopen":
@@ -462,9 +680,19 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 			}
 			slices.Sort(bb)
 			_, claimed := m.Claims[id]
-			wantTasks = append(wantTasks, fmt.Sprintf("%d %s %v %v", id, readiness, nonNil(bb), claimed))
+			p := "<nil>"
+			if x.Priority != nil {
+				p = fmt.Sprint(*x.Priority)
+			}
+			tags := []string{}
+			for tag := range x.Tags {
+				tags = append(tags, tag)
+			}
+			slices.Sort(tags)
+			extra, _ := json.Marshal(x.Extra)
+			wantTasks = append(wantTasks, fmt.Sprintf("%d %s %v %v %q %s %v %s", id, readiness, nonNil(bb), claimed, x.Title, p, tags, extra))
 		}
-		for _, x := range ok(t, home, "task", "list", "--state", "open,complete", "--limit", "null", "--fields", "readiness,blocked_by,claim").Result()["tasks"].([]any) {
+		for _, x := range ok(t, home, "task", "list", "--state", "open,complete", "--limit", "null", "--fields", "readiness,blocked_by,claim,title,priority,tags,extra").Result()["tasks"].([]any) {
 			x := x.(map[string]any)
 			var bb []any
 			for _, e := range x["blocked_by"].([]any) {
@@ -473,7 +701,13 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 			if bb == nil {
 				bb = []any{}
 			}
-			gotTasks = append(gotTasks, fmt.Sprintf("%v %v %v %v", x["id"], x["readiness"], bb, x["claim"] != nil))
+			tags := []string{}
+			for _, tag := range x["tags"].([]any) {
+				tags = append(tags, tag.(string))
+			}
+			slices.Sort(tags)
+			extra, _ := json.Marshal(x["extra"])
+			gotTasks = append(gotTasks, fmt.Sprintf("%v %v %v %v %q %v %v %s", x["id"], x["readiness"], bb, x["claim"] != nil, x["title"], x["priority"], tags, extra))
 		}
 		if !slices.Equal(gotTasks, wantTasks) {
 			t.Fatalf("step %d: tasks: koan %v, model %v", step, gotTasks, wantTasks)
@@ -481,12 +715,19 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 		var wantFolders, gotFolders []string
 		for _, id := range m.TreeOrder() {
 			if _, isFolder := m.Folders[id]; isFolder {
-				wantFolders = append(wantFolders, fmt.Sprintf("%d %s", id, m.Path(id)))
+				f := m.Folders[id]
+				title := "<nil>"
+				if f.Title != nil {
+					title = *f.Title
+				}
+				extra, _ := json.Marshal(f.Extra)
+				wantFolders = append(wantFolders, fmt.Sprintf("%d %s %s %s", id, m.Path(id), title, extra))
 			}
 		}
-		for _, f := range ok(t, home, "folder", "list", "--limit", "null", "--fields", "path").Result()["folders"].([]any) {
+		for _, f := range ok(t, home, "folder", "list", "--limit", "null", "--fields", "path,title,extra").Result()["folders"].([]any) {
 			f := f.(map[string]any)
-			gotFolders = append(gotFolders, fmt.Sprintf("%v %v", f["id"], f["path"]))
+			extra, _ := json.Marshal(f["extra"])
+			gotFolders = append(gotFolders, fmt.Sprintf("%v %v %v %s", f["id"], f["path"], f["title"], extra))
 		}
 		if !slices.Equal(gotFolders, wantFolders) {
 			t.Fatalf("step %d: folders: koan %v, model %v", step, gotFolders, wantFolders)
@@ -502,11 +743,65 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 		if r := ok(t, home, "doctor"); len(r.Result()["findings"].([]any)) != 0 {
 			t.Fatalf("step %d %q: doctor: %s", step, args, r.Line())
 		}
+		// And the invariants hold, read directly.
+		var bad []string
+		prev, bad = testrun.CheckRoot(home, prev, testrun.Checks{Notes: true})
+		if len(bad) > 0 {
+			t.Fatalf("step %d %q: invariants:\n%s", step, args, strings.Join(bad, "\n"))
+		}
+		if bad := m.Check(); len(bad) > 0 {
+			t.Fatalf("step %d %q: the model's invariants:\n%s", step, args, strings.Join(bad, "\n"))
+		}
 	}
 	// The sequence must try both sides.
 	if made < 5 || refused < 5 {
 		t.Errorf("%d changes made, %d refused", made, refused)
 	}
 	t.Logf("%d changes made, %d refused: %v", made, refused, succeeded)
+	return succeeded
 }
 
+// The direct check finds each invariant broken by hand, in the database
+// or on disk, and nothing on a root that holds them.
+func TestCheckRoot(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/work/api") // 1, 2
+	ok(t, home, "task", "create", "a", "--folder", "/work", "--blocked-by", "/work.start")
+	ok(t, home, "task", "create", "b")
+	ok(t, home, "task", "complete", "5")
+	ok(t, home, "task", "archive", "5")
+	ok(t, home, "task", "create", "c")
+	snap, bad := testrun.CheckRoot(home, nil, testrun.Checks{Notes: true})
+	if len(bad) > 0 {
+		t.Fatalf("a sound root: %q", bad)
+	}
+	tree := treeDir(home)
+	write(t, home, "@work/@Notes.md", "x")
+	write(t, home, "@notes.md", "")
+	write(t, home, "@work/@6.md", "")
+	write(t, home, "@work/@done.md", "")
+	rename(t, home, "@work/@api", "@work/@API")
+	os.Remove(filepath.Join(tree, "@6.md"))
+	os.Remove(filepath.Join(home, "koan-root", "archived", "@5.md"))
+	db(t, home,
+		"INSERT INTO claim (task, claimed_at, extra) VALUES (5, '2026-10-20T10:00:00Z', '{}')",
+		"INSERT INTO tag (task, tag) VALUES (3, 'Bad')",
+		"INSERT INTO issued (id, kind, state) VALUES (7, 'task', 'live')",
+		"UPDATE task SET created_at = '2026-10-20T11:00:00Z' WHERE id = 3",
+		"INSERT INTO edge (task, blocker) VALUES (4, 3)",
+		"DELETE FROM issued WHERE id = 6")
+	_, bad = testrun.CheckRoot(home, snap, testrun.Checks{Notes: true})
+	for _, want := range []string{
+		"I1: @7 is issued live with no row", "I1: task @6 was never issued", "I2: @6 is no longer issued",
+		"I7: cycle", "I8: claim on @5, which isn't a task", "I9: @3 tag \"Bad\"", "I9: @3 created_at changed",
+		"I12: @5 archived alone", "T1: folder @2", "T2: ", "T4: ", "T5: ", "T6: " + filepath.Join(tree, "@work", "@Notes.md"),
+		"T6: " + filepath.Join(tree, "@work", "@done.md") + " is no gate's notes", "notes: @6 has no",
+	} {
+		if !slices.ContainsFunc(bad, func(b string) bool { return strings.HasPrefix(b, want) }) {
+			t.Errorf("not found: %s", want)
+		}
+	}
+	if t.Failed() {
+		t.Logf("found:\n%s", strings.Join(bad, "\n"))
+	}
+}
