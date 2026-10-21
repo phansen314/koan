@@ -19,7 +19,14 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden results in testdata/")
 
-func TestMain(m *testing.M) { testrun.Main(m) }
+// TestMain builds the binary and runs the tests, or runs the test binary
+// as a helper that crashes at a fault point.
+func TestMain(m *testing.M) {
+	if os.Getenv("KOAN_CRASH_HELPER") != "" {
+		os.Exit(crashHelper())
+	}
+	testrun.Main(m)
+}
 
 func TestVersion(t *testing.T) {
 	r := testrun.Koan(t, "version")
