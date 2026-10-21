@@ -279,6 +279,7 @@ A marker binds a directory outside the tree, usually a code worktree, to a folde
 - **Written whole.** `.gitignore` first, then `marker.json` through the temp file `.koan/marker.json.tmp`, renamed into place. That temp file is koan's own too, so one left by a crash is never foreign: `marker bind` writes over it. `marker unbind` removes them in the other order: the temp file, `marker.json`, then `.gitignore`, then `.koan/` itself.
 - **No lock.** `marker bind` and `marker unbind` write no row and nothing in the tree, so they take no lock and carry out no pending steps: they read the database in one read transaction, as a read does. Two run at once leave the marker written last, whole.
 - **Paths as given.** Paths outside the root are printed as given, made absolute. Only `marker.json`'s `dir` is a real path, so that a marker is judged by where it is, whatever route reached it.
+- **Real paths are spelled as on disk.** A real path follows every symlink and spells each name as the listing of the directory above it does. Below `~/koan-root` a name is found byte for byte, so a wrongly-cased path in the tree is never taken for the entry. Above it and outside it, the root's own name included, a name not found byte for byte is taken in the listing's spelling when an entry matches it ignoring case and the filesystem says the two are the same file, so on a filesystem that ignores case `~/Code/wt` and `~/code/wt` have one real path.
 
 ## Operations
 

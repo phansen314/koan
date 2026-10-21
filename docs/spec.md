@@ -14,7 +14,7 @@ It comes third. The rules doc, koan: invariants and rules, says what must hold; 
 - **Every listed field is always present.** A field that has no value is `null`, never left out. The one exception is a record cut down by `--fields`.
 - **Fields print in the order the schema lists them**, so output can be diffed. An `extra`, whose keys no schema lists, prints them in byte order at every depth, whatever order they were given in.
 - **ID lists are ascending**, unless the schema names another order, such as work order or cycle order.
-- **Paths on disk are absolute,** and under `~/koan-root` as written: through the symlink when the root is one, never the real path behind it. A check of whether a path lies under the root, as backup and marker bind make, compares real paths, so no second route gets past it. Outside the root, paths are as given, made absolute; only marker.json's `dir` is a real path. Folder paths are from the root, such as `/work/api`.
+- **Paths on disk are absolute,** and under `~/koan-root` as written: through the symlink when the root is one, never the real path behind it. A check of whether a path lies under the root, as backup and marker bind make, compares real paths, so no second route gets past it; how a real path is spelled is the PRD's, under Markers. Outside the root, paths are as given, made absolute; only marker.json's `dir` is a real path. Folder paths are from the root, such as `/work/api`.
 - **Text is UTF-8.** Names, tags and IDs are ASCII by their patterns. Text given on the command line or read by `--notes-file` that isn't UTF-8 is `invalid-input`, pointing at its field. An `--input` that isn't UTF-8 isn't JSON, which must be, and is refused as any other that isn't JSON.
 
 ## Shared types
