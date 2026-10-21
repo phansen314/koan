@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "init",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "ids_from": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null: a new root issues from 1."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "root",
+        "tree",
+        "archive",
+        "database",
+        "created",
+        "first_id"
+      ],
+      "properties": {
+        "root": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "tree": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "archive": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "database": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "root",
+              "tree",
+              "archive",
+              "database"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "What this run made; empty when all of it was there."
+        },
+        "first_id": {
+          "$ref": "types#/$defs/id"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

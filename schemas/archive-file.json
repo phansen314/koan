@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "archive-file",
+  "type": "object",
+  "required": [
+    "schema",
+    "kind",
+    "archived_at",
+    "path",
+    "folders",
+    "tasks",
+    "edges"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "kind": {
+      "enum": [
+        "task",
+        "folder"
+      ],
+      "description": "What was archived."
+    },
+    "archived_at": {
+      "$ref": "types#/$defs/timestamp"
+    },
+    "path": {
+      "$ref": "types#/$defs/path",
+      "description": "The archived folder's path, or the archived task's folder's path."
+    },
+    "folders": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/folder"
+      },
+      "description": "The archived folder, then the folders under it, in tree order; empty for a task."
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task"
+      },
+      "description": "The archived task, or every task under the archived folder, gates included, in tree order."
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      },
+      "description": "Sorted by task, then blocker."
+    }
+  },
+  "$defs": {
+    "folder": {
+      "type": "object",
+      "required": [
+        "id",
+        "parent",
+        "name",
+        "path",
+        "title",
+        "extra"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null for the root."
+        },
+        "name": {
+          "$ref": "types#/$defs/name"
+        },
+        "path": {
+          "$ref": "types#/$defs/path"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/title"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": [
+        "id",
+        "gate",
+        "folder",
+        "title",
+        "priority",
+        "created_at",
+        "completed_at",
+        "updated_at",
+        "tags",
+        "extra"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "gate": {
+          "$ref": "types#/$defs/gate"
+        },
+        "folder": {
+          "type": "object",
+          "required": [
+            "id",
+            "path"
+          ],
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "$ref": "types#/$defs/id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "path": {
+              "$ref": "types#/$defs/path"
+            }
+          }
+        },
+        "title": {
+          "$ref": "types#/$defs/title"
+        },
+        "priority": {
+          "$ref": "types#/$defs/priority"
+        },
+        "created_at": {
+          "$ref": "types#/$defs/timestamp"
+        },
+        "completed_at": {
+          "$ref": "types#/$defs/timestamp",
+          "description": "Never null: only complete tasks leave."
+        },
+        "updated_at": {
+          "$ref": "types#/$defs/timestamp"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/tag"
+          },
+          "uniqueItems": true
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": [
+        "task",
+        "blocker"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "types#/$defs/id",
+          "description": "The task that waited."
+        },
+        "blocker": {
+          "$ref": "types#/$defs/id",
+          "description": "The task it waited on."
+        }
+      }
+    }
+  }
+}

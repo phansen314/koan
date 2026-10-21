@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-reopen",
+  "$defs": {
+    "input": {
+      "$ref": "task-show#/$defs/input"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "changed",
+        "reblocked"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "reblocked": {
+          "$ref": "types#/$defs/ids",
+          "description": "Ready tasks it made wait, claimed ones included."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

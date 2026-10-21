@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "exists",
+    "message": "/work is taken by @1",
+    "ids": [],
+    "paths": [
+      "/work"
+    ],
+    "problems": [
+      {
+        "field": "/folders/1/path",
+        "reason": "/work is taken by @1"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

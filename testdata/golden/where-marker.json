@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "result": {
+    "ref": "@2 (/work/api)",
+    "kind": "folder",
+    "id": 2,
+    "folder": {
+      "id": 2,
+      "path": "/work/api"
+    },
+    "gate": null,
+    "material": null,
+    "file": "$HOME/code/wt/src/main.go",
+    "marker": "$HOME/code/wt/.koan/marker.json"
+  },
+  "warnings": []
+}

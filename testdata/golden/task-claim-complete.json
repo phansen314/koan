@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "complete",
+    "message": "@1 is complete; only an open task can be claimed",
+    "ids": [
+      1
+    ],
+    "paths": [],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

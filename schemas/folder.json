@@ -1,31 +1,157 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "folder",
-  "description": "A folder as every command that returns one returns it.",
   "$ref": "#/$defs/partial",
-  "required": ["id", "path", "dir", "title", "blocked_by", "extra", "notes_path", "readiness", "open_blockers", "inherited", "empty"],
+  "required": [
+    "id",
+    "ref",
+    "name",
+    "path",
+    "title",
+    "extra",
+    "gates",
+    "open",
+    "complete",
+    "finished",
+    "notes_path",
+    "dir"
+  ],
   "$defs": {
     "partial": {
       "type": "object",
-      "required": ["id", "path"],
+      "required": [
+        "id"
+      ],
+      "description": "A folder cut down by --fields: id, then the fields asked for, in this order.",
       "properties": {
-        "id": { "anyOf": [{ "$ref": "task-file#/properties/id" }, { "type": "null" }], "description": "null for /, and for a folder with no usable folder file." },
-        "path": { "$ref": "folder-path" },
-        "dir": { "type": "string", "description": "The absolute filesystem path of the folder's directory." },
-        "title": { "$ref": "folder-file#/properties/title" },
-        "blocked_by": { "anyOf": [{ "$ref": "task-file#/properties/blocked_by" }, { "type": "null" }], "description": "Its folder file's; [] for /; null for a folder with no usable folder file." },
-        "extra": { "type": "object" },
-        "notes_path": { "type": ["string", "null"], "description": "The absolute filesystem path of the folder's @folder.md; null for /." },
-        "readiness": { "enum": ["ready", "blocked", "done"], "description": "done when every task under it, at any depth, is done; else blocked or ready by its own and inherited blockers. / is never blocked." },
-        "open_blockers": { "$ref": "task#/$defs/partial/properties/open_blockers", "description": "The IDs that block its contents now, in its own blocked_by and those of the folders above it. Ascending." },
-        "inherited": { "$ref": "task#/$defs/inherited" },
-        "empty": { "type": "boolean", "description": "Whether it holds no task file at any depth, usable or not. An empty folder is done." }
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "description": "The kept-text pair, such as @41 (/work/api); / for the root."
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/name"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "$ref": "types#/$defs/path"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/title"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        },
+        "gates": {
+          "type": "object",
+          "required": [
+            "start",
+            "done"
+          ],
+          "properties": {
+            "start": {
+              "$ref": "#/$defs/gate-entry"
+            },
+            "done": {
+              "$ref": "#/$defs/gate-entry"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "open": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finished": {
+          "type": "boolean"
+        },
+        "notes_path": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/abs-path"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its @notes.md."
+        },
+        "dir": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "Its directory in the tree."
+        }
       },
-      "additionalProperties": false,
-      "description": "A folder cut down by `fields`: id, path, and the fields asked for."
+      "unevaluatedProperties": false
+    },
+    "gate-entry": {
+      "anyOf": [
+        {
+          "type": "null",
+          "description": "The folder has no gate at that end."
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "readiness"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "types#/$defs/id"
+            },
+            "state": {
+              "$ref": "types#/$defs/state"
+            },
+            "readiness": {
+              "$ref": "types#/$defs/readiness"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
     },
     "field": {
-      "enum": ["id", "path", "dir", "title", "blocked_by", "extra", "notes_path", "readiness", "open_blockers", "inherited", "empty"]
+      "enum": [
+        "id",
+        "ref",
+        "name",
+        "path",
+        "title",
+        "extra",
+        "gates",
+        "open",
+        "complete",
+        "finished",
+        "notes_path",
+        "dir"
+      ]
     }
   }
 }

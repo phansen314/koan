@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "$HOME/koan-root/b is under $HOME/koan-root, and the copy would copy itself",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/dir",
+        "reason": "$HOME/koan-root/b is under $HOME/koan-root, and the copy would copy itself"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

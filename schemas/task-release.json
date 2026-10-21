@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-release",
+  "$defs": {
+    "input": {
+      "$ref": "task-show#/$defs/input"
+    },
+    "result": {
+      "$ref": "task-update#/$defs/id-only"
+    }
+  }
+}

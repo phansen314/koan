@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "marker-unbind",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "dir"
+      ],
+      "properties": {
+        "dir": {
+          "$ref": "types#/$defs/abs-path"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "dir",
+        "removed"
+      ],
+      "properties": {
+        "dir": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "removed": {
+          "type": "boolean",
+          "description": "false when there was no marker."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

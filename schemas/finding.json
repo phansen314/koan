@@ -2,22 +2,51 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "finding",
   "type": "object",
-  "required": ["kind", "message", "paths", "ids", "repairable"],
+  "required": [
+    "kind",
+    "detail",
+    "message",
+    "ids",
+    "paths",
+    "repairable"
+  ],
   "properties": {
     "kind": {
-      "enum": ["temp-leftover", "id-above-counter", "dangling-reference", "stale-claim", "orphan-notes", "missing-folder-file", "archive-index", "duplicate-id", "cycle", "unusable-file", "old-format", "skipped-entry"]
+      "enum": [
+        "pending-step",
+        "stuck-step",
+        "stray-directory",
+        "missing-directory",
+        "case-differs",
+        "misplaced-notes",
+        "orphan-notes",
+        "stray-entry",
+        "invalid-row",
+        "corrupt"
+      ]
     },
-    "message": { "type": "string", "description": "What is wrong and what to do about it." },
-    "paths": {
-      "type": "array",
-      "description": "The files involved; for a cycle, the directories of its folders, in cycle order.",
-      "items": { "type": "string" }
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "description": "What is wrong and what to do about it, for a person."
     },
     "ids": {
-      "type": "array",
-      "items": { "$ref": "task-file#/properties/id" }
+      "$ref": "types#/$defs/ids"
     },
-    "repairable": { "type": "boolean", "description": "Whether repair can fix it: by default, or, for a dangling-reference or a stale-claim on a task that is gone, when asked for by name, unless the archive holds the ID. A dangling-reference is not repairable while any folder file in the tree can't be used, unless the archive holds the ID." }
+    "paths": {
+      "type": "array",
+      "items": {
+        "$ref": "types#/$defs/abs-path"
+      }
+    },
+    "repairable": {
+      "type": "boolean"
+    }
   },
-  "additionalProperties": false
+  "unevaluatedProperties": false
 }

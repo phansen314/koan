@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "changed": true,
+    "notes_path": "$HOME/koan-root/tree/@a/@2.md"
+  },
+  "warnings": [
+    {
+      "kind": "moved-claimed",
+      "message": "@2 is claimed, and its notes moved; whoever holds it should read them at the new path.",
+      "ids": [
+        2
+      ],
+      "paths": [
+        "$HOME/koan-root/tree/@a/@2.md"
+      ]
+    }
+  ]
+}

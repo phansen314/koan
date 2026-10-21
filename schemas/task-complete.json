@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-complete",
+  "$defs": {
+    "input": {
+      "$ref": "task-show#/$defs/input"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "changed",
+        "released"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "released": {
+          "$ref": "types#/$defs/ids",
+          "description": "Open tasks it made ready."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

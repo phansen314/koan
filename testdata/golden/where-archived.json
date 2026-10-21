@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "@6 was archived, to $HOME/koan-root/archived/@6.md",
+    "ids": [
+      6
+    ],
+    "paths": [],
+    "problems": [],
+    "archived": [
+      {
+        "id": 6,
+        "archive": "$HOME/koan-root/archived/@6.md"
+      }
+    ]
+  },
+  "warnings": []
+}

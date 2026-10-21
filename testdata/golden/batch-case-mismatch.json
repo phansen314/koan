@@ -1,0 +1,23 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "case-mismatch",
+    "message": "/work differs from /Work only in case",
+    "ids": [
+      1
+    ],
+    "paths": [
+      "/work",
+      "/Work"
+    ],
+    "problems": [
+      {
+        "field": "/folders/0/path",
+        "reason": "/work differs from /Work only in case"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

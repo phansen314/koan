@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "result": {
+    "id": 1,
+    "changed": true,
+    "path": "/v/w",
+    "dir": "$HOME/koan-root/tree/@v/@w",
+    "created": [
+      {
+        "id": 7,
+        "path": "/v"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "moved-claimed",
+      "message": "@3, @5 are claimed, and their notes moved; whoever holds them should read them at the new paths.",
+      "ids": [
+        3,
+        5
+      ],
+      "paths": [
+        "$HOME/koan-root/tree/@v/@w/@x/@3.md",
+        "$HOME/koan-root/tree/@v/@w/@x/@done.md"
+      ]
+    }
+  ]
+}

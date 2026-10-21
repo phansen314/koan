@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": 2,
+      "ref": "@2 (/work/api)",
+      "name": "api",
+      "path": "/work/api",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": null,
+        "done": null
+      },
+      "open": 0,
+      "complete": 0,
+      "finished": true,
+      "notes_path": "$HOME/koan-root/tree/@work/@api/@notes.md",
+      "dir": "$HOME/koan-root/tree/@work/@api"
+    }
+  },
+  "warnings": [
+    {
+      "kind": "pending-step",
+      "message": "1 filesystem step is pending with no write carrying it out. The next write, or koan repair, finishes it.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@work/@api"
+      ]
+    }
+  ]
+}

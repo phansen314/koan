@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "batch",
+  "$defs": {
+    "input": {
+      "$ref": "batch-file"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "folders",
+        "tasks",
+        "labels",
+        "gates_made",
+        "reblocked"
+      ],
+      "properties": {
+        "folders": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-at"
+          },
+          "description": "Every folder made, parents first."
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "description": "Every task made, in input order."
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "types#/$defs/id"
+          },
+          "propertyNames": {
+            "$ref": "types#/$defs/label"
+          },
+          "description": "Each label and the ID it got."
+        },
+        "gates_made": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/gate-made"
+          }
+        },
+        "reblocked": {
+          "$ref": "types#/$defs/ids"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

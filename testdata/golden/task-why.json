@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "result": {
+    "id": 10,
+    "readiness": "blocked",
+    "blockers": [
+      {
+        "id": 13,
+        "ref": "@13 (/work/phase2.start)",
+        "state": "open"
+      }
+    ],
+    "ready": [
+      11
+    ]
+  },
+  "warnings": []
+}

@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "exists",
+    "message": "$HOME/koan-root/koan.db already exists, so --ids-from can't set where it issues IDs from.",
+    "ids": [],
+    "paths": [
+      "$HOME/koan-root/koan.db"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

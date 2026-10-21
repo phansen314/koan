@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "result": {
+    "id": 1,
+    "changed": true,
+    "path": "/x/y/w2",
+    "dir": "$HOME/koan-root/tree/@x/@y/@w2",
+    "created": [
+      {
+        "id": 6,
+        "path": "/x"
+      },
+      {
+        "id": 7,
+        "path": "/x/y"
+      }
+    ]
+  },
+  "warnings": []
+}

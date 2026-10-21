@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "result": {
+    "folders": [
+      {
+        "id": 2,
+        "path": "/work/api"
+      }
+    ],
+    "tasks": [
+      3
+    ],
+    "labels": {},
+    "gates_made": [],
+    "reblocked": []
+  },
+  "warnings": [
+    {
+      "kind": "pending-step",
+      "message": "2 filesystem steps are pending with no write carrying them out. The next write, or koan repair, finishes them.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@work/@api",
+        "$HOME/koan-root/tree/@work/@api/@3.md"
+      ]
+    }
+  ]
+}

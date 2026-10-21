@@ -1,0 +1,234 @@
+package main_test
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// task delete removes a task, its notes, its claim and every edge to and
+// from it. What it was the last open blocker of is released, and every
+// task that lost an edge to it gets a new updated_at. It never splices.
+// Its ID is never issued again.
+func TestTaskDelete(t *testing.T) {
+	home := root(t)
+	for range 4 {
+		ok(t, home, "task", "create", "t") // 1 to 4
+	}
+	// 2 waits on 1; 3 on 2; 4 on 2 and 1.
+	ok(t, home, "task", "block", "2", "--blocked-by", "1", "--blocks", "3,4")
+	ok(t, home, "task", "block", "4", "--blocked-by", "1")
+	ok(t, home, "task", "claim", "2")
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	r := ok(t, home, "task", "delete", "2")
+	golden(t, r, "task-delete")
+	if fmt.Sprint(r.Result()) != "map[released:[3] removed:[2]]" {
+		t.Errorf("delete: %s", r.Line())
+	}
+	checkTree(t, home, "@1.md=", "@3.md=", "@4.md=")
+	for id, want := range map[string]string{"1": fixed, "3": "", "4": ""} {
+		if got := field(t, home, id, "updated_at"); (want == fixed) != (got == fixed) {
+			t.Errorf("@%s updated_at %v", id, got)
+		}
+	}
+	// 3 isn't passed 2's blocker; 4 still waits on 1.
+	if fmt.Sprint(field(t, home, "3", "blocked_by")) != "[]" || field(t, home, "4", "readiness") != "blocked" ||
+		fmt.Sprint(field(t, home, "1", "blocks")) != "[map[id:4 ref:@4 (/) state:open]]" {
+		t.Errorf("never splices")
+	}
+	r = fails(t, home, "not-found", "", "task", "show", "2")
+	if fmt.Sprint(r.Error()["ids"]) != "[2]" {
+		t.Errorf("deleted: %s", r.Line())
+	}
+	if r := ok(t, home, "task", "create", "t"); fmt.Sprint(r.Result()["id"]) != "5" {
+		t.Errorf("reissued: %s", r.Line())
+	}
+	// A task with nothing waiting releases nothing; notes already gone
+	// are no failure.
+	os.Remove(treePath(home, "@5.md"))
+	if r := ok(t, home, "task", "delete", "@5"); fmt.Sprint(r.Result()) != "map[released:[] removed:[5]]" {
+		t.Errorf("alone: %s", r.Line())
+	}
+	golden(t, fails(t, home, "not-found", "", "task", "delete", "2"), "task-delete-not-found")
+	if r := fails(t, home, "invalid-input", "", "task", "delete", "/"); problemFields(r) != "/task" {
+		t.Errorf("the root: %s", r.Line())
+	}
+}
+
+// A gate can be deleted like any task, its notes with it; its folder
+// lacks it then, until an edge names it again.
+func TestTaskDeleteGate(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w")                          // 1
+	ok(t, home, "task", "create", "t", "--blocked-by", "/w.start") // 2, 3
+	writeTree(t, home, "@w/@start.md", "gate notes")
+	r := ok(t, home, "task", "delete", "/w.start")
+	if fmt.Sprint(r.Result()) != "map[released:[2] removed:[3]]" {
+		t.Errorf("gate: %s", r.Line())
+	}
+	checkTree(t, home, "@w/", "@w/@notes.md=", "@2.md=")
+	if g := ok(t, home, "folder", "show", "/w").Result()["folder"].(map[string]any)["gates"]; fmt.Sprint(g) != "map[done:<nil> start:<nil>]" {
+		t.Errorf("gates: %v", g)
+	}
+	fails(t, home, "not-found", "", "task", "delete", "/w.start")
+	fails(t, home, "conflict", "case-mismatch", "task", "delete", "/W.done")
+}
+
+// folder delete removes a folder and everything under it, gates included,
+// as task delete removes a task; removed lists every task and folder
+// removed, and released what outside it was left ready.
+func TestFolderDelete(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w/a")                                    // 1, 2
+	ok(t, home, "task", "create", "t", "--folder", "/w/a", "--notes", "notes") // 3
+	ok(t, home, "task", "create", "u", "--blocked-by", "/w.done,3")            // 4, 5
+	ok(t, home, "task", "create", "v", "--blocked-by", "5")                    // 6
+	ok(t, home, "task", "block", "5", "--blocked-by", "3")
+	ok(t, home, "task", "claim", "3")
+	ok(t, home, "folder", "create", "/k") // 7
+	writeTree(t, home, "@w/.DS_Store", "finder")
+	writeTree(t, home, "@w/@a/@notes.md", "folder notes")
+	writeTree(t, home, "@w/@done.md", "gate notes")
+	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
+	golden(t, fails(t, home, "conflict", "not-empty", "folder", "delete", "/w"), "folder-delete-not-empty")
+	r := ok(t, home, "folder", "delete", "/w", "--contents")
+	golden(t, r, "folder-delete")
+	if fmt.Sprint(r.Result()) != "map[released:[4 6] removed:[1 2 3 5]]" {
+		t.Errorf("delete: %s", r.Line())
+	}
+	checkTree(t, home, "@4.md=", "@6.md=", "@k/", "@k/@notes.md=")
+	if field(t, home, "4", "updated_at") == fixed || field(t, home, "6", "updated_at") == fixed {
+		t.Errorf("what lost an edge gets a new updated_at")
+	}
+	if fmt.Sprint(field(t, home, "6", "blocked_by")) != "[]" || field(t, home, "6", "readiness") != "ready" {
+		t.Errorf("6 waited on the gate alone")
+	}
+	for _, id := range []string{"1", "2", "3", "5"} {
+		fails(t, home, "not-found", "", "task", "show", id)
+	}
+	if r := ok(t, home, "folder", "list"); fmt.Sprint(r.Result()["total"]) != "1" {
+		t.Errorf("folders left: %s", r.Line())
+	}
+	// A folder holding only its gates is empty.
+	ok(t, home, "task", "block", "4", "--blocked-by", "/k.start,/k.done") // 8, 9
+	r = ok(t, home, "folder", "delete", "/k")
+	if fmt.Sprint(r.Result()) != "map[released:[4] removed:[7 8 9]]" {
+		t.Errorf("gates only: %s", r.Line())
+	}
+	checkTree(t, home, "@4.md=", "@6.md=")
+	golden(t, fails(t, home, "invalid-input", "", "folder", "delete", "/"), "folder-delete-root")
+	fails(t, home, "not-found", "", "folder", "delete", "/w")
+	for in, fields := range map[string]string{
+		`{}`:                               "/folder",
+		`{"folder":"/w.start"}`:            "/folder",
+		`{"folder":"/k","contents":"yes"}`: "/contents",
+		`{"folder":"/k","force":1}`:        "/force",
+		`{"folder":"/","force":1}`:         "/folder /force",
+	} {
+		if r := input(t, home, "folder delete", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
+			t.Errorf("%s: %s", in, r.Line())
+		}
+	}
+}
+
+// not-empty names its direct contents, its gates left out, and is
+// checked before has-material.
+func TestFolderDeleteNotEmpty(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w/b/c")                     // 1, 2, 3
+	ok(t, home, "task", "create", "t", "--folder", "/w")          // 4
+	ok(t, home, "task", "create", "u", "--blocked-by", "/w.done") // 5, 6
+	ok(t, home, "folder", "create", "/w/a")                       // 7
+	writeTree(t, home, "@w/thesis.tex", "t")
+	r := fails(t, home, "conflict", "not-empty", "folder", "delete", "/w", "--force")
+	if fmt.Sprint(r.Error()["ids"]) != "[2 4 7]" {
+		t.Errorf("not-empty: %s", r.Line())
+	}
+	fails(t, home, "conflict", "has-material", "folder", "delete", "/w", "--contents")
+}
+
+// has-material names the material at any depth, each folder's own
+// entries byte for byte before those of the folders under it: entries
+// not named with @, an @ entry holding content that isn't the notes of
+// what is being deleted, and never .DS_Store or a zero-byte @ file. A
+// @start.md or @done.md is the notes of a gate the folder has, and
+// otherwise a stray entry. --force takes it all.
+func TestFolderDeleteMaterial(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w/b")                                   // 1, 2
+	ok(t, home, "folder", "create", "/w/a")                                   // 3
+	ok(t, home, "task", "create", "t", "--folder", "/w/a", "--notes", "mine") // 4
+	ok(t, home, "task", "create", "u")                                        // 5
+	ok(t, home, "task", "block", "5", "--blocked-by", "/w/a.done")            // 6
+	for rel, content := range map[string]string{
+		"@w/docs/x.md":        "x",
+		"@w/.DS_Store":        "finder",
+		"@w/@todo.md":         "by hand",
+		"@w/@empty.md":        "",
+		"@w/@start.md":        "no gate's",
+		"@w/@b/__init__.py":   "",
+		"@w/@b/@5.md":         "another task's",
+		"@w/@b/@done.md":      "no gate's",
+		"@w/@a/@stray/@x.md":  "x",
+		"@w/@a/@hollow/@y.md": "",
+		"@w/@a/.git/HEAD":     "ref",
+		"@w/@a/@done.md":      "its gate's",
+	} {
+		writeTree(t, home, rel, content)
+	}
+	r := fails(t, home, "conflict", "has-material", "folder", "delete", "/w", "--contents")
+	golden(t, r, "folder-delete-has-material")
+	if fmt.Sprint(r.Error()["paths"]) != "[/w:@start.md /w:@todo.md /w:docs /w/a:.git /w/a:@stray /w/b:@5.md /w/b:@done.md /w/b:__init__.py]" {
+		t.Errorf("material: %s", r.Line())
+	}
+	r = ok(t, home, "folder", "delete", "/w", "--contents", "--force")
+	if fmt.Sprint(r.Result()) != "map[released:[5] removed:[1 2 3 4 6]]" {
+		t.Errorf("forced: %s", r.Line())
+	}
+	checkTree(t, home, "@5.md=")
+	// With only what isn't material, no force is needed, and what isn't
+	// material goes with it: a gate's notes, and a @start.md or @done.md
+	// with no gate that is empty.
+	ok(t, home, "folder", "create", "/v")                         // 7
+	ok(t, home, "task", "block", "5", "--blocked-by", "/v.start") // 8
+	writeTree(t, home, "@v/.DS_Store", "finder")
+	writeTree(t, home, "@v/@hollow/@y.md", "")
+	writeTree(t, home, "@v/@start.md", "its gate's")
+	writeTree(t, home, "@v/@done.md", "")
+	ok(t, home, "folder", "delete", "/v")
+	checkTree(t, home, "@5.md=")
+}
+
+// Once COMMIT succeeds the delete succeeds. A directory remove the
+// operating system refuses stays pending; material written before the
+// next write finds it makes it stuck, and the material stays, so the
+// directory still on disk takes its path.
+func TestFolderDeleteStuck(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	home := root(t)
+	ok(t, home, "folder", "create", "/w") // 1
+	ok(t, home, "folder", "create", "/k") // 2
+	dir := filepath.Join(home, "koan-root", "tree")
+	os.Chmod(dir, 0o555)
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	r := warned(t, home, []string{"pending-step"}, "folder", "delete", "/w")
+	golden(t, r, "folder-delete-pending-step")
+	if fmt.Sprint(r.Result()) != "map[released:[] removed:[1]]" {
+		t.Errorf("delete: %s", r.Line())
+	}
+	os.Chmod(dir, 0o755)
+	writeTree(t, home, "@w/thesis.tex", "written after commit")
+	r = warned(t, home, []string{"stuck-step"}, "folder", "delete", "/k")
+	golden(t, r, "folder-delete-stuck-step")
+	checkTree(t, home, "@w/", "@w/thesis.tex=written after commit")
+	golden(t, fails(t, home, "conflict", "exists", "folder", "create", "/w"), "folder-delete-taken")
+	fails(t, home, "conflict", "exists", "folder", "create", "/W")
+	warned(t, home, []string{"stuck-step"}, "folder", "create", "/m")
+	r = fails(t, home, "conflict", "exists", "folder", "move", "/m", "--to", "/w")
+	if fmt.Sprint(r.Error()["paths"]) != "["+treePath(home, "@w")+"]" {
+		t.Errorf("move: %s", r.Line())
+	}
+}

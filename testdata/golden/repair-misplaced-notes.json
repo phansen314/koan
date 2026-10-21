@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "result": {
+    "fixed": [
+      {
+        "kind": "misplaced-notes",
+        "detail": null,
+        "message": "The notes of @4 sit in $HOME/koan-root/tree/@4.md, and belong in $HOME/koan-root/tree/@work/@api/@4.md. koan repair moves them back.",
+        "ids": [
+          4
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@4.md",
+          "$HOME/koan-root/tree/@work/@api/@4.md"
+        ],
+        "repairable": true
+      }
+    ],
+    "left": [
+      {
+        "kind": "misplaced-notes",
+        "detail": null,
+        "message": "The notes of @3 sit in $HOME/koan-root/tree/@work/@api/@3.md, and belong in $HOME/koan-root/tree/@work/@3.md, where notes already are. Keep one copy by hand.",
+        "ids": [
+          3
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api/@3.md",
+          "$HOME/koan-root/tree/@work/@3.md"
+        ],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

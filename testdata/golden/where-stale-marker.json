@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "result": {
+    "ref": "@2 (/work/web)",
+    "kind": "folder",
+    "id": 2,
+    "folder": {
+      "id": 2,
+      "path": "/work/web"
+    },
+    "gate": null,
+    "material": null,
+    "file": "$HOME/wt",
+    "marker": "$HOME/wt/.koan/marker.json"
+  },
+  "warnings": [
+    {
+      "kind": "stale-marker",
+      "message": "$HOME/wt/.koan/marker.json was bound to @2 at /work/api, which is now at /work/web. Bind it again to refresh it.",
+      "ids": [
+        2
+      ],
+      "paths": [
+        "$HOME/wt/.koan/marker.json"
+      ]
+    }
+  ]
+}

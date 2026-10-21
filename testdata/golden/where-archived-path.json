@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/koan-root/archived/work/@2_api/@notes.md is in the archive: @2 was archived, to $HOME/koan-root/archived/work/@2_api",
+    "ids": [],
+    "paths": [
+      "$HOME/koan-root/archived/work/@2_api/@notes.md"
+    ],
+    "problems": [],
+    "archived": [
+      {
+        "id": 2,
+        "archive": "$HOME/koan-root/archived/work/@2_api"
+      }
+    ]
+  },
+  "warnings": []
+}

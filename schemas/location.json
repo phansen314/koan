@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "location",
+  "type": "object",
+  "required": [
+    "ref",
+    "kind",
+    "id",
+    "folder",
+    "gate",
+    "material",
+    "file",
+    "marker"
+  ],
+  "properties": {
+    "ref": {
+      "type": "string",
+      "description": "The kept-text pair, such as @41:docs/plan.md (/work/api:docs/plan.md); / for the root; /:<material> for material in the root."
+    },
+    "kind": {
+      "enum": [
+        "task",
+        "folder",
+        "root",
+        "material"
+      ]
+    },
+    "id": {
+      "anyOf": [
+        {
+          "$ref": "types#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The task's or folder's ID; for material, its folder's; null for the root."
+    },
+    "folder": {
+      "$ref": "types#/$defs/folder-at",
+      "description": "The folder it is, or is in."
+    },
+    "gate": {
+      "$ref": "types#/$defs/gate"
+    },
+    "material": {
+      "anyOf": [
+        {
+          "$ref": "types#/$defs/material"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "file": {
+      "anyOf": [
+        {
+          "$ref": "types#/$defs/abs-path"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "On disk: the material, a task's notes, or a folder's directory; for a path given, that path. Never checked to exist."
+    },
+    "marker": {
+      "anyOf": [
+        {
+          "$ref": "types#/$defs/abs-path"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "unevaluatedProperties": false
+}

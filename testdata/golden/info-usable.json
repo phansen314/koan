@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "result": {
+    "root": "$HOME/koan-root",
+    "tree": "$HOME/koan-root/tree",
+    "archive": "$HOME/koan-root/archived",
+    "database": "$HOME/koan-root/koan.db",
+    "state": "usable",
+    "format": 1,
+    "next_id": 1,
+    "tasks": 0,
+    "folders": 0,
+    "claims": 0,
+    "pending": 0,
+    "stuck": 0,
+    "error": null
+  },
+  "warnings": []
+}

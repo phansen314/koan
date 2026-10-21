@@ -1,0 +1,16 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "foreign-files",
+    "message": "$HOME/wt/.koan holds files that aren't koan's: $HOME/wt/.koan/notes, $HOME/wt/.koan/sub. Move them out first",
+    "ids": [],
+    "paths": [
+      "$HOME/wt/.koan/notes",
+      "$HOME/wt/.koan/sub"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

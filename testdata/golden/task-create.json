@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "ref": "@2 (/work)",
+    "notes_path": "$HOME/koan-root/tree/@work/@2.md",
+    "gates_made": [],
+    "reblocked": []
+  },
+  "warnings": []
+}

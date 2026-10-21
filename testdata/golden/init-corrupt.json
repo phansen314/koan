@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "corrupt",
+    "rule": null,
+    "message": "$HOME/koan-root/koan.db is corrupt: file is not a database (26)",
+    "ids": [],
+    "paths": [
+      "$HOME/koan-root/koan.db"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

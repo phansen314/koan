@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "result": {
+    "tasks": [
+      {
+        "id": 4,
+        "ref": "@4 (/alpha/b)",
+        "tags": [
+          "x",
+          "y"
+        ],
+        "notes_path": "$HOME/koan-root/tree/@alpha/@b/@4.md"
+      }
+    ],
+    "total": 1,
+    "truncated": false
+  },
+  "warnings": []
+}

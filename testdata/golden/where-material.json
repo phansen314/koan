@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "result": {
+    "ref": "@2:docs/plan.md (/work/api:docs/plan.md)",
+    "kind": "material",
+    "id": 2,
+    "folder": {
+      "id": 2,
+      "path": "/work/api"
+    },
+    "gate": null,
+    "material": "docs/plan.md",
+    "file": "$HOME/koan-root/tree/@work/@api/docs/plan.md",
+    "marker": null
+  },
+  "warnings": []
+}
