@@ -240,6 +240,24 @@ func (s *Store) update(fn func(tx *Tx)) *cli.Error {
 	return nil
 }
 
+// VacuumInto writes a copy of the database to file, a new file, as one
+// snapshot, and stores WAL mode in it, as init does.
+func (h *Held) VacuumInto(file string) *cli.Error {
+	if _, err := h.s.db.conn.ExecContext(context.Background(), "VACUUM INTO ?", file); err != nil {
+		return sqliteError(err, h.s.Root.Database)
+	}
+	d, e := openConn(file, file, "rw")
+	if e != nil {
+		return e
+	}
+	defer d.Close()
+	var mode string
+	if err := d.conn.QueryRowContext(context.Background(), "PRAGMA journal_mode = WAL").Scan(&mode); err != nil {
+		return sqliteError(err, file)
+	}
+	return nil
+}
+
 // left is what the pending rows say once a write is done with them.
 func (s *Store) left() []cli.Warning {
 	live, stuck, err := pendingRows(context.Background(), s.db.conn)

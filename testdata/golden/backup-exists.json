@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "exists",
+    "message": "$HOME/full is taken: a backup goes into an empty or new directory.",
+    "ids": [],
+    "paths": [
+      "$HOME/full"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}
