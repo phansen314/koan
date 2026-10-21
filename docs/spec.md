@@ -927,7 +927,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### doctor, repair
 
-`koan doctor` reads one snapshot and reports every finding, in the order of the kinds in Finding, then by path, then by IDs. `koan repair [--kinds]` fixes the repairable findings of the kinds given, all of them when left out, in that same order, and reports what it fixed and what it left. `stuck-step` is never repairable, since a person must act first, by keeping one copy or moving the material out; but when its kind is given, or none are, repair retries every stuck change in seq order all the same. A change that now succeeds goes in `fixed`, the rest in `left`.
+`koan doctor` reads one snapshot and reports every finding, in the order of the kinds in Finding, then by path, then by IDs. `koan repair [--kinds]` fixes the repairable findings of the kinds given, all of them when left out, in that same order, and reports what it fixed and what it left. `stuck-step` is never repairable, since a person must act first, by keeping one copy or moving the material out; but when its kind is given, or none are, repair retries every stuck change in seq order all the same. A change that now succeeds goes in `fixed`, the rest in `left`. doctor gives no warnings: its findings carry the pending and stuck steps, and it takes no lock to tell one from the other.
 
 ```json
 { "$id": "doctor", "$defs": {
@@ -947,7 +947,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### backup
 
-`koan backup <dir>`. Copies the database, the tree and the archive into an empty or new directory, then checks the copy with `doctor` against the live root. `clean` is false when the copy, even after the second copy under the lock, has findings the live root doesn't; `findings` lists them, with the live root's own. Two findings are the same when their kind, detail and IDs match and their paths match relative to each root; `findings` gives the copy's paths. The directory takes the root's layout: `koan.db`, `tree/` and `archived/`. `files` and `bytes` count every regular file copied, the database included. Refused: `exists`, when the directory holds anything. A directory under \~/koan-root is invalid-input, since the copy would copy itself.
+`koan backup <dir>`. Copies the database, the tree and the archive into an empty or new directory, then checks the copy with `doctor` against the live root. `clean` is false when the copy, even after the second copy under the lock, has findings the live root doesn't; `findings` lists them, with the live root's own. Two findings are the same when their kind, detail and IDs match and their paths match relative to each root; `findings` gives the copy's paths. The directory takes the root's layout: `koan.db`, `tree/` and `archived/`. `files` and `bytes` count every regular file copied, the database included. A new directory is made with any parents it lacks. Refused: `exists`, when the directory holds anything. A directory under \~/koan-root is invalid-input, since the copy would copy itself. backup gives no warnings: its findings carry the pending and stuck steps.
 
 ```json
 { "$id": "backup", "$defs": {
