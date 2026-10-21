@@ -72,11 +72,12 @@ func TestInfoRootWithoutDatabase(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(home, "koan-root"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A name that differs only in case is not the database.
+	// A name that differs only in case is not the database, but is
+	// something that isn't koan's, which init would refuse.
 	os.WriteFile(filepath.Join(home, "koan-root", "KOAN.DB"), nil, 0o644)
 	r := testrun.Run{Home: home}.Koan(t, "info")
 	r.Check(t, "info")
-	r.Golden(t, "info-no-database", *update, nil)
+	r.Golden(t, "info-no-database-foreign", *update, nil)
 }
 
 func TestInfoSymlinkRoot(t *testing.T) {
@@ -318,7 +319,18 @@ func TestInitNotARoot(t *testing.T) {
 	os.Mkdir(root, 0o755)
 	os.WriteFile(filepath.Join(root, "todo.md"), nil, 0o644)
 	os.Mkdir(filepath.Join(root, "Tree"), 0o755)
-	r := testrun.Run{Home: home}.Koan(t, "init")
+	// Until then, not-initialized says to move it aside, not just to run
+	// init, which would refuse it.
+	r := testrun.Run{Home: home}.Koan(t, "info")
+	r.Check(t, "info")
+	if e, _ := r.Result()["error"].(map[string]any); e["kind"] != "not-initialized" || !strings.Contains(e["message"].(string), "Move it aside") {
+		t.Errorf("info: %s", r.Line())
+	}
+	r = testrun.Run{Home: home}.Koan(t, "task", "list")
+	if msg, _ := r.Error()["message"].(string); r.Kind() != "not-initialized" || !strings.Contains(msg, "Move it aside") {
+		t.Errorf("task list: %s", r.Line())
+	}
+	r = testrun.Run{Home: home}.Koan(t, "init")
 	r.Check(t, "init")
 	if r.Exit != 1 {
 		t.Errorf("exit %d", r.Exit)

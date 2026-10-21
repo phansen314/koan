@@ -137,6 +137,16 @@ func Init(home string, idsFrom *int64) (r Root, created []string, firstID int64,
 
 // checkOwn refuses a root holding anything that isn't koan's.
 func checkOwn(r Root, entries []fs.DirEntry) *cli.Error {
+	foreign := foreignIn(r, entries)
+	if len(foreign) == 0 {
+		return nil
+	}
+	return notARoot(foreign, r.Path+" holds what isn't koan's: "+strings.Join(foreign, ", "))
+}
+
+// foreignIn is what a root's listing holds that isn't koan's, in byte
+// order.
+func foreignIn(r Root, entries []fs.DirEntry) []string {
 	var foreign []string
 	for _, de := range entries {
 		dir, own := ownNames[de.Name()]
@@ -144,11 +154,8 @@ func checkOwn(r Root, entries []fs.DirEntry) *cli.Error {
 			foreign = append(foreign, filepath.Join(r.Path, de.Name()))
 		}
 	}
-	if len(foreign) == 0 {
-		return nil
-	}
 	slices.Sort(foreign)
-	return notARoot(foreign, r.Path+" holds what isn't koan's: "+strings.Join(foreign, ", "))
+	return foreign
 }
 
 func notARoot(paths []string, message string) *cli.Error {

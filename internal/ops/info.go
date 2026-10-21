@@ -50,7 +50,11 @@ func Info() *cli.Command {
 				return nil, nil, e
 			}
 			if !has {
-				return r.failed(store.NotInitialized(root.Database), -1), nil, nil
+				e := root.NoDatabase()
+				if e.Kind != cli.KindNotInitialized {
+					return nil, nil, e
+				}
+				return r.failed(e, -1), nil, nil
 			}
 			s, format, e := fsstep.OpenDatabase(root)
 			if e != nil {

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/phansen314/koan/internal/cli"
 )
@@ -98,6 +99,24 @@ func (r Root) HasDatabase() (bool, *cli.Error) {
 func NotInitialized(missing string) *cli.Error {
 	e := cli.NewError(cli.KindNotInitialized, missing+" does not exist. Run koan init.")
 	e.Paths = []string{missing}
+	return e
+}
+
+// NoDatabase is the not-initialized error for a root with no database.
+// When the root holds what isn't koan's, such as a tree the original koan
+// left, init would refuse it, so the message says to move it aside first.
+func (r Root) NoDatabase() *cli.Error {
+	entries, e := r.List()
+	if e != nil {
+		return e
+	}
+	foreign := foreignIn(r, entries)
+	if len(foreign) == 0 {
+		return NotInitialized(r.Database)
+	}
+	e = cli.NewError(cli.KindNotInitialized, r.Database+" does not exist, and "+r.Path+" holds what isn't koan's: "+
+		strings.Join(foreign, ", ")+". Move it aside, or make ~/koan-root a symlink to an empty directory, then run koan init.")
+	e.Paths = []string{r.Database}
 	return e
 }
 
@@ -207,7 +226,7 @@ func Open(home string, steps StepsFor) (*Store, *cli.Error) {
 		return nil, e
 	}
 	if !has {
-		return nil, NotInitialized(r.Database)
+		return nil, r.NoDatabase()
 	}
 	s, _, e := OpenDatabase(r, steps)
 	return s, e
