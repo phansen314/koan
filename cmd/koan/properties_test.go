@@ -776,7 +776,7 @@ func TestCheckRoot(t *testing.T) {
 		t.Fatalf("a sound root: %q", bad)
 	}
 	tree := treeDir(home)
-	write(t, home, "@work/@Notes.md", "x")
+	write(t, home, "@work/@todo.md", "x")
 	write(t, home, "@notes.md", "")
 	write(t, home, "@work/@6.md", "")
 	write(t, home, "@work/@done.md", "")
@@ -794,7 +794,7 @@ func TestCheckRoot(t *testing.T) {
 	for _, want := range []string{
 		"I1: @7 is issued live with no row", "I1: task @6 was never issued", "I2: @6 is no longer issued",
 		"I7: cycle", "I8: claim on @5, which isn't a task", "I9: @3 tag \"Bad\"", "I9: @3 created_at changed",
-		"I12: @5 archived alone", "T1: folder @2", "T2: ", "T4: ", "T5: ", "T6: " + filepath.Join(tree, "@work", "@Notes.md"),
+		"I12: @5 archived alone", "T1: folder @2", "T2: ", "T4: ", "T5: ", "T6: " + filepath.Join(tree, "@work", "@todo.md"),
 		"T6: " + filepath.Join(tree, "@work", "@done.md") + " is no gate's notes", "notes: @6 has no",
 	} {
 		if !slices.ContainsFunc(bad, func(b string) bool { return strings.HasPrefix(b, want) }) {

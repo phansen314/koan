@@ -34,7 +34,13 @@ var (
 
 // Main builds the binary, runs the package's tests, and removes the
 // build. Call it from TestMain.
+// KOAN_TEST_BINARY, when set, names a binary already built, for a test
+// that runs the tests again somewhere else.
 func Main(m *testing.M) {
+	if b := os.Getenv("KOAN_TEST_BINARY"); b != "" {
+		binary = b
+		os.Exit(m.Run())
+	}
 	dir, err := os.MkdirTemp("", "koan-test-bin-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
