@@ -199,7 +199,7 @@ func TestLookup(t *testing.T) {
 		{[]string{"frob"}, "", "frob"},
 		{[]string{"Version"}, "", "Version"},
 		{[]string{"vers"}, "", "vers"},
-		{[]string{"thing"}, "", "thing"},
+		{[]string{"thing"}, "", ""},
 		{[]string{"thing", "frob"}, "", "frob"},
 		{[]string{"thing", "--help"}, "", "--help"},
 		{[]string{"make"}, "", "make"},

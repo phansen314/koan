@@ -68,7 +68,7 @@ func lookup(commands []*Command, args []string) (*Command, []string, *Error) {
 	}
 	if groups[args[0]] {
 		if len(args) == 1 {
-			return nil, nil, Usage(args[0], "no command given after "+args[0])
+			return nil, nil, Usage("", "no command given after "+args[0])
 		}
 		if c := byName[args[0]+" "+args[1]]; c != nil {
 			return c, args[2:], nil
