@@ -356,8 +356,8 @@ func (r *perfRoot) smallFolder(top string, done bool) int {
 	return int(id)
 }
 
-// time runs op once, its prep untimed, and gives how long the command
-// took, failing on any error or warning.
+// time runs op once, its prep untimed, and gives how long the command's
+// process took, failing on any error or warning.
 func (op perfOp) time(r *perfRoot, i int) time.Duration {
 	r.tb.Helper()
 	if op.prep != nil {
@@ -368,13 +368,13 @@ func (op perfOp) time(r *perfRoot, i int) time.Duration {
 		stdin = op.stdin(r, i)
 	}
 	args := op.args(r, i)
-	start := time.Now()
-	res := r.run(stdin, args...)
-	d := time.Since(start)
-	if !res.OK() || len(res.Envelope["warnings"].([]any)) != 0 {
-		r.tb.Fatalf("%s %q: %s", op.name, args, res.Line())
+	// The process alone is timed, not the test decoding its output.
+	p := &proc{args: args, stdin: stdin}
+	p.run(testrun.Binary(r.tb), r.home)
+	if p.err != nil || !p.ok() || len(p.env["warnings"].([]any)) != 0 {
+		r.tb.Fatalf("%s %q: %v: %s", op.name, args, p.err, p.line)
 	}
-	return d
+	return p.elapsed
 }
 
 // BenchmarkCommands times every command, as a process, at each size PRD
