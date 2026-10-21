@@ -99,7 +99,9 @@ func (r Run) Koan(t testing.TB, args ...string) *Result {
 	}
 	cmd := exec.Command(Binary(t), args...)
 	cmd.Dir = r.Dir
-	cmd.Env = environ(r.Home)
+	// A shell sets PWD to the directory as it was given, so koan sees the
+	// working directory as written, not its real path.
+	cmd.Env = append(environ(r.Home), "PWD="+r.Dir)
 	cmd.Stdin = r.Stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -142,11 +144,11 @@ func helpLine(args []string) bool {
 }
 
 // environ is the environment with HOME replaced, so no run can reach the
-// real ~/koan-root.
+// real ~/koan-root, and PWD left out.
 func environ(home string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "HOME=") {
+		if !strings.HasPrefix(kv, "HOME=") && !strings.HasPrefix(kv, "PWD=") {
 			env = append(env, kv)
 		}
 	}

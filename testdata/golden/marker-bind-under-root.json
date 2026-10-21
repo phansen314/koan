@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "$HOME/koan-root/tree/@work is under $HOME/koan-root, where markers are never read",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/dir",
+        "reason": "$HOME/koan-root/tree/@work is under $HOME/koan-root, where markers are never read"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

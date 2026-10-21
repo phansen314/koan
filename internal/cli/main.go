@@ -101,6 +101,8 @@ func (c *Command) usage() string {
 			b.WriteString(" [" + o.Name() + "]")
 		case List:
 			b.WriteString(" [" + o.Name() + " <a,b,...>]")
+		case Path:
+			b.WriteString(" [" + o.Name() + " <path>]")
 		default:
 			b.WriteString(" [" + o.Name() + " <value>]")
 		}

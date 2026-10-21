@@ -23,6 +23,9 @@ const (
 	RuleIntoItself   = "into-itself"
 	RuleExists       = "exists"
 	RuleComplete     = "complete"
+	RuleCheckout     = "checkout"
+	RuleForeignFiles = "foreign-files"
+	RuleBound        = "bound"
 )
 
 // Error is a failure with one kind from the spec. A conflict also names its

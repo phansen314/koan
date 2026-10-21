@@ -244,3 +244,46 @@ func TestMainFiles(t *testing.T) {
 		t.Errorf("missing: got %q %d", r.stdout, r.code)
 	}
 }
+
+// A Path option is made absolute from the working directory, as the
+// command line becomes an input; Here gives a field the working
+// directory when the command line gives neither it nor what stands in
+// for it. Through --input, neither applies.
+func TestMainPaths(t *testing.T) {
+	cmd := &Command{
+		Name:    "where",
+		Subject: &Option{Field: "ref"},
+		Options: []Option{{Field: "file", Kind: Path}},
+		Here:    &Here{Field: "file", Unless: []string{"ref"}},
+		Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+	}
+	t.Chdir(t.TempDir())
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := func(s string) string { return strings.ReplaceAll(s, `\`, `\\`) }
+	for _, c := range []struct {
+		stdin string
+		args  []string
+		want  string
+	}{
+		{"", []string{"where", "--file", "a/../b"}, `{"file":"` + q(filepath.Join(wd, "b")) + `"}`},
+		{"", []string{"where", "--file=/x//y/"}, `{"file":"/x/y"}`},
+		{"", []string{"where", "--file", ""}, `{"file":""}`},
+		{"", []string{"where"}, `{"file":"` + q(wd) + `"}`},
+		{"", []string{"where", "@1"}, `{"ref":"@1"}`},
+		{"", []string{"where", "@1", "--file", "x"}, `{"file":"` + q(filepath.Join(wd, "x")) + `","ref":"@1"}`},
+		{`{"file":"rel"}`, []string{"where", "-i", "-"}, `{"file":"rel"}`},
+		{`{}`, []string{"where", "-i", "-"}, `{}`},
+	} {
+		r := runMain(t, c.stdin, []*Command{cmd}, c.args...)
+		want := `{"ok":true,"result":` + c.want + `,"warnings":[]}` + "\n"
+		if r.stdout != want || r.code != 0 {
+			t.Errorf("%q: got %s want %s", c.args, r.stdout, want)
+		}
+	}
+	if got := cmd.usage(); !strings.Contains(got, "[--file <path>]") {
+		t.Errorf("usage: %q", got)
+	}
+}

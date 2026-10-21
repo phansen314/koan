@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/code/bad/.koan/marker.json binds nothing: it can't be read: open $HOME/code/bad/.koan/marker.json: permission denied",
+    "ids": [],
+    "paths": [
+      "$HOME/code/bad/.koan/marker.json"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

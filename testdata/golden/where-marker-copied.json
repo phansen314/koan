@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/code/copy/.koan/marker.json binds nothing: its dir is $HOME/code/wt, not $HOME/code/copy, where it is: it was copied or moved",
+    "ids": [],
+    "paths": [
+      "$HOME/code/copy/.koan/marker.json"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

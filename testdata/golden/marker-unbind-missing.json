@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "io",
+    "rule": null,
+    "message": "$HOME/missing does not exist",
+    "ids": [],
+    "paths": [
+      "$HOME/missing"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

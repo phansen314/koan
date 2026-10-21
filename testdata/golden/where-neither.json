@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "give exactly one of ref and file",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "give exactly one of ref and file"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

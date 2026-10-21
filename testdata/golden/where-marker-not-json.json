@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/code/wt/sub/inner/.koan/marker.json binds nothing: it isn't a JSON object: invalid character 'o' in literal null (expecting 'u')",
+    "ids": [],
+    "paths": [
+      "$HOME/code/wt/sub/inner/.koan/marker.json"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

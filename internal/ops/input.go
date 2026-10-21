@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"unicode/utf8"
 
@@ -261,6 +262,30 @@ func (r *input) sameCase(refs []core.Ref, at []string, exempt ...func(a, b core.
 		r.fault(at[p[0]], "%s", reason)
 		r.fault(at[p[1]], "%s", reason)
 	}
+}
+
+// absPath is a path on disk, absolute, cleaned; "" when it isn't given,
+// or a fault too when it is required.
+func (r *input) absPath(field string, required bool) string {
+	v, ok := r.value(field)
+	if !ok {
+		if required {
+			r.fault(r.at(field), "%s is required", field)
+		}
+		return ""
+	}
+	s, ok := v.(string)
+	switch {
+	case !ok:
+		r.fault(r.at(field), "%s must be a string", field)
+	case !utf8.ValidString(s):
+		r.fault(r.at(field), "%s is not UTF-8", field)
+	case !filepath.IsAbs(s):
+		r.fault(r.at(field), "%s must be an absolute path: %q isn't", field, s)
+	default:
+		return filepath.Clean(s)
+	}
+	return ""
 }
 
 // taskTitle is a task's title, required: trimmed, then checked.

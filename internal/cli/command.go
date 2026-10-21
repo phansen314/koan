@@ -35,6 +35,11 @@ const (
 	// JSON is one JSON value in one argument; text that isn't JSON is
 	// kept as text, for the command's own check to refuse.
 	JSON
+	// Path is a path on disk, made absolute from the working directory
+	// when it is relative, as the command line becomes an input. Empty
+	// text is no path, and is kept, for the command's own check to
+	// refuse.
+	Path
 )
 
 // Option is one input field and how the command line sets it. Its
@@ -59,6 +64,14 @@ func (o Option) Name() string {
 type File struct {
 	Name  string // as typed, such as --notes-file
 	Field string
+}
+
+// Here is a convenience that sets an input field to the working
+// directory when the command line gives neither it nor any of Unless,
+// such as context's file when no folder is given.
+type Here struct {
+	Field  string
+	Unless []string
 }
 
 // Input is a command's input: one JSON object, with numbers kept as
@@ -88,6 +101,7 @@ type Command struct {
 	Subject *Option
 	Options []Option
 	Files   []File
+	Here    *Here
 	// Fields are input fields only --input gives, with no option.
 	Fields []string
 	Run    func(env *Env, in Input) (result any, warnings []Warning, err *Error)
@@ -116,6 +130,8 @@ type line struct {
 	in       Input
 	// files maps a field to the file a convenience reads it from.
 	files map[string]string
+	// paths are the fields of Path options given.
+	paths []string
 }
 
 // parse reads the arguments after the command's name.
@@ -204,6 +220,9 @@ func (c *Command) parse(args []string) (*line, *Error) {
 		}
 		set[opt.Field], by[opt.Field] = true, name
 		opt.set(l.in, value)
+		if opt.Kind == Path {
+			l.paths = append(l.paths, opt.Field)
+		}
 	}
 	if l.hasInput {
 		if l.other != "" {
@@ -346,8 +365,47 @@ func readFile(env *Env, name, what string) ([]byte, *Error) {
 	return data, nil
 }
 
-// readFiles sets each field a convenience names from its file.
+// workingDir is the working directory as the shell gave it. One koan
+// can't resolve is io, with no path to give.
+func workingDir() (string, *Error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", IO("could not resolve the working directory: " + err.Error())
+	}
+	return wd, nil
+}
+
+// readFiles sets each field a convenience names: from its file, or from
+// the working directory.
 func (c *Command) readFiles(env *Env, l *line) *Error {
+	for _, field := range l.paths {
+		p := l.in[field].(string)
+		if p == "" {
+			continue
+		}
+		if !filepath.IsAbs(p) {
+			wd, e := workingDir()
+			if e != nil {
+				return e
+			}
+			p = filepath.Join(wd, p)
+		}
+		l.in[field] = filepath.Clean(p)
+	}
+	if h := c.Here; h != nil {
+		given := false
+		for _, f := range append([]string{h.Field}, h.Unless...) {
+			_, ok := l.in[f]
+			given = given || ok
+		}
+		if !given {
+			wd, e := workingDir()
+			if e != nil {
+				return e
+			}
+			l.in[h.Field] = wd
+		}
+	}
 	for _, f := range c.Files {
 		name, ok := l.files[f.Field]
 		if !ok {

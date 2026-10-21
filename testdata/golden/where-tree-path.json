@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "result": {
+    "ref": "@1 (/work)",
+    "kind": "folder",
+    "id": 1,
+    "folder": {
+      "id": 1,
+      "path": "/work"
+    },
+    "gate": null,
+    "material": null,
+    "file": "$HOME/koan-root/tree/@work/@notes.md",
+    "marker": null
+  },
+  "warnings": []
+}

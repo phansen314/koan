@@ -1,0 +1,128 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": 2,
+      "ref": "@2 (/work/api)",
+      "name": "api",
+      "path": "/work/api",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": {
+          "id": 5,
+          "state": "open",
+          "readiness": "ready"
+        },
+        "done": null
+      },
+      "open": 4,
+      "complete": 1,
+      "finished": false,
+      "notes_path": "$HOME/koan-root/tree/@work/@api/@notes.md",
+      "dir": "$HOME/koan-root/tree/@work/@api"
+    },
+    "ancestors": [
+      {
+        "id": 1,
+        "ref": "@1 (/work)",
+        "name": "work",
+        "path": "/work",
+        "title": null,
+        "extra": {},
+        "gates": {
+          "start": null,
+          "done": null
+        },
+        "open": 4,
+        "complete": 1,
+        "finished": false,
+        "notes_path": "$HOME/koan-root/tree/@work/@notes.md",
+        "dir": "$HOME/koan-root/tree/@work"
+      }
+    ],
+    "notes": "API notes",
+    "tasks": [
+      {
+        "id": 3,
+        "ref": "@3 (/work/api)",
+        "gate": null,
+        "title": "a",
+        "priority": null,
+        "folder": {
+          "id": 2,
+          "path": "/work/api"
+        },
+        "created_at": "$NOW",
+        "completed_at": null,
+        "updated_at": "$NOW",
+        "state": "open",
+        "readiness": "ready",
+        "blocked_by": [],
+        "blocks": [],
+        "tags": [],
+        "extra": {},
+        "claim": null,
+        "notes_path": "$HOME/koan-root/tree/@work/@api/@3.md"
+      },
+      {
+        "id": 4,
+        "ref": "@4 (/work/api)",
+        "gate": null,
+        "title": "b",
+        "priority": null,
+        "folder": {
+          "id": 2,
+          "path": "/work/api"
+        },
+        "created_at": "$NOW",
+        "completed_at": null,
+        "updated_at": "$NOW",
+        "state": "open",
+        "readiness": "blocked",
+        "blocked_by": [
+          {
+            "id": 5,
+            "ref": "@5 (/work/api.start)",
+            "state": "open"
+          }
+        ],
+        "blocks": [],
+        "tags": [],
+        "extra": {},
+        "claim": null,
+        "notes_path": "$HOME/koan-root/tree/@work/@api/@4.md"
+      },
+      {
+        "id": 5,
+        "ref": "@5 (/work/api.start)",
+        "gate": "start",
+        "title": "Start",
+        "priority": null,
+        "folder": {
+          "id": 2,
+          "path": "/work/api"
+        },
+        "created_at": "$NOW",
+        "completed_at": null,
+        "updated_at": "$NOW",
+        "state": "open",
+        "readiness": "ready",
+        "blocked_by": [],
+        "blocks": [
+          {
+            "id": 4,
+            "ref": "@4 (/work/api)",
+            "state": "open"
+          }
+        ],
+        "tags": [],
+        "extra": {},
+        "claim": null,
+        "notes_path": "$HOME/koan-root/tree/@work/@api/@start.md"
+      }
+    ],
+    "marker": "$HOME/wt/.koan/marker.json"
+  },
+  "warnings": []
+}

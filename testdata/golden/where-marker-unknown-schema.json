@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/code/bad/.koan/marker.json binds nothing: it is in schema 2, which this koan doesn't read",
+    "ids": [],
+    "paths": [
+      "$HOME/code/bad/.koan/marker.json"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

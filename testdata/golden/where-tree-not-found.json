@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "$HOME/koan-root/tree/@work/@Notes.md is in the tree, but names nothing koan keeps there",
+    "ids": [],
+    "paths": [
+      "$HOME/koan-root/tree/@work/@Notes.md"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}
