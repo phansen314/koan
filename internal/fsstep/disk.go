@@ -53,14 +53,14 @@ func renameNew(from, to string) error {
 var errNoReplace = errors.New("rename without replacing is not supported")
 
 // writeFile writes data to a new file at name, replacing one there, and
-// flushes it.
+// flushes it. An empty file has no content to flush.
 func writeFile(name string, data []byte) error {
 	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
 	_, err = f.Write(data)
-	if err == nil {
+	if err == nil && len(data) > 0 {
 		err = f.Sync()
 	}
 	if cerr := f.Close(); err == nil {
@@ -70,6 +70,8 @@ func writeFile(name string, data []byte) error {
 }
 
 // createEmpty makes an empty file at name, leaving one there as it is.
+// It has no content to flush: flushing its directory, as every step's
+// directories are flushed, makes it durable.
 func createEmpty(name string) error {
 	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if errors.Is(err, fs.ErrExist) {
@@ -78,11 +80,7 @@ func createEmpty(name string) error {
 	if err != nil {
 		return err
 	}
-	err = f.Sync()
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	return err
+	return f.Close()
 }
 
 // flush makes a directory's entries durable. On macOS, Sync issues
