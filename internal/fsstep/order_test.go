@@ -119,6 +119,11 @@ func TestOverlaps(t *testing.T) {
 		{Step{Op: OpMove, From: "tree/@w", Via: "tree/@.case-4", To: "tree/@W", Dir: true}, Step{Op: OpMkdir, To: "tree/@.CASE-4/@x"}, true},
 		{Step{Op: OpArchive, From: "tree/@1.md", To: "archived/w/@1.md", File: "archived/w/@1.json"}, Step{Op: OpArchive, From: "tree/@2.md", To: "archived/W/@1.json"}, true},
 		{Step{Op: OpArchive, From: "tree/@1.md", To: "archived/Work/@1.md", File: "archived/Work/@1.json"}, Step{Op: OpArchive, From: "tree/@2.md", To: "archived/work/@2.md", File: "archived/work/@2.json"}, false},
+		// Outside ASCII a name and its other case can differ in length:
+		// the Kelvin sign folds to k, and the long s to s.
+		{Step{Op: OpArchive, From: "tree/@1.md", To: "archived/\u212Aa/@1.md", File: "archived/\u212Aa/@1.json"}, Step{Op: OpRemove, From: "archived/ka", Dir: true}, true},
+		{Step{Op: OpArchive, From: "tree/@1.md", To: "archived/\u017Fa/@1.md", File: "archived/\u017Fa/@1.json"}, Step{Op: OpRemove, From: "archived/SA", Dir: true}, true},
+		{Step{Op: OpWrite, To: "archived/\u212Aa"}, Step{Op: OpWrite, To: "archived/k"}, false},
 	} {
 		if got := overlaps(c.a, c.b); got != c.want || overlaps(c.b, c.a) != c.want {
 			t.Errorf("%+v, %+v: %v", c.a, c.b, got)

@@ -146,9 +146,20 @@ func overlaps(a, b Step) bool {
 	return false
 }
 
-// under reports whether p is q or below it, ignoring case.
+// under reports whether p is q or below it, ignoring case. Names are
+// folded whole, as a listing compares them, since a name and its other
+// case can differ in length outside ASCII.
 func under(p, q string) bool {
-	return len(p) >= len(q) && strings.EqualFold(p[:len(q)], q) && (len(p) == len(q) || p[len(q)] == '/')
+	ps, qs := strings.Split(p, "/"), strings.Split(q, "/")
+	if len(ps) < len(qs) {
+		return false
+	}
+	for i, n := range qs {
+		if !strings.EqualFold(ps[i], n) {
+			return false
+		}
+	}
+	return true
 }
 
 // Warnings is what the rows left say: pending-step for the steps still
