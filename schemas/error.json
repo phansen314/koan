@@ -42,6 +42,7 @@
         "foreign-files",
         "complete",
         "bound",
+        "no-ids",
         null
       ],
       "description": "The conflict rule; null for every other kind."

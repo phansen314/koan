@@ -402,7 +402,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
     "kind":     { "enum": ["usage", "invalid-input", "not-found", "conflict", "busy", "not-initialized",
                            "corrupt", "unsupported-format", "io", "internal"] },
     "rule":     { "enum": ["case-mismatch", "cycle", "claimed", "not-finished", "not-empty", "has-material", "gate",
-                           "into-itself", "exists", "not-a-root", "checkout", "foreign-files", "complete", "bound", null],
+                           "into-itself", "exists", "not-a-root", "checkout", "foreign-files", "complete", "bound", "no-ids", null],
                   "description": "The conflict rule; null for every other kind." },
     "message":  { "type": "string", "description": "One or two sentences for a person. Never parsed." },
     "ids":      { "type": "array", "items": { "$ref": "types#/$defs/id" }, "description": "In the order the kind or rule gives." },
@@ -458,6 +458,7 @@ Each rule is a refusal the rules doc or the PRD makes, in the section its row na
 | `foreign-files` | `marker bind` or `marker unbind` on a `.koan/` that holds files that aren't koan's | PRD Markers |  | those files |
 | `complete` | Claiming a task that is complete | rules Claims | the task |  |
 | `bound` | marker bind on a directory already bound to another live folder, without --force | PRD Markers | the folder it is bound to | the marker.json |
+| `no-ids` | The change would issue an ID past `999999999999999`, the last a root can have, to a task, a folder or a gate it makes. Any change that makes one can give it | rules Changes; PRD Writes, Issuing IDs in a change |  |  |
 
 For `cycle`, the closing edge is the first new edge that closes a cycle with the tree's edges and the new edges before it, taken in the order they are given, as PRD Issuing IDs in a change orders them: each task's `blocked_by` before its `blocks`, a batch's parts in input order. `problems` also names every input field whose new edge lies on that cycle, in cycle order. A refused change issues no ID, so a task or gate it was making is named in `ids` by the ID it would have had, which a later change may issue to something else: `problems` points at the part that made it.
 
@@ -894,7 +895,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### info, version
 
-`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. A `~/koan-root` that isn't a directory, or that koan can't list, is the operating system refusing, not a state: info fails with `io`. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one; it is null unless the state is usable. `format` is the database's whenever koan can read it, so an `unsupported-format` root reports it, and a corrupt one does when it can be read. If SQLite itself stays busy for 5 seconds, info fails with `busy`.
+`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. A `~/koan-root` that isn't a directory, or that koan can't list, is the operating system refusing, not a state: info fails with `io`. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one; it is null unless the state is usable, and null once the root has issued its last ID, `999999999999999`, since no `--ids-from` follows it. `format` is the database's whenever koan can read it, so an `unsupported-format` root reports it, and a corrupt one does when it can be read. If SQLite itself stays busy for 5 seconds, info fails with `busy`.
 
 ```json
 { "$id": "info", "$defs": {
@@ -908,7 +909,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
       "database": { "$ref": "types#/$defs/abs-path" },
       "state":    { "enum": ["usable", "not-initialized", "unsupported-format", "corrupt"] },
       "format":   { "type": ["integer", "null"], "description": "The database's; null when there is none, or it can't be read." },
-      "next_id":  { "anyOf": [ { "$ref": "types#/$defs/id" }, { "type": "null" } ], "description": "Null unless usable." },
+      "next_id":  { "anyOf": [ { "$ref": "types#/$defs/id" }, { "type": "null" } ], "description": "Null unless usable, and once the last ID is issued." },
       "tasks":    { "type": ["integer", "null"], "description": "Live tasks. This and the counts below are null unless usable." },
       "folders":  { "type": ["integer", "null"] },
       "claims":   { "type": ["integer", "null"] },

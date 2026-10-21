@@ -60,7 +60,7 @@
               "type": "null"
             }
           ],
-          "description": "Null unless usable."
+          "description": "Null unless usable, and once the last ID is issued."
         },
         "tasks": {
           "type": [
