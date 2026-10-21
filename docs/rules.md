@@ -153,7 +153,7 @@ Resolution turns a reference into a task or a folder, and a material reference i
       - **An ID** names whichever has it, task or folder, since they share one counter. Where a command takes only one kind, the other is `not-found`, with a message saying what the ID is.
       - **A path** is followed from the root, one name at a time, each matching a child folder's name exactly. A name that matches only ignoring case (see Case) is `case-mismatch`, naming the folder as it is spelled; one that matches nothing is `not-found`.
       - **An anchored path** starts at the folder its ID names, then is followed as a path. An ID that names a task is `invalid-input`: a task holds no folders.
-      - **`/`** is the root. It has no ID and no gates, so no edge can name it.
+      - **`/`** is the root. It has no ID and no gates, so no edge can name it: `/` where a task or an edge is taken is `invalid-input`.
       - **A label** names a task made in the same batch, wherever in the batch its part comes. Labels are compared byte for byte. A label defined twice in one batch, used outside a batch, or never defined in it is `invalid-input`. A label takes no end and no material: `$a.start` and `$a:x` are `invalid-input`.
 4. **Resolve the end.**
       - **On a folder**, an end names that folder's gate. A change that writes an edge naming a gate the folder doesn't have yet, at either end, makes it; anywhere else, a missing gate is not-found. In an edge (`--blocked-by`, `--blocks`), a folder with no end means its done gate: "after this folder" is the common case, and `.start` must be written. Where a command takes a folder, as `folder show` or `task move --to` do, an end is `invalid-input`.
