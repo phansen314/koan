@@ -226,6 +226,7 @@ Every change is whole (I10), resolves its references inside itself (see Resoluti
 - **`updated_at` follows the fields.** It moves on every task whose fields a change touches, including a task whose `blocked_by` gains or loses an entry because another task was blocked, deleted or archived.
 - **Nothing happens on its own.** No task is reopened, closed or made except by a change that says so; the one exception, a gate made when first named, is reported in the result.
 - **Writing into a complete task warns.** An edge added to the `blocked_by` of a task that is already complete, a gate included, doesn't reopen it, so whatever waits on it isn't held back; the result says so.
+- **An edge counts once.** An edge given more than once in one change, however it is written and from whichever end, is written once, as one already there is left as it is, and removing one twice removes it once. `blocked_by` and `blocks` in an input are edges to write, not the stored set.
 - **A path is taken** when a folder has it, or when the tree's directory already holds an entry where the folder's directory would go, spelled the same or differing only in case, other than a folder's own directory in a case-only rename. The missing parents a create, a folder move or a batch makes are destinations too, so an entry at any of their paths refuses it. koan never takes over what is on disk.
 - **A delete never splices.** The deleted task's own blockers are not passed on to what waited on it. Re-point that work with `block` if it should keep waiting.
 

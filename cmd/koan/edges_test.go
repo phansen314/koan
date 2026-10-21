@@ -1022,3 +1022,24 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 	}
 	t.Logf("%d changes made, %d refused: %v", made, refused, succeeded)
 }
+
+// An edge given more than once, however it is written and from whichever
+// end, is written once; in a batch, across parts too.
+func TestEdgeGivenTwice(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w") // 1
+	ok(t, home, "task", "create", "a")    // 2
+	ok(t, home, "task", "create", "b", "--blocked-by", "2,@2,2", "--blocks", "/w.done,@1,1.done")
+	if fmt.Sprint(field(t, home, "3", "blocked_by")) != "[map[id:2 ref:@2 (/) state:open]]" ||
+		fmt.Sprint(field(t, home, "4", "blocked_by")) != "[map[id:3 ref:@3 (/) state:open]]" {
+		t.Errorf("edges: %v %v", field(t, home, "3", "blocked_by"), field(t, home, "4", "blocked_by"))
+	}
+	batchOK(t, home, `{"tasks": [{"label": "$a", "title": "a", "blocks": ["$b"]}, {"label": "$b", "title": "b", "blocked_by": ["$a", "$a"]}]}`)
+	if fmt.Sprint(field(t, home, "6", "blocked_by")) != "[map[id:5 ref:@5 (/) state:open]]" {
+		t.Errorf("batch: %v", field(t, home, "6", "blocked_by"))
+	}
+	r := ok(t, home, "task", "unblock", "3", "--blocked-by", "2,@2")
+	if fmt.Sprint(r.Result()) != "map[changed:true id:3 released:[3]]" {
+		t.Errorf("unblock: %s", r.Line())
+	}
+}
