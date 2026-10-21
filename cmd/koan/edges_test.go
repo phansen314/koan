@@ -1079,4 +1079,10 @@ func TestCycleClosingEdge(t *testing.T) {
 	if fmt.Sprint(r.Error()["ids"]) != "[2 1]" || problemFields(r) != "/blocks/0 /blocked_by/0" {
 		t.Errorf("closing edge: %s", r.Line())
 	}
+	// A refusal's problems carry its message.
+	for _, p := range r.Error()["problems"].([]any) {
+		if p.(map[string]any)["reason"] != r.Error()["message"] {
+			t.Errorf("reason: %s", r.Line())
+		}
+	}
 }

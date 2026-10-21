@@ -152,7 +152,7 @@ Every command prints one envelope: `ok`, then either `result` or `error`, then `
 
 ```json
 {"ok": true,  "result": {"id": 57, "changed": true, "released": [58]}, "warnings": []}
-{"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "@8 would wait on itself through @10 and @57", "ids": [8, 10, 57], "paths": [], "problems": [{"field": "/blocked_by/0", "reason": "closes the cycle"}], "archived": []}, "warnings": []}
+{"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "@8 would wait on itself through @10 and @57", "ids": [8, 10, 57], "paths": [], "problems": [{"field": "/blocked_by/0", "reason": "@8 would wait on itself through @10 and @57"}], "archived": []}, "warnings": []}
 ```
 
 ```json
@@ -409,7 +409,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
     "problems": { "type": "array",
                   "items": { "type": "object", "required": ["field", "reason"],
                               "properties": { "field":  { "type": "string", "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed, or \"\" when what is at fault is missing." },
-                                              "reason": { "type": "string" } } } },
+                                              "reason": { "type": "string", "description": "For a person, never parsed: the fault, for usage and invalid-input; for any other kind, which points at fields without faulting them, the message." } } } },
     "archived": { "type": "array",
                   "items": { "type": "object", "required": ["id", "archive"],
                               "properties": { "id": { "$ref": "types#/$defs/id" },
