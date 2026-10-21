@@ -14,7 +14,7 @@ It comes third. The rules doc, koan: invariants and rules, says what must hold; 
 - **Every listed field is always present.** A field that has no value is `null`, never left out. The one exception is a record cut down by `--fields`.
 - **Fields print in the order the schema lists them**, so output can be diffed. An `extra`, whose keys no schema lists, prints them in byte order at every depth, whatever order they were given in.
 - **ID lists are ascending**, unless the schema names another order, such as work order or cycle order.
-- **Paths on disk are absolute,** and under `~/koan-root` as written: through the symlink when the root is one, never the real path behind it. A check of whether a path lies under the root, as backup and marker bind make, compares real paths, so no second route gets past it. Folder paths are from the root, such as `/work/api`.
+- **Paths on disk are absolute,** and under `~/koan-root` as written: through the symlink when the root is one, never the real path behind it. A check of whether a path lies under the root, as backup and marker bind make, compares real paths, so no second route gets past it. Outside the root, paths are as given, made absolute; only marker.json's `dir` is a real path. Folder paths are from the root, such as `/work/api`.
 - **Text is UTF-8.** Names, tags and IDs are ASCII by their patterns. Text given on the command line or read by `--notes-file` that isn't UTF-8 is `invalid-input`, pointing at its field. An `--input` that isn't UTF-8 isn't JSON, which must be, and is refused as any other that isn't JSON.
 
 ## Shared types
@@ -315,7 +315,7 @@ What `where` returns: what a reference or a path on disk names, both ways.
     "gate":     { "$ref": "types#/$defs/gate" },
     "material": { "anyOf": [ { "$ref": "types#/$defs/material" }, { "type": "null" } ] },
     "file":     { "anyOf": [ { "$ref": "types#/$defs/abs-path" }, { "type": "null" } ],
-                  "description": "On disk: the material, a task's notes, or a folder's directory. Never checked to exist." },
+                  "description": "On disk: the material, a task's notes, or a folder's directory; for a path given, that path. Never checked to exist." },
     "marker":   { "anyOf": [ { "$ref": "types#/$defs/abs-path" }, { "type": "null" } ] }
   }
 }
@@ -820,10 +820,10 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### where
 
-`koan where <ref>` or `koan where --file <path>`: exactly one. Says what a reference or a path on disk names, both ways. A path outside the tree is found through the nearest marker; with none above it, it is not-found. A path elsewhere under \~/koan-root is not-found too, and one inside archived/ comes with archived filled in, from the ID in its name. An archived ID is `not-found`, with where it went. Warns `stale-marker`.
+`koan where <ref>` or `koan where --file <path>`: exactly one, and neither or both is `invalid-input` at `""`. Says what a reference or a path on disk names, both ways. A path outside the tree is found through the nearest marker; with none above it, it is not-found. A path elsewhere under \~/koan-root is not-found too, and one inside archived/ comes with archived filled in, from the ID in its name. An archived ID is `not-found`, with where it went. Warns `stale-marker`.
 
-- **A path found through a marker** is `kind` `folder`, with the bound folder's `id`, `ref` and `folder`, `material` null, `file` the path as given, and `marker` the marker.json. A marker that binds nothing, for whatever reason, is `not-found`, with a message saying why.
-- **A path in the tree** names what koan keeps there: a folder's directory is the folder; its `@notes.md` is the folder; an `@<id>.md` where that task's notes belong, or a gate's `@start.md` or `@done.md`, is the task; an `@.tmp-<seq>` or `@.case-<seq>` is the folder whose directory holds it; and a path whose first part below a folder's directory doesn't start with `@` is material. Anything else is `not-found`: an `@<id>.md` where its task's notes don't belong, a stray `@` entry, an `@` directory that is no folder, or an `@` name koan doesn't have. A directory spelled in another case than its folder's name is `case-mismatch`. A path need not exist on disk.
+- **A path found through a marker** is `kind` `folder`, with the bound folder's `id`, `ref` and `folder`, `material` null, `file` the path as given, and `marker` the marker.json. A marker that binds nothing, for whatever reason, is `not-found`, with a message saying why and the marker.json in `paths`; when its ID names no live folder, that ID is in `ids`, and in `archived` when the folder was archived.
+- **A path in the tree** names what koan keeps there: a folder's directory is the folder; its `@notes.md` is the folder; an `@<id>.md` where that task's notes belong, or a gate's `@start.md` or `@done.md`, is the task; an `@.tmp-<seq>` or `@.case-<seq>` is the folder whose directory holds it; and a path whose first part below a folder's directory doesn't start with `@` is material. Anything else is `not-found`: an `@<id>.md` where its task's notes don't belong, a stray `@` entry, an `@` directory that is no folder, or an `@` name koan doesn't have. A directory spelled in another case than its folder's name is `case-mismatch`. A path need not exist on disk. `file` is the path as given, under \~/koan-root as written however it reached the tree.
 - **A path in `archived/`** is `not-found`, with `archived` filled in for the nearest name on the path, from the item upward, that carries an ID.
 
 ```json
@@ -850,7 +850,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 ### Markers
 
-`koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, or one that binds nothing, as PRD Markers says when. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `--dir` that doesn't exist is `io`. `koan marker unbind [--dir]` removes the binding, in the order PRD Markers gives; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). Bind checks the directory under the root first, then `foreign-files`, then `checkout`, then `bound`.
+`koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, or one that binds nothing, as PRD Markers says when. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `--dir` that doesn't exist is `io`. `koan marker unbind [--dir]` removes the binding, in the order PRD Markers gives; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). After the input's shape and the root's state, bind checks the directory under the root, then that it exists, then the folder, then `foreign-files`, then `checkout`, then `bound`; unbind makes the same checks up to `foreign-files`, and a `--dir` that doesn't exist is `io` for it too.
 
 ```json
 { "$id": "marker-bind", "$defs": {

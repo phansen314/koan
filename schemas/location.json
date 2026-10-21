@@ -62,7 +62,7 @@
           "type": "null"
         }
       ],
-      "description": "On disk: the material, a task's notes, or a folder's directory. Never checked to exist."
+      "description": "On disk: the material, a task's notes, or a folder's directory; for a path given, that path. Never checked to exist."
     },
     "marker": {
       "anyOf": [

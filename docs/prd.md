@@ -267,16 +267,18 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 
 A marker binds a directory outside the tree, usually a code worktree, to a folder, so that `where` and `context` find the folder from anywhere inside it. Markers carry over from today's koan, apart from how they meet archived and deleted folders.
 
-- **The nearest marker is the one.** A path outside the tree is in the folder of the nearest marker at or above it, as with `.git`. The look stops at the first `marker.json`, whatever its state, so an unusable one is never passed over for one further up.
+- **The nearest marker is the one.** A path outside the tree is in the folder of the nearest marker at or above it, as with `.git`. The look walks up the path as given, listing each directory for `.koan/marker.json`, and stops at the first `marker.json`, whatever its state, so an unusable one is never passed over for one further up.
 - **Inside the tree, markers are never looked at.** Where a path sits already says which folder it is in.
 - **The ID decides; the path is a hint.** A marker follows its folder through moves and renames. A `path` that no longer matches is a `stale-marker` warning, and binding again refreshes it.
-- **A marker whose folder is gone binds nothing.** For an archived folder, `where` and `context` say where in the archive it went, from the index; for a deleted one, that it was deleted. Nor does a marker bind anything when it was copied or moved (its `dir` isn't where it is), can't be read as JSON, lacks a field, or is in a format koan doesn't read. Every marker that binds nothing is treated alike: `where` and `context` fail with `not-found`, the message saying why, and the look still stops there.
+- **A marker whose folder is gone binds nothing.** For an archived folder, `where` and `context` say where in the archive it went, from the index; for a deleted one, that it was deleted. Nor does a marker bind anything when it was copied or moved (its `dir` isn't the real path of the directory it was found in), can't be read as JSON, lacks a field, or is in a format koan doesn't read. Every marker that binds nothing is treated alike: `where` and `context` fail with `not-found`, the message saying why, and the look still stops there.
 - **koan keeps no list of markers.** A worktree is removed by git or `rm` without koan knowing, so a list would go stale at once. A folder deleted or archived under a bound worktree shows when the worktree is next used, through `where` and `context`.
 - **Reads never write a marker.** Only `marker bind` and `marker unbind` do.
 - **Out of git's way.** The `*` in `.koan/.gitignore` matches everything there, itself included, so `git status` never shows it and `git worktree remove` needs no `--force`.
 - **Bind worktrees, not checkouts.** A marker binds every directory under it with no nearer one, so `marker bind` refuses a directory whose `.git` is a directory, unless forced (checkout).
 - **`.koan/` holds only koan's own files.** `marker bind` and `marker unbind` refuse to touch a `.koan/` that holds anything else (foreign-files).
-- **Written whole.** `.gitignore` first, then `marker.json` through a temp file renamed into place. `marker unbind` removes them in the other order, `marker.json`, then `.gitignore`, then `.koan/` itself.
+- **Written whole.** `.gitignore` first, then `marker.json` through the temp file `.koan/marker.json.tmp`, renamed into place. That temp file is koan's own too, so one left by a crash is never foreign: `marker bind` writes over it. `marker unbind` removes them in the other order: the temp file, `marker.json`, then `.gitignore`, then `.koan/` itself.
+- **No lock.** `marker bind` and `marker unbind` write no row and nothing in the tree, so they take no lock and carry out no pending steps: they read the database in one read transaction, as a read does. Two run at once leave the marker written last, whole.
+- **Paths as given.** Paths outside the root are printed as given, made absolute. Only `marker.json`'s `dir` is a real path, so that a marker is judged by where it is, whatever route reached it.
 
 ## Operations
 
