@@ -1,0 +1,56 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "stuck-step",
+        "detail": "both",
+        "message": "A step found both its source and its destination holding content, and is set aside with the rest of its change. Keep one copy, then run koan repair.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@5.md",
+          "$HOME/koan-root/tree/@5.md"
+        ],
+        "repairable": false
+      },
+      {
+        "kind": "stuck-step",
+        "detail": "both",
+        "message": "A step found both its source and its destination holding content, and is set aside with the rest of its change. Keep one copy, then run koan repair.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api/@5.md",
+          "$HOME/koan-root/tree/@5.md"
+        ],
+        "repairable": false
+      },
+      {
+        "kind": "misplaced-notes",
+        "detail": null,
+        "message": "The notes of @5 sit in $HOME/koan-root/tree/@work/@5.md, and belong in $HOME/koan-root/tree/@5.md, where notes already are. Keep one copy by hand.",
+        "ids": [
+          5
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@5.md",
+          "$HOME/koan-root/tree/@5.md"
+        ],
+        "repairable": false
+      },
+      {
+        "kind": "misplaced-notes",
+        "detail": null,
+        "message": "The notes of @5 sit in $HOME/koan-root/tree/@work/@api/@5.md, and belong in $HOME/koan-root/tree/@5.md, where notes already are. Keep one copy by hand.",
+        "ids": [
+          5
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api/@5.md",
+          "$HOME/koan-root/tree/@5.md"
+        ],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

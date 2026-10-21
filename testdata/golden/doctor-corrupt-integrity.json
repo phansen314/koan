@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "corrupt",
+        "detail": "integrity",
+        "message": "The database fails PRAGMA integrity_check: Page 8: never used. Restore from a backup.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/koan.db"
+        ],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "pending-step",
+        "detail": null,
+        "message": "A change's filesystem steps were cut short: 1 step is pending. koan repair, or the next write, carries it out.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@home"
+        ],
+        "repairable": true
+      },
+      {
+        "kind": "missing-directory",
+        "detail": null,
+        "message": "@7 (/home) has no directory. koan repair makes an empty one, with empty notes: whatever notes and material it held are gone.",
+        "ids": [
+          7
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@home"
+        ],
+        "repairable": true
+      }
+    ]
+  },
+  "warnings": []
+}

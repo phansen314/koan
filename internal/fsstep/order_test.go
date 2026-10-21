@@ -1,6 +1,7 @@
 package fsstep
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -123,4 +124,26 @@ func TestOverlaps(t *testing.T) {
 			t.Errorf("%+v, %+v: %v", c.a, c.b, got)
 		}
 	}
+}
+
+// A step waits only behind earlier changes: a later change set aside as
+// stuck never holds back an earlier one, as when repair retries the
+// earlier one, which the later one waits behind.
+func TestLaterStuckHoldsNothing(t *testing.T) {
+	_, s := newRoot(t)
+	files(t, s, "tree/@1.md=one")
+	row := func(seq, change int64, st Step) store.Pending {
+		b, err := json.Marshal(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return store.Pending{Seq: seq, Change: change, Step: b}
+	}
+	out := New(s.Root).Carry(
+		[]store.Pending{row(1, 1, Step{Op: OpMove, From: "tree/@1.md", To: "tree/@2.md"})},
+		[]store.Pending{row(2, 2, Step{Op: OpMove, From: "tree/@3.md", To: "tree/@2.md", Stuck: Both})})
+	if !slices.Equal(out.Done, []int64{1}) || len(out.Stuck) != 0 {
+		t.Errorf("done %v, stuck %v", out.Done, out.Stuck)
+	}
+	checkTree(t, s, sorted("tree/@2.md=one"))
 }

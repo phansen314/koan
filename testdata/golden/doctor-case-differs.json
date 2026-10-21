@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "case-differs",
+        "detail": null,
+        "message": "The directory of @1 (/work) is spelled $HOME/koan-root/tree/@WORK. koan repair renames it @work.",
+        "ids": [
+          1
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@WORK"
+        ],
+        "repairable": true
+      },
+      {
+        "kind": "case-differs",
+        "detail": null,
+        "message": "The directory of @2 (/work/api) is spelled $HOME/koan-root/tree/@WORK/@API. koan repair renames it @api.",
+        "ids": [
+          2
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@WORK/@API"
+        ],
+        "repairable": true
+      }
+    ]
+  },
+  "warnings": []
+}

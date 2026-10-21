@@ -86,7 +86,10 @@ func (c *Steps) Carry(live, stuck []store.Pending) store.Outcome {
 			held[r.Change] = true
 			continue
 		}
-		if !held[r.Change] && slices.ContainsFunc(waiting, func(w row) bool { return w.change != r.Change && overlaps(w.step, s) }) {
+		// Changes are named by their first step's seq, so an earlier
+		// change has a lower one. A later change stuck waits for an
+		// earlier one repair retries, never the other way round.
+		if !held[r.Change] && slices.ContainsFunc(waiting, func(w row) bool { return w.change < r.Change && overlaps(w.step, s) }) {
 			held[r.Change] = true
 		}
 		if held[r.Change] {

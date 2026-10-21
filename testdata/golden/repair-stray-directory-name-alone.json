@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "result": {
+    "fixed": [
+      {
+        "kind": "missing-directory",
+        "detail": null,
+        "message": "@2 (/work/api) has no directory. koan repair makes an empty one, with empty notes: whatever notes and material it held are gone.",
+        "ids": [
+          2
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api"
+        ],
+        "repairable": true
+      }
+    ],
+    "left": [
+      {
+        "kind": "stray-directory",
+        "detail": null,
+        "message": "$HOME/koan-root/tree/@home/@api is no folder at its path, and koan can't tell which folder it is, so it only reports it. Move it where it belongs, or move its contents out.",
+        "ids": [],
+        "paths": [
+          "$HOME/koan-root/tree/@home/@api"
+        ],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

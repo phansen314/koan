@@ -99,17 +99,9 @@ func MarkerBind() *cli.Command {
 // markers there are never read, and it is a directory that exists. It
 // gives the directory's real path.
 func markerDir(root store.Root, dir string) (string, *cli.Error) {
-	rootReal, _, err := markers.Real(root.Path, "")
-	var real string
-	var exists bool
-	if err == nil {
-		if real, exists, err = markers.Real(dir, rootReal); err == nil && markers.Under(real, rootReal) {
-			reason := dir + " is under " + root.Path + ", where markers are never read"
-			return "", cli.InvalidInput(reason, cli.Problem{Field: "/dir", Reason: reason})
-		}
-	}
-	if err != nil {
-		return "", cli.IO("could not look for "+dir+": "+err.Error(), dir)
+	real, exists, e := notUnder(root, dir, "where markers are never read")
+	if e != nil {
+		return "", e
 	}
 	if !exists {
 		return "", cli.IO(dir+" does not exist", dir)
@@ -118,6 +110,25 @@ func markerDir(root store.Root, dir string) (string, *cli.Error) {
 		return "", cli.IO(dir+" is not a directory", dir)
 	}
 	return real, nil
+}
+
+// notUnder checks that a directory, given at /dir, is not under
+// ~/koan-root, judged by real paths, so no second route gets past it: the
+// root's real path is worked out first, then the directory's below it.
+// why ends the refusal's reason. It gives the directory's real path, and
+// whether all of it exists.
+func notUnder(root store.Root, dir, why string) (real string, exists bool, e *cli.Error) {
+	rootReal, _, err := markers.Real(root.Path, "")
+	if err == nil {
+		if real, exists, err = markers.Real(dir, rootReal); err == nil && markers.Under(real, rootReal) {
+			reason := dir + " is under " + root.Path + ", " + why
+			return "", false, cli.InvalidInput(reason, cli.Problem{Field: "/dir", Reason: reason})
+		}
+	}
+	if err != nil {
+		return "", false, cli.IO("could not look for "+dir+": "+err.Error(), dir)
+	}
+	return real, exists, nil
 }
 
 // koanFiles is what a directory's .koan/ holds, ok false when there is

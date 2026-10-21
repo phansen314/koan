@@ -106,7 +106,12 @@ func (s *Store) write(change Change) (any, []cli.Warning, *cli.Error) {
 	if e := s.finish(); e != nil {
 		return nil, nil, e
 	}
+	return s.change(change)
+}
 
+// change is steps 3 to 7 of a write, the lock held and the steps an
+// earlier write left pending finished.
+func (s *Store) change(change Change) (any, []cli.Warning, *cli.Error) {
 	tx, e := s.begin("BEGIN IMMEDIATE")
 	if e != nil {
 		return nil, nil, e
@@ -137,6 +142,102 @@ func (s *Store) write(change Change) (any, []cli.Warning, *cli.Error) {
 		s.finish()
 	}
 	return result, warnings, nil
+}
+
+// Hold takes the write lock, waiting as Write does, and runs fn holding
+// it, for repair and backup, which do more under one lock than one
+// change. It carries out no step itself.
+func (s *Store) Hold(fn func(h *Held) *cli.Error) *cli.Error {
+	lock, e := TakeLock(s.Root.Dir, s.Root.Path)
+	if e != nil {
+		return e
+	}
+	defer lock.Release()
+	return fn(&Held{s})
+}
+
+// Held is a store whose write lock is held.
+type Held struct{ s *Store }
+
+// Finish carries out the steps left pending, skipping stuck ones, as a
+// write does before its change.
+func (h *Held) Finish() *cli.Error { return h.s.finish() }
+
+// Change runs a change as Write does once the lock is taken and the
+// pending steps finished: steps 3 to 7.
+func (h *Held) Change(change Change) (any, []cli.Warning, *cli.Error) { return h.s.change(change) }
+
+// Left is what the pending rows say once the holder is done with them.
+func (h *Held) Left() []cli.Warning { return h.s.left() }
+
+// Retry sets a stuck change's rows pending again, forgetting what its
+// stuck step found, then carries out the steps pending, as Finish does.
+// A step that sticks again marks its change stuck again. A change that
+// neither succeeds nor sticks again, the step that stuck failing or
+// waiting behind another stuck change, is set aside again as it was.
+func (h *Held) Retry(change int64) *cli.Error {
+	var before []Pending
+	_, stuck, err := pendingRows(context.Background(), h.s.db.conn)
+	if err != nil {
+		return sqliteError(err, h.s.Root.Database)
+	}
+	for _, p := range stuck {
+		if p.Change == change {
+			before = append(before, p)
+		}
+	}
+	// stuck is the field of a step that records what it found.
+	if e := h.s.update(func(tx *Tx) {
+		tx.exec("UPDATE pending SET stuck = 0, step = json_remove(step, '$.stuck') WHERE change = ?", change)
+	}); e != nil {
+		return e
+	}
+	if e := h.s.finish(); e != nil {
+		return e
+	}
+	live, _, err := pendingRows(context.Background(), h.s.db.conn)
+	if err != nil {
+		return sqliteError(err, h.s.Root.Database)
+	}
+	// The step that found what it stuck on is still to run.
+	var again bool
+	for _, p := range live {
+		for _, b := range before {
+			var found struct {
+				Stuck string `json:"stuck"`
+			}
+			if b.Seq == p.Seq && json.Unmarshal(b.Step, &found) == nil && found.Stuck != "" {
+				again = true
+			}
+		}
+	}
+	if !again {
+		return nil
+	}
+	return h.s.update(func(tx *Tx) {
+		for _, p := range before {
+			tx.exec("UPDATE pending SET stuck = 1, step = ? WHERE seq = ?", string(p.Step), p.Seq)
+		}
+	})
+}
+
+// update runs statements in one write transaction.
+func (s *Store) update(fn func(tx *Tx)) *cli.Error {
+	tx, e := s.begin("BEGIN IMMEDIATE")
+	if e != nil {
+		return e
+	}
+	fn(tx)
+	if tx.err == nil {
+		tx.exec("COMMIT")
+	}
+	if tx.err != nil {
+		e := sqliteError(tx.err, s.Root.Database)
+		tx.err = nil
+		tx.exec("ROLLBACK")
+		return e
+	}
+	return nil
 }
 
 // left is what the pending rows say once a write is done with them.

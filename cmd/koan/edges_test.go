@@ -1024,6 +1024,10 @@ func edgesModel(t *testing.T, seed int64, succeeded map[string]int) {
 		if fmt.Sprint(front) != fmt.Sprint(m.Frontier()) {
 			t.Fatalf("step %d: frontier: koan %v, model %v", step, front, m.Frontier())
 		}
+		// The tree and the rows agree after every command.
+		if r := ok(t, home, "doctor"); len(r.Result()["findings"].([]any)) != 0 {
+			t.Fatalf("step %d %q: doctor: %s", step, args, r.Line())
+		}
 	}
 	// The sequence must try both sides.
 	if made < 5 || refused < 5 {

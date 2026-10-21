@@ -1,0 +1,44 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "stray-directory",
+        "detail": null,
+        "message": "$HOME/koan-root/tree/@job is no folder at its path. It is @1 (/work), whose directory is missing: koan repair moves it back.",
+        "ids": [
+          1
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@job"
+        ],
+        "repairable": true
+      },
+      {
+        "kind": "missing-directory",
+        "detail": null,
+        "message": "@1 (/work) has no directory. koan repair makes an empty one, with empty notes: whatever notes and material it held are gone.",
+        "ids": [
+          1
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work"
+        ],
+        "repairable": true
+      },
+      {
+        "kind": "missing-directory",
+        "detail": null,
+        "message": "@2 (/work/api) has no directory. koan repair makes an empty one, with empty notes: whatever notes and material it held are gone.",
+        "ids": [
+          2
+        ],
+        "paths": [
+          "$HOME/koan-root/tree/@work/@api"
+        ],
+        "repairable": true
+      }
+    ]
+  },
+  "warnings": []
+}

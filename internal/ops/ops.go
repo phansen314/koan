@@ -37,5 +37,7 @@ func Commands() []*cli.Command {
 		Init(),
 		Info(),
 		Version(),
+		Doctor(),
+		Repair(),
 	}
 }
