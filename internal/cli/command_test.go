@@ -149,6 +149,8 @@ func TestParseUsage(t *testing.T) {
 		{fake, []string{"t", "--frob=1"}, "--frob"},
 		{fake, []string{"t", "-x"}, "-x"},
 		{fake, []string{"t", "-xi", "f"}, "-x"},
+		{fake, []string{"t", "---x"}, "---x"},
+		{fake, []string{"t", "--=x"}, "--=x"},
 		{fake, []string{"t", "--Priority", "1"}, "--Priority"},
 		{fake, []string{"t", "--prio", "1"}, "--prio"},
 		{fake, []string{"t", "--extra_remove", "k"}, "--extra_remove"},

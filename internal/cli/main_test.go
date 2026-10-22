@@ -185,6 +185,10 @@ func TestMainHelp(t *testing.T) {
 		{[]string{"thing", "make", "t", "--name", "n", "-h"}, []string{"koan thing make <title>"}},
 		{[]string{"help", "thing", "make"}, []string{"koan thing make <title>"}},
 		{[]string{"version", "x", "--help"}, []string{"koan version"}},
+		// A word that names no command leaves the help of the last that does.
+		{[]string{"frob", "-h"}, []string{"thing", "version"}},
+		{[]string{"help", "frob"}, []string{"thing", "version"}},
+		{[]string{"thing", "frob", "-h"}, []string{"make"}},
 	}
 	for _, c := range cases {
 		r := runMain(t, "", cmds, c.args...)
@@ -202,6 +206,16 @@ func TestMainHelp(t *testing.T) {
 	r := runMain(t, "", cmds, "thing", "make", "--", "--help")
 	if want := `{"ok":true,"result":{"title":"--help"},"warnings":[]}` + "\n"; r.stdout != want {
 		t.Errorf("-- --help: %q", r.stdout)
+	}
+	// As an option's value, -h is the value.
+	r = runMain(t, "", cmds, "thing", "make", "t", "--name", "-h")
+	if want := `{"ok":true,"result":{"name":"-h","title":"t"},"warnings":[]}` + "\n"; r.stdout != want {
+		t.Errorf("--name -h: %q", r.stdout)
+	}
+	// pflag reads every option before cobra looks at help.
+	r = runMain(t, "", cmds, "thing", "make", "t", "--frob", "-h")
+	if r.code != ExitUsage || !strings.Contains(r.stdout, `"field":"--frob"`) {
+		t.Errorf("--frob -h: %d %q", r.code, r.stdout)
 	}
 }
 
