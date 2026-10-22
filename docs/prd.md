@@ -15,7 +15,7 @@ koan is task management for one person on one machine, driven mostly by agents s
 - **Notes are files, edited directly.** No tool stands between an agent and a task's notes. Everything in the tree's directory may be edited; structure changes only through koan.
 - **Structure is safe under many agents at once.** Any number of agents and the user work on one tree concurrently, and every invariant holds.
 - **Fast at the sizes one person reaches.** Every command finishes within 100 ms at 10,000 live tasks on the CI machine, whose OS is named beside the benchmarks, and archiving keeps the live set well below that. Commands whose work grows with the whole tree or their input are budgeted apart: `doctor` and `repair` within 1 s, a `batch` within 100 ms plus 1 ms a part, and `backup` not at all, since it copies every file.
-- **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed.
+- **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed. Help and shell completion, which are for people, print plain text (spec Invocation).
 - **Simple to install.** One `go install`, one binary, no system libraries.
 
 **Non-goals**
@@ -261,6 +261,8 @@ Every invariant of the rules doc has a mechanism that keeps it and a test that s
 
 The spec fixes the surface: every command's input, result, warnings and refusals (spec Commands), the envelope and exit codes (spec Invocation, Envelope), the records reads return (spec Records), and every warning and error (spec Warnings, Errors). Its shape follows from Goals: one line of JSON per command, a kind for every failure, and a result that names by ID what every write changed.
 
+**The command line is cobra's.** koan reads its command line with cobra and pflag rather than a parser of its own, so help and shell completion come from the library. Where cobra's rules and a stricter one of koan's would differ, cobra's win, and the spec says so; only the envelope, the exit codes and the standard-error line stay koan's, since agents depend on them.
+
 **Every write reports what it released and blocked again.** With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
 ## Markers
@@ -356,7 +358,7 @@ Anything that would change a rule goes to the rules doc, not to this list.
 
 - **A `join` shorthand.** `--join <folder>` on `task create`, and a `join` field in `batch`, writing the two edges of joining. Joining a folder whose done gate is already complete needs nothing new: the edge into the complete gate warns `complete-blocker`, as any such edge does.
 - **Unarchive.** Bringing an archived item back, with its IDs. For now, work needed again is made again.
-- **Shell completion.** Paths folder by folder, IDs with their titles, gates as `.start` and `.done`.
+- **Completing references.** `koan completion` completes commands and options; completing their values is deferred: paths folder by folder, IDs with their titles, gates as `.start` and `.done`.
 - **`--no-gates` on `task list`**, if gates in the list turn out to be noise.
 
 **Choices** this doc makes where the rules doc leaves room. Each can change without touching a rule.
@@ -379,4 +381,5 @@ Anything that would change a rule goes to the rules doc, not to this list.
 | No list of markers in the database | a list, so delete and archive could warn about bound worktrees |
 | Directories fsynced before a step's row is deleted | leaving a rename lost to a power cut for doctor to find |
 | Archived fields as JSON beside each archived item | a table in koan.db, lost at every format change before 1.0; JSON inside the folder, where a stray file can be in the way |
+| The command line read by cobra and pflag, help and `-h` anywhere, and option values their type refuses as `usage` | a parser of koan's own, which refused `--help` with anything else and `-h`, and left every value check to the command |
 | init --ids-from N, carrying the ID sequence from root to root | IDs from 1 in every root, so each format change before 1.0 makes a second @42 |

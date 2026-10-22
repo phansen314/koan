@@ -106,20 +106,30 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 - **Arguments and options.** Each option sets the input field of the same name, in kebab-case: `--blocked-by` sets `blocked_by`.
 - **`-i, --input <file>`.** The whole input as one JSON object, from `<file>`, or from standard input when `<file>` is `-`. It is the only way to run `batch`: without it, `batch`'s input is `{}`, which holds no parts, and is `invalid-input`. koan reads standard input only when `-` names it, so it is safe inside a loop that feeds standard input to something else.
 
-**The command line.**
+**The command line** is read by cobra (`github.com/spf13/cobra`), with pflag for options (PRD Command surface). These rules are what koan asks of it; where they say nothing, cobra's behaviour is the rule.
 
 - **One subject, positional.** It is the task or folder the command acts on, or a new task's title or a new folder's path. Everything else is an option, so a bare word has one meaning.
 - **References** are taken with or without the `@`: `koan task show 42`, `koan task block @42 --blocked-by 17,@41.start`.
-- **Lists** are comma-separated, and the option can repeat: `--tags a,b` is `--tags a --tags b`. `--extra-remove` takes one key per occurrence, since a key can hold a comma.
+- **Lists** are comma-separated, and the option can repeat: `--tags a,b` is `--tags a --tags b`. Every comma splits; there is no quoting. `--extra-remove` takes one key per occurrence, since a key can hold a comma.
 - **`null`** is written `null`: `--priority null` clears a priority. It means null only where the field can be null, such as a priority or a folder's title; anywhere else it is the word itself, so a task can be titled null.
-- **Booleans:** `--contents` is true, `--contents=false` false.
+- **Booleans:** `--contents` is true, `--contents=false` false, and `--claimed=null` null, where the field can be null.
+- **Integers** (`--priority`, `--limit`, `--ids-from`) are written as JSON writes them, or `null`: `--priority 007` is not one.
 - **JSON values** (`--extra`, `--extra-merge`, `--extra-replace-all`) are one JSON object in one argument.
 - **Names are matched exactly.** There are no abbreviations, so adding an option never changes what an existing command line means.
 - **`--`** ends the options, for a title that starts with `-`.
-- **Values** follow their option as the next argument, taken as typed even when it starts with `-`, or after `=`: `--title -x` and `--title=-x` are the same. `-i` takes only the next argument.
+- **Values** follow their option as the next argument, taken as typed even when it starts with `-`, or after `=`: `--title -x` and `--title=-x` are the same. `-i f`, `-i=f` and `-if` are the same too.
+- **Options go after the command's words.** cobra also takes some placed before them, such as `koan --title x task create t`; that is not a contract.
 - **Once each.** An option that isn't a list can be given once.
 
-**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, a missing or extra subject, an option without its value, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. Its problem names the argument at fault as typed, the later of the two for `--notes` and `--notes-file`, or `""` when the fault is something missing, such as the command, `koan task` alone included, or the subject. Every check of a value is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
+**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, `koan task`, `koan folder` or `koan marker` with no command or an unknown one after it, a missing or extra subject, an option without its value, a value its option's type refuses, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. A value its option's type refuses is an integer option's that isn't an integer or a null it can take, or a boolean option's that isn't `true`, `false` or a null it can take. Its problem names what is at fault:
+
+- an option by its long name: `--frob` for `--frob=1`, `--input` for a second `-i`, `--title` for a second `--title`;
+- an unknown short option as typed, such as `-x`;
+- an unknown command, or an extra subject, as typed;
+- for `--input` with anything else, the subject when one is given, else the first other option given, in byte order of their long names;
+- `""` when what is at fault is missing, such as the command, `koan task` alone included, or the subject; and for both `--notes` and `--notes-file`.
+
+When a line has several faults, which is named is cobra's: options are read before the command's words and subject are checked. Every check of a value other than its type's is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
 
 **Conveniences**, which need a shell's files or working directory. Through `--input`, give what they stand for.
 
@@ -135,11 +145,16 @@ A file koan can't read, or a working directory it can't resolve, is `io`, with t
 
 **The home directory.** `~` is `HOME`. A command that uses the root, which is every command but `version`, finds it as part of checking the root's state, after the input's shape: `HOME` unset, empty or not an absolute path is `io`, with no path. `version` never reads it.
 
-**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens; `--help` alone prints usage text instead, to standard output with exit 0: `koan --help` for every command, `koan <command> --help` for one. `--help` with anything else is an unknown option, and so is `-h`. Standard error gets at most one line, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings, `koan: 1 warning` for one. Callers read the envelope, never standard error.
+**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens, except help and completion below. Standard error gets at most one line, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings, `koan: 1 warning` for one. Callers read the envelope, never standard error.
+
+**Help and completion** are for people, and print plain text, not an envelope. Their text is cobra's, and is not a contract (Not covered).
+
+- **Help.** `--help` or `-h`, anywhere on a command line before `--`, prints the help of the command it names to standard output with exit 0, whatever else is on the line. `koan help [<command>]` is the same. `koan --help` lists the commands.
+- **Completion.** `koan completion <shell>`, for `bash`, `zsh`, `fish` or `powershell`, prints a script that completes koan's commands and options in that shell; with no shell it prints its help. The script calls koan back through cobra's hidden `__complete` commands, which print candidates on standard output and may write more than one line to standard error. Completing references is deferred (PRD Deferred and choices).
 
 | Exit | Means |
 | --- | --- |
-| 0 | Success: `ok` is true, with or without warnings |
+| 0 | Success: `ok` is true, with or without warnings. Help and completion exit 0 too |
 | 1 | Failure: `error.kind` says how |
 | 2 | The command line couldn't be read: `error.kind` is `usage` |
 | 3 | koan couldn't write the envelope. The outcome is unknown: look before running it again |
@@ -409,7 +424,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
     "paths":    { "type": "array", "items": { "type": "string" }, "description": "Folder paths or paths on disk, as the kind or rule gives." },
     "problems": { "type": "array",
                   "items": { "type": "object", "required": ["field", "reason"],
-                              "properties": { "field":  { "type": "string", "description": "A JSON Pointer into the input; for usage, the argument at fault, as typed, or \"\" when what is at fault is missing." },
+                              "properties": { "field":  { "type": "string", "description": "A JSON Pointer into the input; for usage, what is at fault, as Invocation says: an option by its long name, an unknown short option, command or extra subject as typed, or \"\" when what is at fault is missing." },
                                               "reason": { "type": "string", "description": "For a person, never parsed: the fault, for usage and invalid-input; for any other kind, which points at fields without faulting them, the message." } } } },
     "archived": { "type": "array",
                   "items": { "type": "object", "required": ["id", "archive"],
@@ -1026,6 +1041,8 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
 | References in a list | Comma-separated, or repeated: `--blocked-by 17,@41.start` | An array of strings or integers |
 | `--fields` | Comma-separated field names from the record's `field` list | An array of names |
 | `--state`, `--readiness`, `--kinds` | Comma-separated values | An array |
+| Integers: `--priority`, `--limit`, `--ids-from` | An integer as JSON writes it, or `null`. Anything else is `usage` | An integer, or null |
+| Booleans | `--name` or `--name=true`, `--name=false`, and `--claimed=null`. Anything else is `usage` | `true`, `false`, or null where it can be |
 
 `--fields` returns `id` first whether named or not, then the named fields in the record's order. An unknown name is `invalid-input`.
 
@@ -1113,5 +1130,5 @@ These are left out on purpose, since nothing outside koan reads them:
 
 - **The pending step JSON** in the `pending` table. It is internal, and can change with any release.
 - **The SQL schema**, which is in the PRD, under Storage.
-- **`--help` text**, which is for people and is not a contract.
+- **Help text and completion's output**, which are for people and are cobra's (Invocation).
 - **What the koan skill teaches.** It is written against this doc, and lives with the skill.

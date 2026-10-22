@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/phansen314/koan/actions/workflows/ci.yml/badge.svg)](https://github.com/phansen314/koan/actions/workflows/ci.yml)
 
-Task management for one person on one machine, built to be driven by agents such as Claude Code and OpenCode. Tasks live in nested folders, with dependencies between them; the structure is kept in a SQLite database, and each task and folder has a plain Markdown notes file in a tree of directories you can open in any editor. No daemon, no server. Every command prints exactly one line of JSON.
+Task management for one person on one machine, built to be driven by agents such as Claude Code and OpenCode. Tasks live in nested folders, with dependencies between them; the structure is kept in a SQLite database, and each task and folder has a plain Markdown notes file in a tree of directories you can open in any editor. No daemon, no server. Every command prints exactly one line of JSON, apart from help and shell completion.
 
 Linux and macOS only.
 
