@@ -23,7 +23,7 @@ func Pick() *cli.Command {
 		Name:  "pick",
 		Plain: true,
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String},
+			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},
@@ -55,6 +55,9 @@ type pickIn struct {
 	frontier  bool
 	kinds     []string
 	query     string
+	// made leaves out gates not made yet, which only an edge can name
+	// (rules Resolution); completion sets it, pick never does.
+	made bool
 }
 
 // filtered is whether a task filter is set (spec pick, The candidates):
@@ -179,9 +182,33 @@ type candidate struct {
 	header string   // the preview's header
 }
 
-// candidates is what pick offers under folder, in order (spec pick, The
-// candidates).
+// choice is one thing pick offers, before it is drawn: a task, gate or
+// folder by its ID, or a gate not made yet by its folder's ID and end.
+type choice struct {
+	kind string // task, gate or folder
+	id   int64
+	end  core.End // a gate not made yet's end; EndNone otherwise
+}
+
+// candidates is what pick offers under folder, in order, drawn for fzf.
 func candidates(t *tasks, p *pickIn, folder int64) []candidate {
+	var out []candidate
+	for _, c := range choices(t, p, folder) {
+		switch {
+		case c.kind == "folder":
+			out = append(out, t.folderCandidate(c.id))
+		case c.end != core.EndNone:
+			out = append(out, t.unmadeGate(c.id, c.end))
+		default:
+			out = append(out, t.taskCandidate(c.id))
+		}
+	}
+	return out
+}
+
+// choices is what pick offers under folder, in order (spec pick, The
+// candidates).
+func choices(t *tasks, p *pickIn, folder int64) []choice {
 	ownTasks := map[int64][]int64{}
 	for _, id := range t.order {
 		ownTasks[t.rows[id].Folder] = append(ownTasks[t.rows[id].Folder], id)
@@ -216,26 +243,28 @@ func candidates(t *tasks, p *pickIn, folder int64) []candidate {
 		return slices.ContainsFunc(matched, func(id int64) bool { return t.in(id, f, true) })
 	}
 
-	var out []candidate
+	var out []choice
 	addTask := func(id int64) {
 		gate := t.rows[id].Gate != core.EndNone
-		if gate && p.wants("gate") || !gate && p.wants("task") {
-			out = append(out, t.taskCandidate(id))
+		if gate && p.wants("gate") {
+			out = append(out, choice{kind: "gate", id: id})
+		} else if !gate && p.wants("task") {
+			out = append(out, choice{kind: "task", id: id})
 		}
 	}
 	addFolder := func(f int64) {
 		if p.wants("folder") && holds(f) {
-			out = append(out, t.folderCandidate(f))
+			out = append(out, choice{kind: "folder", id: f})
 		}
 	}
 	var walk func(f int64, top bool)
 	walk = func(f int64, top bool) {
 		if f != core.RootID {
 			addFolder(f)
-			if p.wants("gate") && !p.filtered() {
+			if p.wants("gate") && !p.filtered() && !p.made {
 				for _, end := range []core.End{core.EndStart, core.EndDone} {
 					if _, made := t.folders.gates[f][end]; !made {
-						out = append(out, t.unmadeGate(f, end))
+						out = append(out, choice{kind: "gate", id: f, end: end})
 					}
 				}
 			}

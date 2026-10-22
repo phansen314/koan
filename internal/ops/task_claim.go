@@ -22,7 +22,7 @@ type TaskClaimNextResult struct {
 func TaskClaim() *cli.Command {
 	return &cli.Command{
 		Name:    "task claim",
-		Subject: &cli.Option{Field: "task", Required: true},
+		Subject: &cli.Option{Field: "task", Required: true, Complete: claimable.complete()},
 		Options: []cli.Option{{Field: "extra", Kind: cli.JSON}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
@@ -67,7 +67,7 @@ func TaskClaimNext() *cli.Command {
 	return &cli.Command{
 		Name: "task claim-next",
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String},
+			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
@@ -113,7 +113,7 @@ func TaskClaimNext() *cli.Command {
 
 // TaskRelease ends a task's claim, whoever made it.
 func TaskRelease() *cli.Command {
-	return taskCommand("task release", func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
+	return taskCommand("task release", claimedOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
 		changed, err := tx.EndClaim(id)
 		if err != nil {
 			return nil, nil, err

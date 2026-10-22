@@ -16,7 +16,7 @@ type TaskShowResult struct {
 func TaskShow() *cli.Command {
 	return &cli.Command{
 		Name:    "task show",
-		Subject: &cli.Option{Field: "task", Required: true},
+		Subject: &cli.Option{Field: "task", Required: true, Complete: tasksAndGates.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			ref := r.ref("task", core.WantTask, "")

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -246,6 +248,98 @@ func TestMainCompletion(t *testing.T) {
 	r = runMain(t, "", cmds, "__complete", "thing", "make", "t", "--pri")
 	if r.code != 0 || !strings.Contains(r.stdout, "--priority") {
 		t.Errorf("__complete --pri: %d %q", r.code, r.stdout)
+	}
+}
+
+// An argument with a completer offers what it gives for the word, in its
+// order, kept by the shell; every other argument offers nothing, never
+// file names, but files, which the shell completes (spec Completing
+// references).
+func TestMainCompleteReferences(t *testing.T) {
+	var words []string
+	offer := func(n int, noSpace bool) Completer {
+		return func(env *Env, word string) ([]Candidate, bool) {
+			words = append(words, word)
+			var out []Candidate
+			for i := range n {
+				out = append(out, Candidate{Text: word + strconv.Itoa(i), Description: "number " + strconv.Itoa(i)})
+			}
+			return out, noSpace
+		}
+	}
+	refs := &Command{
+		Name:    "thing ref",
+		Subject: &Option{Field: "task", Required: true, Complete: offer(2, false)},
+		Options: []Option{
+			{Field: "blocked_by", Kind: List, Complete: offer(1, false)},
+			{Field: "to", Kind: String, Complete: offer(1, true)},
+			{Field: "many", Kind: String, Complete: offer(101, false)},
+			{Field: "most", Kind: String, Complete: offer(100, false)},
+			{Field: "priority", Kind: Integer},
+			{Field: "dir", Kind: Path},
+			{Field: "force", Kind: Bool},
+		},
+		Files: []File{{Name: "--notes-file", Field: "notes"}},
+		Run:   func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+	}
+	path := &Command{Name: "backup", Subject: &Option{Field: "dir", Kind: Path, Required: true},
+		Run: func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil }}
+	cmds := []*Command{refs, path, fake}
+	hint := "_activeHelp_ 101 match: type more, or Alt-K to pick\n"
+	most := ""
+	for i := range 100 {
+		most += strconv.Itoa(i) + "\tnumber " + strconv.Itoa(i) + "\n"
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"thing", "ref", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
+		{[]string{"thing", "ref", "1", "--blocked-by", "4"}, "40\tnumber 0\n:36\n"},
+		{[]string{"thing", "ref", "1", "--blocked-by=4"}, "40\tnumber 0\n:36\n"},
+		// Only a list's first item completes.
+		{[]string{"thing", "ref", "1", "--blocked-by", "3,4"}, ":36\n"},
+		{[]string{"thing", "ref", "1,"}, ":36\n"},
+		{[]string{"thing", "ref", "1", "--to", "/wo"}, "/wo0\tnumber 0\n:38\n"},
+		{[]string{"thing", "ref", "1", "--many", ""}, hint + ":36\n"},
+		{[]string{"thing", "ref", "1", "--most", ""}, most + ":36\n"},
+		// A second subject, and arguments with no completer.
+		{[]string{"thing", "ref", "1", ""}, ":4\n"},
+		{[]string{"thing", "ref", "1", "--priority", ""}, ":4\n"},
+		{[]string{"thing", "make", ""}, ":4\n"},
+		{[]string{"thing", "make", "t", "--name", ""}, ":4\n"},
+		{[]string{"version", ""}, ":4\n"},
+		// Files, as the shell completes them.
+		{[]string{"thing", "ref", "1", "--dir", ""}, ":0\n"},
+		{[]string{"thing", "ref", "1", "--notes-file", ""}, ":0\n"},
+		{[]string{"thing", "ref", "1", "-i", ""}, ":0\n"},
+		{[]string{"thing", "ref", "1", "--input", ""}, ":0\n"},
+		{[]string{"backup", ""}, ":0\n"},
+		{[]string{"backup", "x", ""}, ":4\n"},
+		// What the rest of the line holds that the command would refuse
+		// doesn't stop completion.
+		{[]string{"thing", "ref", "--priority", "x", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
+		{[]string{"thing", "ref", "--to", "a", "--to", "b", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
+		{[]string{"thing", "ref", "--nope=1", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
+		{[]string{"thing", "ref", "-i", "x", "--force=maybe", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
+	} {
+		r := runMain(t, "", cmds, append([]string{"__complete"}, c.args...)...)
+		if r.code != 0 || r.stdout != c.want {
+			t.Errorf("__complete %q: %d %q, want %q", c.args, r.code, r.stdout, c.want)
+		}
+	}
+	// Each completer sees only the word being completed.
+	if want := []string{"@4", "4", "4", "/wo", "", "", "@4", "@4", "@4", "@4"}; !slices.Equal(words, want) {
+		t.Errorf("words: %q, want %q", words, want)
+	}
+	// cobra's KOAN_ACTIVE_HELP=0 turns the hint off; without descriptions,
+	// only the candidates.
+	t.Setenv("KOAN_ACTIVE_HELP", "0")
+	if r := runMain(t, "", cmds, "__complete", "thing", "ref", "1", "--many", ""); r.stdout != ":36\n" {
+		t.Errorf("KOAN_ACTIVE_HELP=0: %q", r.stdout)
+	}
+	if r := runMain(t, "", cmds, "__completeNoDesc", "thing", "ref", "@4"); r.stdout != "@40\n@41\n:36\n" {
+		t.Errorf("__completeNoDesc: %q", r.stdout)
 	}
 }
 

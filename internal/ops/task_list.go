@@ -22,7 +22,7 @@ func TaskList() *cli.Command {
 	return &cli.Command{
 		Name: "task list",
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String},
+			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},

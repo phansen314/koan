@@ -32,7 +32,9 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 		}
 	}()
 
-	root, named := tree(commands, stdout, func(cmd *Command, ln *line) { c, l = cmd, ln })
+	env := &Env{Stdin: stdin, Stderr: stderr}
+	completing := len(args) > 0 && strings.HasPrefix(args[0], cobra.ShellCompRequestCmd)
+	root, named := tree(commands, stdout, env, completing, func(cmd *Command, ln *line) { c, l = cmd, ln })
 	root.SetIn(stdin)
 	root.SetErr(stderr)
 	// A nil slice would have cobra read os.Args.
@@ -44,8 +46,6 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 	if c == nil {
 		return ExitOK
 	}
-
-	env := &Env{Stdin: stdin, Stderr: stderr}
 
 	in := l.in
 	var e *Error
@@ -66,9 +66,10 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 // tree is the cobra command tree: a command of two words sits under a
 // group named by its first. The root and each group refuse a line that
 // names no command of theirs as usage, where cobra would print help.
-// Help and completion print to stdout. named maps each command's cobra
-// command back to it.
-func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) (root *cobra.Command, named map[*cobra.Command]*Command) {
+// Help and completion print to stdout; completing is whether the line
+// completes one. A value with nothing to complete offers nothing, never
+// file names. named maps each command's cobra command back to it.
+func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran func(*Command, *line)) (root *cobra.Command, named map[*cobra.Command]*Command) {
 	named = map[*cobra.Command]*Command{}
 	root = &cobra.Command{
 		Use:           "koan",
@@ -78,6 +79,8 @@ func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) (roo
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
+	directive := noFiles
+	root.CompletionOptions.DefaultShellCompDirective = &directive
 	groups := map[string]*cobra.Command{}
 	for _, c := range commands {
 		parent := root
@@ -88,7 +91,7 @@ func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) (roo
 			}
 			parent = groups[g]
 		}
-		cc := c.cobra(ran)
+		cc := c.cobra(env, completing, ran)
 		named[cc] = c
 		parent.AddCommand(cc)
 	}

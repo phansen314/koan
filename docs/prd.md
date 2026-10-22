@@ -4,7 +4,7 @@ Oct 20, 2026 · @SuperUser
 
 This doc fixes how the rewrite builds koan: its layout, storage, writes and concurrency, and its protocol of commands, output and errors. What koan must guarantee is in the rules doc, koan: invariants and rules. The rules doc is normative: where the two disagree, it wins, and anything that would change a rule goes there, not here.
 
-The command specification comes after this doc, as JSON Schemas and a command reference in the repo. It fixes every command's flags and every JSON field, the archive's included; this doc fixes the shape they take. Choices this doc makes that the rules doc leaves open are listed in Deferred and choices.
+The command specification comes after this doc, as JSON Schemas and a command reference in the repo. It fixes every command's flags and every JSON field, the archive's included; this doc fixes the shape they take. Choices this doc makes that the rules doc leaves open are listed in Choices.
 
 ## Goals and non-goals
 
@@ -266,8 +266,14 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 **`pick` is for people.** `koan pick` lets a person at a terminal choose tasks, gates and folders by what they are about, and prints their references, for `$(koan pick)` or for a bash key that types them in at the cursor. Agents never need it: they have `task list`, `task frontier` and `where`. So it takes the exceptions people need, and nothing that could hold up an agent: it prints plain text rather than an envelope, draws on `/dev/tty`, and fails at once when there is no terminal.
 
 - **fzf draws the picker.** koan runs fzf as an outside program, writes its candidates to fzf's standard input, and reads the choice back from fzf's standard output. fzf draws on `/dev/tty` itself, so standard output carries only the choice. fzf is the one runtime dependency koan has, and only `pick` needs it. It adds no Go dependency, it gives fuzzy matching, marking several and a preview pane for free, and the same build is already proven in the user's own fzf pickers.
-- **The candidates are koan's own reads.** pick runs `task list`, `task frontier` and `folder list` in-process, with the same filters, and turns the records into lines. It adds no query, and completing references (Deferred and choices) can draw on the same candidates when it comes.
+- **The candidates are koan's own reads.** pick runs `task list`, `task frontier` and `folder list` in-process, with the same filters, and turns the records into lines. It adds no query, and completing references draws on the same candidates.
 - **Previews need no call back into koan.** Before fzf starts, pick writes a short header per candidate into a private temporary directory, and fzf's preview shows that header and the notes file. The directory is removed as soon as fzf returns.
+
+**Completing references is for people too.** cobra's completion scripts call koan back for each Tab, and koan answers with the references the argument takes: paths folder by folder, IDs with their titles, and gates after a path (spec Completing references). Completion is for when you know the name; `pick` is for when you know only what it's about. Only references complete: fixed choices such as `--state`, and tags, don't.
+
+- **The candidates are pick's.** Completion chooses them as pick does, with pick's filters and in pick's order, and renders each as a reference and a short description. It builds no records with edges and no previews, so a Tab costs one read of the tree: about 27 ms at 10,000 tasks, against about 80 ms for full records. It is a command like any other, held to the 100 ms budget.
+- **koan filters, the shell only shows.** koan keeps only the candidates that start with what is typed, since cobra's bash script spends about 74 µs on each described candidate it's given: 0.74 s for 10,000. Past 100 it offers none, and a one-line hint says to type more or press Alt-K for `pick`, where bash would otherwise ask whether to display them all.
+- **Agents never complete.** Completion runs only from a person's interactive shell, and prints nothing an agent reads.
 
 **Every write reports what it released and blocked again.** With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
@@ -356,22 +362,13 @@ These are the tests named in the Tested by column of Invariants, enforced and te
 | **Markers** | The nearest marker wins and stops the look; a copied or moved marker binds nothing; archived and deleted folders give their messages; git ignores .koan/; checkout and foreign-files refuse. |
 | **Backup and restore** | A backup taken during the concurrency run restores to a root doctor finds clean; a folder moved mid-copy makes backup copy again under the lock. |
 | **pick** | A stand-in fzf first on `PATH` records the arguments and lines it is given and answers as told: a choice, several, nothing matched, a cancel, a failure, a version too old. pick prints what the spec says for each, with and without a terminal, and removes its preview directory every time. A run against the real fzf in a pseudo-terminal is skipped by `-short`. |
+| **Completion** | `__complete` on a tree with every kind, for each argument in the spec's table and each form of word, against golden lines: what is offered, in what order, with what descriptions and directives, a list's comma, the cap and its hint, and a root that isn't usable. These lines are what every shell's script reads. A real bash, with bash-completion, and a real zsh, each driven in a pseudo-terminal, complete a path folder by folder, an ID with its title and a gate after a path, and show the hint. Each is skipped by `-short`, and when its shell isn't installed; CI installs both. fish and powershell are covered by the `__complete` lines alone. |
 
 `go test -short` skips the long concurrency and crash matrices, as today.
 
-## Deferred and choices
+## Choices
 
-Anything that would change a rule goes to the rules doc, not to this list.
-
-**Deferred:** decided on, not needed to start.
-
-- **A `join` shorthand.** `--join <folder>` on `task create`, and a `join` field in `batch`, writing the two edges of joining. Joining a folder whose done gate is already complete needs nothing new: the edge into the complete gate warns `complete-blocker`, as any such edge does.
-- **Unarchive.** Bringing an archived item back, with its IDs. For now, work needed again is made again.
-- **Completing references.** `koan completion` completes commands and options; completing their values is deferred: paths folder by folder, IDs with their titles, gates as `.start` and `.done`.
-- **`--no-gates` on `task list`**, if gates in the list turn out to be noise.
-- **Material in `pick`.** Material references, such as `@41:docs/plan.md`, as their own kind, through fzf's walker rooted at the folder's directory.
-- **Opening notes from `pick`.** A key in the picker that opens the line's notes in `$EDITOR`, then returns to the picker.
-- **`pick` for other shells.** `koan pick --bash` is the only keybinding script for now.
+Anything that would change a rule goes to the rules doc, not to this list. Work decided on but not needed yet is in `docs/deferred.md`.
 
 **Choices** this doc makes where the rules doc leaves room. Each can change without touching a rule.
 
@@ -395,4 +392,7 @@ Anything that would change a rule goes to the rules doc, not to this list.
 | Archived fields as JSON beside each archived item | a table in koan.db, lost at every format change before 1.0; JSON inside the folder, where a stray file can be in the way |
 | The command line read by cobra and pflag, help and `-h` anywhere, and option values their type refuses as `usage` | a parser of koan's own, which refused `--help` with anything else and `-h`, and left every value check to the command |
 | `pick` drawn by fzf, run as an outside program, version 0.63.0 or later, restyled only through fzf's own `FZF_DEFAULT_OPTS` | fzf linked in as a Go library, whose API isn't fzf's to keep stable; a UI of koan's own, such as bubbletea, with every part to build and many dependencies; a file browser such as yazi, which sees the files and none of the database; a `KOAN_PICK_OPTS` of koan's own |
+| Completing references only | completing fixed choices and the tags in use as well |
+| Past 100 candidates, a hint instead of a list | every candidate, at 0.74 s for 10,000 in bash before it asks whether to show them |
+| Only a list's first item completes; the option is repeated for more | completing after a comma, which cobra's bash script drops: bash 5.3's `printf %q` escapes the comma |
 | init --ids-from N, carrying the ID sequence from root to root | IDs from 1 in every root, so each format change before 1.0 makes a second @42 |

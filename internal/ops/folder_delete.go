@@ -17,7 +17,7 @@ import (
 func FolderDelete() *cli.Command {
 	return &cli.Command{
 		Name:    "folder delete",
-		Subject: &cli.Option{Field: "folder", Required: true},
+		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
 		Options: []cli.Option{
 			{Field: "contents", Kind: cli.Bool},
 			{Field: "force", Kind: cli.Bool},

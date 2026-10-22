@@ -19,7 +19,7 @@ import (
 func FolderArchive() *cli.Command {
 	return &cli.Command{
 		Name:    "folder archive",
-		Subject: &cli.Option{Field: "folder", Required: true},
+		Subject: &cli.Option{Field: "folder", Required: true, Complete: finishedOnes.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			ref := r.ref("folder", core.WantFolder, "")

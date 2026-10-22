@@ -21,19 +21,19 @@ type TaskReopenResult struct {
 }
 
 // taskCommand is the shape of a write that takes a task and nothing
-// else.
-func taskCommand(name string, change func(tx *store.Tx, id int64) (any, []cli.Warning, error)) *cli.Command {
-	return rootedTaskCommand(name, func(tx *store.Tx, _ store.Root, id int64) (any, []cli.Warning, error) {
+// else; subject is what the task completes to.
+func taskCommand(name string, subject offers, change func(tx *store.Tx, id int64) (any, []cli.Warning, error)) *cli.Command {
+	return rootedTaskCommand(name, subject, func(tx *store.Tx, _ store.Root, id int64) (any, []cli.Warning, error) {
 		return change(tx, id)
 	})
 }
 
 // rootedTaskCommand is taskCommand for a change that also needs the
 // root, to look on disk.
-func rootedTaskCommand(name string, change func(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error)) *cli.Command {
+func rootedTaskCommand(name string, subject offers, change func(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error)) *cli.Command {
 	return &cli.Command{
 		Name:    name,
-		Subject: &cli.Option{Field: "task", Required: true},
+		Subject: &cli.Option{Field: "task", Required: true, Complete: subject.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			ref := r.ref("task", core.WantTask, "")
@@ -59,7 +59,7 @@ func rootedTaskCommand(name string, change func(tx *store.Tx, root store.Root, i
 // TaskComplete marks a task complete and ends its claim. What waited on
 // it alone is released.
 func TaskComplete() *cli.Command {
-	return taskCommand("task complete", func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
+	return taskCommand("task complete", openOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
 		if !tx.Open(id) {
 			return TaskCompleteResult{ID: id, Released: []int64{}}, nil, nil
 		}
@@ -74,7 +74,7 @@ func TaskComplete() *cli.Command {
 // TaskReopen marks a task open again, so whatever waits on it waits
 // again, a claimed task with its claim kept.
 func TaskReopen() *cli.Command {
-	return taskCommand("task reopen", func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
+	return taskCommand("task reopen", completeOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
 		if tx.Open(id) {
 			return TaskReopenResult{ID: id, Reblocked: []int64{}}, nil, nil
 		}

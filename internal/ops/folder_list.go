@@ -20,7 +20,7 @@ func FolderList() *cli.Command {
 	return &cli.Command{
 		Name: "folder list",
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String},
+			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},

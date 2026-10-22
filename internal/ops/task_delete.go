@@ -16,7 +16,7 @@ type DeleteResult struct {
 // TaskDelete removes a task, its notes, its claim and every edge to and
 // from it. It never splices: what waited on it isn't passed its blockers.
 func TaskDelete() *cli.Command {
-	return taskCommand("task delete", func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
+	return taskCommand("task delete", tasksAndGates, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
 		row, _, err := tx.Task(id)
 		if err != nil {
 			return nil, nil, err

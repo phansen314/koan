@@ -86,7 +86,7 @@ type leaving struct {
 // @<id>.md, or a gate's as @<id>_start.md or @<id>_done.md, with its JSON
 // beside them, under directories named after the folders it was in.
 func TaskArchive() *cli.Command {
-	return rootedTaskCommand("task archive", func(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error) {
+	return rootedTaskCommand("task archive", completeOnes, func(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error) {
 		t, err := loadTasks(tx, root)
 		if err != nil {
 			return nil, nil, err

@@ -33,7 +33,7 @@ type Location struct {
 func Where() *cli.Command {
 	return &cli.Command{
 		Name:    "where",
-		Subject: &cli.Option{Field: "ref"},
+		Subject: &cli.Option{Field: "ref", Complete: anyRef.complete()},
 		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}

@@ -199,7 +199,9 @@ type perfOp struct {
 	budget time.Duration
 	// once is that the test times it once, as backup, which is slow
 	// and has no budget.
-	once  bool
+	once bool
+	// plain is that it prints completion's lines, not an envelope.
+	plain bool
 	prep  func(r *perfRoot, i int)
 	args  func(r *perfRoot, i int) []string
 	stdin func(r *perfRoot, i int) string
@@ -231,6 +233,12 @@ var perfOps = []perfOp{
 	}},
 	{name: "context", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"context", r.folder(i)} }},
 	{name: "info", budget: 100 * ms, args: always("info")},
+	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "task", "block", "1", "--blocked-by", "@")},
+	{name: "complete id", budget: 100 * ms, plain: true, args: func(r *perfRoot, i int) []string {
+		id := r.task(i, 50)
+		return []string{"__complete", "task", "show", "@" + id[:max(1, len(id)-1)]}
+	}},
+	{name: "complete path", budget: 100 * ms, plain: true, args: always("__complete", "folder", "show", "/")},
 	{name: "version", budget: 100 * ms, args: always("version")},
 	{name: "init", budget: 100 * ms, args: always("init")},
 	{name: "task create", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
@@ -371,7 +379,11 @@ func (op perfOp) time(r *perfRoot, i int) time.Duration {
 	// The process alone is timed, not the test decoding its output.
 	p := &proc{args: args, stdin: stdin}
 	p.run(testrun.Binary(r.tb), r.home)
-	if p.err != nil || !p.ok() || len(p.env["warnings"].([]any)) != 0 {
+	if op.plain {
+		if p.exit != 0 || !strings.Contains(p.line, ":") {
+			r.tb.Fatalf("%s %q: exit %d: %s", op.name, args, p.exit, p.line)
+		}
+	} else if p.err != nil || !p.ok() || len(p.env["warnings"].([]any)) != 0 {
 		r.tb.Fatalf("%s %q: %v: %s", op.name, args, p.err, p.line)
 	}
 	return p.elapsed

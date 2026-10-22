@@ -10,6 +10,7 @@ This repo is the rewrite of koan: task management for one person on one machine,
 | PRD | How koan is built: layout, storage, writes, concurrency, recovery | `docs/prd.md` |
 | Command specification | Exactly what each command takes and prints | `docs/spec.md` |
 | Schemas | The spec's JSON Schemas, one file each | `schemas/*.json` |
+| Deferred | Work decided on but not built yet; never build from it until it is in the docs above | `docs/deferred.md` |
 
 - **Precedence:** rules doc, then PRD, then spec. Where code and docs disagree, the docs win.
 - **Never invent behaviour.** If the docs don't say what should happen, stop and say so: name the case, the doc and the section. Don't pick an answer and carry on.

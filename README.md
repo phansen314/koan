@@ -16,7 +16,7 @@ Needs Go 1.25 or later. The SQLite driver is SQLite translated to Go, so there i
 GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.6.0   # any GOBIN on your PATH
 ```
 
-For shell completion of commands and options, load koan's script in your shell's startup file; `koan completion --help` lists the shells:
+For shell completion of commands, options and references (folder paths one folder at a time, IDs with their titles, and gates), load koan's script in your shell's startup file; `koan completion --help` lists the shells. bash needs the bash-completion package:
 
 ```shell
 source <(koan completion bash)   # in ~/.bashrc; zsh: source <(koan completion zsh) in ~/.zshrc
