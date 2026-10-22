@@ -152,7 +152,7 @@ A file koan can't read, or a working directory it can't resolve, is `io`, with t
 **Help and completion** are for people, and print plain text, not an envelope. Their text is cobra's, and is not a contract (Not covered).
 
 - **Help.** `--help` or `-h`, anywhere on a command line before `--` but as an option's value (`--title -h` is a title), prints the help of the last command or group its words name, `koan` itself when the first word names none, to standard output with exit 0, whatever else is on the line, except an option pflag refuses: pflag reads every option before cobra looks at help, so `koan info --frob -h` is `usage`. `koan help [<command>]` is the same. So `koan frob -h` and `koan help frob` print `koan --help`'s text, and `koan task frob -h` prints `koan task --help`'s. `koan --help` lists the commands.
-- **Completion.** `koan completion <shell>`, for `bash`, `zsh`, `fish` or `powershell`, prints a script that completes koan's commands and options in that shell; with no shell it prints its help, and with a shell it doesn't know it is `usage`, naming that shell, so a typo never installs a broken script. The script calls koan back through cobra's hidden `__complete` commands, which print candidates on standard output and may write more than one line to standard error. Completing references is deferred (`docs/deferred.md`).
+- **Completion.** `koan completion <shell>`, for `bash`, `zsh`, `fish` or `powershell`, prints a script that completes koan's commands and options in that shell; with no shell it prints its help, and with a shell it doesn't know it is `usage`, naming that shell, so a typo never installs a broken script. The script calls koan back through cobra's hidden `__complete` commands, which print candidates on standard output and may write more than one line to standard error. It completes the references an argument takes too, as [Completing references](#completing-references) says.
 - **`pick`** prints the references a person picks, as plain text, and on failure nothing on standard output, only the standard-error line. It needs a terminal, draws on `/dev/tty`, and fails at once without one. Its outcomes and exits are under [pick](#pick).
 
 | Exit | Means |
@@ -986,6 +986,45 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 ### For people
 
+#### Completing references
+
+`koan completion <shell>`'s script (Invocation) completes the references an argument takes, as well as commands and options. It is for people, at a shell's Tab, and is never an agent's way in (PRD Agents). koan answers through cobra's `__complete` commands: a candidate per line, each with an optional description after a tab, then cobra's directive line. It offers what the command would take without refusing, read from the tree as it is, and changes nothing. Every argument in the table below completes as this section says; every other value, except the files below, offers nothing, never file names.
+
+| Argument | Offers |
+| --- | --- |
+| `task show`, `task why`, `task update`, `task delete`, `task unblock` subject | tasks and made gates |
+| `task complete` subject | open tasks and made gates |
+| `task reopen`, `task archive` subject | complete tasks and made gates |
+| `task claim` subject | open, unclaimed tasks and made gates |
+| `task release` subject | claimed tasks and made gates |
+| `task move` subject | tasks |
+| `task block` subject | tasks and gates, made or not |
+| `--blocked-by`, `--blocks` | tasks, gates made or not, and folders |
+| `--folder` (`task create`, `task list`, `task frontier`, `task claim-next`, `folder list`, `pick`), `task move --to` | folders |
+| `folder show`, `folder update`, `folder move`, `folder delete`, `context`, `marker bind` subject | folders |
+| `folder archive` subject | finished folders |
+| `folder create` subject, `folder move --to` | folders as paths only, as steps toward a new path: the last name is the person's to type |
+| `where` subject | tasks, made gates, and folders |
+| `backup` subject, `--dir`, `--file`, `--notes-file`, `--input` | files and directories, as the shell completes them |
+
+"Tasks" here never includes gates, and "gates made or not" means both ends of every folder. A gate not made yet is offered only where an edge names it, since anywhere else it is `not-found` (rules Resolution).
+
+**What is typed decides the form.** The word being completed is read as one of:
+
+- **A path**, starting with `/`. Its part up to the last `/` must name a folder exactly, byte for byte, the root for a word with one `/`; otherwise nothing is offered. The candidates are that folder's child folders whose names start with the rest, as whole paths: `/wo` offers `/work`, and `/work/` offers `/work/api` and `/work/web`. A folder is offered as a step toward what is below it wherever the argument takes a folder or a gate, even where a folder itself isn't taken. When the word is a whole folder path, or one followed by `.` and the start of an end, the folder's gates the argument takes are offered too: `/work/api.start` and `/work/api.done`. A path candidate never ends in `/`, and the shell adds no space after it, so the person goes on with `/`, `.`, or a space. Path candidates carry no description.
+- **An ID**: empty, `@`, or an optional `@` then digits, then for a gate `.` and the start of an end. The candidates are the tasks, gates and folders the argument takes whose IDs start with the digits typed, a gate by its folder's ID and end, as `pick` prints it (rules References): `@4` offers `@42`, `@41`, and `@41.start`. They are written with the `@` when the word starts with one or is empty, and without it otherwise: `4` offers `42`. Each carries a description: a task's title, two spaces, then its folder's path; a gate's `Start of <path>` or `Done of <path>`; a folder's path, then two spaces and its title when it has one.
+- **Anything else**, such as an anchored path, material after a `:`, or a label, offers nothing.
+
+**Lists.** Only a list's first item completes: a word holding a comma offers nothing. For more, repeat the option, `--blocked-by 42 --blocked-by @4`, as Invocation allows.
+
+**Order.** Candidates come in `pick`'s order (pick, The candidates), and the script asks the shell to keep it.
+
+**Too many.** More than 100 candidates offers none. Instead it gives one line of cobra's ActiveHelp, `<n> match: type more, or Alt-K to pick`, which bash and zsh show under the prompt; cobra's `KOAN_ACTIVE_HELP=0` turns it off.
+
+**Failures** offer nothing: a root that isn't usable, `busy`, or any other error. Completion prints no envelope, and nothing a person would see.
+
+**bash** needs the bash-completion package, as cobra's bash script does.
+
 #### pick
 
 `koan pick [--folder] [--recursive] [--here] [--state] [--readiness] [--claimed] [--tags-any] [--tags-all] [--frontier] [--kinds] [--query]`, or `koan pick --bash`.
@@ -1200,5 +1239,5 @@ These are left out on purpose, since nothing outside koan reads them:
 
 - **The pending step JSON** in the `pending` table. It is internal, and can change with any release.
 - **The SQL schema**, which is in the PRD, under Storage.
-- **Help text and completion's output**, which are for people and are cobra's (Invocation).
+- **Help text, and completion's scripts and its output for commands and options**, which are for people and are cobra's (Invocation). What a reference completes to is covered (Completing references).
 - **What the koan skill teaches.** It is written against this doc, and lives with the skill.
