@@ -1007,7 +1007,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 | `where` subject | tasks, made gates, and folders |
 | `backup` subject, `--dir`, `--file`, `--notes-file`, `--input` | files and directories, as the shell completes them |
 
-"Tasks" here never includes gates, and "gates made or not" means both ends of every folder. A gate not made yet is offered only where an edge names it, since anywhere else it is `not-found` (rules Resolution).
+"Tasks" here never includes gates, and "gates made or not" means both ends of every folder. A row's state or claim holds for its gates too, as `pick`'s filters do: `task complete` offers open tasks and open gates, and `task claim` open, unclaimed ones of each. A gate not made yet is offered only where an edge names it, since anywhere else it is `not-found` (rules Resolution).
 
 **What is typed decides the form.** The word being completed is read as one of:
 

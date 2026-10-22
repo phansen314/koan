@@ -25,7 +25,7 @@ type MarkerBindResult struct {
 func MarkerBind() *cli.Command {
 	return &cli.Command{
 		Name:    "marker bind",
-		Subject: &cli.Option{Field: "folder", Required: true},
+		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
 		Options: []cli.Option{{Field: "dir", Kind: cli.Path}, {Field: "force", Kind: cli.Bool}},
 		Here:    &cli.Here{Field: "dir"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {

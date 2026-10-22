@@ -13,7 +13,7 @@ import (
 func FolderUpdate() *cli.Command {
 	return &cli.Command{
 		Name:    "folder update",
-		Subject: &cli.Option{Field: "folder", Required: true},
+		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
 		Options: []cli.Option{
 			{Field: "title", Kind: cli.String, Nullable: true},
 			{Field: "extra_merge", Kind: cli.JSON},

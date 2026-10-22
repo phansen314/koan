@@ -24,7 +24,7 @@ type Brief struct {
 func Context() *cli.Command {
 	return &cli.Command{
 		Name:    "context",
-		Subject: &cli.Option{Field: "folder"},
+		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
 		Here:    &cli.Here{Field: "file", Unless: []string{"folder"}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {

@@ -19,8 +19,8 @@ type TaskMoveResult struct {
 func TaskMove() *cli.Command {
 	return &cli.Command{
 		Name:    "task move",
-		Subject: &cli.Option{Field: "task", Required: true},
-		Options: []cli.Option{{Field: "to", Kind: cli.String}},
+		Subject: &cli.Option{Field: "task", Required: true, Complete: tasksOnly.complete()},
+		Options: []cli.Option{{Field: "to", Kind: cli.String, Complete: foldersOnly.complete()}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			ref := r.ref("task", core.WantTask, "")

@@ -26,8 +26,8 @@ type FolderMoveResult struct {
 func FolderMove() *cli.Command {
 	return &cli.Command{
 		Name:    "folder move",
-		Subject: &cli.Option{Field: "folder", Required: true},
-		Options: []cli.Option{{Field: "to", Kind: cli.String}},
+		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
+		Options: []cli.Option{{Field: "to", Kind: cli.String, Complete: newPaths.complete()}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			ref := r.ref("folder", core.WantFolder, "")

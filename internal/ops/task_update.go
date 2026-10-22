@@ -101,7 +101,7 @@ func (r *input) changes(subject string) {
 func TaskUpdate() *cli.Command {
 	return &cli.Command{
 		Name:    "task update",
-		Subject: &cli.Option{Field: "task", Required: true},
+		Subject: &cli.Option{Field: "task", Required: true, Complete: tasksAndGates.complete()},
 		Options: []cli.Option{
 			{Field: "title", Kind: cli.String},
 			{Field: "priority", Kind: cli.Integer, Nullable: true},

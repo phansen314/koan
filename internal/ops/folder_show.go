@@ -18,7 +18,7 @@ type FolderShowResult struct {
 func FolderShow() *cli.Command {
 	return &cli.Command{
 		Name:    "folder show",
-		Subject: &cli.Option{Field: "folder", Required: true},
+		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			ref := r.ref("folder", core.WantFolder, "")

@@ -24,7 +24,7 @@ type FolderCreateResult struct {
 func FolderCreate() *cli.Command {
 	return &cli.Command{
 		Name:    "folder create",
-		Subject: &cli.Option{Field: "path", Required: true},
+		Subject: &cli.Option{Field: "path", Required: true, Complete: newPaths.complete()},
 		Options: []cli.Option{
 			{Field: "title", Kind: cli.String, Nullable: true},
 			{Field: "extra", Kind: cli.JSON},

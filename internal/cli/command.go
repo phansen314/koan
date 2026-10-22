@@ -56,6 +56,9 @@ type Option struct {
 	Required bool
 	// Usage is the option's line in help.
 	Usage string
+	// Complete, for an argument that takes a reference, is what it
+	// completes to at a shell's Tab.
+	Complete Completer
 }
 
 // flag is the option's name without its dashes, as pflag knows it:
@@ -257,8 +260,10 @@ func (v *inputValue) Set(text string) error {
 }
 
 // cobra makes the command's cobra command. It reads its command line
-// into a line of its own, then hands both to ran.
-func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
+// into a line of its own, then hands both to ran. While a line is
+// completed, its options take any text, and options it doesn't know are
+// passed over.
+func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *cobra.Command {
 	l := newLine()
 	words := strings.Fields(c.Name)
 	use := words[len(words)-1]
@@ -281,18 +286,35 @@ func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
 			return nil
 		},
 	}
+	cc.ValidArgsFunction = c.subjectCompletion(env)
 	flags := cc.Flags()
+	add := func(v pflag.Value) pflag.Value {
+		if completing {
+			return lenient{v}
+		}
+		return v
+	}
+	if completing {
+		cc.FParseErrWhitelist.UnknownFlags = true
+	}
 	for i := range c.Options {
 		o := &c.Options[i]
-		flags.Var(&value{opt: o, l: l}, o.flag(), o.Usage)
+		flags.Var(add(&value{opt: o, l: l}), o.flag(), o.Usage)
 		if o.Kind == Bool {
 			flags.Lookup(o.flag()).NoOptDefVal = "true"
+		}
+		switch {
+		case o.Kind == Path:
+			cc.RegisterFlagCompletionFunc(o.flag(), fixed(fileNames))
+		case o.Complete != nil:
+			cc.RegisterFlagCompletionFunc(o.flag(), completion(env, o.Complete))
 		}
 	}
 	for i := range c.Files {
 		f := &c.Files[i]
 		name := strings.TrimPrefix(f.Name, "--")
-		flags.Var(&fileValue{f: f, l: l}, name, f.Usage)
+		flags.Var(add(&fileValue{f: f, l: l}), name, f.Usage)
+		cc.RegisterFlagCompletionFunc(name, fixed(fileNames))
 		for _, o := range c.Options {
 			if o.Field == f.Field {
 				cc.MarkFlagsMutuallyExclusive(o.flag(), name)
@@ -301,10 +323,11 @@ func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
 	}
 	if h := c.Here; h != nil && h.Flag != "" {
 		name := strings.TrimPrefix(h.Flag, "--")
-		flags.Var(&hereValue{l: l}, name, h.Usage)
+		flags.Var(add(&hereValue{l: l}), name, h.Usage)
 		flags.Lookup(name).NoOptDefVal = "true"
 	}
-	flags.VarP(&inputValue{l: l}, "input", "i", "the whole input as one JSON object")
+	flags.VarP(add(&inputValue{l: l}), "input", "i", "the whole input as one JSON object")
+	cc.RegisterFlagCompletionFunc("input", fixed(fileNames))
 	return cc
 }
 
