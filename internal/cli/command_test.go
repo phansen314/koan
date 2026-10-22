@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -38,6 +40,22 @@ var bare = &Command{
 	Run:  func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
+// parse reads the arguments after a command's name, through the tree
+// Main runs, with c the only command.
+func (c *Command) parse(args []string) (*line, *Error) {
+	var got *line
+	root := tree([]*Command{c}, io.Discard, func(_ *Command, l *line) { got = l })
+	root.SetErr(io.Discard)
+	root.SetArgs(append(strings.Fields(c.Name), args...))
+	if err := root.Execute(); err != nil {
+		return nil, usage(err)
+	}
+	if got == nil {
+		return nil, Usage("", "help, not a command line")
+	}
+	return got, nil
+}
+
 func parseJSON(t *testing.T, s string) Input {
 	t.Helper()
 	v, err := decodeOne([]byte(s))
@@ -62,19 +80,13 @@ func TestParseLines(t *testing.T) {
 		{fake, []string{"t", "--priority=-3"}, `{"title":"t","priority":-3}`},
 		{fake, []string{"t", "--priority", "-3"}, `{"title":"t","priority":-3}`},
 		{fake, []string{"t", "--priority", "null"}, `{"title":"t","priority":null}`},
-		{fake, []string{"t", "--priority", "high"}, `{"title":"t","priority":"high"}`},
-		{fake, []string{"t", "--priority", "99999999999999999999"}, `{"title":"t","priority":"99999999999999999999"}`},
-		{fake, []string{"t", "--priority", "+5"}, `{"title":"t","priority":"+5"}`},
-		{fake, []string{"t", "--priority", "007"}, `{"title":"t","priority":"007"}`},
-		{fake, []string{"t", "--priority", "1e3"}, `{"title":"t","priority":"1e3"}`},
+		{fake, []string{"t", "--priority", "99999999999999999999"}, `{"title":"t","priority":99999999999999999999}`},
 		{fake, []string{"t", "--priority", "0"}, `{"title":"t","priority":0}`},
-		{fake, []string{"t", "--limit", "null"}, `{"title":"t","limit":"null"}`},
 		{fake, []string{"t", "--note", "null"}, `{"title":"t","note":null}`},
 		{fake, []string{"t", "--name", "null"}, `{"title":"t","name":"null"}`},
 		{fake, []string{"t", "--contents"}, `{"title":"t","contents":true}`},
 		{fake, []string{"t", "--contents=false"}, `{"title":"t","contents":false}`},
 		{fake, []string{"t", "--contents=true"}, `{"title":"t","contents":true}`},
-		{fake, []string{"t", "--contents=yes"}, `{"title":"t","contents":"yes"}`},
 		{fake, []string{"t", "--tags", "a,b"}, `{"title":"t","tags":["a","b"]}`},
 		{fake, []string{"t", "--tags", "a", "--tags", "b"}, `{"title":"t","tags":["a","b"]}`},
 		{fake, []string{"t", "--tags", "a,b", "--tags=c"}, `{"title":"t","tags":["a","b","c"]}`},
@@ -108,7 +120,7 @@ func TestParseLines(t *testing.T) {
 }
 
 func TestParseInputOption(t *testing.T) {
-	for _, args := range [][]string{{"-i", "f.json"}, {"--input", "f.json"}, {"--input=f.json"}} {
+	for _, args := range [][]string{{"-i", "f.json"}, {"--input", "f.json"}, {"--input=f.json"}, {"-i=f.json"}, {"-if.json"}} {
 		l, e := fake.parse(args)
 		if e != nil || !l.hasInput || l.input != "f.json" || len(l.in) != 0 {
 			t.Errorf("%q: got %+v, %v", args, l, e)
@@ -121,7 +133,8 @@ func TestParseInputOption(t *testing.T) {
 }
 
 // TestParseUsage is the table of command lines that can't be turned into
-// an input. Each is usage, naming the argument at fault as typed.
+// an input. Each is usage, naming what is at fault: an option by its long
+// name, an unknown short option, an extra subject as typed, or "".
 func TestParseUsage(t *testing.T) {
 	cases := []struct {
 		cmd   *Command
@@ -133,34 +146,46 @@ func TestParseUsage(t *testing.T) {
 		{fake, []string{"a", "b"}, "b"},
 		{fake, []string{"a", "--", "b"}, "b"},
 		{fake, []string{"t", "--frob"}, "--frob"},
-		{fake, []string{"t", "--frob=1"}, "--frob=1"},
+		{fake, []string{"t", "--frob=1"}, "--frob"},
 		{fake, []string{"t", "-x"}, "-x"},
-		{fake, []string{"t", "-i=f"}, "-i=f"},
-		{fake, []string{"t", "-if"}, "-if"},
+		{fake, []string{"t", "-xi", "f"}, "-x"},
+		{fake, []string{"t", "---x"}, "---x"},
+		{fake, []string{"t", "--=x"}, "--=x"},
 		{fake, []string{"t", "--Priority", "1"}, "--Priority"},
 		{fake, []string{"t", "--prio", "1"}, "--prio"},
 		{fake, []string{"t", "--extra_remove", "k"}, "--extra_remove"},
 		{fake, []string{"t", "--priority"}, "--priority"},
 		{fake, []string{"t", "--tags"}, "--tags"},
 		{fake, []string{"t", "--priority", "1", "--priority", "2"}, "--priority"},
-		{fake, []string{"t", "--contents", "--contents=false"}, "--contents=false"},
+		{fake, []string{"t", "--priority", "high"}, "--priority"},
+		{fake, []string{"t", "--priority", "+5"}, "--priority"},
+		{fake, []string{"t", "--priority", "007"}, "--priority"},
+		{fake, []string{"t", "--priority", "1e3"}, "--priority"},
+		{fake, []string{"t", "--priority="}, "--priority"},
+		{fake, []string{"t", "--limit", "null"}, "--limit"},
+		{fake, []string{"t", "--contents=yes"}, "--contents"},
+		{fake, []string{"t", "--contents=null"}, "--contents"},
+		{fake, []string{"t", "--contents", "--contents=false"}, "--contents"},
 		{fake, []string{"t", "--contents", "false"}, "false"},
-		{fake, []string{"-i"}, "-i"},
+		{fake, []string{"t", "--name", "a", "--name=b"}, "--name"},
+		{fake, []string{"t", "--extra", "{}", "--extra", "{}"}, "--extra"},
+		{fake, []string{"-i"}, "--input"},
 		{fake, []string{"--input"}, "--input"},
 		{fake, []string{"-i", "f", "t"}, "t"},
 		{fake, []string{"t", "-i", "f"}, "t"},
 		{fake, []string{"-i", "f", "--name", "n"}, "--name"},
-		{fake, []string{"-i", "f", "-i", "g"}, "-i"},
+		{fake, []string{"-i", "f", "--tags", "a", "--contents"}, "--contents"},
+		{fake, []string{"-i", "f", "-i", "g"}, "--input"},
+		{fake, []string{"-i", "f", "--input=g"}, "--input"},
 		{fake, []string{"-i", "f", "--", "t"}, "t"},
-		{fake, []string{"t", "--note", "n", "--note-file", "f"}, "--note-file"},
-		{fake, []string{"t", "--note-file", "f", "--note", "n"}, "--note"},
+		{fake, []string{"t", "--note", "n", "--note-file", "f"}, ""},
+		{fake, []string{"t", "--note-file", "f", "--note", "n"}, ""},
 		{fake, []string{"t", "--note-file", "f", "--note-file", "g"}, "--note-file"},
 		{fake, []string{"t", "--note-file"}, "--note-file"},
 		{fake, []string{"-i", "f", "--note-file", "g"}, "--note-file"},
 		{optional, []string{"a", "b"}, "b"},
 		{bare, []string{"x"}, "x"},
 		{bare, []string{"--", "x"}, "x"},
-		{bare, []string{"--help", "x"}, "--help"},
 	}
 	for _, c := range cases {
 		_, e := c.cmd.parse(c.args)
@@ -185,33 +210,49 @@ func TestParseFiles(t *testing.T) {
 	}
 }
 
+// TestLookup finds the command a line names, by one word or two, matched
+// exactly; a line that names none is usage.
 func TestLookup(t *testing.T) {
 	cmds := []*Command{fake, optional, bare}
 	cases := []struct {
 		args  []string
-		name  string
+		ok    bool
 		field string // for usage
 	}{
-		{[]string{"version"}, "version", ""},
-		{[]string{"thing", "make", "t"}, "thing make", ""},
-		{[]string{"where", "x"}, "where", ""},
-		{nil, "", ""},
-		{[]string{"frob"}, "", "frob"},
-		{[]string{"Version"}, "", "Version"},
-		{[]string{"vers"}, "", "vers"},
-		{[]string{"thing"}, "", ""},
-		{[]string{"thing", "frob"}, "", "frob"},
-		{[]string{"thing", "--help"}, "", "--help"},
-		{[]string{"make"}, "", "make"},
-		{[]string{"--input", "f"}, "", "--input"},
+		{[]string{"version"}, true, ""},
+		{[]string{"thing", "make", "t"}, true, ""},
+		{[]string{"where", "x"}, true, ""},
+		{nil, false, ""},
+		{[]string{}, false, ""},
+		{[]string{"frob"}, false, "frob"},
+		{[]string{"Version"}, false, "Version"},
+		{[]string{"vers"}, false, "vers"},
+		{[]string{"thing"}, false, ""},
+		{[]string{"thing", "frob"}, false, "frob"},
+		{[]string{"thing", "Make", "t"}, false, "Make"},
+		{[]string{"make"}, false, "make"},
+		{[]string{"--input", "f"}, false, "--input"},
+		{[]string{"-i", "f"}, false, "-i"},
+		{[]string{"--frob", "version"}, false, "--frob"},
 	}
 	for _, c := range cases {
-		cmd, _, e := lookup(cmds, c.args)
+		r := runMain(t, "", cmds, c.args...)
+		var env struct {
+			OK    bool
+			Error struct {
+				Kind     string
+				Problems []Problem
+			}
+		}
+		if err := json.Unmarshal([]byte(r.stdout), &env); err != nil {
+			t.Errorf("%q: not an envelope: %q", c.args, r.stdout)
+			continue
+		}
 		switch {
-		case c.name != "" && (e != nil || cmd.Name != c.name):
-			t.Errorf("%q: got %v, %v; want %s", c.args, cmd, e, c.name)
-		case c.name == "" && (e == nil || e.Kind != KindUsage || e.Problems[0].Field != c.field):
-			t.Errorf("%q: got %v, %+v; want usage at %q", c.args, cmd, e, c.field)
+		case c.ok && (!env.OK || r.code != 0):
+			t.Errorf("%q: got %d %s", c.args, r.code, r.stdout)
+		case !c.ok && (r.code != ExitUsage || env.Error.Kind != KindUsage || len(env.Error.Problems) != 1 || env.Error.Problems[0].Field != c.field):
+			t.Errorf("%q: got %d %s; want usage at %q", c.args, r.code, r.stdout, c.field)
 		}
 	}
 }

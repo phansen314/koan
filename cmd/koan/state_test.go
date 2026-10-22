@@ -212,7 +212,6 @@ func TestTaskUpdateInvalid(t *testing.T) {
 	}{
 		{[]string{"/", "--title", "x"}, "/task"},
 		{[]string{"1", "--title", " "}, "/title"},
-		{[]string{"1", "--priority", "x"}, "/priority"},
 		{[]string{"1", "--priority", "9007199254740992"}, "/priority"},
 		{[]string{"1", "--tags-add", "A,b,b"}, "/tags_add/0 /tags_add/2"},
 		{[]string{"1", "--tags-replace-all", "a", "--tags-add", "b"}, ""},

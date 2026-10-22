@@ -173,20 +173,31 @@ func TestMalformed(t *testing.T) {
 		{[]string{"info", "@42"}, "@42"},
 		{[]string{"info", "--", "x"}, "x"},
 		{[]string{"version", "--frob"}, "--frob"},
-		{[]string{"version", "--frob=1"}, "--frob=1"},
+		{[]string{"version", "--frob=1"}, "--frob"},
 		{[]string{"info", "-x"}, "-x"},
-		{[]string{"info", "-i"}, "-i"},
+		{[]string{"info", "-i"}, "--input"},
 		{[]string{"info", "--input"}, "--input"},
-		{[]string{"info", "-i=in.json"}, "-i=in.json"},
-		{[]string{"info", "-iin.json"}, "-iin.json"},
 		{[]string{"info", "--Input", "in.json"}, "--Input"},
 		{[]string{"info", "--inp", "in.json"}, "--inp"},
-		{[]string{"info", "-i", "in.json", "-i", "in.json"}, "-i"},
+		{[]string{"info", "-i", "in.json", "-i", "in.json"}, "--input"},
 		{[]string{"info", "-i", "in.json", "x"}, "x"},
 		{[]string{"info", "x", "-i", "in.json"}, "x"},
 		{[]string{"info", "-i", "in.json", "--", "x"}, "x"},
-		{[]string{"version", "--help", "x"}, "--help"},
-		{[]string{"version", "-h"}, "-h"},
+		{[]string{"task"}, ""},
+		{[]string{"task", "frob"}, "frob"},
+		{[]string{"folder"}, ""},
+		{[]string{"marker", "Bind"}, "Bind"},
+		{[]string{"task", "show"}, ""},
+		{[]string{"task", "list", "--limit", "ten"}, "--limit"},
+		{[]string{"task", "list", "--recursive=maybe"}, "--recursive"},
+		{[]string{"task", "list", "--claimed", "--claimed=false"}, "--claimed"},
+		{[]string{"task", "create", "t", "--notes", "n", "--notes-file", "f"}, ""},
+		{[]string{"task", "create", "t", "-i", "in.json"}, "t"},
+		{[]string{"task", "update", "1", "--title", "a", "--title", "b"}, "--title"},
+		{[]string{"completion", "zhs"}, "zhs"},
+		{[]string{"completion", "bash", "extra"}, ""},
+		// An option pflag refuses comes before help.
+		{[]string{"info", "--contents", "-h"}, "--contents"},
 	}
 	for _, c := range cases {
 		r := testrun.Koan(t, c.args...)
@@ -201,19 +212,23 @@ func TestMalformed(t *testing.T) {
 	}
 }
 
+// Help and completion are for people: plain text on standard output,
+// exit 0, nothing on standard error. --help and -h work anywhere.
 func TestHelp(t *testing.T) {
-	for _, args := range [][]string{{"--help"}, {"version", "--help"}, {"info", "--help"}} {
+	for _, args := range [][]string{
+		{"--help"}, {"-h"}, {"help"}, {"version", "--help"}, {"info", "--help"},
+		{"version", "x", "--help"}, {"info", "x", "y", "-h"}, {"task", "--help"},
+		{"help", "task", "create"}, {"completion", "bash"}, {"completion", "zsh"},
+	} {
 		r := testrun.Koan(t, args...)
-		if r.Exit != 0 || !strings.HasPrefix(r.Stdout, "usage: koan ") || r.Stderr != "" {
-			t.Errorf("koan %q: exit %d: %q", args, r.Exit, r.Stdout)
+		if r.Exit != 0 || r.Envelope != nil || !strings.Contains(r.Stdout, "koan") || r.Stderr != "" {
+			t.Errorf("koan %q: exit %d: %.200q %q", args, r.Exit, r.Stdout, r.Stderr)
 		}
 	}
-	// --help with anything else is an unknown option, and the line prints
-	// an envelope, which the runner decodes.
-	for _, args := range [][]string{{"version", "x", "--help"}, {"info", "--contents", "--help"}} {
-		r := testrun.Koan(t, args...)
-		if r.Exit != 2 || r.Envelope == nil || r.OK() {
-			t.Errorf("koan %q: exit %d: %q", args, r.Exit, r.Stdout)
+	r := testrun.Koan(t, "task", "create", "--help")
+	for _, opt := range []string{"--blocked-by", "--notes-file", "--input"} {
+		if !strings.Contains(r.Stdout, opt) {
+			t.Errorf("task create --help lacks %s: %q", opt, r.Stdout)
 		}
 	}
 }
@@ -292,11 +307,17 @@ func TestInitIDsFrom(t *testing.T) {
 		t.Errorf("next_id: %s", r.Line())
 	}
 
+	// An integer out of range is the command's to refuse; text that is no
+	// integer, pflag's.
 	for _, v := range []string{"0", "-3", "abc", "1.5", "007", "1000000000000000"} {
 		r := testrun.Koan(t, "init", "--ids-from", v)
-		r.Check(t, "init")
+		r.Check(t, "")
 		problems, _ := r.Error()["problems"].([]any)
-		if r.Exit != 1 || r.Kind() != "invalid-input" || len(problems) != 1 || problems[0].(map[string]any)["field"] != "/ids_from" {
+		exit, kind, field := 1, "invalid-input", "/ids_from"
+		if v == "abc" || v == "1.5" || v == "007" {
+			exit, kind, field = 2, "usage", "--ids-from"
+		}
+		if r.Exit != exit || r.Kind() != kind || len(problems) != 1 || problems[0].(map[string]any)["field"] != field {
 			t.Errorf("--ids-from %s: exit %d: %s", v, r.Exit, r.Line())
 		}
 		if _, err := os.Lstat(filepath.Join(r.Home, "koan-root")); !os.IsNotExist(err) {

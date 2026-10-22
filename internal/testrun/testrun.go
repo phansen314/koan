@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -120,33 +119,30 @@ func (r Run) Koan(t testing.TB, args ...string) *Result {
 	case err != nil:
 		t.Fatalf("koan %q: %v", args, err)
 	}
-	if helpLine(args) {
+	// A help line with an option pflag refuses is usage, an envelope.
+	if helpLine(args) && !strings.HasPrefix(res.Stdout, "{") {
 		return res
 	}
 	res.Envelope = res.decode(t)
 	return res
 }
 
-// commands are the spec's commands, of one word or two.
-var commands = []string{
-	"task create", "task show", "task list", "task frontier", "task why", "task update",
-	"task complete", "task reopen", "task block", "task unblock", "task move", "task delete",
-	"task archive", "task claim", "task claim-next", "task release",
-	"folder create", "folder show", "folder list", "folder update", "folder move",
-	"folder delete", "folder archive",
-	"batch", "where", "context", "marker bind", "marker unbind",
-	"init", "info", "version", "doctor", "repair", "backup",
-}
-
-// helpLine reports whether a line prints usage text instead of an
-// envelope: --help alone, or right after a command. --help with anything
-// else is an unknown option, and prints an envelope.
+// helpLine reports whether a line prints plain text for people instead
+// of an envelope: help and completion, and --help or -h anywhere before
+// --.
 func helpLine(args []string) bool {
-	n := len(args)
-	if n == 0 || args[n-1] != "--help" {
-		return false
+	if len(args) > 0 && (args[0] == "help" || args[0] == "completion" || strings.HasPrefix(args[0], "__complete")) {
+		return true
 	}
-	return n == 1 || slices.Contains(commands, strings.Join(args[:n-1], " "))
+	for _, a := range args {
+		switch a {
+		case "--":
+			return false
+		case "--help", "-h":
+			return true
+		}
+	}
+	return false
 }
 
 // environ is the environment with HOME replaced, so no run can reach the

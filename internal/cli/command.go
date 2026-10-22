@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Kind says how an option's text on the command line becomes the value
@@ -21,11 +23,12 @@ type Kind int
 const (
 	// String is the text as typed.
 	String Kind = iota
-	// Integer is a JSON integer when the text is one, else the text, for
-	// the command's own check to refuse.
+	// Integer is a JSON integer, written as JSON writes one; other text
+	// is refused as usage. One out of range is the command's to refuse,
+	// as through --input.
 	Integer
 	// Bool is true when the option is given bare; --name=false is false
-	// and --name=true true.
+	// and --name=true true. Other text is refused as usage.
 	Bool
 	// List is comma-separated, and the option can repeat.
 	List
@@ -51,11 +54,14 @@ type Option struct {
 	Nullable bool
 	// Required, for a subject: the command line must give one.
 	Required bool
+	// Usage is the option's line in help.
+	Usage string
 }
 
-// Name is the option as typed, such as --blocked-by.
-func (o Option) Name() string {
-	return "--" + strings.ReplaceAll(o.Field, "_", "-")
+// flag is the option's name without its dashes, as pflag knows it:
+// the field in kebab-case, such as blocked-by.
+func (o Option) flag() string {
+	return strings.ReplaceAll(o.Field, "_", "-")
 }
 
 // File is a convenience that sets an input field from a file read whole,
@@ -64,6 +70,7 @@ func (o Option) Name() string {
 type File struct {
 	Name  string // as typed, such as --notes-file
 	Field string
+	Usage string // its line in help
 }
 
 // Here is a convenience that sets an input field to the working
@@ -98,6 +105,7 @@ func (e *Env) Home() (string, *Error) {
 // what it does with an input whose fields are all its own.
 type Command struct {
 	Name    string
+	Short   string // its line in help
 	Subject *Option
 	Options []Option
 	Files   []File
@@ -126,7 +134,6 @@ func (c *Command) fields() map[string]bool {
 type line struct {
 	input    string // the -i file, or "" when not given
 	hasInput bool
-	other    string // the first argument other than -i, as typed
 	in       Input
 	// files maps a field to the file a convenience reads it from.
 	files map[string]string
@@ -134,132 +141,212 @@ type line struct {
 	paths []string
 }
 
-// parse reads the arguments after the command's name.
-func (c *Command) parse(args []string) (*line, *Error) {
-	l := &line{in: Input{}, files: map[string]string{}}
-	var subjects []string
-	set := map[string]bool{}
-	// by is the option that set each field, as typed, so a field set by
-	// both its option and a convenience names the later.
-	by := map[string]string{}
-	noteOther := func(a string) {
-		if l.other == "" {
-			l.other = a
-		}
-	}
-	options := false
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if options || a == "-" || !strings.HasPrefix(a, "-") {
-			subjects = append(subjects, a)
-			noteOther(a)
-			continue
-		}
-		if a == "--" {
-			options = true
-			continue
-		}
-		name, value, hasValue := strings.Cut(a, "=")
-		if !strings.HasPrefix(name, "--") && name != "-i" || name == "-i" && hasValue {
-			return nil, Usage(a, "unknown option "+a)
-		}
-		if name == "-i" || name == "--input" {
-			if l.hasInput {
-				return nil, Usage(a, "--input given twice")
-			}
-			if !hasValue {
-				if i+1 == len(args) {
-					return nil, Usage(a, a+" needs a value")
-				}
-				i++
-				value = args[i]
-			}
-			l.input, l.hasInput = value, true
-			continue
-		}
-		if f := c.file(name); f != nil {
-			noteOther(a)
-			if !hasValue {
-				if i+1 == len(args) {
-					return nil, Usage(a, name+" needs a value")
-				}
-				i++
-				value = args[i]
-			}
-			if by[f.Field] == name {
-				return nil, Usage(a, name+" given twice")
-			}
-			if set[f.Field] {
-				return nil, Usage(a, name+" can't go with "+by[f.Field])
-			}
-			set[f.Field], by[f.Field] = true, name
-			l.files[f.Field] = value
-			continue
-		}
-		opt := c.option(name)
-		if opt == nil {
-			return nil, Usage(a, "unknown option "+name)
-		}
-		noteOther(a)
-		if opt.Kind == Bool {
-			if !hasValue {
-				value = "true"
-			}
-		} else if !hasValue {
-			if i+1 == len(args) {
-				return nil, Usage(a, name+" needs a value")
-			}
-			i++
-			value = args[i]
-		}
-		if _, ok := l.files[opt.Field]; ok {
-			return nil, Usage(a, name+" can't go with "+by[opt.Field])
-		}
-		if set[opt.Field] && opt.Kind != List && opt.Kind != Each {
-			return nil, Usage(a, name+" given twice")
-		}
-		set[opt.Field], by[opt.Field] = true, name
-		opt.set(l.in, value)
-		if opt.Kind == Path {
-			l.paths = append(l.paths, opt.Field)
-		}
-	}
-	if l.hasInput {
-		if l.other != "" {
-			return nil, Usage(l.other, "--input can't go with anything else")
-		}
-		return l, nil
-	}
-	if c.Subject == nil && len(subjects) > 0 {
-		return nil, Usage(subjects[0], c.Name+" takes no subject")
-	}
-	if len(subjects) > 1 {
-		return nil, Usage(subjects[1], "a second subject: "+c.Name+" takes one")
-	}
-	if len(subjects) == 1 {
-		c.Subject.set(l.in, subjects[0])
-		if c.Subject.Kind == Path {
-			l.paths = append(l.paths, c.Subject.Field)
-		}
-	} else if c.Subject != nil && c.Subject.Required {
-		return nil, Usage("", c.Name+" needs a subject: "+c.Subject.Field)
-	}
-	return l, nil
+func newLine() *line {
+	return &line{in: Input{}, files: map[string]string{}}
 }
 
-func (c *Command) file(name string) *File {
-	for i := range c.Files {
-		if c.Files[i].Name == name {
-			return &c.Files[i]
-		}
+var errTwice = errors.New("given twice")
+
+// value is an option's pflag.Value: it puts the option's text into the
+// line's input as pflag reads it, and refuses a second occurrence of an
+// option that isn't a list, and text its kind can't take.
+type value struct {
+	opt  *Option
+	l    *line
+	seen bool
+}
+
+func (v *value) String() string { return "" }
+
+func (v *value) Type() string {
+	switch v.opt.Kind {
+	case Integer:
+		return "int"
+	case Bool:
+		return "bool"
+	case List:
+		return "a,b,..."
+	case JSON:
+		return "json"
+	case Path:
+		return "path"
+	}
+	return "string"
+}
+
+func (v *value) Set(text string) error {
+	if v.seen && v.opt.Kind != List && v.opt.Kind != Each {
+		return errTwice
+	}
+	v.seen = true
+	if err := v.opt.check(text); err != nil {
+		return err
+	}
+	v.opt.set(v.l.in, text)
+	if v.opt.Kind == Path {
+		v.l.paths = append(v.l.paths, v.opt.Field)
 	}
 	return nil
 }
 
-func (c *Command) option(name string) *Option {
+// fileValue is a convenience's pflag.Value: it names the file its field
+// is read from.
+type fileValue struct {
+	f    *File
+	l    *line
+	seen bool
+}
+
+func (v *fileValue) String() string { return "" }
+func (v *fileValue) Type() string   { return "file|-" }
+
+func (v *fileValue) Set(text string) error {
+	if v.seen {
+		return errTwice
+	}
+	v.seen = true
+	v.l.files[v.f.Field] = text
+	return nil
+}
+
+// inputValue is -i, --input.
+type inputValue struct{ l *line }
+
+func (v *inputValue) String() string { return "" }
+func (v *inputValue) Type() string   { return "file|-" }
+
+func (v *inputValue) Set(text string) error {
+	if v.l.hasInput {
+		return errTwice
+	}
+	v.l.input, v.l.hasInput = text, true
+	return nil
+}
+
+// cobra makes the command's cobra command. It reads its command line
+// into a line of its own, then hands both to ran.
+func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
+	l := newLine()
+	words := strings.Fields(c.Name)
+	use := words[len(words)-1]
+	if s := c.Subject; s != nil {
+		if s.Required {
+			use += " <" + s.Field + ">"
+		} else {
+			use += " [<" + s.Field + ">]"
+		}
+	}
+	cc := &cobra.Command{
+		Use:   use,
+		Short: c.Short,
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if e := c.finish(cmd, l, args); e != nil {
+				return e
+			}
+			ran(c, l)
+			return nil
+		},
+	}
+	flags := cc.Flags()
 	for i := range c.Options {
-		if c.Options[i].Name() == name {
-			return &c.Options[i]
+		o := &c.Options[i]
+		flags.Var(&value{opt: o, l: l}, o.flag(), o.Usage)
+		if o.Kind == Bool {
+			flags.Lookup(o.flag()).NoOptDefVal = "true"
+		}
+	}
+	for i := range c.Files {
+		f := &c.Files[i]
+		name := strings.TrimPrefix(f.Name, "--")
+		flags.Var(&fileValue{f: f, l: l}, name, f.Usage)
+		for _, o := range c.Options {
+			if o.Field == f.Field {
+				cc.MarkFlagsMutuallyExclusive(o.flag(), name)
+			}
+		}
+	}
+	flags.VarP(&inputValue{l: l}, "input", "i", "the whole input as one JSON object")
+	return cc
+}
+
+// finish checks what pflag can't: --input alone, and the subject.
+func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
+	if l.hasInput {
+		other := ""
+		if len(args) > 0 {
+			other = args[0]
+		} else {
+			cmd.Flags().Visit(func(f *pflag.Flag) {
+				if other == "" && f.Name != "input" {
+					other = "--" + f.Name
+				}
+			})
+		}
+		if other != "" {
+			return Usage(other, "--input can't go with anything else")
+		}
+		return nil
+	}
+	if c.Subject == nil && len(args) > 0 {
+		return Usage(args[0], c.Name+" takes no subject")
+	}
+	if len(args) > 1 {
+		return Usage(args[1], "a second subject: "+c.Name+" takes one")
+	}
+	if len(args) == 1 {
+		c.Subject.set(l.in, args[0])
+		if c.Subject.Kind == Path {
+			l.paths = append(l.paths, c.Subject.Field)
+		}
+	} else if c.Subject != nil && c.Subject.Required {
+		return Usage("", c.Name+" needs a subject: "+c.Subject.Field)
+	}
+	return nil
+}
+
+// usage is the usage error for what cobra or pflag refused: an option by
+// its long name, an unknown short option as typed, or "" when nothing
+// single is at fault.
+func usage(err error) *Error {
+	var (
+		e        *Error
+		notExist *pflag.NotExistError
+		required *pflag.ValueRequiredError
+		invalid  *pflag.InvalidValueError
+		syntax   *pflag.InvalidSyntaxError
+	)
+	switch {
+	case errors.As(err, &e):
+		return e
+	case errors.As(err, &notExist):
+		if notExist.GetSpecifiedShortnames() != "" {
+			return Usage("-"+notExist.GetSpecifiedName(), err.Error())
+		}
+		return Usage("--"+notExist.GetSpecifiedName(), err.Error())
+	case errors.As(err, &required):
+		return Usage("--"+required.GetFlag().Name, err.Error())
+	case errors.As(err, &invalid):
+		return Usage("--"+invalid.GetFlag().Name, err.Error())
+	case errors.As(err, &syntax):
+		return Usage(syntax.GetSpecifiedFlag(), err.Error())
+	}
+	return Usage("", err.Error())
+}
+
+// check refuses text the option's kind can't take.
+func (o *Option) check(text string) error {
+	if o.Nullable && text == "null" {
+		return nil
+	}
+	switch o.Kind {
+	case Integer:
+		if !jsonInteger(text) {
+			return errors.New("not an integer")
+		}
+	case Bool:
+		if text != "true" && text != "false" {
+			return errors.New("not true or false")
 		}
 	}
 	return nil
@@ -288,10 +375,8 @@ func (o *Option) value(text string) any {
 	}
 	switch o.Kind {
 	case Integer:
-		// Only text written as a JSON integer is one, so --priority 007
-		// is refused as it would be through --input.
-		if n, err := strconv.ParseInt(text, 10, 64); err == nil && jsonInteger(text) {
-			return json.Number(strconv.FormatInt(n, 10))
+		if jsonInteger(text) {
+			return json.Number(text)
 		}
 	case Bool:
 		if text == "true" || text == "false" {

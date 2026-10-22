@@ -17,7 +17,7 @@
       },
       {
         "field": "/priority",
-        "reason": "priority must be an integer or null"
+        "reason": "9007199254740992 is outside ±(2^53 − 1)"
       },
       {
         "field": "/tags/1",

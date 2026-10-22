@@ -44,12 +44,12 @@ testdata/            golden results
 - Go 1.25 or later. SQLite through `modernc.org/sqlite`: no cgo, ever.
 - `go test ./...` runs everything; `go test -short ./...` skips the long concurrency and crash matrices.
 - Tests run the binary with `HOME` set to a temp directory, so the root is `$HOME/koan-root` there.
-- **Never run koan against the real `~/koan-root`.** Always set `HOME` to a scratch directory.
+- **Never run koan against the real `~/koan-root`.** Always set `HOME` to a scratch directory. The one exception: the installed `koan`, used through the koan skill, tracks work on this repo there, under `/koan`. The binary built from this repo still runs only with a scratch `HOME`.
 - CI runs on Linux and on macOS with its default case-insensitive filesystem. Case and rename code must pass on both.
 
 ## Rules for the code
 
-- Every command prints exactly one line of JSON on stdout, in the field order of its schema. Exit codes are 0, 1, 2 and 3, as the spec says.
+- Every command prints exactly one line of JSON on stdout, in the field order of its schema; help and completion, for people, print cobra's plain text. Exit codes are 0, 1, 2 and 3, as the spec says.
 - Every failure has one error kind from the spec; a conflict also names its rule. Don't add kinds, rules, warnings or fields.
 - Once COMMIT succeeds, the command succeeds; a failed filesystem step is a warning, never an error.
 - Compare names byte for byte. Never rely on the filesystem's case rules; judge filesystem steps by listing the parent directory, never by `stat`.
