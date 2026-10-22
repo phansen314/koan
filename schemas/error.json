@@ -76,7 +76,7 @@
         "properties": {
           "field": {
             "type": "string",
-            "description": "A JSON Pointer into the input; for usage, what is at fault, as Invocation says: an option by its long name, an unknown short option, command or extra subject as typed, or \"\" when what is at fault is missing."
+            "description": "A JSON Pointer into the input; for usage, what is at fault, as Invocation says: an option by its long name, an unknown short option by its letter, an unknown command or extra subject as typed, or \"\" when what is at fault is missing."
           },
           "reason": {
             "type": "string",

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -25,8 +24,8 @@ const (
 	// String is the text as typed.
 	String Kind = iota
 	// Integer is a JSON integer, written as JSON writes one; other text
-	// is refused as usage. One too big for an int64 is kept as text, for
-	// the command's own check to refuse.
+	// is refused as usage. One out of range is the command's to refuse,
+	// as through --input.
 	Integer
 	// Bool is true when the option is given bare; --name=false is false
 	// and --name=true true. Other text is refused as usage.
@@ -55,14 +54,12 @@ type Option struct {
 	Nullable bool
 	// Required, for a subject: the command line must give one.
 	Required bool
+	// Usage is the option's line in help.
+	Usage string
 }
 
-// Name is the option as typed, such as --blocked-by.
-func (o Option) Name() string {
-	return "--" + o.flag()
-}
-
-// flag is the option's name without its dashes, as pflag knows it.
+// flag is the option's name without its dashes, as pflag knows it:
+// the field in kebab-case, such as blocked-by.
 func (o Option) flag() string {
 	return strings.ReplaceAll(o.Field, "_", "-")
 }
@@ -73,6 +70,7 @@ func (o Option) flag() string {
 type File struct {
 	Name  string // as typed, such as --notes-file
 	Field string
+	Usage string // its line in help
 }
 
 // Here is a convenience that sets an input field to the working
@@ -107,6 +105,7 @@ func (e *Env) Home() (string, *Error) {
 // what it does with an input whose fields are all its own.
 type Command struct {
 	Name    string
+	Short   string // its line in help
 	Subject *Option
 	Options []Option
 	Files   []File
@@ -238,8 +237,9 @@ func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
 		}
 	}
 	cc := &cobra.Command{
-		Use:  use,
-		Args: cobra.ArbitraryArgs,
+		Use:   use,
+		Short: c.Short,
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if e := c.finish(cmd, l, args); e != nil {
 				return e
@@ -251,7 +251,7 @@ func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
 	flags := cc.Flags()
 	for i := range c.Options {
 		o := &c.Options[i]
-		flags.Var(&value{opt: o, l: l}, o.flag(), "")
+		flags.Var(&value{opt: o, l: l}, o.flag(), o.Usage)
 		if o.Kind == Bool {
 			flags.Lookup(o.flag()).NoOptDefVal = "true"
 		}
@@ -259,7 +259,7 @@ func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
 	for i := range c.Files {
 		f := &c.Files[i]
 		name := strings.TrimPrefix(f.Name, "--")
-		flags.Var(&fileValue{f: f, l: l}, name, "")
+		flags.Var(&fileValue{f: f, l: l}, name, f.Usage)
 		for _, o := range c.Options {
 			if o.Field == f.Field {
 				cc.MarkFlagsMutuallyExclusive(o.flag(), name)
@@ -303,23 +303,6 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 		return Usage("", c.Name+" needs a subject: "+c.Subject.Field)
 	}
 	return nil
-}
-
-// parse reads the arguments after the command's name.
-func (c *Command) parse(args []string) (*line, *Error) {
-	var got *line
-	cc := c.cobra(func(_ *Command, l *line) { got = l })
-	cc.SilenceErrors, cc.SilenceUsage = true, true
-	cc.SetOut(io.Discard)
-	cc.SetErr(io.Discard)
-	cc.SetArgs(append([]string{}, args...))
-	if err := cc.Execute(); err != nil {
-		return nil, usage(err)
-	}
-	if got == nil {
-		return nil, Usage("", "help, not a command line")
-	}
-	return got, nil
 }
 
 // usage is the usage error for what cobra or pflag refused: an option by
@@ -392,8 +375,8 @@ func (o *Option) value(text string) any {
 	}
 	switch o.Kind {
 	case Integer:
-		if n, err := strconv.ParseInt(text, 10, 64); err == nil && jsonInteger(text) {
-			return json.Number(strconv.FormatInt(n, 10))
+		if jsonInteger(text) {
+			return json.Number(text)
 		}
 	case Bool:
 		if text == "true" || text == "false" {

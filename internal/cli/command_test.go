@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -38,6 +40,22 @@ var bare = &Command{
 	Run:  func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
+// parse reads the arguments after a command's name, through the tree
+// Main runs, with c the only command.
+func (c *Command) parse(args []string) (*line, *Error) {
+	var got *line
+	root := tree([]*Command{c}, io.Discard, func(_ *Command, l *line) { got = l })
+	root.SetErr(io.Discard)
+	root.SetArgs(append(strings.Fields(c.Name), args...))
+	if err := root.Execute(); err != nil {
+		return nil, usage(err)
+	}
+	if got == nil {
+		return nil, Usage("", "help, not a command line")
+	}
+	return got, nil
+}
+
 func parseJSON(t *testing.T, s string) Input {
 	t.Helper()
 	v, err := decodeOne([]byte(s))
@@ -62,7 +80,7 @@ func TestParseLines(t *testing.T) {
 		{fake, []string{"t", "--priority=-3"}, `{"title":"t","priority":-3}`},
 		{fake, []string{"t", "--priority", "-3"}, `{"title":"t","priority":-3}`},
 		{fake, []string{"t", "--priority", "null"}, `{"title":"t","priority":null}`},
-		{fake, []string{"t", "--priority", "99999999999999999999"}, `{"title":"t","priority":"99999999999999999999"}`},
+		{fake, []string{"t", "--priority", "99999999999999999999"}, `{"title":"t","priority":99999999999999999999}`},
 		{fake, []string{"t", "--priority", "0"}, `{"title":"t","priority":0}`},
 		{fake, []string{"t", "--note", "null"}, `{"title":"t","note":null}`},
 		{fake, []string{"t", "--name", "null"}, `{"title":"t","name":"null"}`},

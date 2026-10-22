@@ -194,6 +194,8 @@ func TestMalformed(t *testing.T) {
 		{[]string{"task", "create", "t", "--notes", "n", "--notes-file", "f"}, ""},
 		{[]string{"task", "create", "t", "-i", "in.json"}, "t"},
 		{[]string{"task", "update", "1", "--title", "a", "--title", "b"}, "--title"},
+		{[]string{"completion", "zhs"}, "zhs"},
+		{[]string{"completion", "bash", "extra"}, ""},
 		// An option pflag refuses comes before help.
 		{[]string{"info", "--contents", "-h"}, "--contents"},
 	}

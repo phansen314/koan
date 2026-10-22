@@ -121,6 +121,7 @@ func TestTaskCreateInvalid(t *testing.T) {
 		{[]string{"a\nb"}, "/title"},
 		{[]string{"a b"}, "/title"},
 		{[]string{"t", "--priority", "9007199254740992"}, "/priority"},
+		{[]string{"t", "--priority", "99999999999999999999"}, "/priority"},
 		{[]string{"t", "--tags", "a,b,a"}, "/tags/2"},
 		{[]string{"t", "--tags", ""}, "/tags/0"},
 		{[]string{"t", "--tags", "-a"}, "/tags/0"},

@@ -5,7 +5,7 @@ import "github.com/phansen314/koan/internal/cli"
 
 // Commands is every command koan has.
 func Commands() []*cli.Command {
-	return []*cli.Command{
+	return describe([]*cli.Command{
 		TaskCreate(),
 		TaskShow(),
 		TaskList(),
@@ -40,5 +40,5 @@ func Commands() []*cli.Command {
 		Doctor(),
 		Repair(),
 		Backup(),
-	}
+	})
 }

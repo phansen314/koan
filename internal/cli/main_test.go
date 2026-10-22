@@ -216,7 +216,16 @@ func TestMainCompletion(t *testing.T) {
 			t.Errorf("completion %s: %d %.80q", shell, r.code, r.stdout)
 		}
 	}
-	r := runMain(t, "", cmds, "__complete", "thing", "")
+	r := runMain(t, "", cmds, "completion")
+	if r.code != 0 || !strings.Contains(r.stdout, "bash") || strings.HasPrefix(r.stdout, "{") {
+		t.Errorf("completion alone: %d %q", r.code, r.stdout)
+	}
+	// A shell cobra doesn't know is usage, not its help.
+	r = runMain(t, "", cmds, "completion", "zhs")
+	if r.code != ExitUsage || !strings.Contains(r.stdout, `"field":"zhs"`) {
+		t.Errorf("completion zhs: %d %q", r.code, r.stdout)
+	}
+	r = runMain(t, "", cmds, "__complete", "thing", "")
 	if r.code != 0 || !strings.Contains(r.stdout, "make") {
 		t.Errorf("__complete thing: %d %q", r.code, r.stdout)
 	}

@@ -121,13 +121,13 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 - **Options go after the command's words.** cobra also takes some placed before them, such as `koan --title x task create t`; that is not a contract.
 - **Once each.** An option that isn't a list can be given once.
 
-**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, `koan task`, `koan folder` or `koan marker` with no command or an unknown one after it, a missing or extra subject, an option without its value, a value its option's type refuses, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. A value its option's type refuses is an integer option's that isn't an integer or a null it can take, or a boolean option's that isn't `true`, `false` or a null it can take. Its problem names what is at fault:
+**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, `koan task`, `koan folder` or `koan marker` with no command or an unknown one after it, `koan completion` with a shell it doesn't know, a missing or extra subject, an option without its value, a value its option's type refuses, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. A value its option's type refuses is an integer option's that isn't an integer or a null it can take, or a boolean option's that isn't `true`, `false` or a null it can take. Its problem names what is at fault:
 
 - an option by its long name: `--frob` for `--frob=1`, `--input` for a second `-i`, `--title` for a second `--title`;
-- an unknown short option as typed, such as `-x`;
+- an unknown short option as `-` and its letter: `-x` for `-x`, and for `-xy` too, since pflag reads the letters one at a time;
 - an unknown command, or an extra subject, as typed;
 - for `--input` with anything else, the subject when one is given, else the first other option given, in byte order of their long names;
-- `""` when what is at fault is missing, such as the command, `koan task` alone included, or the subject; and for both `--notes` and `--notes-file`.
+- `""` when what is at fault is missing, such as the command, `koan task` alone included, or the subject; for both `--notes` and `--notes-file`; and for any line cobra's own `help` or `completion` refuses, such as `koan completion bash extra`.
 
 When a line has several faults, which is named is cobra's: options are read before the command's words and subject are checked. Every check of a value other than its type's is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
 
@@ -149,8 +149,8 @@ A file koan can't read, or a working directory it can't resolve, is `io`, with t
 
 **Help and completion** are for people, and print plain text, not an envelope. Their text is cobra's, and is not a contract (Not covered).
 
-- **Help.** `--help` or `-h`, anywhere on a command line before `--`, prints the help of the command it names to standard output with exit 0, whatever else is on the line, except an option pflag refuses: pflag reads every option before cobra looks at help, so `koan info --frob -h` is `usage`. `koan help [<command>]` is the same. `koan --help` lists the commands.
-- **Completion.** `koan completion <shell>`, for `bash`, `zsh`, `fish` or `powershell`, prints a script that completes koan's commands and options in that shell; with no shell it prints its help. The script calls koan back through cobra's hidden `__complete` commands, which print candidates on standard output and may write more than one line to standard error. Completing references is deferred (PRD Deferred and choices).
+- **Help.** `--help` or `-h`, anywhere on a command line before `--` but as an option's value (`--title -h` is a title), prints the help of the command it names to standard output with exit 0, whatever else is on the line, except an option pflag refuses: pflag reads every option before cobra looks at help, so `koan info --frob -h` is `usage`. `koan help [<command>]` is the same. `koan --help` lists the commands.
+- **Completion.** `koan completion <shell>`, for `bash`, `zsh`, `fish` or `powershell`, prints a script that completes koan's commands and options in that shell; with no shell it prints its help, and with a shell it doesn't know it is `usage`, naming that shell, so a typo never installs a broken script. The script calls koan back through cobra's hidden `__complete` commands, which print candidates on standard output and may write more than one line to standard error. Completing references is deferred (PRD Deferred and choices).
 
 | Exit | Means |
 | --- | --- |
@@ -424,7 +424,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
     "paths":    { "type": "array", "items": { "type": "string" }, "description": "Folder paths or paths on disk, as the kind or rule gives." },
     "problems": { "type": "array",
                   "items": { "type": "object", "required": ["field", "reason"],
-                              "properties": { "field":  { "type": "string", "description": "A JSON Pointer into the input; for usage, what is at fault, as Invocation says: an option by its long name, an unknown short option, command or extra subject as typed, or \"\" when what is at fault is missing." },
+                              "properties": { "field":  { "type": "string", "description": "A JSON Pointer into the input; for usage, what is at fault, as Invocation says: an option by its long name, an unknown short option by its letter, an unknown command or extra subject as typed, or \"\" when what is at fault is missing." },
                                               "reason": { "type": "string", "description": "For a person, never parsed: the fault, for usage and invalid-input; for any other kind, which points at fields without faulting them, the message." } } } },
     "archived": { "type": "array",
                   "items": { "type": "object", "required": ["id", "archive"],

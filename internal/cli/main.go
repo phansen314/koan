@@ -24,9 +24,8 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 		c *Command
 		l *line
 	)
-	root := tree(commands, func(cmd *Command, ln *line) { c, l = cmd, ln })
+	root := tree(commands, stdout, func(cmd *Command, ln *line) { c, l = cmd, ln })
 	root.SetIn(stdin)
-	root.SetOut(stdout)
 	root.SetErr(stderr)
 	// A nil slice would have cobra read os.Args.
 	root.SetArgs(append([]string{}, args...))
@@ -58,7 +57,8 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 // tree is the cobra command tree: a command of two words sits under a
 // group named by its first. The root and each group refuse a line that
 // names no command of theirs as usage, where cobra would print help.
-func tree(commands []*Command, ran func(*Command, *line)) *cobra.Command {
+// Help and completion print to stdout.
+func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "koan",
 		Short:         "Task management for one person on one machine",
@@ -72,14 +72,37 @@ func tree(commands []*Command, ran func(*Command, *line)) *cobra.Command {
 		parent := root
 		if g, _, ok := strings.Cut(c.Name, " "); ok {
 			if groups[g] == nil {
-				groups[g] = &cobra.Command{Use: g, Args: cobra.ArbitraryArgs, RunE: unknown(g)}
+				groups[g] = &cobra.Command{Use: g, Short: groupShorts[g], Args: cobra.ArbitraryArgs, RunE: unknown(g)}
 				root.AddCommand(groups[g])
 			}
 			parent = groups[g]
 		}
 		parent.AddCommand(c.cobra(ran))
 	}
+	// cobra's completion command prints its help, exit 0, for a shell it
+	// doesn't know; an unknown shell is usage instead. It keeps the
+	// output it is made with, so that is set first.
+	root.SetOut(stdout)
+	root.InitDefaultCompletionCmd()
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "completion" {
+			cmd.Args = cobra.ArbitraryArgs
+			cmd.RunE = func(cmd *cobra.Command, args []string) error {
+				if len(args) == 0 {
+					return cmd.Help()
+				}
+				return Usage(args[0], "unknown shell "+args[0])
+			}
+		}
+	}
 	return root
+}
+
+// groupShorts are each group's line in help.
+var groupShorts = map[string]string{
+	"task":   "Make, change, find and claim tasks",
+	"folder": "Make, change and find folders",
+	"marker": "Bind directories outside the tree, such as worktrees, to folders",
 }
 
 // unknown refuses a line that names no command under group, "" for the
