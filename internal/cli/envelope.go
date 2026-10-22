@@ -22,6 +22,11 @@ const (
 	KindUnsupportedFormat = "unsupported-format"
 	KindIO                = "io"
 	KindInternal          = "internal"
+	// KindUnavailable is pick's alone: it can't run, for want of a
+	// terminal or a usable fzf. It is only ever named in the
+	// standard-error line, since pick prints no envelope, so it isn't in
+	// Kinds, which are the error schema's.
+	KindUnavailable = "unavailable"
 )
 
 // Kinds is every error kind, in the spec's order.
@@ -220,6 +225,34 @@ func stderrLine(e *Error, warnings []Warning) string {
 		return "koan: " + strconv.Itoa(len(warnings)) + " warnings\n"
 	}
 	return ""
+}
+
+// Text is what a plain command prints on standard output, and the exit
+// code it gives.
+type Text struct {
+	Out  string
+	Exit int
+}
+
+// writePlain prints a plain command's text and the standard-error line,
+// and gives the exit code. A failure prints nothing on standard output.
+func writePlain(stdout, stderr io.Writer, result any, e *Error, warnings []Warning) int {
+	if e == nil {
+		t, ok := result.(Text)
+		if !ok {
+			e = NewError(KindInternal, "a plain command gave no text")
+		} else {
+			if _, err := io.WriteString(stdout, t.Out); err != nil {
+				return ExitOutput
+			}
+			if s := stderrLine(nil, warnings); s != "" {
+				io.WriteString(stderr, s)
+			}
+			return t.Exit
+		}
+	}
+	io.WriteString(stderr, stderrLine(e, warnings))
+	return ExitCode(e.Kind)
 }
 
 // write prints the envelope and the standard-error line, and gives the

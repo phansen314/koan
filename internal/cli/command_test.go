@@ -44,7 +44,7 @@ var bare = &Command{
 // Main runs, with c the only command.
 func (c *Command) parse(args []string) (*line, *Error) {
 	var got *line
-	root := tree([]*Command{c}, io.Discard, func(_ *Command, l *line) { got = l })
+	root, _ := tree([]*Command{c}, io.Discard, func(_ *Command, l *line) { got = l })
 	root.SetErr(io.Discard)
 	root.SetArgs(append(strings.Fields(c.Name), args...))
 	if err := root.Execute(); err != nil {

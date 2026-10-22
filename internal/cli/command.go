@@ -75,10 +75,13 @@ type File struct {
 
 // Here is a convenience that sets an input field to the working
 // directory when the command line gives neither it nor any of Unless,
-// such as context's file when no folder is given.
+// such as context's file when no folder is given. With Flag, it does so
+// only when that option is given, such as pick's --here.
 type Here struct {
 	Field  string
 	Unless []string
+	Flag   string // as typed, such as --here
+	Usage  string // the flag's line in help
 }
 
 // Input is a command's input: one JSON object, with numbers kept as
@@ -88,6 +91,9 @@ type Input map[string]any
 // Env is what a command may know about where it runs.
 type Env struct {
 	Stdin io.Reader
+	// Stderr is for what a program a command runs writes there, such as
+	// fzf's own complaints; koan's own line is Main's.
+	Stderr io.Writer
 }
 
 // Home is ~, from HOME. A command that uses the root finds it as part of
@@ -112,7 +118,11 @@ type Command struct {
 	Here    *Here
 	// Fields are input fields only --input gives, with no option.
 	Fields []string
-	Run    func(env *Env, in Input) (result any, warnings []Warning, err *Error)
+	// Plain marks a command for people, which prints plain text rather
+	// than an envelope: its result is a Text, and a failure prints only
+	// the standard-error line.
+	Plain bool
+	Run   func(env *Env, in Input) (result any, warnings []Warning, err *Error)
 }
 
 // fields is every input field the command takes.
@@ -139,6 +149,8 @@ type line struct {
 	files map[string]string
 	// paths are the fields of Path options given.
 	paths []string
+	// here is whether a Here convenience's Flag was given true.
+	here bool
 }
 
 func newLine() *line {
@@ -209,6 +221,27 @@ func (v *fileValue) Set(text string) error {
 	return nil
 }
 
+// hereValue is a Here convenience's Flag: true or false, bare for true.
+type hereValue struct {
+	l    *line
+	seen bool
+}
+
+func (v *hereValue) String() string { return "" }
+func (v *hereValue) Type() string   { return "bool" }
+
+func (v *hereValue) Set(text string) error {
+	if v.seen {
+		return errTwice
+	}
+	v.seen = true
+	if text != "true" && text != "false" {
+		return errors.New("not true or false")
+	}
+	v.l.here = text == "true"
+	return nil
+}
+
 // inputValue is -i, --input.
 type inputValue struct{ l *line }
 
@@ -265,6 +298,11 @@ func (c *Command) cobra(ran func(*Command, *line)) *cobra.Command {
 				cc.MarkFlagsMutuallyExclusive(o.flag(), name)
 			}
 		}
+	}
+	if h := c.Here; h != nil && h.Flag != "" {
+		name := strings.TrimPrefix(h.Flag, "--")
+		flags.Var(&hereValue{l: l}, name, h.Usage)
+		flags.Lookup(name).NoOptDefVal = "true"
 	}
 	flags.VarP(&inputValue{l: l}, "input", "i", "the whole input as one JSON object")
 	return cc
@@ -480,7 +518,15 @@ func (c *Command) readFiles(env *Env, l *line) *Error {
 		}
 		l.in[field] = filepath.Clean(p)
 	}
-	if h := c.Here; h != nil {
+	if h := c.Here; h != nil && h.Flag != "" {
+		if l.here {
+			wd, e := workingDir()
+			if e != nil {
+				return e
+			}
+			l.in[h.Field] = wd
+		}
+	} else if h != nil {
 		given := false
 		for _, f := range append([]string{h.Field}, h.Unless...) {
 			_, ok := l.in[f]

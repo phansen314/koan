@@ -38,6 +38,7 @@ var shorts = map[string]string{
 	"doctor":          "Check the tree and the database; changes nothing",
 	"repair":          "Fix what doctor found that can be fixed without losing anything",
 	"backup":          "Copy the root into a directory, and check the copy",
+	"pick":            "Pick tasks, gates and folders in fzf, and print their references; for a person at a terminal",
 }
 
 // usages are each option's line in help, by field, or by command and
@@ -80,11 +81,23 @@ var usages = map[string]string{
 	"context/file":          "brief the folder this file is in; the working directory when left out",
 	"kinds":                 "fix only these kinds of finding",
 	"ids_from":              "the first ID the new root issues",
+	"pick/folder":           "pick from this folder and what is under it; / when left out",
+	"pick/recursive":        "include subfolders; --recursive=false for the folder's own tasks and the folders directly in it",
+	"pick/kinds":            "offer only these kinds: task, gate, folder",
+	"frontier":              "offer the frontier's tasks, in work order",
+	"query":                 "fzf's starting query",
+	"bash":                  "print the bash script that binds Alt-K to pick, instead of picking",
 }
 
 // fileUsages are each convenience's line in help, by field.
 var fileUsages = map[string]string{
 	"notes": "read the notes from a file, or from standard input for -",
+}
+
+// hereUsages are each working-directory option's line in help, by
+// command.
+var hereUsages = map[string]string{
+	"pick": "pick from the folder the working directory's marker binds",
 }
 
 // describe gives every command its line in help, and each option its own.
@@ -102,6 +115,9 @@ func describe(commands []*cli.Command) []*cli.Command {
 		}
 		for i := range c.Files {
 			c.Files[i].Usage = fileUsages[c.Files[i].Field]
+		}
+		if c.Here != nil && c.Here.Flag != "" {
+			c.Here.Usage = hereUsages[c.Name]
 		}
 	}
 	return commands
