@@ -26,6 +26,14 @@ func TestDescribed(t *testing.T) {
 				t.Errorf("%s %s: no line in help", c.Name, f.Name)
 			}
 		}
+		if h := c.Here; h != nil && h.Flag != "" && h.Usage == "" {
+			t.Errorf("%s %s: no line in help", c.Name, h.Flag)
+		}
+	}
+	for name := range hereUsages {
+		if !used[name] {
+			t.Errorf("hereUsages: %s is no command", name)
+		}
 	}
 	for name := range shorts {
 		if !used[name] {

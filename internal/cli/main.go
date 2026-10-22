@@ -10,56 +10,67 @@ import (
 
 // Main runs one command line and gives the exit code. Whatever happens,
 // it prints exactly one envelope, unless the line asks for help or
-// completion, which print cobra's text for people.
+// completion, which print cobra's text for people, or names a plain
+// command, which prints its text, or on failure only the standard-error
+// line.
 func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*Command) (code int) {
-	var warnings []Warning
+	var (
+		warnings []Warning
+		c        *Command
+		l        *line
+	)
+	out := func(result any, e *Error, warnings []Warning) int {
+		if c != nil && c.Plain {
+			return writePlain(stdout, stderr, result, e, warnings)
+		}
+		return write(stdout, stderr, result, e, warnings)
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			e := NewError(KindInternal, fmt.Sprintf("koan failed: %v", r))
-			code = write(stdout, stderr, nil, e, warnings)
+			code = out(nil, e, warnings)
 		}
 	}()
 
-	var (
-		c *Command
-		l *line
-	)
-	root := tree(commands, stdout, func(cmd *Command, ln *line) { c, l = cmd, ln })
+	root, named := tree(commands, stdout, func(cmd *Command, ln *line) { c, l = cmd, ln })
 	root.SetIn(stdin)
 	root.SetErr(stderr)
 	// A nil slice would have cobra read os.Args.
 	root.SetArgs(append([]string{}, args...))
-	if err := root.Execute(); err != nil {
-		return write(stdout, stderr, nil, usage(err), nil)
+	if cmd, err := root.ExecuteC(); err != nil {
+		c = named[cmd]
+		return out(nil, usage(err), nil)
 	}
 	if c == nil {
 		return ExitOK
 	}
 
-	env := &Env{Stdin: stdin}
+	env := &Env{Stdin: stdin, Stderr: stderr}
 
 	in := l.in
 	var e *Error
 	if l.hasInput {
 		if in, e = readInput(env, l.input); e != nil {
-			return write(stdout, stderr, nil, e, nil)
+			return out(nil, e, nil)
 		}
 	} else if e := c.readFiles(env, l); e != nil {
-		return write(stdout, stderr, nil, e, nil)
+		return out(nil, e, nil)
 	}
 	if e := c.unknownFields(in); e != nil {
-		return write(stdout, stderr, nil, e, nil)
+		return out(nil, e, nil)
 	}
 	result, warnings, e := c.Run(env, in)
-	return write(stdout, stderr, result, e, warnings)
+	return out(result, e, warnings)
 }
 
 // tree is the cobra command tree: a command of two words sits under a
 // group named by its first. The root and each group refuse a line that
 // names no command of theirs as usage, where cobra would print help.
-// Help and completion print to stdout.
-func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) *cobra.Command {
-	root := &cobra.Command{
+// Help and completion print to stdout. named maps each command's cobra
+// command back to it.
+func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) (root *cobra.Command, named map[*cobra.Command]*Command) {
+	named = map[*cobra.Command]*Command{}
+	root = &cobra.Command{
 		Use:           "koan",
 		Short:         "Task management for one person on one machine",
 		Args:          cobra.ArbitraryArgs,
@@ -77,7 +88,9 @@ func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) *cob
 			}
 			parent = groups[g]
 		}
-		parent.AddCommand(c.cobra(ran))
+		cc := c.cobra(ran)
+		named[cc] = c
+		parent.AddCommand(cc)
 	}
 	// cobra's completion command prints its help, exit 0, for a shell it
 	// doesn't know; an unknown shell is usage instead. It keeps the
@@ -95,7 +108,7 @@ func tree(commands []*Command, stdout io.Writer, ran func(*Command, *line)) *cob
 			}
 		}
 	}
-	return root
+	return root, named
 }
 
 // groupShorts are each group's line in help.
