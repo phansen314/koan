@@ -40,3 +40,6 @@ jobs:
         run: go build ./...
       - name: Test
         run: go test -timeout 30m ./...
+      # go test hides skips; this shows whether the real shells ran.
+      - name: Completion in real shells
+        run: go test -v -count=1 -run 'TestComplete(Bash|Zsh)$' ./cmd/koan/
