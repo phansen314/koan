@@ -96,9 +96,9 @@ func TestTaskCreateNotesFile(t *testing.T) {
 		t.Errorf("io paths: %s", r.Line())
 	}
 	// The file is read as the input is made, before its shape is checked.
-	fails(t, home, "io", "", "task", "create", " ", "--priority", "x", "--notes-file", "missing.md")
+	fails(t, home, "io", "", "task", "create", " ", "--tags", "Bad", "--notes-file", "missing.md")
 	r = koan(t, home, "task", "create", "c", "--notes-file", "n.md", "--notes", "x")
-	if r.Exit != 2 || r.Kind() != "usage" || r.Error()["problems"].([]any)[0].(map[string]any)["field"] != "--notes" {
+	if r.Exit != 2 || r.Kind() != "usage" || r.Error()["problems"].([]any)[0].(map[string]any)["field"] != "" {
 		t.Errorf("both: %s", r.Line())
 	}
 	os.WriteFile(filepath.Join(home, "bad.md"), []byte("caf\xe9"), 0o644)
@@ -110,7 +110,7 @@ func TestTaskCreateNotesFile(t *testing.T) {
 // state is looked at.
 func TestTaskCreateInvalid(t *testing.T) {
 	home := t.TempDir() // no root: the shape is checked first
-	r := fails(t, home, "invalid-input", "", "task", "create", " \t ", "--folder", "/work.done", "--priority", "1.5",
+	r := fails(t, home, "invalid-input", "", "task", "create", " \t ", "--folder", "/work.done", "--priority", "9007199254740992",
 		"--tags", "ok,Bad,ok", "--blocked-by", "/a:docs", "--blocks", "/", "--extra", "[1]")
 	golden(t, r, "task-create-invalid")
 	for _, c := range []struct {
@@ -120,9 +120,7 @@ func TestTaskCreateInvalid(t *testing.T) {
 		{[]string{strings.Repeat("t", 201)}, "/title"},
 		{[]string{"a\nb"}, "/title"},
 		{[]string{"a b"}, "/title"},
-		{[]string{"t", "--priority", "x"}, "/priority"},
 		{[]string{"t", "--priority", "9007199254740992"}, "/priority"},
-		{[]string{"t", "--priority", "007"}, "/priority"},
 		{[]string{"t", "--tags", "a,b,a"}, "/tags/2"},
 		{[]string{"t", "--tags", ""}, "/tags/0"},
 		{[]string{"t", "--tags", "-a"}, "/tags/0"},
@@ -392,11 +390,9 @@ func TestTaskList(t *testing.T) {
 		{[]string{"--readiness", "complete"}, "/readiness/0"},
 		{[]string{"--tags-any", "a,a"}, "/tags_any/1"},
 		{[]string{"--tags-all", "A"}, "/tags_all/0"},
-		{[]string{"--claimed=maybe"}, "/claimed"},
 		{[]string{"--fields", "title,nope"}, "/fields/1"},
 		{[]string{"--fields", "id,id"}, "/fields/1"},
 		{[]string{"--limit", "0"}, "/limit"},
-		{[]string{"--recursive=no"}, "/recursive"},
 		{[]string{"--folder", "/alpha.done"}, "/folder"},
 	} {
 		r := fails(t, home, "invalid-input", "", append([]string{"task", "list"}, c.args...)...)

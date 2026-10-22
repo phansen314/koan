@@ -43,22 +43,25 @@ func TestECMARegexp(t *testing.T) {
 	}
 }
 
-// Only --help alone, or after a command, prints usage text instead of an
-// envelope.
+// Help and completion, and --help or -h anywhere before --, print text
+// for people instead of an envelope.
 func TestHelpLine(t *testing.T) {
 	for _, c := range []struct {
 		args []string
 		want bool
 	}{
 		{[]string{"--help"}, true},
+		{[]string{"-h"}, true},
+		{[]string{"help"}, true},
+		{[]string{"completion", "bash"}, true},
+		{[]string{"__complete", "task", ""}, true},
 		{[]string{"version", "--help"}, true},
-		{[]string{"task", "create", "--help"}, true},
-		{[]string{"task", "--help"}, false},
-		{[]string{"version", "x", "--help"}, false},
-		{[]string{"task", "create", "x", "--help"}, false},
-		{[]string{"info", "--contents", "--help"}, false},
+		{[]string{"task", "--help"}, true},
+		{[]string{"version", "x", "--help"}, true},
+		{[]string{"task", "create", "x", "-h"}, true},
+		{[]string{"task", "create", "--", "--help"}, false},
 		{[]string{"version"}, false},
-		{[]string{"nope", "--help"}, false},
+		{[]string{"task", "create", "help"}, false},
 		{nil, false},
 	} {
 		if got := helpLine(c.args); got != c.want {

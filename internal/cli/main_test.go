@@ -168,18 +168,61 @@ func TestMainOutputFails(t *testing.T) {
 	}
 }
 
+// Help is cobra's: --help or -h anywhere before -- prints the help of the
+// command named, to standard output with exit 0, and so does koan help.
 func TestMainHelp(t *testing.T) {
-	r := runMain(t, "", []*Command{fake, bare}, "--help")
-	if r.code != 0 || !strings.Contains(r.stdout, "thing make") || !strings.Contains(r.stdout, "version") {
-		t.Errorf("koan --help: %d %q", r.code, r.stdout)
+	cmds := []*Command{fake, bare}
+	cases := []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"--help"}, []string{"thing", "version", "completion"}},
+		{[]string{"-h"}, []string{"thing", "version"}},
+		{[]string{"help"}, []string{"thing", "version"}},
+		{[]string{"thing", "--help"}, []string{"make"}},
+		{[]string{"thing", "make", "--help"}, []string{"koan thing make <title>", "--priority", "--contents", "--note-file", "--input"}},
+		{[]string{"thing", "make", "t", "--help"}, []string{"koan thing make <title>"}},
+		{[]string{"thing", "make", "t", "--name", "n", "-h"}, []string{"koan thing make <title>"}},
+		{[]string{"help", "thing", "make"}, []string{"koan thing make <title>"}},
+		{[]string{"version", "x", "--help"}, []string{"koan version"}},
 	}
-	r = runMain(t, "", []*Command{fake}, "thing", "make", "--help")
-	if r.code != 0 || !strings.HasPrefix(r.stdout, "usage: koan thing make <title> [--priority <value>]") || !strings.Contains(r.stdout, "[--contents]") {
-		t.Errorf("koan thing make --help: %d %q", r.code, r.stdout)
+	for _, c := range cases {
+		r := runMain(t, "", cmds, c.args...)
+		if r.code != 0 || r.stderr != "" || strings.HasPrefix(r.stdout, "{") {
+			t.Errorf("%q: %d %q %q", c.args, r.code, r.stdout, r.stderr)
+			continue
+		}
+		for _, w := range c.want {
+			if !strings.Contains(r.stdout, w) {
+				t.Errorf("%q: help lacks %q: %q", c.args, w, r.stdout)
+			}
+		}
 	}
-	r = runMain(t, "", []*Command{fake}, "thing", "make", "t", "--help")
-	if r.code != ExitUsage {
-		t.Errorf("--help with more: %d %q", r.code, r.stdout)
+	// After --, --help is a subject like any other.
+	r := runMain(t, "", cmds, "thing", "make", "--", "--help")
+	if want := `{"ok":true,"result":{"title":"--help"},"warnings":[]}` + "\n"; r.stdout != want {
+		t.Errorf("-- --help: %q", r.stdout)
+	}
+}
+
+// Completion is cobra's: a script for each shell, and the hidden
+// __complete command the script calls back, which completes commands and
+// options.
+func TestMainCompletion(t *testing.T) {
+	cmds := []*Command{fake, bare}
+	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
+		r := runMain(t, "", cmds, "completion", shell)
+		if r.code != 0 || !strings.Contains(r.stdout, "koan") || strings.HasPrefix(r.stdout, "{") {
+			t.Errorf("completion %s: %d %.80q", shell, r.code, r.stdout)
+		}
+	}
+	r := runMain(t, "", cmds, "__complete", "thing", "")
+	if r.code != 0 || !strings.Contains(r.stdout, "make") {
+		t.Errorf("__complete thing: %d %q", r.code, r.stdout)
+	}
+	r = runMain(t, "", cmds, "__complete", "thing", "make", "t", "--pri")
+	if r.code != 0 || !strings.Contains(r.stdout, "--priority") {
+		t.Errorf("__complete --pri: %d %q", r.code, r.stdout)
 	}
 }
 
@@ -282,8 +325,5 @@ func TestMainPaths(t *testing.T) {
 		if r.stdout != want || r.code != 0 {
 			t.Errorf("%q: got %s want %s", c.args, r.stdout, want)
 		}
-	}
-	if got := cmd.usage(); !strings.Contains(got, "[--file <path>]") {
-		t.Errorf("usage: %q", got)
 	}
 }

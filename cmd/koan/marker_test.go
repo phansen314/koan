@@ -125,7 +125,9 @@ func TestMarkerBind(t *testing.T) {
 	fails(t, home, "not-found", "", "marker", "bind", "/nope", "--dir", wt)
 	fails(t, home, "conflict", "case-mismatch", "marker", "bind", "/HOME", "--dir", wt)
 	fails(t, home, "invalid-input", "", "marker", "bind", "/home.done", "--dir", wt)
-	fails(t, home, "invalid-input", "", "marker", "bind", "/home", "--dir", wt, "--force=x")
+	if r := koan(t, home, "marker", "bind", "/home", "--dir", wt, "--force=x"); r.Exit != 2 || r.Kind() != "usage" {
+		t.Errorf("--force=x: %s", r.Line())
+	}
 	ok(t, home, "folder", "create", "/done")
 	ok(t, home, "folder", "archive", "/done")
 	fails(t, home, "not-found", "", "marker", "bind", "/done", "--dir", wt)

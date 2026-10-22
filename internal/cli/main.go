@@ -3,12 +3,14 @@ package cli
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 // Main runs one command line and gives the exit code. Whatever happens,
-// it prints exactly one envelope, unless the line is --help alone.
+// it prints exactly one envelope, unless the line asks for help or
+// completion, which print cobra's text for people.
 func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*Command) (code int) {
 	var warnings []Warning
 	defer func() {
@@ -18,26 +20,27 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 		}
 	}()
 
-	if len(args) == 1 && args[0] == "--help" {
-		io.WriteString(stdout, help(commands))
+	var (
+		c *Command
+		l *line
+	)
+	root := tree(commands, func(cmd *Command, ln *line) { c, l = cmd, ln })
+	root.SetIn(stdin)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	// A nil slice would have cobra read os.Args.
+	root.SetArgs(append([]string{}, args...))
+	if err := root.Execute(); err != nil {
+		return write(stdout, stderr, nil, usage(err), nil)
+	}
+	if c == nil {
 		return ExitOK
-	}
-	c, rest, e := lookup(commands, args)
-	if e != nil {
-		return write(stdout, stderr, nil, e, nil)
-	}
-	if len(rest) == 1 && rest[0] == "--help" {
-		io.WriteString(stdout, c.usage())
-		return ExitOK
-	}
-	l, e := c.parse(rest)
-	if e != nil {
-		return write(stdout, stderr, nil, e, nil)
 	}
 
 	env := &Env{Stdin: stdin}
 
 	in := l.in
+	var e *Error
 	if l.hasInput {
 		if in, e = readInput(env, l.input); e != nil {
 			return write(stdout, stderr, nil, e, nil)
@@ -52,74 +55,43 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 	return write(stdout, stderr, result, e, warnings)
 }
 
-// lookup finds the command a line names, by one word or two, matched
-// exactly.
-func lookup(commands []*Command, args []string) (*Command, []string, *Error) {
-	if len(args) == 0 {
-		return nil, nil, Usage("", "no command given")
+// tree is the cobra command tree: a command of two words sits under a
+// group named by its first. The root and each group refuse a line that
+// names no command of theirs as usage, where cobra would print help.
+func tree(commands []*Command, ran func(*Command, *line)) *cobra.Command {
+	root := &cobra.Command{
+		Use:           "koan",
+		Short:         "Task management for one person on one machine",
+		Args:          cobra.ArbitraryArgs,
+		RunE:          unknown(""),
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
-	byName := map[string]*Command{}
-	groups := map[string]bool{}
+	groups := map[string]*cobra.Command{}
 	for _, c := range commands {
-		byName[c.Name] = c
+		parent := root
 		if g, _, ok := strings.Cut(c.Name, " "); ok {
-			groups[g] = true
+			if groups[g] == nil {
+				groups[g] = &cobra.Command{Use: g, Args: cobra.ArbitraryArgs, RunE: unknown(g)}
+				root.AddCommand(groups[g])
+			}
+			parent = groups[g]
 		}
+		parent.AddCommand(c.cobra(ran))
 	}
-	if groups[args[0]] {
-		if len(args) == 1 {
-			return nil, nil, Usage("", "no command given after "+args[0])
-		}
-		if c := byName[args[0]+" "+args[1]]; c != nil {
-			return c, args[2:], nil
-		}
-		return nil, nil, Usage(args[1], "unknown command "+args[0]+" "+args[1])
-	}
-	if c := byName[args[0]]; c != nil {
-		return c, args[1:], nil
-	}
-	return nil, nil, Usage(args[0], "unknown command "+args[0])
+	return root
 }
 
-// usage is the command's line of usage text.
-func (c *Command) usage() string {
-	if c.Subject == nil && len(c.Options) == 0 && len(c.Files) == 0 && len(c.Fields) > 0 {
-		return "usage: koan " + c.Name + " -i <file|->\n"
-	}
-	var b strings.Builder
-	b.WriteString("usage: koan " + c.Name)
-	if s := c.Subject; s != nil {
-		if s.Required {
-			b.WriteString(" <" + s.Field + ">")
-		} else {
-			b.WriteString(" [<" + s.Field + ">]")
+// unknown refuses a line that names no command under group, "" for the
+// root.
+func unknown(group string) func(*cobra.Command, []string) error {
+	return func(_ *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			if group == "" {
+				return Usage("", "no command given")
+			}
+			return Usage("", "no command given after "+group)
 		}
+		return Usage(args[0], "unknown command "+strings.TrimSpace(group+" "+args[0]))
 	}
-	for _, o := range c.Options {
-		switch o.Kind {
-		case Bool:
-			b.WriteString(" [" + o.Name() + "]")
-		case List:
-			b.WriteString(" [" + o.Name() + " <a,b,...>]")
-		case Path:
-			b.WriteString(" [" + o.Name() + " <path>]")
-		default:
-			b.WriteString(" [" + o.Name() + " <value>]")
-		}
-	}
-	for _, f := range c.Files {
-		b.WriteString(" [" + f.Name + " <file|->]")
-	}
-	b.WriteString("\n       koan " + c.Name + " -i <file|->\n")
-	return b.String()
-}
-
-func help(commands []*Command) string {
-	var names []string
-	for _, c := range commands {
-		names = append(names, c.Name)
-	}
-	sort.Strings(names)
-	return "usage: koan <command> [<subject>] [<options>]\n       koan <command> -i <file|->\n\ncommands:\n  " +
-		strings.Join(names, "\n  ") + "\n\nkoan <command> --help shows a command's options.\n"
 }

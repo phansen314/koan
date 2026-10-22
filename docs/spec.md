@@ -149,7 +149,7 @@ A file koan can't read, or a working directory it can't resolve, is `io`, with t
 
 **Help and completion** are for people, and print plain text, not an envelope. Their text is cobra's, and is not a contract (Not covered).
 
-- **Help.** `--help` or `-h`, anywhere on a command line before `--`, prints the help of the command it names to standard output with exit 0, whatever else is on the line. `koan help [<command>]` is the same. `koan --help` lists the commands.
+- **Help.** `--help` or `-h`, anywhere on a command line before `--`, prints the help of the command it names to standard output with exit 0, whatever else is on the line, except an option pflag refuses: pflag reads every option before cobra looks at help, so `koan info --frob -h` is `usage`. `koan help [<command>]` is the same. `koan --help` lists the commands.
 - **Completion.** `koan completion <shell>`, for `bash`, `zsh`, `fish` or `powershell`, prints a script that completes koan's commands and options in that shell; with no shell it prints its help. The script calls koan back through cobra's hidden `__complete` commands, which print candidates on standard output and may write more than one line to standard error. Completing references is deferred (PRD Deferred and choices).
 
 | Exit | Means |

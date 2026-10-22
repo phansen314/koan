@@ -97,6 +97,10 @@ type Error struct {
 	Archived []Archived `json:"archived"`
 }
 
+// Error lets an *Error pass through cobra, which returns what a
+// command's RunE refused.
+func (e *Error) Error() string { return e.Message }
+
 // NewError makes an error of a kind other than conflict.
 func NewError(kind, message string) *Error {
 	return &Error{Kind: kind, Message: message}
