@@ -44,7 +44,7 @@ testdata/            golden results
 - Go 1.25 or later. SQLite through `modernc.org/sqlite`: no cgo, ever.
 - `go test ./...` runs everything; `go test -short ./...` skips the long concurrency and crash matrices.
 - Tests run the binary with `HOME` set to a temp directory, so the root is `$HOME/koan-root` there.
-- **Never run koan against the real `~/koan-root`.** Always set `HOME` to a scratch directory.
+- **Never run koan against the real `~/koan-root`.** Always set `HOME` to a scratch directory. The one exception: the installed `koan`, used through the koan skill, tracks work on this repo there, under `/koan`. The binary built from this repo still runs only with a scratch `HOME`.
 - CI runs on Linux and on macOS with its default case-insensitive filesystem. Case and rename code must pass on both.
 
 ## Rules for the code
