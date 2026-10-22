@@ -63,7 +63,7 @@ var usages = map[string]string{
 	"fields":                "only these fields, after id",
 	"state":                 "open, complete, or both; open when left out",
 	"readiness":             "ready, blocked, or both",
-	"claimed":               "true for only claimed tasks, false for only unclaimed",
+	"claimed":               "only claimed tasks; --claimed=false for only unclaimed, --claimed=null for both",
 	"tags_add":              "add these tags",
 	"tags_remove":           "remove these tags",
 	"tags_replace_all":      "replace every tag with these",
