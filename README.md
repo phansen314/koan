@@ -13,7 +13,7 @@ Linux and macOS only.
 Needs Go 1.25 or later. The SQLite driver is SQLite translated to Go, so there is no cgo and no C compiler, just one binary.
 
 ```shell
-GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.5.0   # any GOBIN on your PATH
+GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.6.0   # any GOBIN on your PATH
 ```
 
 For shell completion of commands and options, load koan's script in your shell's startup file; `koan completion --help` lists the shells:
