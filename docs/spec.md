@@ -139,6 +139,7 @@ When a line has several faults, which is named is cobra's: options are read befo
 | `--notes-file <file>` | `task create`, `folder create` | `notes`, read from the file whole, or from standard input for `-` |
 | `--file <path>`, relative | `where`, `context` | `file`, made absolute from the working directory |
 | no subject | `context` | `file`, the working directory |
+| `--here` | `pick` | `file`, the working directory |
 | `--dir <path>`, relative or left out | `marker bind`, `marker unbind` | `dir`, made absolute; the working directory when left out |
 | `<dir>`, relative | `backup` | `dir`, made absolute from the working directory |
 
@@ -146,19 +147,21 @@ A file koan can't read, or a working directory it can't resolve, is `io`, with t
 
 **The home directory.** `~` is `HOME`. A command that uses the root, which is every command but `version`, finds it as part of checking the root's state, after the input's shape: `HOME` unset, empty or not an absolute path is `io`, with no path. `version` never reads it.
 
-**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens, except help and completion below. Standard error gets at most one line, except from completion's `__complete` commands, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings, `koan: 1 warning` for one. Callers read the envelope, never standard error.
+**Output.** Every run prints exactly one envelope, on one line, to standard output, whatever happens, except help, completion and `pick` below. Standard error gets at most one line, except from completion's `__complete` commands, for a person watching: `koan: <kind>: <message>` on failure, or `koan: <n> warnings` on a success that has warnings, `koan: 1 warning` for one. Callers read the envelope, never standard error.
 
 **Help and completion** are for people, and print plain text, not an envelope. Their text is cobra's, and is not a contract (Not covered).
 
 - **Help.** `--help` or `-h`, anywhere on a command line before `--` but as an option's value (`--title -h` is a title), prints the help of the last command or group its words name, `koan` itself when the first word names none, to standard output with exit 0, whatever else is on the line, except an option pflag refuses: pflag reads every option before cobra looks at help, so `koan info --frob -h` is `usage`. `koan help [<command>]` is the same. So `koan frob -h` and `koan help frob` print `koan --help`'s text, and `koan task frob -h` prints `koan task --help`'s. `koan --help` lists the commands.
 - **Completion.** `koan completion <shell>`, for `bash`, `zsh`, `fish` or `powershell`, prints a script that completes koan's commands and options in that shell; with no shell it prints its help, and with a shell it doesn't know it is `usage`, naming that shell, so a typo never installs a broken script. The script calls koan back through cobra's hidden `__complete` commands, which print candidates on standard output and may write more than one line to standard error. Completing references is deferred (PRD Deferred and choices).
+- **`pick`** prints the references a person picks, as plain text, and on failure nothing on standard output, only the standard-error line. It needs a terminal, draws on `/dev/tty`, and fails at once without one. Its outcomes and exits are under [pick](#pick).
 
 | Exit | Means |
 | --- | --- |
-| 0 | Success: `ok` is true, with or without warnings. Help and completion exit 0 too |
-| 1 | Failure: `error.kind` says how |
+| 0 | Success: `ok` is true, with or without warnings. Help and completion exit 0 too, and `pick` when something was picked |
+| 1 | Failure: `error.kind` says how. For `pick`, also nothing matched, with nothing printed |
 | 2 | The command line couldn't be read: `error.kind` is `usage` |
 | 3 | koan couldn't write the envelope. The outcome is unknown: look before running it again |
+| 130 | `pick` only: the person cancelled in fzf |
 | other | koan was killed. The outcome is unknown, as for 3 |
 
 Callers branch on `error.kind`, not on the exit code.
@@ -453,6 +456,7 @@ A failure carries exactly one error. koan checks in this order and reports the f
 | `unsupported-format` | 1 | The database is in a format this binary doesn't read | the message names both formats |
 | `io` | 1 | The operating system refused something | `paths`: what it refused |
 | `internal` | 1 | A bug in koan |  |
+| `unavailable` | 1 | `pick` only: it can't run, since `/dev/tty` doesn't open, or fzf is missing, older than 0.63.0, or failed. It is only ever named in the standard-error line, since `pick` prints no envelope, so it isn't in the error schema | the message says which, and for an fzf too old, the version found and the one needed |
 
 ### Conflict rules
 
@@ -979,6 +983,71 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
     "clean":    { "type": "boolean" },
     "findings": { "type": "array", "items": { "$ref": "finding" } } } } } }
 ```
+
+### For people
+
+#### pick
+
+`koan pick [--folder] [--recursive] [--here] [--state] [--readiness] [--claimed] [--tags-any] [--tags-all] [--frontier] [--kinds] [--query]`, or `koan pick --bash`.
+
+Lets a person at a terminal choose tasks, gates and folders in fzf, and prints their references on standard output, for `$(koan pick)`, or for the key `--bash` binds. It is for people, and departs from the rest of this spec where Invocation says: it prints plain text, never an envelope. Agents never run it (PRD Agents).
+
+```json
+{ "$id": "pick", "$defs": {
+  "input": { "type": "object", "allOf": [ { "$ref": "task-list#/$defs/filter" } ], "properties": {
+    "file":      { "$ref": "types#/$defs/abs-path",
+                   "description": "Pick from the folder this path is in, found as where --file finds it. Given with folder, invalid-input at \"\"." },
+    "state":     { "$ref": "task-list#/$defs/input/properties/state" },
+    "readiness": { "$ref": "task-list#/$defs/input/properties/readiness" },
+    "claimed":   { "$ref": "task-list#/$defs/input/properties/claimed" },
+    "frontier":  { "type": "boolean", "default": false,
+                   "description": "The frontier's tasks instead of task list's, in work order. Given with state, readiness or claimed, invalid-input at \"\"." },
+    "kinds":     { "type": "array", "items": { "enum": ["task", "gate", "folder"] }, "uniqueItems": true, "minItems": 1,
+                   "default": ["task", "gate", "folder"] },
+    "query":     { "type": "string", "default": "", "description": "fzf's starting query, in fzf's syntax." },
+    "bash":      { "type": "boolean", "default": false,
+                   "description": "Print the bash keybinding script instead of picking. Given with any other field, invalid-input at \"\"." } } } } }
+```
+
+**Requirements.** `/dev/tty` opens for reading and writing; standard input and output may be anything. fzf is on `PATH`, version 0.63.0 or later, as `fzf --version` reports it run without `FZF_DEFAULT_OPTS` and `FZF_DEFAULT_OPTS_FILE`: its first word, without any `-` suffix, compared as three numbers.
+
+**The candidates.** `folder` (`/` by default, or the folder `file` is in) and everything under it, as `recursive` says, in tree order (rules Tree order), of the `kinds` asked for:
+
+- **A folder** is a candidate, the one `folder` names included unless it is the root. It prints as `@13`.
+- **A task** is one of `task list`'s with the same filter, `state`, `readiness` and `claimed`, or of `task frontier`'s with `frontier`. It prints as `@42`.
+- **A gate** is a candidate for both ends of every folder that is one, whether or not it is made. It prints as `@13.start` or `@13.done`. A made gate passes the task filter as any task does; a gate not made yet passes only when there is no task filter. A gate is never also a task candidate.
+- **A task filter** is any of `readiness` narrowed to one, `claimed` not null, `tags_any` or `tags_all` not empty, or `frontier`. With one, a folder is a candidate only when a task candidate is under it, at any depth `recursive` allows. `state` is no task filter: a new, empty folder is a candidate by default.
+- **The order:** a folder, then its gates not made yet, start before done, then its own tasks, made gates among them, in tree order, then its folders. With `recursive` false, the folders directly in `folder` come as lines of their own, without their gates or tasks. With `frontier`, the task candidates come first, in work order, then the folder candidates in tree order.
+
+**Lines.** fzf gets one line per candidate, fields split by a tab: the reference as it prints, then the notes file's path (empty for a gate not made yet), then what fzf shows and searches, columns separated by two spaces, each but the last padded to the widest in terminal cells:
+
+| Column | Holds |
+| --- | --- |
+| kind | `task`, `gate` or `folder` |
+| reference | as it prints |
+| folder | the folder's path: a task's or gate's folder, a folder's own |
+| title | a task's title; a folder's title, or its name when it has none; a gate's `Start` or `Done` |
+| state | an open task's or made gate's readiness, `complete`, `not made` for a gate not made yet, or `<n> open` for a folder |
+| more | when set: the priority as `p2`, each tag as `#tag`, and `claimed` |
+
+**Preview.** Below the list (`down,50%`), the line under the cursor: a header, then its notes file whole. The header names it in kept text (rules References), then gives, a field to a line: for a task or made gate, its title, folder, state, readiness, priority, tags, what it waits on and what waits on it, each in kept text with its state, and its claim with when it was made; for a folder, its title, `open`, `complete`, `finished` and its gates; for a gate not made yet, that it isn't made, and that the first edge naming it makes it. Before fzf starts, pick writes each header to a file named by its reference, in a private directory `koan-pick-<random>` (mode `0700`, under `$XDG_RUNTIME_DIR` if set, else the system's temporary directory), and removes it as soon as fzf returns, whatever it returned. fzf's preview command is `cat` of that file, then of the notes path, quoted for `sh`.
+
+**fzf's options.** `FZF_DEFAULT_OPTS` and `FZF_DEFAULT_OPTS_FILE` are honoured, for colours, borders and history. After them, pick passes `--no-select-1 --no-exit-0 --no-expect --no-tmux --no-read0 --no-header-lines --no-print0 --no-print-query --no-tac --accept-nth ..`, undoing any that would accept or abort without the person, change what fzf reads or prints, reverse the order, or move it into a popup. Then its own: `--multi`, `--delimiter '\t'`, `--with-nth 3..`, `--tiebreak index`, `--with-shell 'sh -c'`, `--preview`, `--preview-window down,50%`, and `--query`. The layout is fzf's own, the first line next to the prompt. `FZF_DEFAULT_COMMAND` is never used.
+
+**Picking several.** Tab marks lines; Enter picks the marked lines, or the line under the cursor when none is marked. The references print in the candidates' order, whatever order they were marked in, joined with `,`, then a newline: `@42,@13,@9.start`.
+
+**Outcomes.**
+
+| What happened | Standard output | Exit |
+| --- | --- | --- |
+| Picked | the references, then a newline | 0 |
+| Esc or ctrl-c in fzf (fzf exits 130) | nothing | 130 |
+| Nothing matched (fzf exits 1), or no candidates, in which case fzf never opens | nothing | 1 |
+| A failure, `usage` included | nothing; the standard-error line, `koan: <kind>: <message>` | 1, or 2 for `usage` |
+
+**The order of checks.** The input's shape; the root's state; `unavailable` when `/dev/tty` doesn't open, then for fzf missing, too old, or `fzf --version` failing; the references (`folder`, or the marker `file` is under, as `where --file` resolves it); no candidates; then fzf. fzf exiting anything but 0, 1 or 130 is `unavailable`, and its own standard error, such as a bad option in `FZF_DEFAULT_OPTS`, reaches the terminal. While fzf runs, pick catches SIGINT and SIGQUIT and discards them: ctrl-c is fzf's key, and cancels. Warnings from the reads give the usual standard-error line once fzf has returned.
+
+**`--bash`** prints a bash script on standard output, with exit 0, and never reads `HOME` or the root, as for `version`. `eval "$(koan pick --bash)"` in `.bashrc` defines the shell function `__koan_pick_widget` and binds it to Alt-K (`\ek`) in emacs and vi insert modes; `bind -x '"<key>": __koan_pick_widget'` binds another. The function runs `koan pick` and, when it exits 0, inserts what it printed, without the newline, at the cursor, and moves the cursor past it; any other exit inserts nothing. It needs bash 4.0 or later, for `READLINE_LINE` and `READLINE_POINT`; on an older bash the script binds nothing.
 
 ## Input formats
 

@@ -49,7 +49,7 @@ testdata/            golden results
 
 ## Rules for the code
 
-- Every command prints exactly one line of JSON on stdout, in the field order of its schema; help and completion, for people, print cobra's plain text. Exit codes are 0, 1, 2 and 3, as the spec says.
+- Every command prints exactly one line of JSON on stdout, in the field order of its schema; help and completion, for people, print cobra's plain text, and `pick` prints plain references. Exit codes are 0, 1, 2 and 3, and 130 for a cancelled `pick`, as the spec says.
 - Every failure has one error kind from the spec; a conflict also names its rule. Don't add kinds, rules, warnings or fields.
 - Once COMMIT succeeds, the command succeeds; a failed filesystem step is a warning, never an error.
 - Compare names byte for byte. Never rely on the filesystem's case rules; judge filesystem steps by listing the parent directory, never by `stat`.

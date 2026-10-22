@@ -15,8 +15,8 @@ koan is task management for one person on one machine, driven mostly by agents s
 - **Notes are files, edited directly.** No tool stands between an agent and a task's notes. Everything in the tree's directory may be edited; structure changes only through koan.
 - **Structure is safe under many agents at once.** Any number of agents and the user work on one tree concurrently, and every invariant holds.
 - **Fast at the sizes one person reaches.** Every command finishes within 100 ms at 10,000 live tasks on the CI machine, whose OS is named beside the benchmarks, and archiving keeps the live set well below that. Commands whose work grows with the whole tree or their input are budgeted apart: `doctor` and `repair` within 1 s, a `batch` within 100 ms plus 1 ms a part, and `backup` not at all, since it copies every file.
-- **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed. Help and shell completion, which are for people, print plain text (spec Invocation).
-- **Simple to install.** One `go install`, one binary, no system libraries.
+- **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed. Help, shell completion and `pick`, which are for people, print plain text (spec Invocation).
+- **Simple to install.** One `go install`, one binary, no system libraries. `pick` alone needs fzf on `PATH` (Command surface).
 
 **Non-goals**
 
@@ -263,6 +263,12 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 
 **The command line is cobra's.** koan reads its command line with cobra and pflag rather than a parser of its own, so help and shell completion come from the library. Where cobra's rules and a stricter one of koan's would differ, cobra's win, and the spec says so; only the envelope, the exit codes and the standard-error line stay koan's, since agents depend on them.
 
+**`pick` is for people.** `koan pick` lets a person at a terminal choose tasks, gates and folders by what they are about, and prints their references, for `$(koan pick)` or for a bash key that types them in at the cursor. Agents never need it: they have `task list`, `task frontier` and `where`. So it takes the exceptions people need, and nothing that could hold up an agent: it prints plain text rather than an envelope, draws on `/dev/tty`, and fails at once when there is no terminal.
+
+- **fzf draws the picker.** koan runs fzf as an outside program, writes its candidates to fzf's standard input, and reads the choice back from fzf's standard output. fzf draws on `/dev/tty` itself, so standard output carries only the choice. fzf is the one runtime dependency koan has, and only `pick` needs it. It adds no Go dependency, it gives fuzzy matching, marking several and a preview pane for free, and the same build is already proven in the user's own fzf pickers.
+- **The candidates are koan's own reads.** pick runs `task list`, `task frontier` and `folder list` in-process, with the same filters, and turns the records into lines. It adds no query, and completing references (Deferred and choices) can draw on the same candidates when it comes.
+- **Previews need no call back into koan.** Before fzf starts, pick writes a short header per candidate into a private temporary directory, and fzf's preview shows that header and the notes file. The directory is removed as soon as fzf returns.
+
 **Every write reports what it released and blocked again.** With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
 ## Markers
@@ -331,6 +337,8 @@ What the skill teaches, and how a coordinator hands work to workers, are the ski
 
 **Permissions.** The permission rules let every command run without asking except `init`, `task delete`, `folder delete` and `repair`, which always ask. Archive is safe to run unasked, since it takes only finished work.
 
+**Agents never run `pick`.** It needs a person at a terminal, and without one it fails at once (spec pick), so it can never hang an agent. The skill doesn't teach it.
+
 ## Testing
 
 These are the tests named in the Tested by column of Invariants, enforced and tested. Every rule of the rules doc is something one of them checks.
@@ -347,6 +355,7 @@ These are the tests named in the Tested by column of Invariants, enforced and te
 | **Repair** | Each finding made by hand on a fresh root. doctor reports it under the right kind, repair does what the table says, and a second doctor reports only what repair leaves to a person. |
 | **Markers** | The nearest marker wins and stops the look; a copied or moved marker binds nothing; archived and deleted folders give their messages; git ignores .koan/; checkout and foreign-files refuse. |
 | **Backup and restore** | A backup taken during the concurrency run restores to a root doctor finds clean; a folder moved mid-copy makes backup copy again under the lock. |
+| **pick** | A stand-in fzf first on `PATH` records the arguments and lines it is given and answers as told: a choice, several, nothing matched, a cancel, a failure, a version too old. pick prints what the spec says for each, with and without a terminal, and removes its preview directory every time. A run against the real fzf in a pseudo-terminal is skipped by `-short`. |
 
 `go test -short` skips the long concurrency and crash matrices, as today.
 
@@ -360,6 +369,9 @@ Anything that would change a rule goes to the rules doc, not to this list.
 - **Unarchive.** Bringing an archived item back, with its IDs. For now, work needed again is made again.
 - **Completing references.** `koan completion` completes commands and options; completing their values is deferred: paths folder by folder, IDs with their titles, gates as `.start` and `.done`.
 - **`--no-gates` on `task list`**, if gates in the list turn out to be noise.
+- **Material in `pick`.** Material references, such as `@41:docs/plan.md`, as their own kind, through fzf's walker rooted at the folder's directory.
+- **Opening notes from `pick`.** A key in the picker that opens the line's notes in `$EDITOR`, then returns to the picker.
+- **`pick` for other shells.** `koan pick --bash` is the only keybinding script for now.
 
 **Choices** this doc makes where the rules doc leaves room. Each can change without touching a rule.
 
@@ -382,4 +394,5 @@ Anything that would change a rule goes to the rules doc, not to this list.
 | Directories fsynced before a step's row is deleted | leaving a rename lost to a power cut for doctor to find |
 | Archived fields as JSON beside each archived item | a table in koan.db, lost at every format change before 1.0; JSON inside the folder, where a stray file can be in the way |
 | The command line read by cobra and pflag, help and `-h` anywhere, and option values their type refuses as `usage` | a parser of koan's own, which refused `--help` with anything else and `-h`, and left every value check to the command |
+| `pick` drawn by fzf, run as an outside program, version 0.63.0 or later, restyled only through fzf's own `FZF_DEFAULT_OPTS` | fzf linked in as a Go library, whose API isn't fzf's to keep stable; a UI of koan's own, such as bubbletea, with every part to build and many dependencies; a file browser such as yazi, which sees the files and none of the database; a `KOAN_PICK_OPTS` of koan's own |
 | init --ids-from N, carrying the ID sequence from root to root | IDs from 1 in every root, so each format change before 1.0 makes a second @42 |

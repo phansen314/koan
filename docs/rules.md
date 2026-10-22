@@ -138,6 +138,7 @@ material  = part { "/" part }              no empty part, no "." or ".."; the fi
 - **The `@` is optional on input.** koan always writes it, since `@41` stands out in prose, where a bare `41` does not.
 - **`.start` and `.done` name a folder's gates.** Each resolves to that gate's own task ID, so wherever a task is taken, a gate can be named either way.
 - **The anchored form is for typing only.** koan accepts it and never writes it.
+- **A picked reference is for typing, not keeping.** `koan pick`, which is for people, prints references to be typed into a command: a task or folder as `@42`, a gate as its folder's ID and end, `@9.start`, whether or not that gate is made yet, and several joined with commas, `@42,@9.start`. It never prints kept text. A gate not made yet is made by the first edge that names it (Resolution).
 
 **Kept text** writes the target's own ID, with its full path as a hint: `@9 (/work/phase2)`, `@9:docs/plan.md (/work/phase2:docs/plan.md)`. The ID survives moves and renames; the path is there to be read. A task is written by its own ID, with its folder's path as the hint: `@42 (/work)`, or `@7 (/)` in the root. A gate is written by its own ID, with its folder's path and its end as the hint: `@57 (/work/api.done)`, `@56 (/work/api.start)`. Kept text never writes an end on the ID side: in prose, `@9` is the folder. Labels never appear in kept text: they name nothing once their batch is over. Material in the root is written `/:docs/plan.md`, with no hint: the root has no ID, and its path never changes.
 
@@ -164,7 +165,7 @@ Resolution turns a reference into a task or a folder, and a material reference i
 What a reference resolves to then holds:
 
 - **Stored edges name tasks by ID.** A gate is stored by its own ID, however it was written, so a later move or rename never changes what an edge names.
-- **koan names tasks and folders by ID** in everything it returns, and marks a gate as its folder's start or done gate. `where` gives the kept-text pair, the `@<id>` form with its path.
+- **koan names tasks and folders by ID** in everything it returns, and marks a gate as its folder's start or done gate. `pick` alone writes a gate by its folder and end (References). `where` gives the kept-text pair, the `@<id>` form with its path.
 - **In kept text, the ID wins.** Reading `@9 (/work/phase2)`, `@9` decides, and a path that no longer matches is a stale hint. koan never reads notes, so this is a convention, not a check.
 
 ## Fields

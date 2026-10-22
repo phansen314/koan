@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pick",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "task-list#/$defs/filter"
+        }
+      ],
+      "properties": {
+        "file": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "Pick from the folder this path is in, found as where --file finds it. Given with folder, invalid-input at \"\"."
+        },
+        "state": {
+          "$ref": "task-list#/$defs/input/properties/state"
+        },
+        "readiness": {
+          "$ref": "task-list#/$defs/input/properties/readiness"
+        },
+        "claimed": {
+          "$ref": "task-list#/$defs/input/properties/claimed"
+        },
+        "frontier": {
+          "type": "boolean",
+          "default": false,
+          "description": "The frontier's tasks instead of task list's, in work order. Given with state, readiness or claimed, invalid-input at \"\"."
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "task",
+              "gate",
+              "folder"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": [
+            "task",
+            "gate",
+            "folder"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "default": "",
+          "description": "fzf's starting query, in fzf's syntax."
+        },
+        "bash": {
+          "type": "boolean",
+          "default": false,
+          "description": "Print the bash keybinding script instead of picking. Given with any other field, invalid-input at \"\"."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}
