@@ -141,7 +141,7 @@ koan task release 43                               # you won't do it after all
 
 ### If a coordinator started you with one task
 
-When another agent started you with a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's reads (`task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `where`, `context`, `info`), and put everything you want changed, follow-ups and the task being complete included, in your final report. The coordinator makes those changes.
+When another agent started you with a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's reads (`task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `where`, `context`, `export`, `info`), and put everything you want changed, follow-ups and the task being complete included, in your final report. The coordinator makes those changes.
 
 ## Writing
 
@@ -212,6 +212,13 @@ koan folder list --folder /work --recursive=false --fields path,title,open,finis
 koan task list --fields title,extra --limit 200 | jq -c 'if .ok then .result |= {tasks: (.tasks | map(select(.extra.status == "waiting"))), unscanned: (.total - (.tasks | length))} else . end'
 ```
 
+**`koan export` is for tools, not for reading.** `koan export /work/api` (or `--file`, or no subject in a worktree, as for `context`) gives the folder's whole subtree in one snapshot: its folders, every task under it, open and complete, gates included, as `tasks`; the tasks outside it at the other end of an edge as `external`; and the `edges` as `{task, blocker}`. It has no `--limit` and no `--fields`, and at 10,000 tasks it is megabytes, so never print it into your context: write it to a file, or pipe it into the tool that draws the graph. To read the tree, use `task list` with `--limit` and `--fields`.
+
+```sh
+koan export /work/api > api.json   # the whole subtree, into a file
+jq .ok api.json                     # true; when false, .error says why
+```
+
 ## Worktrees: markers and context
 
 A **marker** binds a directory outside the tree, usually a git worktree, to a folder, so koan can tell which folder of work you are in from anywhere inside it. It is a `.koan/` directory there, which git ignores by itself.
@@ -229,7 +236,7 @@ koan folder move /work/api2 --to /work/api
 - **Starting work in a worktree, run `koan context` first**, and print it as is: `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `koan context <folder>` briefs any folder.
 - **Check the marker is the worktree's own**: in a git worktree it should be `$(git rev-parse --show-toplevel)/.koan/marker.json`. A marker above the worktree means it was never bound and is borrowing an outer folder: say so, rather than working in that folder.
 - **Bind worktrees from their top, never the checkout that holds them**: a marker binds every directory under it. `marker bind` refuses a checkout, a directory whose `.git` is a directory (`checkout`), and a directory bound to another live folder (`bound`); `--force` overrides either, so ask the user first. It refuses a `.koan/` holding files that aren't koan's (`foreign-files`), and any directory under `~/koan-root`.
-- A marker copied or moved with its directory, or whose folder was deleted or archived, binds nothing: `where` and `context` fail `not-found` and say why. Binding again fixes a moved one. `koan marker unbind --dir <dir>` removes one; removing the worktree removes it too.
+- A marker copied or moved with its directory, or whose folder was deleted or archived, binds nothing: `where`, `context` and `export` fail `not-found` and say why. Binding again fixes a moved one. `koan marker unbind --dir <dir>` removes one; removing the worktree removes it too.
 - **As a worker**, run `context` and `where`, never `marker bind` or `marker unbind`: report a stale or broken marker to the coordinator.
 
 ## Moving, deleting and archiving
