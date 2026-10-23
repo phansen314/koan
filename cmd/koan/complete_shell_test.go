@@ -188,7 +188,7 @@ echo READY
 	s.list("koan task block 5 --blocked-by /work.\t\t", "/work.start", "/work.done")
 
 	s = start(manyTree(t))
-	s.list("koan task show \t\t", "101 match: type more, or Alt-K to pick")
+	s.list("koan task show \t\t", "101 match: type more, or use koan pick")
 }
 
 // A real zsh does the same.
@@ -225,5 +225,5 @@ echo READY
 	s.list("koan task block 5 --blocked-by /work.\t", "/work.start", "/work.done")
 
 	s = start(manyTree(t))
-	s.list("koan task show \t", "101 match: type more, or Alt-K to pick")
+	s.list("koan task show \t", "101 match: type more, or use koan pick")
 }

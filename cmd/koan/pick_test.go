@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -451,39 +452,70 @@ func TestPickHereAndInput(t *testing.T) {
 	}
 }
 
-// --bash prints the keybinding script without a root or a terminal.
+// binds is the lines of a keybinding script, other than its comments,
+// that bind a key; there should be none (spec pick, --bash and --zsh).
+func binds(script string) []string {
+	var found []string
+	for _, l := range strings.Split(script, "\n") {
+		if l = strings.TrimSpace(l); !strings.HasPrefix(l, "#") && (strings.HasPrefix(l, "bind ") || strings.HasPrefix(l, "bindkey ")) {
+			found = append(found, l)
+		}
+	}
+	return found
+}
+
+// --bash prints the widget's script without a root or a terminal, and
+// binds no key; on a bash older than 4.0 it defines nothing.
 func TestPickBash(t *testing.T) {
 	p := newPicker(t, t.TempDir())
 	p.tty = false
 	r := p.run("--bash")
-	if r.exit != 0 || r.err != "" || !strings.Contains(r.out, `bind -m emacs-standard -x '"\ek": __koan_pick_widget'`) {
+	if r.exit != 0 || r.err != "" || !strings.Contains(r.out, "__koan_pick_widget() {") {
 		t.Fatalf("exit %d, stderr %q:\n%s", r.exit, r.err, r.out)
 	}
-	if _, err := exec.LookPath("bash"); err == nil {
-		check := exec.Command("bash", "-n")
+	if b := binds(r.out); len(b) > 0 {
+		t.Errorf("binds a key: %q", b)
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		check := exec.Command(bash, "-n")
 		check.Stdin = strings.NewReader(r.out)
 		if out, err := check.CombinedOutput(); err != nil {
 			t.Errorf("bash -n: %v\n%s", err, out)
+		}
+		out, err := exec.Command(bash, "-c", r.out+"\necho ${BASH_VERSINFO[0]} $(type -t __koan_pick_widget)").Output()
+		major, kind, _ := strings.Cut(strings.TrimSpace(string(out)), " ")
+		if v, _ := strconv.Atoi(major); err != nil || (v >= 4) != (kind == "function") {
+			t.Errorf("bash %s defines %q: %v", major, kind, err)
 		}
 	}
 	p.run("--bash", "--query", "x").failed(t, 1, "invalid-input", "bash takes no other field")
 }
 
-// --zsh prints the keybinding script without a root or a terminal.
+// --zsh prints the widget's script without a root or a terminal, and
+// loading it makes the widget and binds no key.
 func TestPickZsh(t *testing.T) {
 	p := newPicker(t, t.TempDir())
 	p.tty = false
 	r := p.run("--zsh")
-	for _, want := range []string{"zle -N __koan_pick_widget", `bindkey -M emacs '\ek' __koan_pick_widget`, `bindkey -M viins '\ek' __koan_pick_widget`} {
-		if r.exit != 0 || r.err != "" || !strings.Contains(r.out, want) {
-			t.Fatalf("want %q; exit %d, stderr %q:\n%s", want, r.exit, r.err, r.out)
-		}
+	if r.exit != 0 || r.err != "" || !strings.Contains(r.out, "zle -N __koan_pick_widget") {
+		t.Fatalf("exit %d, stderr %q:\n%s", r.exit, r.err, r.out)
 	}
-	if _, err := exec.LookPath("zsh"); err == nil {
-		check := exec.Command("zsh", "-n")
+	if b := binds(r.out); len(b) > 0 {
+		t.Errorf("binds a key: %q", b)
+	}
+	if zsh, err := exec.LookPath("zsh"); err == nil {
+		check := exec.Command(zsh, "-n")
 		check.Stdin = strings.NewReader(r.out)
 		if out, err := check.CombinedOutput(); err != nil {
 			t.Errorf("zsh -n: %v\n%s", err, out)
+		}
+		load := exec.Command(zsh, "-f", "-c", `before=$(bindkey -L)
+eval "$KOAN_SCRIPT"
+[[ $before == "$(bindkey -L)" ]] || echo "bound a key"
+zle -l | grep -qx __koan_pick_widget || echo "no widget"`)
+		load.Env = append(os.Environ(), "KOAN_SCRIPT="+r.out)
+		if out, err := load.CombinedOutput(); err != nil || len(out) > 0 {
+			t.Errorf("loading the script: %v\n%s", err, out)
 		}
 	}
 	p.run("--zsh", "--query", "x").failed(t, 1, "invalid-input", "zsh takes no other field")

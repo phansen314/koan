@@ -25,10 +25,10 @@ jobs:
       # The completion and Alt-K tests drive a real bash, with
       # bash-completion, and a real zsh; macOS's own bash is too old, so
       # Homebrew's comes first.
-      - name: Shells for the completion tests (Linux)
+      - name: Shells for the completion and Alt-K tests (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zsh bash-completion
-      - name: Shells for the completion tests (macOS)
+      - name: Shells for the completion and Alt-K tests (macOS)
         if: runner.os == 'macOS'
         run: brew install bash bash-completion@2
       - name: Schemas match the spec

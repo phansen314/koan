@@ -43,7 +43,7 @@ func completion(env *Env, complete Completer) cobra.CompletionFunc {
 			directive |= cobra.ShellCompDirectiveNoSpace
 		}
 		if len(cands) > maxCandidates {
-			return cobra.AppendActiveHelp(nil, fmt.Sprintf("%d match: type more, or Alt-K to pick", len(cands))), directive
+			return cobra.AppendActiveHelp(nil, fmt.Sprintf("%d match: type more, or use koan pick", len(cands))), directive
 		}
 		out := make([]cobra.Completion, len(cands))
 		for i, c := range cands {

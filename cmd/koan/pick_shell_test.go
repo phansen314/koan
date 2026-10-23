@@ -39,9 +39,10 @@ func (s *shell) edit(keys, want string) {
 	s.expect("<" + want + ">")
 }
 
-// altK presses Alt-K in s: a pick is typed in at the cursor, at the end
-// of the line or in the middle of it, and a cancel or nothing matched
-// leaves the line as it was (spec pick, --bash and --zsh).
+// altK presses Alt-K in s, bound to pick's widget: a pick is typed in
+// at the cursor, at the end of the line or in the middle of it, and a
+// cancel, nothing matched, or a koan that prints and then fails leaves
+// the line as it was (spec pick, --bash and --zsh).
 func altK(s *shell) {
 	s.t.Helper()
 	s.edit("koan task show \x1bk", "koan task show @9")
@@ -51,9 +52,12 @@ func altK(s *shell) {
 		s.expect("SET")
 		s.edit("echo ab\x02\x1bk", "echo ab")
 	}
+	s.send("\x05\x15koan() { echo @1; return 2; }; echo DE''FINED\r")
+	s.expect("DEFINED")
+	s.edit("echo ab\x02\x1bk", "echo ab")
 }
 
-// Alt-K in a real bash, 4.0 or later, with pick --bash's script loaded.
+// Alt-K in a real bash, 4.0 or later, bound to pick --bash's widget.
 func TestPickAltKBash(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drives a real bash")
@@ -68,13 +72,14 @@ func TestPickAltKBash(t *testing.T) {
 	}
 	s := pickShell(t, func(rc string) []string { return []string{bash, "--noprofile", "--rcfile", rc, "-i"} }, `PS1='$ '
 eval "$(koan pick --bash)"
+bind -x '"\ek": __koan_pick_widget'
 bind -x '"\C-t": printf "<%s>\n" "$READLINE_LINE"'
 echo READY
 `, "bashrc")
 	altK(s)
 }
 
-// Alt-K in a real zsh, with pick --zsh's script loaded.
+// Alt-K in a real zsh, bound to pick --zsh's widget.
 func TestPickAltKZsh(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drives a real zsh")
@@ -85,6 +90,7 @@ func TestPickAltKZsh(t *testing.T) {
 	}
 	s := pickShell(t, func(string) []string { return []string{zsh, "-d", "-i"} }, `PS1='$ '
 eval "$(koan pick --zsh)"
+bindkey '\ek' __koan_pick_widget
 show-line() { zle -I; print -r -- "<$BUFFER>" }
 zle -N show-line
 bindkey '^T' show-line

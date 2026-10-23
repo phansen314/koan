@@ -88,8 +88,8 @@ var usages = map[string]string{
 	"pick/kinds":            "offer only these kinds: task, gate, folder",
 	"frontier":              "offer the frontier's tasks, in work order",
 	"query":                 "fzf's starting query",
-	"bash":                  "print the bash script that binds Alt-K to pick, instead of picking",
-	"zsh":                   "print the zsh script that binds Alt-K to pick, instead of picking",
+	"bash":                  "print the bash script that defines pick's widget, for a key you bind, instead of picking",
+	"zsh":                   "print the zsh script that defines pick's widget, for a key you bind, instead of picking",
 }
 
 // fileUsages are each convenience's line in help, by field.
