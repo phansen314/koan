@@ -46,20 +46,9 @@ func Context() *cli.Command {
 				if err != nil {
 					return nil, err
 				}
-				id := int64(core.RootID)
-				if q.hasRef {
-					if id, err = resolveFolder(tx, q.ref, "folder"); err != nil {
-						return nil, err
-					}
-				} else {
-					var loc Location
-					if loc, _, stale, err = q.locate(tx, t, "folder"); err != nil {
-						return nil, err
-					}
-					if loc.Folder.ID != nil {
-						id = *loc.Folder.ID
-					}
-					res.Marker = loc.Marker
+				var id int64
+				if id, res.Marker, stale, err = subjectFolder(tx, t, q); err != nil {
+					return nil, err
 				}
 				res.Folder = t.folders.record(id)
 				paths := recordPaths(Cut[Folder]{Record: res.Folder})
@@ -118,4 +107,24 @@ func Context() *cli.Command {
 			return res, warnings, nil
 		},
 	}
+}
+
+// subjectFolder is the folder a command such as context acts on, the root
+// included: by reference, or by a path on disk as where finds one. A path
+// found through a marker gives the marker.json, and stale-marker when its
+// path hint is stale.
+func subjectFolder(tx *store.Tx, t *tasks, q *query) (int64, *string, []cli.Warning, error) {
+	if q.hasRef {
+		id, err := resolveFolder(tx, q.ref, "folder")
+		return id, nil, nil, err
+	}
+	loc, _, stale, err := q.locate(tx, t, "folder")
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	id := int64(core.RootID)
+	if loc.Folder.ID != nil {
+		id = *loc.Folder.ID
+	}
+	return id, loc.Marker, stale, nil
 }

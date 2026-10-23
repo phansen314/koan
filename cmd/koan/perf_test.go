@@ -217,7 +217,8 @@ func always(args ...string) func(*perfRoot, int) []string {
 const batchParts = 100
 
 // perfOps is every command, at the PRD's budget: 100 ms each, doctor and
-// repair 1 s, a batch 100 ms and 1 ms a part, and backup none.
+// repair 1 s, export 200 ms, a batch 100 ms and 1 ms a part, and backup
+// none.
 var perfOps = []perfOp{
 	{name: "task show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"task", "show", r.task(i, 50)} }},
 	{name: "task list", budget: 100 * ms, args: always("task", "list")},
@@ -232,6 +233,8 @@ var perfOps = []perfOp{
 		return []string{"where", "--file", filepath.Join(r.home, "koan-root", "tree", "@p3", "@f3", "@"+r.task(3, 50)+".md")}
 	}},
 	{name: "context", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"context", r.folder(i)} }},
+	{name: "export", budget: 200 * ms, args: func(r *perfRoot, i int) []string { return []string{"export", r.folder(i)} }},
+	{name: "export all", budget: 200 * ms, args: always("export", "/")},
 	{name: "info", budget: 100 * ms, args: always("info")},
 	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "task", "block", "1", "--blocked-by", "@")},
 	{name: "complete id", budget: 100 * ms, plain: true, args: func(r *perfRoot, i int) []string {

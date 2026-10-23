@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": 1,
+      "ref": "@1 (/empty)",
+      "name": "empty",
+      "path": "/empty",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": null,
+        "done": null
+      },
+      "open": 0,
+      "complete": 0,
+      "finished": true,
+      "notes_path": "$HOME/koan-root/tree/@empty/@notes.md",
+      "dir": "$HOME/koan-root/tree/@empty"
+    },
+    "folders": [],
+    "tasks": [],
+    "external": [],
+    "edges": []
+  },
+  "warnings": []
+}

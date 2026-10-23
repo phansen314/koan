@@ -33,7 +33,7 @@ type archiveFile struct {
 	Path       string          `json:"path"`
 	Folders    []archiveFolder `json:"folders"`
 	Tasks      []archiveTask   `json:"tasks"`
-	Edges      []archiveEdge   `json:"edges"`
+	Edges      []Edge          `json:"edges"`
 }
 
 type archiveFolder struct {
@@ -58,9 +58,28 @@ type archiveTask struct {
 	Extra       json.RawMessage `json:"extra"`
 }
 
-type archiveEdge struct {
+// Edge is an edge as Archive JSON and export list it: the task that
+// waits, then the task it waits on.
+type Edge struct {
 	Task    int64 `json:"task"`
 	Blocker int64 `json:"blocker"`
+}
+
+// edgesTouching is every edge with an end in a set of tasks, sorted by
+// task, then blocker.
+func edgesTouching(t *tasks, in map[int64]bool) []Edge {
+	out := []Edge{}
+	for from, blockers := range t.blockedBy {
+		for _, to := range blockers {
+			if in[from] || in[to] {
+				out = append(out, Edge{Task: from, Blocker: to})
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b Edge) int {
+		return cmp.Or(cmp.Compare(a.Task, b.Task), cmp.Compare(a.Blocker, b.Blocker))
+	})
+	return out
 }
 
 // leaving is what an archive takes out of the tree: the item, its
@@ -174,7 +193,7 @@ func (t *tasks) archive(tx *store.Tx, l leaving) (any, []cli.Warning, error) {
 // every edge that touched them, to or from anything.
 func (t *tasks) archiveFile(now string, l leaving) archiveFile {
 	f := archiveFile{Schema: 1, Kind: l.kind, ArchivedAt: now, Path: l.path,
-		Folders: []archiveFolder{}, Tasks: []archiveTask{}, Edges: []archiveEdge{}}
+		Folders: []archiveFolder{}, Tasks: []archiveTask{}, Edges: []Edge{}}
 	gone := map[int64]bool{}
 	for _, id := range l.folders {
 		r := t.folders.rows[id]
@@ -203,15 +222,6 @@ func (t *tasks) archiveFile(now string, l leaving) archiveFile {
 		}
 		f.Tasks = append(f.Tasks, x)
 	}
-	for from, blockers := range t.blockedBy {
-		for _, to := range blockers {
-			if gone[from] || gone[to] {
-				f.Edges = append(f.Edges, archiveEdge{Task: from, Blocker: to})
-			}
-		}
-	}
-	slices.SortFunc(f.Edges, func(a, b archiveEdge) int {
-		return cmp.Or(cmp.Compare(a.Task, b.Task), cmp.Compare(a.Blocker, b.Blocker))
-	})
+	f.Edges = edgesTouching(t, gone)
 	return f
 }

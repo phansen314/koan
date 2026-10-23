@@ -152,6 +152,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "move", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "delete", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"export", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"marker", "bind", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "show", "3"}, offered(byID, as("", "3")...)},
 		{[]string{"folder", "archive", "@"}, offered(byID, as("@", "1", "4")...)},
@@ -172,6 +173,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "list", "--folder", "/w"}, offered(byPath, "/work")},
 		{[]string{"task", "move", "5", "--to", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"context", "/o"}, offered(byPath, "/old")},
+		{[]string{"export", "/o"}, offered(byPath, "/old")},
 		// A folder is a step toward its gates, wherever a gate is taken.
 		{[]string{"task", "show", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"task", "show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
