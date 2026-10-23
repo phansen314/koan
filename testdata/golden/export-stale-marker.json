@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": 2,
+      "ref": "@2 (/work/web)",
+      "name": "web",
+      "path": "/work/web",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": null,
+        "done": null
+      },
+      "open": 1,
+      "complete": 0,
+      "finished": false,
+      "notes_path": "$HOME/koan-root/tree/@work/@web/@notes.md",
+      "dir": "$HOME/koan-root/tree/@work/@web"
+    },
+    "folders": [],
+    "tasks": [
+      {
+        "id": 3,
+        "ref": "@3 (/work/web)",
+        "gate": null,
+        "title": "a",
+        "priority": null,
+        "folder": {
+          "id": 2,
+          "path": "/work/web"
+        },
+        "created_at": "$NOW",
+        "completed_at": null,
+        "updated_at": "$NOW",
+        "state": "open",
+        "readiness": "ready",
+        "blocked_by": [],
+        "blocks": [],
+        "tags": [],
+        "extra": {},
+        "claim": null,
+        "notes_path": "$HOME/koan-root/tree/@work/@web/@3.md"
+      }
+    ],
+    "external": [],
+    "edges": []
+  },
+  "warnings": [
+    {
+      "kind": "stale-marker",
+      "message": "$HOME/wt/.koan/marker.json was bound to @2 at /work/api, which is now at /work/web. Bind it again to refresh it.",
+      "ids": [
+        2
+      ],
+      "paths": [
+        "$HOME/wt/.koan/marker.json"
+      ]
+    }
+  ]
+}

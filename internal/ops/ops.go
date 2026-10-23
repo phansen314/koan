@@ -32,6 +32,7 @@ func Commands() []*cli.Command {
 		Batch(),
 		Where(),
 		Context(),
+		Export(),
 		MarkerBind(),
 		MarkerUnbind(),
 		Init(),

@@ -14,7 +14,7 @@ koan is task management for one person on one machine, driven mostly by agents s
 
 - **Notes are files, edited directly.** No tool stands between an agent and a task's notes. Everything in the tree's directory may be edited; structure changes only through koan.
 - **Structure is safe under many agents at once.** Any number of agents and the user work on one tree concurrently, and every invariant holds.
-- **Fast at the sizes one person reaches.** Every command finishes within 100 ms at 10,000 live tasks on the CI machine, whose OS is named beside the benchmarks, and archiving keeps the live set well below that. Commands whose work grows with the whole tree or their input are budgeted apart: `doctor` and `repair` within 1 s, a `batch` within 100 ms plus 1 ms a part, and `backup` not at all, since it copies every file.
+- **Fast at the sizes one person reaches.** Every command finishes within 100 ms at 10,000 live tasks on the CI machine, whose OS is named beside the benchmarks, and archiving keeps the live set well below that. Commands whose work grows with the whole tree or their input are budgeted apart: `doctor` and `repair` within 1 s, `export` within 200 ms, a `batch` within 100 ms plus 1 ms a part, and `backup` not at all, since it copies every file.
 - **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed. Help, shell completion and `pick`, which are for people, print plain text (spec Invocation).
 - **Simple to install.** One `go install`, one binary, no system libraries. `pick` alone needs fzf on `PATH` (Command surface).
 
@@ -275,17 +275,25 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 - **koan filters, the shell only shows.** koan keeps only the candidates that start with what is typed, since cobra's bash script spends about 74 µs on each described candidate it's given: 0.74 s for 10,000. Past 100 it offers none, and a one-line hint says to type more or press Alt-K for `pick`, where bash would otherwise ask whether to display them all.
 - **Agents never complete.** Completion runs only from a person's interactive shell, and prints nothing an agent reads.
 
+**`export` is for tools.** `koan export` prints a folder's whole subtree as one result, for a tool to turn into a graph or a file: its folders, every task under it, the tasks outside it at the other end of an edge, and every edge with an end in it. It gives what the other reads can't, and is budgeted for it:
+
+- **One snapshot.** Its records come from one read transaction, so no write lands between them, as one can between `folder show`, `folder list` and `task list`.
+- **No limit.** It is always the whole subtree, every state, gates included, with nothing to narrow it: filtering is jq's job. A graph needs every task, which is just what the 100-result default of `task list` and `folder list` keeps out of an agent's context (Choices), so agents pipe export into a tool or a file, and never read it whole.
+- **The other ends of edges.** A record's `blocked_by` and `blocks` name a task outside the subtree only as an edge-end, its ID, kept text and state. export gives each such task as a whole record, so a renderer needs no `task show` per task.
+- **Nothing new to read.** Its folders and tasks are the records every read returns, and its edges take Archive JSON's shape and order, so it adds no record and no shared type. It prints JSON only: Graphviz, Mermaid and D2 are drawn from it by tools outside koan.
+- **Budgeted apart.** Its work grows with the subtree, and `export /` prints every live task as a whole record, about 7 MB at 10,000 tasks. The spikes never printed every task. The nearest measurement, `list` filling every field for all 10,000 tasks while printing the 4,223 open ones (3.0 MB), took 66.5 ms, and encoding costs about 5 ms per 1.5 MB, so `export /` comes to an estimated 85–90 ms on the spike machine (docs/spikes.md). 200 ms (Goals) gives it the margin the other whole-tree reads have under 100 ms. It is an estimate, which the Performance benchmarks check.
+
 **Every write reports what it released and blocked again.** With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
 ## Markers
 
-A marker binds a directory outside the tree, usually a code worktree, to a folder, so that `where` and `context` find the folder from anywhere inside it. Markers carry over from today's koan, apart from how they meet archived and deleted folders.
+A marker binds a directory outside the tree, usually a code worktree, to a folder, so that `where`, `context` and `export` find the folder from anywhere inside it. Markers carry over from today's koan, apart from how they meet archived and deleted folders.
 
 - **The nearest marker is the one.** A path outside the tree is in the folder of the nearest marker at or above it, as with `.git`. The look walks up the path as given, listing each directory for `.koan/marker.json`, and stops at the first `marker.json`, whatever its state, so an unusable one is never passed over for one further up.
 - **Inside the tree, markers are never looked at.** Where a path sits already says which folder it is in.
 - **The ID decides; the path is a hint.** A marker follows its folder through moves and renames. A `path` that no longer matches is a `stale-marker` warning, and binding again refreshes it.
-- **A marker whose folder is gone binds nothing.** For an archived folder, `where` and `context` say where in the archive it went, from the index; for a deleted one, that it was deleted. Nor does a marker bind anything when it was copied or moved (its `dir` isn't the real path of the directory it was found in), can't be read as JSON, lacks a field, or is in a format koan doesn't read. Every marker that binds nothing is treated alike: `where` and `context` fail with `not-found`, the message saying why, and the look still stops there.
-- **koan keeps no list of markers.** A worktree is removed by git or `rm` without koan knowing, so a list would go stale at once. A folder deleted or archived under a bound worktree shows when the worktree is next used, through `where` and `context`.
+- **A marker whose folder is gone binds nothing.** For an archived folder, `where`, `context` and `export` say where in the archive it went, from the index; for a deleted one, that it was deleted. Nor does a marker bind anything when it was copied or moved (its `dir` isn't the real path of the directory it was found in), can't be read as JSON, lacks a field, or is in a format koan doesn't read. Every marker that binds nothing is treated alike: `where`, `context` and `export` fail with `not-found`, the message saying why, and the look still stops there.
+- **koan keeps no list of markers.** A worktree is removed by git or `rm` without koan knowing, so a list would go stale at once. A folder deleted or archived under a bound worktree shows when the worktree is next used, through `where`, `context` and `export`.
 - **Reads never write a marker.** Only `marker bind` and `marker unbind` do.
 - **Out of git's way.** The `*` in `.koan/.gitignore` matches everything there, itself included, so `git status` never shows it and `git worktree remove` needs no `--force`.
 - **Bind worktrees, not checkouts.** A marker binds every directory under it with no nearer one, so `marker bind` refuses a directory whose `.git` is a directory, unless forced (checkout).
@@ -359,8 +367,9 @@ These are the tests named in the Tested by column of Invariants, enforced and te
 | **Output** | Every command's JSON checked against its schema, and golden results for each refusal. |
 | **Performance** | Benchmarks at 1,000 and 10,000 live tasks, run in CI on Linux and macOS and reported against the budget set in Goals. For now neither fails the build; the budget is enforced once performance is taken up again. |
 | **Repair** | Each finding made by hand on a fresh root. doctor reports it under the right kind, repair does what the table says, and a second doctor reports only what repair leaves to a person. |
-| **Markers** | The nearest marker wins and stops the look; a copied or moved marker binds nothing; archived and deleted folders give their messages; git ignores .koan/; checkout and foreign-files refuse. |
+| **Markers** | The nearest marker wins and stops the look; a copied or moved marker binds nothing; archived and deleted folders give their messages, for `where`, `context` and `export` alike; git ignores .koan/; checkout and foreign-files refuse. |
 | **Backup and restore** | A backup taken during the concurrency run restores to a root doctor finds clean; a folder moved mid-copy makes backup copy again under the lock. |
+| **Export** | Golden results for a subtree with nested folders, gates, claims, and tasks outside it at both ends of edges, and for `/`: every folder and task under the subject once, `external` its direct neighbours only, every edge with an end under it once, and no material. Its `folders` and `tasks` match `folder list` and `task list` with no limit on the same state, and the same database exported twice prints the same bytes. |
 | **pick** | A stand-in fzf first on `PATH` records the arguments and lines it is given and answers as told: a choice, several, nothing matched, a cancel, a failure, a version too old. pick prints what the spec says for each, with and without a terminal, and removes its preview directory every time. A run against the real fzf in a pseudo-terminal is skipped by `-short`. |
 | **Completion** | `__complete` on a tree with every kind, for each argument in the spec's table and each form of word, against golden lines: what is offered, in what order, with what descriptions and directives, a list's comma, the cap and its hint, and a root that isn't usable. These lines are what every shell's script reads. A real bash, with bash-completion, and a real zsh, each driven in a pseudo-terminal, complete a path folder by folder, an ID with its title and a gate after a path, and show the hint. Each is skipped by `-short`, and when its shell isn't installed; CI installs both. fish and powershell are covered by the `__complete` lines alone. |
 
@@ -384,7 +393,7 @@ Anything that would change a rule goes to the rules doc, not to this list. Work 
 | `task list`, `task frontier` and `folder list` return 100 results unless `--limit` says otherwise | everything, 3 MB of JSON at 10,000 tasks for an agent to take in |
 | The archive laid out by path, items named by ID | an archive laid out by ID only |
 | An empty notes file written at task create | notes made on first edit |
-| 100 ms at 10,000 live tasks; 1 s for `doctor` and `repair`; 100 ms plus 1 ms a part for `batch`; none for `backup` | another budget |
+| 100 ms at 10,000 live tasks; 1 s for `doctor` and `repair`; 200 ms for `export`; 100 ms plus 1 ms a part for `batch`; none for `backup` | another budget |
 | A stuck step set aside, later writes going on | every write failing until a person fixes it |
 | A backup copied without the lock, then checked by doctor | the lock held throughout, or hard links |
 | No list of markers in the database | a list, so delete and archive could warn about bound worktrees |
@@ -396,3 +405,4 @@ Anything that would change a rule goes to the rules doc, not to this list. Work 
 | Past 100 candidates, a hint instead of a list | every candidate, at 0.74 s for 10,000 in bash before it asks whether to show them |
 | Only a list's first item completes; the option is repeated for more | completing after a comma, which cobra's bash script drops: bash 5.3's `printf %q` escapes the comma |
 | init --ids-from N, carrying the ID sequence from root to root | IDs from 1 in every root, so each format change before 1.0 makes a second @42 |
+| `export` returns a folder's whole subtree, every state, gates included, with no limit and nothing to narrow it | the 100-result default `task list`, `task frontier` and `folder list` keep for an agent's context, which would cut a graph short; and filters of its own, which jq already gives |

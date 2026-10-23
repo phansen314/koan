@@ -137,8 +137,8 @@ When a line has several faults, which is named is cobra's: options are read befo
 | Convenience | On | Stands for |
 | --- | --- | --- |
 | `--notes-file <file>` | `task create`, `folder create` | `notes`, read from the file whole, or from standard input for `-` |
-| `--file <path>`, relative | `where`, `context` | `file`, made absolute from the working directory |
-| no subject | `context` | `file`, the working directory |
+| `--file <path>`, relative | `where`, `context`, `export` | `file`, made absolute from the working directory |
+| no subject | `context`, `export` | `file`, the working directory |
 | `--here` | `pick` | `file`, the working directory |
 | `--dir <path>`, relative or left out | `marker bind`, `marker unbind` | `dir`, made absolute; the working directory when left out |
 | `<dir>`, relative | `backup` | `dir`, made absolute from the working directory |
@@ -389,7 +389,7 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `batch` | the complete tasks |  |
 | `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |
 | `moved-claimed` | A move changed the notes path of a claimed task | `task move`, `folder move` | the claimed tasks | their new notes paths, in the same order |
-| `stale-marker` | A marker's path hint no longer matches its folder | `where`, `context` | the folder | the marker.json |
+| `stale-marker` | A marker's path hint no longer matches its folder | `where`, `context`, `export` | the folder | the marker.json |
 
 ```json
 {
@@ -870,6 +870,33 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
   "result": { "$ref": "brief" } } }
 ```
 
+### Export
+
+`koan export [<folder>]` or `koan export --file <path>`, at most one; with neither, the working directory. The folder is found as for context, the root included. Returns the folder's whole subtree in one read transaction, for a tool to turn into a graph or a file (PRD Command surface): its folders and every task under it, the tasks outside it at the other end of an edge, and the edges. There is nothing to narrow it and no limit. Warns `stale-marker`.
+
+- **`folders`** is what `folder list` returns for the folder with `--limit null`, and **`tasks`** what `task list` returns for it with `--state open,complete` and `--limit null`, gates included, but read in the same snapshot as the rest. For `/`, `folder` is the root's record, whose `open` and `complete` count the whole tree.
+- **`external`** is every task outside the subtree at the other end of an edge with a task in `tasks`, in either direction, complete ones and other folders' gates included: direct neighbours only. A gate's `gate` and `folder` say whose it is. It is empty for `/`.
+- **`edges`** is every edge with at least one end in `tasks`, each once, with Archive JSON's shape and order. Both ends of every edge are in `tasks` or `external`, so an edge between two tasks of `external` isn't listed.
+- **Only the database is read.** export never lists the tree's directory, so material never appears, and never checks a notes file, so it gives no `missing-notes`. Its paths follow the read conventions, with `pending-filesystem` beside those whose steps are still running.
+- **The same state prints the same result**, byte for byte: the conventions in Introduction fix every order in it.
+
+```json
+{ "$id": "export", "$defs": {
+  "input": { "type": "object", "properties": {
+    "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject." },
+    "file":   { "$ref": "types#/$defs/abs-path" } },
+    "oneOf": [ { "required": ["folder"] }, { "required": ["file"] } ] },
+  "result": { "type": "object", "required": ["folder", "folders", "tasks", "external", "edges"], "properties": {
+    "folder":   { "$ref": "folder", "description": "The subject; the root for /." },
+    "folders":  { "type": "array", "items": { "$ref": "folder" }, "description": "Every folder under it, at any depth, itself left out, in tree order." },
+    "tasks":    { "type": "array", "items": { "$ref": "task" }, "description": "Every task under it, at any depth, open and complete, gates included, in tree order." },
+    "external": { "type": "array", "items": { "$ref": "task" }, "description": "Every task outside it at the other end of an edge with a task in tasks. Ascending by ID; empty for /." },
+    "edges":    { "type": "array", "items": { "$ref": "#/$defs/edge" }, "description": "Every edge with an end in tasks, each once. Sorted by task, then blocker." } } },
+  "edge": { "type": "object", "required": ["task", "blocker"], "properties": {
+    "task":    { "$ref": "types#/$defs/id", "description": "The task that waits." },
+    "blocker": { "$ref": "types#/$defs/id", "description": "The task it waits on." } } } } }
+```
+
 ### Markers
 
 `koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, or one that binds nothing, as PRD Markers says when. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `--dir` that doesn't exist is `io`. `koan marker unbind [--dir]` removes the binding, in the order PRD Markers gives; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). After the input's shape and the root's state, bind checks the directory under the root, then that it exists, then the folder, then `foreign-files`, then `checkout`, then `bound`; unbind makes the same checks up to `foreign-files`, and a `--dir` that doesn't exist is `io` for it too.
@@ -1001,7 +1028,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 | `task block` subject | tasks and gates, made or not |
 | `--blocked-by`, `--blocks` | tasks, gates made or not, and folders |
 | `--folder` (`task create`, `task list`, `task frontier`, `task claim-next`, `folder list`, `pick`), `task move --to` | folders |
-| `folder show`, `folder update`, `folder move`, `folder delete`, `context`, `marker bind` subject | folders |
+| `folder show`, `folder update`, `folder move`, `folder delete`, `context`, `export`, `marker bind` subject | folders |
 | `folder archive` subject | finished folders |
 | `folder create` subject, `folder move --to` | folders as paths only, as steps toward a new path: the last name is the person's to type |
 | `where` subject | tasks, made gates, and folders |

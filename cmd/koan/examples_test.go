@@ -86,6 +86,8 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "koan folder list --folder /work --recursive=false --fields path,title,open,finished", want: []string{`{"ok":true,"result":{"folders":[{"id":41,"path":"/work/api"},{"id":49,"path":"/work/web"}],"total":2}}`}},
 	{cmd: `koan task list --fields title,extra --limit 200 | jq -c 'if .ok then .result |= {tasks: (.tasks | map(select(.extra.status == "waiting"))), unscanned: (.total - (.tasks | length))} else . end'`,
 		want: []string{`{"ok":true,"result":{"tasks":[{"id":48,"title":"Investigate the flaky test","extra":{"status":"waiting"}}],"unscanned":0},"warnings":[]}`}},
+	{cmd: "koan export /work/api > api.json"},
+	{cmd: "jq .ok api.json", want: []string{"true"}},
 
 	// Worktrees
 	{cmd: "koan marker bind @41 --dir ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":{"id":41,"path":"/work/api"},"replaced":false}}`}},
@@ -148,6 +150,7 @@ var readmeSteps = []docStep{
 	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":5,"gates_made":[{"id":6,"folder":{"id":2},"end":"done"}]}}`}},
 	{cmd: "koan task block /work/api.done --blocked-by 3,4", want: []string{`{"ok":true,"result":{"id":6,"changed":true,"reblocked":[6]}}`}},
 	{cmd: "koan task why 5", want: []string{`{"ok":true,"result":{"id":5,"readiness":"blocked","blockers":[{"id":6}],"ready":[4]}}`}},
+	{cmd: "koan export /work/api | jq '.result.external[].ref'", want: []string{`"@5 (/work)"`}},
 	{cmd: `koan batch -i - <<'EOF'
 {"folders": [{"path": "/home/trip", "title": "Lisbon in May"}],
  "folder": "/home/trip",

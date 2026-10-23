@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "export",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "description": "Subject."
+        },
+        "file": {
+          "$ref": "types#/$defs/abs-path"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "folder"
+          ]
+        },
+        {
+          "required": [
+            "file"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "folder",
+        "folders",
+        "tasks",
+        "external",
+        "edges"
+      ],
+      "properties": {
+        "folder": {
+          "$ref": "folder",
+          "description": "The subject; the root for /."
+        },
+        "folders": {
+          "type": "array",
+          "items": {
+            "$ref": "folder"
+          },
+          "description": "Every folder under it, at any depth, itself left out, in tree order."
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "task"
+          },
+          "description": "Every task under it, at any depth, open and complete, gates included, in tree order."
+        },
+        "external": {
+          "type": "array",
+          "items": {
+            "$ref": "task"
+          },
+          "description": "Every task outside it at the other end of an edge with a task in tasks. Ascending by ID; empty for /."
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          },
+          "description": "Every edge with an end in tasks, each once. Sorted by task, then blocker."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": [
+        "task",
+        "blocker"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "types#/$defs/id",
+          "description": "The task that waits."
+        },
+        "blocker": {
+          "$ref": "types#/$defs/id",
+          "description": "The task it waits on."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}
