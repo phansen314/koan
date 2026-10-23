@@ -469,6 +469,27 @@ func TestPickBash(t *testing.T) {
 	p.run("--bash", "--query", "x").failed(t, 1, "invalid-input", "bash takes no other field")
 }
 
+// --zsh prints the keybinding script without a root or a terminal.
+func TestPickZsh(t *testing.T) {
+	p := newPicker(t, t.TempDir())
+	p.tty = false
+	r := p.run("--zsh")
+	for _, want := range []string{"zle -N __koan_pick_widget", `bindkey -M emacs '\ek' __koan_pick_widget`, `bindkey -M viins '\ek' __koan_pick_widget`} {
+		if r.exit != 0 || r.err != "" || !strings.Contains(r.out, want) {
+			t.Fatalf("want %q; exit %d, stderr %q:\n%s", want, r.exit, r.err, r.out)
+		}
+	}
+	if _, err := exec.LookPath("zsh"); err == nil {
+		check := exec.Command("zsh", "-n")
+		check.Stdin = strings.NewReader(r.out)
+		if out, err := check.CombinedOutput(); err != nil {
+			t.Errorf("zsh -n: %v\n%s", err, out)
+		}
+	}
+	p.run("--zsh", "--query", "x").failed(t, 1, "invalid-input", "zsh takes no other field")
+	p.run("--zsh", "--bash").failed(t, 1, "invalid-input", "takes no other field")
+}
+
 // A real fzf, in a pseudo-terminal: Enter picks the line under the
 // cursor, and Esc cancels.
 func TestPickRealFzf(t *testing.T) {

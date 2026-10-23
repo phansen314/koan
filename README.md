@@ -22,6 +22,32 @@ For shell completion of commands, options and references (folder paths one folde
 source <(koan completion bash)   # in ~/.bashrc; zsh: source <(koan completion zsh) in ~/.zshrc
 ```
 
+`koan pick` lets you choose tasks, gates and folders in fzf (0.63.0 or later) and prints their references. To have Alt-K type the picked references in at the cursor, load its keybinding script; bash needs 4.0 or later, so on macOS use Homebrew's bash rather than `/bin/bash`:
+
+```shell
+eval "$(koan pick --zsh)"    # in ~/.zshrc; bash: eval "$(koan pick --bash)" in ~/.bashrc
+```
+
+### Alt-K on macOS
+
+On macOS, Option-K types a character, such as `˚` on a US keyboard, rather than sending Alt-K (escape then `k`), until your terminal is told otherwise. Either remap Option-K alone, which keeps every other Option key typing its character and works whatever your keyboard layout:
+
+| Terminal | Option-K alone |
+|---|---|
+| kitty | in `kitty.conf`: `map opt+k send_text all \x1bk` |
+| iTerm2 | Settings → Profiles → Keys → Key Mappings → **+**: press Option-K, Action "Send Escape Sequence", Esc+ `k` |
+| Terminal.app | Settings → Profiles → Keyboard → **+**: Key `K`, Modifier Option, Action "Send Text", `\033k` |
+
+or make the Option key a Meta key, which turns on your shell's other Alt keys too, such as Alt-B and Alt-F to move by word, but stops it typing accented characters:
+
+| Terminal | Option as Meta |
+|---|---|
+| kitty | in `kitty.conf`: `macos_option_as_alt left` (or `right`, or `both`) |
+| iTerm2 | Settings → Profiles → Keys → General: Left Option key **Esc+** |
+| Terminal.app | Settings → Profiles → Keyboard: **Use Option as Meta key** (both Option keys) |
+
+Or leave the terminal alone and bind the character your keyboard types for Option-K, which you can see by running `cat` and pressing it: `bindkey '˚' __koan_pick_widget` in zsh, or `bind -x '"˚": __koan_pick_widget'` in bash. You can no longer type that character, and it works only on that layout.
+
 Then make this machine's root:
 
 ```sh
