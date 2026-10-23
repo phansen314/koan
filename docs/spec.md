@@ -1046,7 +1046,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 **Order.** Candidates come in `pick`'s order (pick, The candidates), and the script asks the shell to keep it.
 
-**Too many.** More than 100 candidates offers none. Instead it gives one line of cobra's ActiveHelp, `<n> match: type more, or Alt-K to pick`, which bash and zsh show under the prompt; cobra's `KOAN_ACTIVE_HELP=0` turns it off.
+**Too many.** More than 100 candidates offers none. Instead it gives one line of cobra's ActiveHelp, `<n> match: type more, or use koan pick`, which bash and zsh show under the prompt; cobra's `KOAN_ACTIVE_HELP=0` turns it off.
 
 **Failures** offer nothing: a root that isn't usable, `busy`, or any other error. Completion prints no envelope, and nothing a person would see.
 
@@ -1054,9 +1054,9 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### pick
 
-`koan pick [--folder] [--recursive] [--here] [--state] [--readiness] [--claimed] [--tags-any] [--tags-all] [--frontier] [--kinds] [--query]`, or `koan pick --bash`.
+`koan pick [--folder] [--recursive] [--here] [--state] [--readiness] [--claimed] [--tags-any] [--tags-all] [--frontier] [--kinds] [--query]`, or `koan pick --bash`, or `koan pick --zsh`.
 
-Lets a person at a terminal choose tasks, gates and folders in fzf, and prints their references on standard output, for `$(koan pick)`, or for the key `--bash` binds. It is for people, and departs from the rest of this spec where Invocation says: it prints plain text, never an envelope. Agents never run it (PRD Agents).
+Lets a person at a terminal choose tasks, gates and folders in fzf, and prints their references on standard output, for `$(koan pick)`, or for the key `--bash` or `--zsh` binds. It is for people, and departs from the rest of this spec where Invocation says: it prints plain text, never an envelope. Agents never run it (PRD Agents).
 
 ```json
 { "$id": "pick", "$defs": {
@@ -1072,7 +1072,9 @@ Lets a person at a terminal choose tasks, gates and folders in fzf, and prints t
                    "default": ["task", "gate", "folder"] },
     "query":     { "type": "string", "default": "", "description": "fzf's starting query, in fzf's syntax." },
     "bash":      { "type": "boolean", "default": false,
-                   "description": "Print the bash keybinding script instead of picking. Given with any other field, invalid-input at \"\"." } } } } }
+                   "description": "Print the bash keybinding script instead of picking. Given with any other field, invalid-input at \"\"." },
+    "zsh":       { "type": "boolean", "default": false,
+                   "description": "Print the zsh keybinding script instead of picking. Given with any other field, invalid-input at \"\"." } } } } }
 ```
 
 **Requirements.** `/dev/tty` opens for reading and writing; standard input and output may be anything. fzf is on `PATH`, version 0.63.0 or later, as `fzf --version` reports it run without `FZF_DEFAULT_OPTS` and `FZF_DEFAULT_OPTS_FILE`: its first word, without any `-` suffix, compared as three numbers.
@@ -1113,7 +1115,9 @@ Lets a person at a terminal choose tasks, gates and folders in fzf, and prints t
 
 **The order of checks.** The input's shape; the root's state; `unavailable` when `/dev/tty` doesn't open, then for fzf missing, too old, or `fzf --version` failing; the references (`folder`, or the marker `file` is under, as `where --file` resolves it); no candidates; then fzf. fzf exiting anything but 0, 1 or 130 is `unavailable`, and its own standard error, such as a bad option in `FZF_DEFAULT_OPTS`, reaches the terminal. While fzf runs, pick catches SIGINT and SIGQUIT and discards them: ctrl-c is fzf's key, and cancels. Warnings from the reads give the usual standard-error line once fzf has returned.
 
-**`--bash`** prints a bash script on standard output, with exit 0, and never reads `HOME` or the root, as for `version`. `eval "$(koan pick --bash)"` in `.bashrc` defines the shell function `__koan_pick_widget` and binds it to Alt-K (`\ek`) in emacs and vi insert modes; `bind -x '"<key>": __koan_pick_widget'` binds another. The function runs `koan pick` and, when it exits 0, inserts what it printed, without the newline, at the cursor, and moves the cursor past it; any other exit inserts nothing. It needs bash 4.0 or later, for `READLINE_LINE` and `READLINE_POINT`; on an older bash the script binds nothing.
+**`--bash`** prints a bash script on standard output, with exit 0, and never reads `HOME` or the root, as for `version`. `eval "$(koan pick --bash)"` in `.bashrc` defines the shell function `__koan_pick_widget`, and binds no key; `bind -x '"<key>": __koan_pick_widget'` binds one (PRD Command surface). Run from a key, the function runs `koan pick` and, when it exits 0, inserts what it printed, without the newline, at the cursor, and moves the cursor past it; any other exit inserts nothing. It needs bash 4.0 or later, for `READLINE_LINE` and `READLINE_POINT`; on an older bash the script defines nothing.
+
+**`--zsh`** prints a zsh script on standard output, with exit 0, and never reads `HOME` or the root, as for `version`. `eval "$(koan pick --zsh)"` in `.zshrc` defines the shell function `__koan_pick_widget` and makes it a zle widget of that name, and binds no key; `bindkey '<key>' __koan_pick_widget` binds one. Run from a key, the widget runs `koan pick` and, when it exits 0, inserts what it printed, without the newline, at the cursor, and moves the cursor past it; any other exit inserts nothing. Either way it then redraws the prompt and the line, which fzf drew over.
 
 ## Input formats
 

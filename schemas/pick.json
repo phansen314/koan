@@ -54,6 +54,11 @@
           "type": "boolean",
           "default": false,
           "description": "Print the bash keybinding script instead of picking. Given with any other field, invalid-input at \"\"."
+        },
+        "zsh": {
+          "type": "boolean",
+          "default": false,
+          "description": "Print the zsh keybinding script instead of picking. Given with any other field, invalid-input at \"\"."
         }
       },
       "unevaluatedProperties": false

@@ -34,6 +34,7 @@ func Pick() *cli.Command {
 			{Field: "kinds", Kind: cli.List},
 			{Field: "query", Kind: cli.String},
 			{Field: "bash", Kind: cli.Bool},
+			{Field: "zsh", Kind: cli.Bool},
 		},
 		Here:   &cli.Here{Field: "file", Flag: "--here"},
 		Fields: []string{"file"},
@@ -69,9 +70,20 @@ func (p *pickIn) filtered() bool {
 
 func (p *pickIn) wants(kind string) bool { return slices.Contains(p.kinds, kind) }
 
-func readPick(in cli.Input) (*pickIn, bool, *cli.Error) {
+// readPick reads pick's input, and the keybinding script to print
+// instead of picking, if --bash or --zsh asked for one.
+func readPick(in cli.Input) (*pickIn, string, *cli.Error) {
 	r := input{in: in}
-	bash := r.boolean("bash", false)
+	script := ""
+	for _, sh := range []struct{ field, script string }{{"bash", bashScript}, {"zsh", zshScript}} {
+		if r.boolean(sh.field, false) {
+			if len(in) > 1 {
+				r.fault("", "%s takes no other field", sh.field)
+				break
+			}
+			script = sh.script
+		}
+	}
 	p := &pickIn{
 		folder:    r.ref("folder", core.WantFolder, "/"),
 		file:      r.absPath("file", false),
@@ -87,9 +99,6 @@ func readPick(in cli.Input) (*pickIn, bool, *cli.Error) {
 	}
 	_, p.hasFile = r.value("file")
 	_, hasFolder := r.value("folder")
-	if bash && len(in) > 1 {
-		r.fault("", "bash takes no other field")
-	}
 	if p.hasFile && hasFolder {
 		r.fault("", "give at most one of folder and file")
 	}
@@ -101,16 +110,16 @@ func readPick(in cli.Input) (*pickIn, bool, *cli.Error) {
 			}
 		}
 	}
-	return p, bash, r.err()
+	return p, script, r.err()
 }
 
 func runPick(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-	p, bash, e := readPick(in)
+	p, script, e := readPick(in)
 	if e != nil {
 		return nil, nil, e
 	}
-	if bash {
-		return cli.Text{Out: bashScript}, nil, nil
+	if script != "" {
+		return cli.Text{Out: script}, nil, nil
 	}
 	s, e := openStore(env)
 	if e != nil {

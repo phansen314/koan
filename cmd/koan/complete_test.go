@@ -248,7 +248,7 @@ func manyTree(t *testing.T) string {
 // More than 100 candidates offers none, and a hint instead.
 func TestCompleteTooMany(t *testing.T) {
 	home := manyTree(t)
-	hint := "_activeHelp_ 101 match: type more, or Alt-K to pick"
+	hint := "_activeHelp_ 101 match: type more, or use koan pick"
 	if got, want := completes(t, home, "task", "show", "@"), offered(byID, hint); got != want {
 		t.Errorf("101: %q, want %q", got, want)
 	}

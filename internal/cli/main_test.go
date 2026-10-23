@@ -285,7 +285,7 @@ func TestMainCompleteReferences(t *testing.T) {
 	path := &Command{Name: "backup", Subject: &Option{Field: "dir", Kind: Path, Required: true},
 		Run: func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil }}
 	cmds := []*Command{refs, path, fake}
-	hint := "_activeHelp_ 101 match: type more, or Alt-K to pick\n"
+	hint := "_activeHelp_ 101 match: type more, or use koan pick\n"
 	most := ""
 	for i := range 100 {
 		most += strconv.Itoa(i) + "\tnumber " + strconv.Itoa(i) + "\n"
