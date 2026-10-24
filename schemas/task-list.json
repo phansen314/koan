@@ -7,7 +7,8 @@
       "properties": {
         "folder": {
           "$ref": "types#/$defs/folder-ref",
-          "default": "/"
+          "default": "/",
+          "description": "Subject: the folder the command looks under."
         },
         "recursive": {
           "type": "boolean",

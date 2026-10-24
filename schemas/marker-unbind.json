@@ -9,7 +9,8 @@
       ],
       "properties": {
         "dir": {
-          "$ref": "types#/$defs/abs-path"
+          "$ref": "types#/$defs/abs-path",
+          "description": "Subject."
         }
       },
       "unevaluatedProperties": false
@@ -18,13 +19,13 @@
       "type": "object",
       "required": [
         "dir",
-        "removed"
+        "changed"
       ],
       "properties": {
         "dir": {
           "$ref": "types#/$defs/abs-path"
         },
-        "removed": {
+        "changed": {
           "type": "boolean",
           "description": "false when there was no marker."
         }

@@ -19,7 +19,7 @@
             "$ref": "types#/$defs/folder-ref"
           },
           "minItems": 1,
-          "description": "The folders joined: the arguments after the subject."
+          "description": "Object: the folders joined, the words after the subject."
         }
       },
       "unevaluatedProperties": false

@@ -35,7 +35,7 @@ Every schema below builds on these. The patterns are the rules doc's, written as
 | `label` | A batch label: $ then a name | `$a` |
 | `folder-ref` | A folder: path, ID or anchored path | `/work/api`, `@41`, `@41/phase2` |
 | `task-ref` | A task: ID, or a gate by its folder and end | `@57`, `@41.done`, `/work/api.start` |
-| `edge-ref` | What `--blocked-by` and `--blocks` take: a task, or a folder with an optional end, the done gate when none is given | `@42`, `/work/api`, `@9.start` |
+| `edge-ref` | What an edge names, as `--blocked-by`, `--blocks` and the words after `task block`'s subject take: a task, or a folder with an optional end, the done gate when none is given | `@42`, `/work/api`, `@9.start` |
 | `ref` | Anything `where` takes: the forms above, or material in a folder | `@41:docs/plan.md` |
 | `kept` | The kept-text pair koan writes | `@57 (/work/api.done)` |
 | `folder-at` | A folder named both ways, by ID and path; the root has a null ID | `{"id": 41, "path": "/work/api"}` |
@@ -99,38 +99,40 @@ A reference is a string, or an ID given as a JSON integer. Every form takes the 
 
 ## Invocation
 
-A command line is `koan <command> [<subject>] [<options>]`, and every command reads and writes the root at `~/koan-root`. There is no setting for the root; PRD Layout says how to keep it elsewhere. Tests point `HOME` at a scratch directory.
+A command line is `koan <command> [<subject>] [<object>] [<options>]`, and every command reads and writes the root at `~/koan-root`. There is no setting for the root; PRD Layout says how to keep it elsewhere. Tests point `HOME` at a scratch directory.
 
 **Two ways to give the input, never both.** Every command has an input schema (under Commands).
 
-- **Arguments and options.** Each option sets the input field of the same name, in kebab-case: `--blocked-by` sets `blocked_by`.
+- **Arguments and options.** Each option sets the input field of the same name, in kebab-case: `--blocks` sets `blocks`. The subject and the object set the fields their command's schema marks as such.
 - **`-i, --input <file>`.** The whole input as one JSON object, from `<file>`, or from standard input when `<file>` is `-`. It is the only way to run `batch`: without it, `batch`'s input is `{}`, which holds no parts, and is `invalid-input`. koan reads standard input only when `-` names it, so it is safe inside a loop that feeds standard input to something else.
 
 **The command line** is read by cobra (`github.com/spf13/cobra`), with pflag for options (PRD Command surface). These rules are what koan asks of it; where they say nothing, cobra's behaviour is the rule.
 
-- **One subject, positional.** It is the task or folder the command acts on, or a new task's title or a new folder's path. Everything else is an option, so a bare word has one meaning. `task join`, `task unjoin`, `folder join` and `folder unjoin` are the exception: the subject comes first, as everywhere, and the folders it joins come after it, a list, comma-separated or as more words, so `koan task join 42 /a,/b` is `koan task join 42 /a /b`; they set `join`, and take no `--join` option.
-- **References** are taken with or without the `@`: `koan task show 42`, `koan task block @42 --blocked-by 17,@41.start`.
-- **Lists** are comma-separated, and the option can repeat: `--tags a,b` is `--tags a --tags b`. Every comma splits; there is no quoting. `--extra-remove` takes one key per occurrence, since a key can hold a comma.
+- **A subject, then an object.** A command takes at most two positions. The **subject** is what it acts on: a task, a folder or a directory, a new task's title or a new folder's path, or the folder the command looks under. The **object**, on a command whose verb takes one, is what the verb does to the subject with: the folders a join names, what `task block` makes it wait on, where `mv` puts it, the directory `marker bind` binds it to. Each position holds one kind of thing on a command, so a bare word has one meaning there. Either position can be a list of references, comma-separated or as more words, but not both on one command: `koan task join 42 /a,/b` is `koan task join 42 /a /b`. A command's object is its last positional, so a list of subjects comes before one object, `koan task mv 41 42 /work`, and one subject before a list of objects, `koan task join 42 /a /b`. An option can take the object's place, as `-t` does on both `mv` commands, and then every positional is a subject. Otherwise a field a position sets has no option on that command, so a value is never given both ways. Everything else is an option.
+- **References** are taken with or without the `@`: `koan task show 42`, `koan task block @42 17,@41.start`.
+- **koan paths are never globbed.** A shell expands `/work/old/*` against the real filesystem before koan runs, so it can never mean the folders under `/work/old`. Name each one, completing them with Tab (Completing references), or pick them with `$(koan pick)`.
+- **Lists** are comma-separated, and the option can repeat: `--tags a,b` is `--tags a --tags b`. Every comma splits; there is no quoting. `--extra-remove` takes one key per occurrence, since a key can hold a comma. Only references are listed in a position: a title, a new folder's path and a directory are one word each, and never split.
 - **`null`** is written `null`: `--priority null` clears a priority, and a boolean writes it `--claimed=null`. It means null only where the field can be null, such as a priority or a folder's title; anywhere else it is the word itself, so a task can be titled null.
 - **Booleans:** `--contents` is true, `--contents=false` false, and `--claimed=null` null, where the field can be null.
 - **Integers** (`--priority`, `--limit`, `--ids-from`) are written as JSON writes them, or `null`: `--priority 007` is not one.
 - **JSON values** (`--extra`, `--extra-merge`, `--extra-replace-all`) are one JSON object in one argument.
 - **Names are matched exactly.** There are no abbreviations, so adding an option never changes what an existing command line means.
 - **`--`** ends the options, for a title that starts with `-`.
+- **Short options** are `-i` and `-h` everywhere, and `mv`'s own: `-t` on `task mv` and `folder mv`, and `-T` on `folder mv`.
 - **Values** follow their option as the next argument, taken as typed even when it starts with `-`, or after `=`: `--title -x` and `--title=-x` are the same. `-i f`, `-i=f` and `-if` are the same too. A boolean's value goes only after `=`, since a bare boolean is true: `--claimed null` is `--claimed` and a subject `null`.
 - **Options go after the command's words.** cobra also takes some placed before them, such as `koan --priority 1 task create t`, but never a boolean, which takes the next word as its value (`koan --recursive task list` is `usage`); that is not a contract.
 - **Once each.** An option that isn't a list can be given once.
 
-**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, an argument that isn't an option's syntax, `koan task`, `koan folder` or `koan marker` with no command or an unknown one after it, `koan completion` with a shell it doesn't know, a missing or extra subject, `task join`, `task unjoin`, `folder join` or `folder unjoin` with no folder after the subject, an option without its value, a value its option's type refuses, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. A value its option's type refuses is an integer option's that isn't an integer or a null it can take, or a boolean option's that isn't `true`, `false` or a null it can take. Its problem names what is at fault:
+**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, an argument that isn't an option's syntax, `koan task`, `koan folder` or `koan marker` with no command or an unknown one after it, `koan completion` with a shell it doesn't know, a missing or extra positional, an option without its value, a value its option's type refuses, an option that isn't a list given twice, `--input` with anything else, both `--notes` and `--notes-file`, or both `-T` and `-t`. A positional is missing when its command requires it and it isn't given: the subject, or an object a command can't do without, as the folders a join names and where `mv` puts it are. An extra one is a word past the positions its command takes, such as a second word after a title, or a third positional on `folder mv -T`. A value its option's type refuses is an integer option's that isn't an integer or a null it can take, or a boolean option's that isn't `true`, `false` or a null it can take. Its problem names what is at fault:
 
 - an option by its long name: `--frob` for `--frob=1`, `--input` for a second `-i`, `--title` for a second `--title`;
 - an unknown short option as `-` and its letter: `-x` for `-x`, and for `-xy` too, since pflag reads the letters one at a time;
 - an argument pflag can't read as an option, such as `---x` or `--=x`, as typed;
-- an unknown command, or an extra subject, as typed;
-- for `--input` with anything else, the subject when one is given, else the first other option given, in byte order of their long names;
-- `""` when what is at fault is missing, such as the command, `koan task` alone included, the subject, or the folders a join or unjoin names; for both `--notes` and `--notes-file`; and for any line `completion`'s shell commands refuse, such as `koan completion bash extra`.
+- an unknown command, or an extra positional, as typed;
+- for `--input` with anything else, the first positional when one is given, else the first other option given, in byte order of their long names;
+- `""` when what is at fault is missing, such as the command, `koan task` alone included, the subject, or the object; for both `--notes` and `--notes-file`, and both `-T` and `-t`; and for any line `completion`'s shell commands refuse, such as `koan completion bash extra`.
 
-When a line has several faults, which is named is cobra's: options are read before the command's words and subject are checked. Every check of a value other than its type's is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
+When a line has several faults, which is named is cobra's: options are read before the command's words and positionals are checked. An option a command doesn't take is unknown there, whatever another command means by it, so `--folder` on `task list`, `--to` on `task mv`, `--blocked-by` on `task block`, `--dir` on `marker bind` and `--join` on `task join` are each `usage`, named by its long name. Every check of a value other than its type's is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
 
 **Conveniences**, which need a shell's files or working directory. Through `--input`, give what they stand for.
 
@@ -140,7 +142,7 @@ When a line has several faults, which is named is cobra's: options are read befo
 | `--file <path>`, relative | `where`, `context`, `export` | `file`, made absolute from the working directory |
 | no subject | `context`, `export` | `file`, the working directory |
 | `--here` | `pick` | `file`, the working directory |
-| `--dir <path>`, relative or left out | `marker bind`, `marker unbind` | `dir`, made absolute; the working directory when left out |
+| `<dir>`, relative or left out | `marker bind`, `marker unbind` | `dir`, made absolute; the working directory when left out |
 | `<dir>`, relative | `backup` | `dir`, made absolute from the working directory |
 
 A file koan can't read, or a working directory it can't resolve, is `io`, with the file's absolute path; standard input that can't be read is `io` with no path. koan reads a convenience's file as it turns the command line into an input, as it reads `--input`'s, so that `io` comes before any fault in the input's shape.
@@ -171,7 +173,7 @@ Callers branch on `error.kind`, not on the exit code.
 Every command prints one envelope: `ok`, then either `result` or `error`, then `warnings`. A success carries the command's result, whose schema is under its command; a failure carries one error. Warnings can come with either, and never stop a command.
 
 ```json
-{"ok": true,  "result": {"id": 57, "changed": true, "released": [58]}, "warnings": []}
+{"ok": true,  "result": {"completed": [57], "released": [58]}, "warnings": []}
 {"ok": false, "error": {"kind": "conflict", "rule": "cycle", "message": "@8 would wait on itself through @10 and @57", "ids": [8, 10, 57], "paths": [], "problems": [{"field": "/blocked_by/0", "reason": "@8 would wait on itself through @10 and @57"}], "archived": []}, "warnings": []}
 ```
 
@@ -388,7 +390,7 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | `missing-notes` | No file at a notes path; it reads as empty notes. Not given while a pending or stuck step is still to make the path, making it or a directory above it, since that step's own warning says why | `task show`, `folder show`, `context` | the task or folder | its notes path |
 | `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `task join`, `folder create`, `folder join`, `batch` | the complete tasks |  |
 | `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task join`, `task reopen`, `folder create`, `folder join`, `batch` | the claimed tasks |  |
-| `moved-claimed` | A move changed the notes path of a claimed task | `task move`, `folder move` | the claimed tasks | their new notes paths, in the same order |
+| `moved-claimed` | A move changed the notes path of a claimed task | `task mv`, `folder mv` | the claimed tasks | their new notes paths, in the same order |
 | `stale-marker` | A marker's path hint no longer matches its folder | `where`, `context`, `export` | the folder | the marker.json |
 
 ```json
@@ -468,11 +470,11 @@ Each rule is a refusal the rules doc or the PRD makes, in the section its row na
 | `cycle` | The change would close a cycle | rules I7 | one such cycle, in order: the task whose blocked\_by gains the closing edge, then the task it now waits on, then each task the one before waits on; the last waits on the first |  |
 | `claimed` | The task already has a claim | rules Claims | the task |  |
 | `not-finished` | Archiving a task that isn't complete, or a folder with an open task under it | rules Archiving | the open tasks |  |
-| `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | rules Changes | its direct contents, its gates left out |  |
-| `has-material` | Deleting a folder that holds material, at any depth, without `--force`. Material here is as the rules doc's Changes counts it for a delete | rules Changes |  | the top-level material entries of its directory and of each folder under it, each written as the folder's path, `:`, then the entry's name, such as `/work/api:docs` or `/work/api:@Notes.md`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it |
+| `not-empty` | Deleting a folder that holds tasks or folders other than its gates, without `--contents` | rules Changes | the direct contents of the first such folder given, its gates left out |  |
+| `has-material` | Deleting a folder that holds material, at any depth, without `--material`. Material here is as the rules doc's Changes counts it for a delete | rules Changes |  | the top-level material entries of the directory of each folder given and of each folder under them, each written as the folder's path, `:`, then the entry's name, such as `/work/api:docs` or `/work/api:@Notes.md`, never a path on disk. They come in tree order: a folder's own entries, compared byte for byte, before those of the folders under it, and the folders given in input order |
 | `gate` | Moving a gate, even to its own folder | rules I11 | the gate |  |
 | `into-itself` | Moving a folder inside itself | rules I3 | the folder | the destination |
-| `exists` | The destination is taken: a path for a move or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from | rules Changes, for a path; PRD Install, init, backup and restore otherwise |  | the taken path: a folder path when a folder has it, else the entry's path on disk |
+| `exists` | The destination is taken: a path for a move, a rename or a create, by a folder or by an entry on disk; a directory for a backup; a database for init --ids-from | rules Changes, for a path; PRD Install, init, backup and restore otherwise |  | the taken path: a folder path when a folder has it, else the entry's path on disk |
 | `not-a-root` | `init` found `~/koan-root` holding something that isn't koan's | PRD Install, init, backup and restore |  | what it found |
 | `checkout` | `marker bind` on a directory whose `.git` is a directory, without `--force` | PRD Markers |  | the directory |
 | `foreign-files` | `marker bind` or `marker unbind` on a `.koan/` that holds files that aren't koan's | PRD Markers |  | those files |
@@ -484,9 +486,9 @@ For `cycle`, the closing edge is the first new edge that closes a cycle with the
 
 ## Commands
 
-Each command has one schema, named after it, holding its `input` and its `result`. Options are the input's fields in kebab-case; the subject is the field marked as such. On `task join`, `task unjoin`, `folder join` and `folder unjoin`, `join` is the words after the subject, never an option (Invocation). Every command can also fail with `not-found` and `invalid-input`, and with `case-mismatch` wherever it takes a path; every command can give `pending-step` and `stuck-step`, and every read `pending-filesystem`. Only the warnings and refusals beyond those are listed.
+Each command has one schema, named after it, holding its `input` and its `result`. Options are the input's fields in kebab-case; the subject and the object are the fields marked as such, and a field a position sets has no option on its command (Invocation). Every command can also fail with `not-found` and `invalid-input`, and with `case-mismatch` wherever it takes a path; every command can give `pending-step` and `stuck-step`, and every read `pending-filesystem`. Only the warnings and refusals beyond those are listed.
 
-A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. An `extra` changes when it would print differently, since koan never interprets it: replacing `1.0` with `1` is a change. changed is in the result of every write that can change nothing: task and folder update, complete, reopen, block, unblock, task and folder join and unjoin, release, and both moves, which change nothing when the destination is where the item already is. A gate is the exception: `task move` refuses it (`gate`) even to its own folder. An edge given more than once in one input, however it is written, counts once, as rules Changes says, so `blocked_by`, `blocks` and `join` take duplicates.
+A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. An `extra` changes when it would print differently, since koan never interprets it: replacing `1.0` with `1` is a change. changed is in the result of every write with one subject that can change nothing: task and folder update, block, unblock, task and folder join and unjoin, release, and marker unbind. A write over a list, `task complete`, `task reopen`, `task mv` and `folder mv`, lists instead what it changed, and the list is empty when it changed nothing; a move changes nothing for an item already where it would go, though `task mv` refuses a gate (`gate`) even into its own folder. An edge given more than once in one input, however it is written, counts once, as rules Changes says, so `blocked_by`, `blocks` and `join` take duplicates.
 
 ### Tasks
 
@@ -528,14 +530,14 @@ Makes a task, with its notes file, in a folder or the root. Its edges are writte
 
 #### task list
 
-`koan task list [--folder] [--recursive] [--state] [--readiness] [--tags-any] [--tags-all] [--claimed] [--limit] [--fields]`
+`koan task list [<folder>] [--recursive] [--state] [--readiness] [--tags-any] [--tags-all] [--claimed] [--limit] [--fields]`
 
-Tasks in tree order: open ones unless `--state` says otherwise, gates included. At most 100 unless `--limit` says otherwise; `--limit null` lists every match. `total` counts every match; `truncated` says `--limit` cut the list.
+Tasks under the folder, the root when none is given, in tree order: open ones unless `--state` says otherwise, gates included. At most 100 unless `--limit` says otherwise; `--limit null` lists every match. `total` counts every match; `truncated` says `--limit` cut the list.
 
 ```json
 { "$id": "task-list", "$defs": {
   "filter": { "type": "object", "properties": {
-    "folder":    { "$ref": "types#/$defs/folder-ref", "default": "/" },
+    "folder":    { "$ref": "types#/$defs/folder-ref", "default": "/", "description": "Subject: the folder the command looks under." },
     "recursive": { "type": "boolean", "default": true, "description": "false: only the tasks directly in the folder." },
     "tags_any":  { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "uniqueItems": true, "default": [],
                    "description": "Only tasks holding at least one of these tags; empty filters nothing." },
@@ -557,7 +559,7 @@ Tasks in tree order: open ones unless `--state` says otherwise, gates included. 
 
 #### task frontier
 
-`koan task frontier [--folder] [--recursive] [--tags-any] [--tags-all] [--limit] [--fields]`. Ready, unclaimed tasks in work order, gates included. At most 100 unless `--limit` says otherwise, as for task list.
+`koan task frontier [<folder>] [--recursive] [--tags-any] [--tags-all] [--limit] [--fields]`. Ready, unclaimed tasks under the folder, the root when none is given, in work order, gates included. At most 100 unless `--limit` says otherwise, as for task list.
 
 ```json
 { "$id": "task-frontier", "$defs": {
@@ -609,33 +611,32 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
 
 #### task complete, task reopen
 
-`koan task complete <task>` marks it complete and ends its claim. `koan task reopen <task>` marks it open again. Reopen warns `claimed-blocked`.
+`koan task complete <task>...` marks each task complete and ends its claim. `koan task reopen <task>...` marks each open again. Either takes one task or several, comma-separated or as more words, and makes one change of them all: if any is refused, none changes. A task given twice is `invalid-input` at its later occurrence. `completed` and `reopened` list the tasks whose state changed, in input order, so they are empty when every task was already complete, or already open. A task completed in the same call is never in `released`, and one reopened in the same call is never in `reblocked`, since it wasn't ready before. Reopen warns `claimed-blocked`.
 
 ```json
 { "$id": "task-complete", "$defs": {
-  "input":  { "$ref": "task-show#/$defs/input" },
-  "result": { "type": "object", "required": ["id", "changed", "released"], "properties": {
-    "id":       { "$ref": "types#/$defs/id" },
-    "changed":  { "type": "boolean" },
-    "released": { "$ref": "types#/$defs/ids", "description": "Open tasks it made ready." } } } } }
+  "input":  { "type": "object", "required": ["tasks"], "properties": {
+    "tasks": { "type": "array", "items": { "$ref": "types#/$defs/task-ref" }, "minItems": 1, "description": "Subject." } } },
+  "result": { "type": "object", "required": ["completed", "released"], "properties": {
+    "completed": { "type": "array", "items": { "$ref": "types#/$defs/id" }, "uniqueItems": true, "description": "The tasks it completed. Input order." },
+    "released":  { "$ref": "types#/$defs/ids", "description": "Open tasks it made ready." } } } } }
 
 { "$id": "task-reopen", "$defs": {
-  "input":  { "$ref": "task-show#/$defs/input" },
-  "result": { "type": "object", "required": ["id", "changed", "reblocked"], "properties": {
-    "id":        { "$ref": "types#/$defs/id" },
-    "changed":   { "type": "boolean" },
+  "input":  { "$ref": "task-complete#/$defs/input" },
+  "result": { "type": "object", "required": ["reopened", "reblocked"], "properties": {
+    "reopened":  { "type": "array", "items": { "$ref": "types#/$defs/id" }, "uniqueItems": true, "description": "The tasks it reopened. Input order." },
     "reblocked": { "$ref": "types#/$defs/ids", "description": "Ready tasks it made wait, claimed ones included." } } } } }
 ```
 
 #### task block, task unblock
 
-`koan task block <task> [--blocked-by] [--blocks]` adds edges; `koan task unblock <task> [--blocked-by] [--blocks]` removes them. At least one list must hold an entry. Block makes any gate it names, its subject included, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unblock never makes a gate: naming one the folder lacks is `not-found`.
+`koan task block <task> [<blocker>...] [--blocks]` adds edges; `koan task unblock <task> [<blocker>...] [--blocks]` removes them. The words after the subject are what it waits on, `blocked_by`, so `koan task block 42 17` makes `@42` wait on `@17`, as `task why 42` would then show; `--blocks` writes the other direction. At least one list must hold an entry. Block makes any gate it names, its subject included, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unblock never makes a gate: naming one the folder lacks is `not-found`.
 
 ```json
 { "$id": "task-block", "$defs": {
   "input": { "type": "object", "required": ["task"], "properties": {
     "task":       { "$ref": "types#/$defs/task-ref", "description": "Subject." },
-    "blocked_by": { "type": "array", "items": { "$ref": "types#/$defs/edge-ref" }, "default": [] },
+    "blocked_by": { "type": "array", "items": { "$ref": "types#/$defs/edge-ref" }, "default": [], "description": "Object: what it waits on, the words after the subject." },
     "blocks":     { "type": "array", "items": { "$ref": "types#/$defs/edge-ref" }, "default": [] } },
     "anyOf": [ { "required": ["blocked_by"], "properties": { "blocked_by": { "minItems": 1 } } },
                { "required": ["blocks"], "properties": { "blocks": { "minItems": 1 } } } ] },
@@ -647,7 +648,10 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
 
 { "$id": "task-unblock", "$defs": {
   "input":  { "$ref": "task-block#/$defs/input" },
-  "result": { "$ref": "task-complete#/$defs/result" } } }
+  "result": { "type": "object", "required": ["id", "changed", "released"], "properties": {
+    "id":       { "$ref": "types#/$defs/id" },
+    "changed":  { "type": "boolean" },
+    "released": { "$ref": "types#/$defs/ids", "description": "Open tasks it made ready." } } } } }
 ```
 
 #### task join, task unjoin
@@ -659,7 +663,7 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
   "input": { "type": "object", "required": ["task", "join"], "properties": {
     "task": { "$ref": "types#/$defs/task-ref", "description": "Subject. A task, never a gate." },
     "join": { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "minItems": 1,
-              "description": "The folders joined: the arguments after the subject." } } },
+              "description": "Object: the folders joined, the words after the subject." } } },
   "result": { "$ref": "task-block#/$defs/result" } } }
 
 { "$id": "task-unjoin", "$defs": {
@@ -667,28 +671,29 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
   "result": { "$ref": "task-unblock#/$defs/result" } } }
 ```
 
-#### task move
+#### task mv
 
-`koan task move <task> --to <folder>`. Puts it in another folder or the root; its notes move with it. Warns `moved-claimed`. Refused: `gate`.
+`koan task mv <task>... <folder>`, or `koan task mv -t <folder> <task>...`. Puts each task in the folder, or the root; their notes move with them. It follows Linux `mv` moving files into a directory: the last positional is the folder, or with `-t, --into` every positional is a task. A task has no path of its own, so there is no rename: the folder is any reference to one that exists, by path, ID or anchored path, and one that names nothing is `not-found`, as `mv` into a directory that isn't there fails. An end or material there is `invalid-input`. The tasks move as one change: if any is refused, none moves. A task given twice is `invalid-input` at its later occurrence. `moved` lists the tasks that moved, in input order, each with its new notes path; a task already in the folder isn't in it. Warns `moved-claimed`. Refused: `gate`, for a gate even into its own folder.
 
 ```json
-{ "$id": "task-move", "$defs": {
-  "input": { "type": "object", "required": ["task", "to"], "properties": {
-    "task": { "$ref": "types#/$defs/task-ref", "description": "Subject." },
-    "to":   { "$ref": "types#/$defs/folder-ref" } } },
-  "result": { "type": "object", "required": ["id", "changed", "notes_path"], "properties": {
-    "id":         { "$ref": "types#/$defs/id" },
-    "changed":    { "type": "boolean" },
-    "notes_path": { "$ref": "types#/$defs/abs-path" } } } } }
+{ "$id": "task-mv", "$defs": {
+  "input": { "type": "object", "required": ["tasks", "into"], "properties": {
+    "tasks": { "type": "array", "items": { "$ref": "types#/$defs/task-ref" }, "minItems": 1, "description": "Subject." },
+    "into":  { "$ref": "types#/$defs/folder-ref", "description": "Object: the folder they go into; -t, --into." } } },
+  "result": { "type": "object", "required": ["moved"], "properties": {
+    "moved": { "type": "array", "description": "The tasks that moved. Input order.",
+               "items": { "type": "object", "required": ["id", "notes_path"], "properties": {
+                 "id":         { "$ref": "types#/$defs/id" },
+                 "notes_path": { "$ref": "types#/$defs/abs-path" } } } } } } } }
 ```
 
 #### task delete
 
-`koan task delete <task>`. Removes it, its notes, its claim and its edges.
+`koan task delete <task>...`. Removes each task, its notes, its claim and its edges, as one change: if any is refused, none goes. A task given twice is `invalid-input` at its later occurrence. A task deleted in the same call is never in `released`.
 
 ```json
 { "$id": "task-delete", "$defs": {
-  "input":  { "$ref": "task-show#/$defs/input" },
+  "input":  { "$ref": "task-complete#/$defs/input" },
   "result": { "type": "object", "required": ["removed", "released"], "properties": {
     "removed":  { "$ref": "types#/$defs/ids" },
     "released": { "$ref": "types#/$defs/ids" } } } } }
@@ -711,7 +716,7 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
 
 #### task claim, task claim-next, task release
 
-`koan task claim <task> [--extra]` claims a task, blocked or not, so long as it is open; refused: `claimed`, `complete`. `koan task claim-next [--folder] [--recursive] [--tags-any] [--tags-all] [--extra]` claims the first task of the frontier, or returns nulls when there is none; the task's record shows its new claim. `koan task release <task>` ends a claim, whoever made it.
+`koan task claim <task> [--extra]` claims a task, blocked or not, so long as it is open; refused: `claimed`, `complete`. `koan task claim-next [<folder>] [--recursive] [--tags-any] [--tags-all] [--extra]` claims the first task of the frontier under the folder, the root when none is given, or returns nulls when there is none; the task's record shows its new claim. `koan task release <task>` ends a claim, whoever made it.
 
 ```json
 { "$id": "task-claim", "$defs": {
@@ -771,12 +776,12 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder list
 
-`koan folder list [--folder] [--recursive] [--limit] [--fields]`. The folders under `--folder`, itself left out, in tree order. At most 100 unless `--limit` says otherwise; `--limit null` lists every match.
+`koan folder list [<folder>] [--recursive] [--limit] [--fields]`. The folders under the folder, the root when none is given, itself left out, in tree order. At most 100 unless `--limit` says otherwise; `--limit null` lists every match.
 
 ```json
 { "$id": "folder-list", "$defs": {
   "input": { "type": "object", "properties": {
-    "folder":    { "$ref": "types#/$defs/folder-ref", "default": "/" },
+    "folder":    { "$ref": "types#/$defs/folder-ref", "default": "/", "description": "Subject: the folder the command looks under." },
     "recursive": { "type": "boolean", "default": true, "description": "false: only the folders directly in the folder." },
     "limit":     { "type": ["integer", "null"], "minimum": 1, "default": 100, "description": "null: every match." },
     "fields":    { "type": "array", "items": { "$ref": "folder#/$defs/field" }, "uniqueItems": true } } },
@@ -802,22 +807,33 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
   "result": { "$ref": "task-update#/$defs/id-only" } } }
 ```
 
-#### folder move
+#### folder mv
 
-`koan folder move <folder> --to <path>`. Moves or renames it, everything under it included; `--to` is its whole new path; missing parents are made, as folder create makes them, and listed in created; each is a destination, as for folder create (rules doc, Changes). A case-only rename is a move. A move to its own path changes nothing. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`, checked in that order.
+`koan folder mv <folder> <dest>`, `koan folder mv <folder>... <folder>`, `koan folder mv -t <folder> <folder>...`, or `koan folder mv -T <folder> <path>`. Moves or renames folders, everything under each included, as Linux `mv` moves and renames directories:
+
+- **Into a folder.** When `<dest>` names a folder that exists, byte for byte, the root included, each folder moves into it: `koan folder mv /a/b /c` makes `/c/b`. With several folders the last positional must name one, and one that names nothing is `not-found`. `-t, --into` names it first, and then every positional is a folder to move.
+- **Renamed.** Otherwise `<dest>` is the one folder's new path: `koan folder mv /a/b /c` makes `/c` when there is no `/c`. `-T, --rename` makes `<dest>` the new path whatever exists, never a folder to move into. A new path is a path or an anchored path, `/work/new` or `@40/new`, whose last name is the new one; a bare ID can't name a folder that doesn't exist, so as a rename it is `not-found`. Its parent must exist: missing parents are never made, as `mv` makes none, so one that names nothing is `not-found`. Nothing is ever replaced: a new path that is taken is `exists`, where `mv` would replace an empty directory.
+- **Onto itself.** As with `mv`, `koan folder mv /a /a` moves `/a` into itself, `into-itself`; `koan folder mv -T /a /a` renames it to its own path and changes nothing; and `koan folder mv /a/b /a`, into the folder it is already in, changes nothing.
+
+A case-only rename is `koan folder mv /work /Work`, since `/Work` names no folder byte for byte. An end or material as `<dest>` or `into` is `invalid-input`, and so is the root as a folder to move or as a new path. The folders move as one change: if any is refused, none moves. A folder given twice is `invalid-input` at its later occurrence, and a folder inside another one given is `invalid-input` at the one inside, since it moves with it. Each folder's new path is a destination (rules doc, Changes), judged against the tree as the whole move would leave it, so two folders landing on the same name are `exists`, and two whose names differ only in case `case-mismatch`. `moved` lists the folders that moved, in input order, each with its new path and directory; one already where it would go isn't in it. The path says which happened, into or renamed. Warns `moved-claimed`. Refused: `into-itself`, `case-mismatch`, `exists`, checked in that order.
 
 ```json
-{ "$id": "folder-move", "$defs": {
-  "input": { "type": "object", "required": ["folder", "to"], "properties": {
-    "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject." },
-    "to":     { "allOf": [ { "$ref": "types#/$defs/path" }, { "not": { "const": "/" } } ] } } },
-  "result": { "type": "object", "required": ["id", "changed", "path", "dir", "created"], "properties": {
-    "id":      { "$ref": "types#/$defs/id" },
-    "changed": { "type": "boolean" },
-    "path":    { "$ref": "types#/$defs/path" },
-    "dir":     { "$ref": "types#/$defs/abs-path" },
-    "created": { "type": "array", "items": { "$ref": "types#/$defs/folder-at" },
-                 "description": "Missing parents made for the new path, top first; empty when all were there." } } } } }
+{ "$id": "folder-mv", "$defs": {
+  "input": { "type": "object", "required": ["folders"], "properties": {
+    "folders": { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "minItems": 1, "description": "Subject." },
+    "dest":    { "$ref": "types#/$defs/folder-ref",
+                 "description": "Object: a folder that exists, to move them into; otherwise the one folder's new path." },
+    "into":    { "$ref": "types#/$defs/folder-ref", "description": "The folder to move them into: -t, --into." },
+    "rename":  { "type": "boolean", "default": false, "description": "dest is the new path, never a folder to move into: -T, --rename." } },
+    "oneOf": [ { "required": ["dest"] }, { "required": ["into"] } ],
+    "if": { "required": ["rename"], "properties": { "rename": { "const": true } } },
+    "then": { "required": ["dest"], "properties": { "folders": { "maxItems": 1 } } } },
+  "result": { "type": "object", "required": ["moved"], "properties": {
+    "moved": { "type": "array", "description": "The folders that moved. Input order.",
+               "items": { "type": "object", "required": ["id", "path", "dir"], "properties": {
+                 "id":   { "$ref": "types#/$defs/id" },
+                 "path": { "$ref": "types#/$defs/path" },
+                 "dir":  { "$ref": "types#/$defs/abs-path" } } } } } } } }
 ```
 
 #### folder join, folder unjoin
@@ -829,7 +845,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
   "input": { "type": "object", "required": ["folder", "join"], "properties": {
     "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject." },
     "join":   { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "minItems": 1,
-                "description": "The folders joined: the arguments after the subject." } } },
+                "description": "Object: the folders joined, the words after the subject." } } },
   "result": { "$ref": "task-block#/$defs/result" } } }
 
 { "$id": "folder-unjoin", "$defs": {
@@ -839,14 +855,14 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### folder delete
 
-`koan folder delete <folder> [--contents] [--force]`. Removes it and everything under it, gates included. Refused: `not-empty` without `--contents`, then `has-material` without `--force`, checked in that order.
+`koan folder delete <folder>... [--contents] [--material]`. Removes each folder and everything under it, gates included, as one change: if any is refused, none goes. `--contents` and `--material` apply to every folder given. A folder given twice is `invalid-input` at its later occurrence, a folder inside another one given is `invalid-input` at the one inside, and so is the root. Refused: `not-empty` without `--contents`, for the first folder given that holds tasks or folders, then `has-material` without `--material`, listing the material of every folder given, checked in that order. A task deleted in the same call is never in `released`.
 
 ```json
 { "$id": "folder-delete", "$defs": {
-  "input": { "type": "object", "required": ["folder"], "properties": {
-    "folder":   { "$ref": "types#/$defs/folder-ref", "description": "Subject." },
+  "input": { "type": "object", "required": ["folders"], "properties": {
+    "folders":  { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "minItems": 1, "description": "Subject." },
     "contents": { "type": "boolean", "default": false },
-    "force":    { "type": "boolean", "default": false } } },
+    "material": { "type": "boolean", "default": false, "description": "Delete the material in them too." } } },
   "result": { "$ref": "task-delete#/$defs/result", "description": "removed holds every task and folder removed." } } }
 ```
 
@@ -937,13 +953,13 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 ### Markers
 
-`koan marker bind <folder> [--dir] [--force]` binds a directory outside the tree to a folder, replacing a marker for the same folder, or one that binds nothing, as PRD Markers says when. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `--dir` that doesn't exist is `io`. `koan marker unbind [--dir]` removes the binding, in the order PRD Markers gives; with none there, it succeeds and says so. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). After the input's shape and the root's state, bind checks the directory under the root, then that it exists, then the folder, then `foreign-files`, then `checkout`, then `bound`; unbind makes the same checks up to `foreign-files`, and a `--dir` that doesn't exist is `io` for it too.
+`koan marker bind <folder> [<dir>] [--force]` binds a directory outside the tree to a folder, the working directory when `<dir>` is left out, replacing a marker for the same folder, or one that binds nothing, as PRD Markers says when. Replacing one bound to another live folder needs --force. The root as `<folder>` is `invalid-input`, and a `<dir>` that doesn't exist is `io`. `koan marker unbind [<dir>]` removes the binding from the directory, the working directory when left out, in the order PRD Markers gives; with none there, it succeeds with changed false. A directory anywhere under \~/koan-root is `invalid-input`, since markers there are never read. Refused: `checkout` and bound (bind, without `--force`), `foreign-files` (both). After the input's shape and the root's state, bind checks the directory under the root, then that it exists, then the folder, then `foreign-files`, then `checkout`, then `bound`; unbind makes the same checks up to `foreign-files`, and a `<dir>` that doesn't exist is `io` for it too.
 
 ```json
 { "$id": "marker-bind", "$defs": {
   "input": { "type": "object", "required": ["folder", "dir"], "properties": {
     "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject. Never the root, which has no ID." },
-    "dir":    { "$ref": "types#/$defs/abs-path" },
+    "dir":    { "$ref": "types#/$defs/abs-path", "description": "Object." },
     "force":  { "type": "boolean", "default": false } } },
   "result": { "type": "object", "required": ["marker", "file", "replaced"], "properties": {
     "marker":   { "$ref": "marker-file" },
@@ -951,10 +967,10 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
     "replaced": { "type": "boolean", "description": "Whether a marker was there before." } } } } }
 
 { "$id": "marker-unbind", "$defs": {
-  "input": { "type": "object", "required": ["dir"], "properties": { "dir": { "$ref": "types#/$defs/abs-path" } } },
-  "result": { "type": "object", "required": ["dir", "removed"], "properties": {
+  "input": { "type": "object", "required": ["dir"], "properties": { "dir": { "$ref": "types#/$defs/abs-path", "description": "Subject." } } },
+  "result": { "type": "object", "required": ["dir", "changed"], "properties": {
     "dir":     { "$ref": "types#/$defs/abs-path" },
-    "removed": { "type": "boolean", "description": "false when there was no marker." } } } } }
+    "changed": { "type": "boolean", "description": "false when there was no marker." } } } } }
 ```
 
 ### Operations
@@ -1062,15 +1078,18 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 | `task reopen`, `task archive` subject | complete tasks and made gates |
 | `task claim` subject | open, unclaimed tasks and made gates |
 | `task release` subject | claimed tasks and made gates |
-| `task move`, `task join`, `task unjoin` subject | tasks |
-| `task block` subject | tasks and gates, made or not |
-| `--blocked-by`, `--blocks` | tasks, gates made or not, and folders |
-| `--folder` (`task create`, `task list`, `task frontier`, `task claim-next`, `folder list`, `pick`), `task move --to`, `--join` (`task create`, `folder create`), the folders joined after the subject (`task join`, `task unjoin`, `folder join`, `folder unjoin`) | folders |
-| `folder show`, `folder update`, `folder move`, `folder join`, `folder unjoin`, `folder delete`, `context`, `export`, `marker bind` subject | folders |
+| `task join`, `task unjoin` subject; `task mv` subject with `-t` | tasks |
+| `task mv` without `-t`: the first word | tasks |
+| `task mv` without `-t`: every word after the first, since any can be the last | tasks and folders |
+| `task block`, `task unblock` subject | tasks and gates, made or not |
+| the words after the subject (`task block`, `task unblock`), `--blocked-by`, `--blocks` | tasks, gates made or not, and folders |
+| `--folder` (`task create`), `-t` (`task mv`, `folder mv`), `--join` (`task create`, `folder create`), the folders joined after the subject (`task join`, `task unjoin`, `folder join`, `folder unjoin`) | folders |
+| `folder show`, `folder update`, `folder join`, `folder unjoin`, `folder delete`, `context`, `export`, `marker bind` subject; the folder looked under (`task list`, `task frontier`, `task claim-next`, `folder list`, `pick`) | folders |
+| `folder mv`: every word, but with `-T` the second | folders |
 | `folder archive` subject | finished folders |
-| `folder create` subject, `folder move --to` | folders as paths only, as steps toward a new path: the last name is the person's to type |
+| `folder create` subject, `folder mv -T`'s second word | folders as paths only, as steps toward a new path: the last name is the person's to type |
 | `where` subject | tasks, made gates, and folders |
-| `backup` subject, `--dir`, `--file`, `--notes-file`, `--input` | files and directories, as the shell completes them |
+| `backup` and `marker unbind` subject, `marker bind`'s `<dir>`, `--file`, `--notes-file`, `--input` | files and directories, as the shell completes them |
 
 "Tasks" here never includes gates, and "gates made or not" means both ends of every folder. A row's state or claim holds for its gates too, as `pick`'s filters do: `task complete` offers open tasks and open gates, and `task claim` open, unclaimed ones of each. A gate not made yet is offered only where an edge names it, since anywhere else it is `not-found` (rules Resolution).
 
@@ -1080,7 +1099,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 - **An ID**: empty, `@`, or an optional `@` then digits, then for a gate `.` and the start of an end. The candidates are the tasks, gates and folders the argument takes whose IDs start with the digits typed, a gate by its folder's ID and end, as `pick` prints it (rules References): `@4` offers `@42`, `@41`, and `@41.start`. They are written with the `@` when the word starts with one or is empty, and without it otherwise: `4` offers `42`. Each carries a description: a task's title, two spaces, then its folder's path; a gate's `Start of <path>` or `Done of <path>`; a folder's path, then two spaces and its title when it has one.
 - **Anything else**, such as an anchored path, material after a `:`, or a label, offers nothing.
 
-**Lists.** Only a list's first item completes: a word holding a comma offers nothing. For more, repeat the option, `--blocked-by 42 --blocked-by @4`, as Invocation allows, or for the folders a join names, give another word: each word after the subject offers folders.
+**Lists.** Only a list's first item completes: a word holding a comma offers nothing. For more, repeat the option, `--blocks 42 --blocks @4`, as Invocation allows, or in a position, give another word: each word of a positional list offers what its position takes, as the table says.
 
 **Order.** Candidates come in `pick`'s order (pick, The candidates), and the script asks the shell to keep it.
 
@@ -1092,7 +1111,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 #### pick
 
-`koan pick [--folder] [--recursive] [--here] [--state] [--readiness] [--claimed] [--tags-any] [--tags-all] [--frontier] [--kinds] [--query]`, or `koan pick --bash`, or `koan pick --zsh`.
+`koan pick [<folder>] [--recursive] [--here] [--state] [--readiness] [--claimed] [--tags-any] [--tags-all] [--frontier] [--kinds] [--query]`, or `koan pick --bash`, or `koan pick --zsh`.
 
 Lets a person at a terminal choose tasks, gates and folders in fzf, and prints their references on standard output, for `$(koan pick)`, or for the key `--bash` or `--zsh` binds. It is for people, and departs from the rest of this spec where Invocation says: it prints plain text, never an envelope. Agents never run it (PRD Agents).
 
@@ -1100,7 +1119,7 @@ Lets a person at a terminal choose tasks, gates and folders in fzf, and prints t
 { "$id": "pick", "$defs": {
   "input": { "type": "object", "allOf": [ { "$ref": "task-list#/$defs/filter" } ], "properties": {
     "file":      { "$ref": "types#/$defs/abs-path",
-                   "description": "Pick from the folder this path is in, found as where --file finds it. Given with folder, invalid-input at \"\"." },
+                   "description": "Pick from the folder this path is in, found as where --file finds it: --here. Given with folder, invalid-input at \"\"." },
     "state":     { "$ref": "task-list#/$defs/input/properties/state" },
     "readiness": { "$ref": "task-list#/$defs/input/properties/readiness" },
     "claimed":   { "$ref": "task-list#/$defs/input/properties/claimed" },
@@ -1221,7 +1240,7 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
 | `extra`, `--extra-merge`, `--extra-replace-all` | One JSON object in one argument. Anything else is `invalid-input` | A JSON object |
 | `--extra-remove` | One key per occurrence, repeated for more | An array of keys |
 | Tags | Comma-separated, or the option repeated; lowercase | An array |
-| References in a list | Comma-separated, or repeated: `--blocked-by 17,@41.start` | An array of strings or integers |
+| References in a list | Comma-separated, or repeated: `--blocks 17,@41.start`; in a position, comma-separated or as more words: `task complete 17 18,19` | An array of strings or integers |
 | `--fields` | Comma-separated field names from the record's `field` list | An array of names |
 | `--state`, `--readiness`, `--kinds` | Comma-separated values | An array |
 | Integers: `--priority`, `--limit`, `--ids-from` | An integer as JSON writes it, or `null`. Anything else is `usage` | An integer, or null |

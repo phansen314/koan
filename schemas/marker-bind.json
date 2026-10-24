@@ -14,7 +14,8 @@
           "description": "Subject. Never the root, which has no ID."
         },
         "dir": {
-          "$ref": "types#/$defs/abs-path"
+          "$ref": "types#/$defs/abs-path",
+          "description": "Object."
         },
         "force": {
           "type": "boolean",

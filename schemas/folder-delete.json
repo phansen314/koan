@@ -5,20 +5,25 @@
     "input": {
       "type": "object",
       "required": [
-        "folder"
+        "folders"
       ],
       "properties": {
-        "folder": {
-          "$ref": "types#/$defs/folder-ref",
+        "folders": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-ref"
+          },
+          "minItems": 1,
           "description": "Subject."
         },
         "contents": {
           "type": "boolean",
           "default": false
         },
-        "force": {
+        "material": {
           "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "Delete the material in them too."
         }
       },
       "unevaluatedProperties": false
