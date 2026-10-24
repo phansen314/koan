@@ -31,7 +31,7 @@ func TaskCreate() *cli.Command {
 			{Field: "tags", Kind: cli.List},
 			{Field: "blocked_by", Kind: cli.List, Complete: edgeEnds.complete()},
 			{Field: "blocks", Kind: cli.List, Complete: edgeEnds.complete()},
-			{Field: "join", Kind: cli.List},
+			{Field: "join", Kind: cli.List, Complete: foldersOnly.complete()},
 			{Field: "extra", Kind: cli.JSON},
 			{Field: "notes", Kind: cli.String},
 		},

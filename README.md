@@ -109,12 +109,13 @@ koan task why 5                                                         # .resul
 koan export /work/api | jq '.result.external[].ref'                     # the tasks outside /work/api at the other end of an edge: @5
 ```
 
-A plan with several tasks goes in at once, as one change, with labels for its tasks to name each other by:
+A plan with several tasks goes in at once, as one change, with labels for its tasks to name each other by; here every task joins the folder through the batch's `join`:
 
 ```sh
 koan batch -i - <<'EOF'
 {"folders": [{"path": "/home/trip", "title": "Lisbon in May"}],
  "folder": "/home/trip",
+ "join": ["/home/trip"],
  "tasks": [{"label": "$flights", "title": "Book flights"},
            {"title": "Book a hotel", "blocked_by": ["$flights"]}]}
 EOF

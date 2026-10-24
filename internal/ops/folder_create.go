@@ -30,7 +30,7 @@ func FolderCreate() *cli.Command {
 		Subject: &cli.Option{Field: "path", Required: true, Complete: newPaths.complete()},
 		Options: []cli.Option{
 			{Field: "title", Kind: cli.String, Nullable: true},
-			{Field: "join", Kind: cli.List},
+			{Field: "join", Kind: cli.List, Complete: foldersOnly.complete()},
 			{Field: "extra", Kind: cli.JSON},
 			{Field: "notes", Kind: cli.String},
 		},

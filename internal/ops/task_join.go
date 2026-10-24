@@ -13,7 +13,7 @@ func joinCommand(name string, subject cli.Option, run func(env *cli.Env, subject
 	return &cli.Command{
 		Name:    name,
 		Subject: &subject,
-		Rest:    &cli.Option{Field: "join", Kind: cli.List, Arg: "folder"},
+		Rest:    &cli.Option{Field: "join", Kind: cli.List, Arg: "folder", Complete: foldersOnly.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			var ref core.Ref
@@ -51,7 +51,7 @@ func joinCommand(name string, subject cli.Option, run func(env *cli.Env, subject
 // start gate, and the folder's done gate waits on it. Any gate named is
 // made, each folder's start gate first.
 func TaskJoin() *cli.Command {
-	return joinCommand("task join", cli.Option{Field: "task"}, func(env *cli.Env, task core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
+	return joinCommand("task join", cli.Option{Field: "task", Complete: tasksOnly.complete()}, func(env *cli.Env, task core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e
@@ -79,7 +79,7 @@ func TaskJoin() *cli.Command {
 // TaskUnjoin removes a join's two edges for each folder given. It never
 // makes a gate: an edge to one a folder lacks isn't there.
 func TaskUnjoin() *cli.Command {
-	return joinCommand("task unjoin", cli.Option{Field: "task"}, func(env *cli.Env, task core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
+	return joinCommand("task unjoin", cli.Option{Field: "task", Complete: tasksOnly.complete()}, func(env *cli.Env, task core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e

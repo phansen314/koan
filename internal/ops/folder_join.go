@@ -10,7 +10,7 @@ import (
 // start gate waits on that folder's start gate, and that folder's done
 // gate waits on its done gate. Any gate named is made, its own first.
 func FolderJoin() *cli.Command {
-	return joinCommand("folder join", cli.Option{Field: "folder"}, func(env *cli.Env, folder core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
+	return joinCommand("folder join", cli.Option{Field: "folder", Complete: foldersOnly.complete()}, func(env *cli.Env, folder core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e
@@ -42,7 +42,7 @@ func FolderJoin() *cli.Command {
 // FolderUnjoin removes a folder join's two edges for each folder given.
 // It never makes a gate, the subject's included.
 func FolderUnjoin() *cli.Command {
-	return joinCommand("folder unjoin", cli.Option{Field: "folder"}, func(env *cli.Env, folder core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
+	return joinCommand("folder unjoin", cli.Option{Field: "folder", Complete: foldersOnly.complete()}, func(env *cli.Env, folder core.Ref, in []joinIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e

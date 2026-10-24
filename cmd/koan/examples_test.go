@@ -35,10 +35,11 @@ var skillSteps = []docStep{
 	{cmd: `koan batch -i - <<'EOF'
 {"folders": [{"path": "/work/api", "title": "API rework", "notes": "Move the API to v2.\n"}],
  "folder": "/work/api",
+ "join": ["/work/api"],
  "tasks": [
-  {"label": "$design", "title": "Design the endpoints", "priority": 2, "blocked_by": ["/work/api.start"], "blocks": ["/work/api"]},
-  {"label": "$build", "title": "Build them", "blocked_by": ["$design"], "blocks": ["/work/api"]},
-  {"title": "Announce the new API", "folder": "/work", "blocked_by": ["/work/api"]}]}
+  {"label": "$design", "title": "Design the endpoints", "priority": 2},
+  {"label": "$build", "title": "Build them", "blocked_by": ["$design"]},
+  {"title": "Announce the new API", "folder": "/work", "blocked_by": ["/work/api"], "join": []}]}
 EOF`, want: []string{`{"ok":true,"result":{"folders":[{"id":40,"path":"/work"},{"id":41,"path":"/work/api"}],"tasks":[42,43,44],
 		"labels":{"$build":43,"$design":42},"gates_made":[{"id":45,"end":"start"},{"id":46,"end":"done"}],"reblocked":[]},"warnings":[]}`}},
 
@@ -154,9 +155,11 @@ var readmeSteps = []docStep{
 	{cmd: `koan batch -i - <<'EOF'
 {"folders": [{"path": "/home/trip", "title": "Lisbon in May"}],
  "folder": "/home/trip",
+ "join": ["/home/trip"],
  "tasks": [{"label": "$flights", "title": "Book flights"},
            {"title": "Book a hotel", "blocked_by": ["$flights"]}]}
-EOF`, want: []string{`{"ok":true,"result":{"folders":[{"id":7,"path":"/home"},{"id":8,"path":"/home/trip"}],"tasks":[9,10],"labels":{"$flights":9}},"warnings":[]}`}},
+EOF`, want: []string{`{"ok":true,"result":{"folders":[{"id":7,"path":"/home"},{"id":8,"path":"/home/trip"}],"tasks":[9,10],"labels":{"$flights":9},
+		"gates_made":[{"id":11,"folder":{"id":8},"end":"start"},{"id":12,"folder":{"id":8},"end":"done"}],"reblocked":[]},"warnings":[]}`}},
 
 	// Backup and restore
 	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
