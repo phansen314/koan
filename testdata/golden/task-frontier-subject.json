@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "result": {
+    "tasks": [
+      {
+        "id": 6,
+        "title": "b1",
+        "priority": 5,
+        "folder": {
+          "id": 2,
+          "path": "/a/b"
+        },
+        "readiness": "ready"
+      },
+      {
+        "id": 5,
+        "title": "a1",
+        "priority": 2,
+        "folder": {
+          "id": 1,
+          "path": "/a"
+        },
+        "readiness": "ready"
+      }
+    ],
+    "total": 2,
+    "truncated": false
+  },
+  "warnings": []
+}

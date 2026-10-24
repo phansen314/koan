@@ -61,30 +61,35 @@ func fixed(directive cobra.ShellCompDirective) cobra.CompletionFunc {
 }
 
 // subjectCompletion is what the command's subject completes to, and
-// once it is given, what each word after it does: nothing, unless the
-// command takes more words.
+// once it is given, what each word after it does: the object's, or
+// nothing for a command that takes none.
 func (c *Command) subjectCompletion(env *Env) cobra.CompletionFunc {
-	var first cobra.CompletionFunc
-	switch s := c.Subject; {
-	case s == nil:
-		first = fixed(noFiles)
-	case s.Kind == Path:
-		first = fixed(fileNames)
-	case s.Complete != nil:
-		first = completion(env, s.Complete)
-	default:
-		first = fixed(noFiles)
-	}
-	rest := fixed(noFiles)
-	if c.Rest != nil && c.Rest.Complete != nil {
-		rest = completion(env, c.Rest.Complete)
-	}
+	first, rest := c.Subject.completion(env), c.Object.completion(env)
+	// Past one subject and one object, a word is extra.
+	one := func(o *Option) bool { return o != nil && o.Kind != List }
 	return func(cmd *cobra.Command, args []string, word string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 1 && one(c.Subject) && one(c.Object) {
+			return fixed(noFiles)(cmd, args, word)
+		}
 		if len(args) > 0 {
 			return rest(cmd, args, word)
 		}
 		return first(cmd, args, word)
 	}
+}
+
+// completion is what a position completes to: files for a path, the
+// references its Completer gives, or nothing.
+func (o *Option) completion(env *Env) cobra.CompletionFunc {
+	switch {
+	case o == nil:
+		return fixed(noFiles)
+	case o.Kind == Path:
+		return fixed(fileNames)
+	case o.Complete != nil:
+		return completion(env, o.Complete)
+	}
+	return fixed(noFiles)
 }
 
 // lenient is an option's value while a line is completed: what the

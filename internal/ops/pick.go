@@ -20,10 +20,10 @@ import (
 // prints plain text, never an envelope.
 func Pick() *cli.Command {
 	return &cli.Command{
-		Name:  "pick",
-		Plain: true,
+		Name:    "pick",
+		Plain:   true,
+		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},

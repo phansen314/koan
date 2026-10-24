@@ -34,11 +34,38 @@ var optional = &Command{
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
-// rest takes a subject, then a list as more words.
-var rest = &Command{
+// join takes a subject, then a list as its object.
+var join = &Command{
 	Name:    "task join",
 	Subject: &Option{Field: "task", Required: true},
-	Rest:    &Option{Field: "join", Kind: List, Arg: "folder"},
+	Object:  &Option{Field: "join", Kind: List, Arg: "folder", Required: true},
+	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+}
+
+// move takes a list as its subject, then one object, or -t in the
+// object's place.
+var move = &Command{
+	Name:    "task mv",
+	Subject: &Option{Field: "tasks", Kind: List, Arg: "task", Required: true},
+	Object:  &Option{Field: "into", Arg: "folder", Required: true},
+	Instead: "into",
+	Options: []Option{{Field: "into", Short: "t"}},
+	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+}
+
+// bind takes a subject, then a directory it can do without.
+var bind = &Command{
+	Name:    "marker bind",
+	Subject: &Option{Field: "folder", Required: true},
+	Object:  &Option{Field: "dir", Kind: Path},
+	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+}
+
+// scope takes the folder it looks under, or none.
+var scope = &Command{
+	Name:    "task list",
+	Subject: &Option{Field: "folder"},
+	Options: []Option{{Field: "recursive", Kind: Bool}},
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
@@ -110,9 +137,22 @@ func TestParseLines(t *testing.T) {
 		{optional, nil, `{}`},
 		{optional, []string{"@41:docs/plan.md"}, `{"ref":"@41:docs/plan.md"}`},
 		{bare, nil, `{}`},
-		{rest, []string{"42", "/a"}, `{"task":"42","join":["/a"]}`},
-		{rest, []string{"42", "/a,/b"}, `{"task":"42","join":["/a","/b"]}`},
-		{rest, []string{"42", "/a", "/b,/c"}, `{"task":"42","join":["/a","/b","/c"]}`},
+		{join, []string{"42", "/a"}, `{"task":"42","join":["/a"]}`},
+		{join, []string{"42", "/a,/b"}, `{"task":"42","join":["/a","/b"]}`},
+		{join, []string{"42", "/a", "/b,/c"}, `{"task":"42","join":["/a","/b","/c"]}`},
+		{move, []string{"42", "/w"}, `{"tasks":["42"],"into":"/w"}`},
+		{move, []string{"41", "42", "/w"}, `{"tasks":["41","42"],"into":"/w"}`},
+		{move, []string{"41,42", "/w"}, `{"tasks":["41","42"],"into":"/w"}`},
+		{move, []string{"41", "42,43", "/w,x"}, `{"tasks":["41","42","43"],"into":"/w,x"}`},
+		{move, []string{"-t", "/w", "42"}, `{"tasks":["42"],"into":"/w"}`},
+		{move, []string{"--into", "/w", "41", "42"}, `{"tasks":["41","42"],"into":"/w"}`},
+		{move, []string{"41", "-t=/w", "42,43"}, `{"tasks":["41","42","43"],"into":"/w"}`},
+		{bind, []string{"@41"}, `{"folder":"@41"}`},
+		{bind, []string{"@41", "/d"}, `{"folder":"@41","dir":"/d"}`},
+		{bind, []string{"@41", "/d,e"}, `{"folder":"@41","dir":"/d,e"}`},
+		{scope, nil, `{}`},
+		{scope, []string{"/w"}, `{"folder":"/w"}`},
+		{scope, []string{"/w,x", "--recursive=false"}, `{"folder":"/w,x","recursive":false}`},
 	}
 	for _, c := range cases {
 		l, e := c.cmd.parse(c.args)
@@ -197,10 +237,22 @@ func TestParseUsage(t *testing.T) {
 		{optional, []string{"a", "b"}, "b"},
 		{bare, []string{"x"}, "x"},
 		{bare, []string{"--", "x"}, "x"},
-		{rest, nil, ""},
-		{rest, []string{"42"}, ""},
-		{rest, []string{"-i", "f", "42"}, "42"},
-		{rest, []string{"42", "/a", "--join", "/b"}, "--join"},
+		{join, nil, ""},
+		{join, []string{"42"}, ""},
+		{join, []string{"-i", "f", "42"}, "42"},
+		{join, []string{"42", "/a", "--join", "/b"}, "--join"},
+		{move, nil, ""},
+		{move, []string{"42"}, ""},
+		{move, []string{"-t", "/w"}, ""},
+		{move, []string{"-t", "/w", "-t", "/x", "42"}, "--into"},
+		{move, []string{"-i", "f", "42", "/w"}, "42"},
+		{move, []string{"-i", "f", "-t", "/w"}, "--into"},
+		{bind, nil, ""},
+		{bind, []string{"@41", "/d", "/e"}, "/e"},
+		{bind, []string{"@41", "--dir", "/d"}, "--dir"},
+		{scope, []string{"/a", "/b"}, "/b"},
+		{scope, []string{"--folder", "/a"}, "--folder"},
+		{scope, []string{"-i", "f", "/a"}, "/a"},
 	}
 	for _, c := range cases {
 		_, e := c.cmd.parse(c.args)

@@ -289,7 +289,7 @@ var perfOps = []perfOp{
 		args: func(r *perfRoot, i int) []string { return []string{"task", "claim", r.task(i, 90)} }},
 	{name: "task claim-next", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.must("task", "release", r.task(i, 33)) },
-		args: func(r *perfRoot, i int) []string { return []string{"task", "claim-next", "--folder", r.folder(i)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"task", "claim-next", r.folder(i)} }},
 	{name: "task release", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			if res := r.run("", "task", "claim", r.task(i, 89)); !res.OK() && res.Error()["rule"] != "claimed" {

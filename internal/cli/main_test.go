@@ -284,7 +284,13 @@ func TestMainCompleteReferences(t *testing.T) {
 	}
 	path := &Command{Name: "backup", Subject: &Option{Field: "dir", Kind: Path, Required: true},
 		Run: func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil }}
-	cmds := []*Command{refs, path, fake}
+	joins := &Command{
+		Name:    "thing join",
+		Subject: &Option{Field: "task", Required: true, Complete: offer(2, false)},
+		Object:  &Option{Field: "join", Kind: List, Arg: "folder", Required: true, Complete: offer(1, false)},
+		Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+	}
+	cmds := []*Command{refs, path, fake, joins, bind}
 	hint := "_activeHelp_ 101 match: type more, or use koan pick\n"
 	most := ""
 	for i := range 100 {
@@ -322,6 +328,14 @@ func TestMainCompleteReferences(t *testing.T) {
 		{[]string{"thing", "ref", "--to", "a", "--to", "b", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
 		{[]string{"thing", "ref", "--nope=1", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
 		{[]string{"thing", "ref", "-i", "x", "--force=maybe", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
+		// The subject's word, then each of the object's.
+		{[]string{"thing", "join", "@4"}, "@40\tnumber 0\n@41\tnumber 1\n:36\n"},
+		{[]string{"thing", "join", "1", "/a"}, "/a0\tnumber 0\n:36\n"},
+		{[]string{"thing", "join", "1", "/a", "/b"}, "/b0\tnumber 0\n:36\n"},
+		{[]string{"thing", "join", "1", "/a,/b"}, ":36\n"},
+		// A directory as the object, as the shell completes it.
+		{[]string{"marker", "bind", "@1", ""}, ":0\n"},
+		{[]string{"marker", "bind", "@1", "d", ""}, ":4\n"},
 	} {
 		r := runMain(t, "", cmds, append([]string{"__complete"}, c.args...)...)
 		if r.code != 0 || r.stdout != c.want {
@@ -329,7 +343,7 @@ func TestMainCompleteReferences(t *testing.T) {
 		}
 	}
 	// Each completer sees only the word being completed.
-	if want := []string{"@4", "4", "4", "/wo", "", "", "@4", "@4", "@4", "@4"}; !slices.Equal(words, want) {
+	if want := []string{"@4", "4", "4", "/wo", "", "", "@4", "@4", "@4", "@4", "@4", "/a", "/b"}; !slices.Equal(words, want) {
 		t.Errorf("words: %q, want %q", words, want)
 	}
 	// cobra's KOAN_ACTIVE_HELP=0 turns the hint off; without descriptions,
@@ -436,8 +450,10 @@ func TestMainPaths(t *testing.T) {
 		{"", []string{"where", "@1", "--file", "x"}, `{"file":"` + q(filepath.Join(wd, "x")) + `","ref":"@1"}`},
 		{`{"file":"rel"}`, []string{"where", "-i", "-"}, `{"file":"rel"}`},
 		{`{}`, []string{"where", "-i", "-"}, `{}`},
+		{"", []string{"marker", "bind", "@1", "a/../b"}, `{"dir":"` + q(filepath.Join(wd, "b")) + `","folder":"@1"}`},
+		{"", []string{"marker", "bind", "@1"}, `{"folder":"@1"}`},
 	} {
-		r := runMain(t, c.stdin, []*Command{cmd}, c.args...)
+		r := runMain(t, c.stdin, []*Command{cmd, bind}, c.args...)
 		want := `{"ok":true,"result":` + c.want + `,"warnings":[]}` + "\n"
 		if r.stdout != want || r.code != 0 {
 			t.Errorf("%q: got %s want %s", c.args, r.stdout, want)

@@ -306,7 +306,7 @@ func TestTaskShowMissingNotes(t *testing.T) {
 	ok(t, home, "task", "list")
 }
 
-// task list gives the tasks under --folder in tree order: a folder's own
+// task list gives the tasks under its subject in tree order: a folder's own
 // tasks first, gates included, by ID, then its folders by name compared
 // byte for byte, so Zeta before alpha; open ones by default.
 func TestTaskList(t *testing.T) {
@@ -341,6 +341,7 @@ func TestTaskList(t *testing.T) {
 	}
 	r := ok(t, home, "task", "list", "--fields", "title,folder,state,readiness")
 	golden(t, r, "task-list")
+	golden(t, ok(t, home, "task", "list", "/alpha", "--fields", "title,folder,state,readiness"), "task-list-subject")
 	for _, c := range []struct {
 		args []string
 		want string
@@ -351,10 +352,10 @@ func TestTaskList(t *testing.T) {
 		{[]string{"--readiness", "blocked"}, "10"},
 		{[]string{"--readiness", "ready"}, "5 8 7 6 9 4"},
 		{[]string{"--readiness", "blocked", "--state", "complete,open"}, "11 10"},
-		{[]string{"--folder", "/alpha"}, "6 9 10 4"},
-		{[]string{"--folder", "@1", "--recursive=false"}, "6 9 10"},
-		{[]string{"--folder", "/", "--recursive=false"}, "5 8"},
-		{[]string{"--folder", "/alpha/b"}, "4"},
+		{[]string{"/alpha"}, "6 9 10 4"},
+		{[]string{"@1", "--recursive=false"}, "6 9 10"},
+		{[]string{"/", "--recursive=false"}, "5 8"},
+		{[]string{"/alpha/b"}, "4"},
 		{[]string{"--tags-any", "x,z"}, "8 7 4"},
 		{[]string{"--tags-all", "x,y"}, "4"},
 		{[]string{"--tags-any", "y", "--tags-all", "x"}, "4"},
@@ -375,9 +376,9 @@ func TestTaskList(t *testing.T) {
 
 	r = ok(t, home, "task", "list", "--limit", "2", "--fields", "id")
 	golden(t, r, "task-list-truncated")
-	r = ok(t, home, "task", "list", "--fields", "notes_path,tags", "--fields", "ref", "--folder", "/alpha/b")
+	r = ok(t, home, "task", "list", "--fields", "notes_path,tags", "--fields", "ref", "/alpha/b")
 	golden(t, r, "task-list-fields")
-	r = ok(t, home, "task", "list", "--folder", "/alpha/b")
+	r = ok(t, home, "task", "list", "/alpha/b")
 	if len(r.Result()["tasks"].([]any)[0].(map[string]any)) != len(taskFieldNames) {
 		t.Errorf("every field: %s", r.Line())
 	}
@@ -394,7 +395,7 @@ func TestTaskList(t *testing.T) {
 		{[]string{"--fields", "title,nope"}, "/fields/1"},
 		{[]string{"--fields", "id,id"}, "/fields/1"},
 		{[]string{"--limit", "0"}, "/limit"},
-		{[]string{"--folder", "/alpha.done"}, "/folder"},
+		{[]string{"/alpha.done"}, "/folder"},
 	} {
 		r := fails(t, home, "invalid-input", "", append([]string{"task", "list"}, c.args...)...)
 		problems := r.Error()["problems"].([]any)
@@ -410,8 +411,16 @@ func TestTaskList(t *testing.T) {
 			t.Errorf("%s: %s", in, r.Line())
 		}
 	}
-	fails(t, home, "conflict", "case-mismatch", "task", "list", "--folder", "/ALPHA")
-	fails(t, home, "not-found", "", "task", "list", "--folder", "/gamma")
+	fails(t, home, "conflict", "case-mismatch", "task", "list", "/ALPHA")
+	fails(t, home, "not-found", "", "task", "list", "/gamma")
+	// The folder is the subject, one word: never --folder, never two.
+	golden(t, usageAt(t, home, "/Zeta", "task", "list", "/alpha", "/Zeta"), "task-list-extra")
+	golden(t, usageAt(t, home, "--folder", "task", "list", "--folder", "/alpha"), "task-list-folder")
+	golden(t, usageAt(t, home, "/alpha", "task", "list", "/alpha", "-i", "-"), "task-list-input-positional")
+	for _, args := range [][]string{{"task", "frontier"}, {"task", "claim-next"}, {"folder", "list"}} {
+		usageAt(t, home, "/Zeta", append(args, "/alpha", "/Zeta")...)
+		usageAt(t, home, "--folder", append(args, "--folder", "/alpha")...)
+	}
 }
 
 var taskFieldNames = []string{"id", "ref", "gate", "title", "priority", "folder", "created_at", "completed_at", "updated_at",

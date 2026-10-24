@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "--input can't go with anything else",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/alpha",
+        "reason": "--input can't go with anything else"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

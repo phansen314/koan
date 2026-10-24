@@ -133,7 +133,7 @@ func TestConcurrency(t *testing.T) {
 	var procs []*proc
 	add := func(stdin string, args ...string) { procs = append(procs, &proc{args: args, stdin: stdin}) }
 	for range claimers {
-		add("", "task", "claim-next", "--folder", "/pool")
+		add("", "task", "claim-next", "/pool")
 	}
 	for i := range movers {
 		add("", "folder", "move", fmt.Sprintf("/m%d", i), "--to", fmt.Sprintf("/moved/m%d", i))

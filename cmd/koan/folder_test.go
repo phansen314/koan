@@ -347,7 +347,7 @@ func TestFolderShowMissingNotes(t *testing.T) {
 	ok(t, home, "folder", "list")
 }
 
-// folder list gives the folders under --folder, itself left out, in tree
+// folder list gives the folders under its subject, itself left out, in tree
 // order: a folder before everything under it, siblings by name compared
 // byte for byte, so Zeta before alpha.
 func TestFolderList(t *testing.T) {
@@ -364,15 +364,16 @@ func TestFolderList(t *testing.T) {
 	}
 	r := ok(t, home, "folder", "list")
 	golden(t, r, "folder-list")
+	golden(t, ok(t, home, "folder", "list", "/alpha", "--recursive=false"), "folder-list-subject")
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		{nil, "/Zeta /alpha /alpha/C /alpha/a /alpha/a/x /alpha/b /beta"},
 		{[]string{"--recursive=false"}, "/Zeta /alpha /beta"},
-		{[]string{"--folder", "/alpha"}, "/alpha/C /alpha/a /alpha/a/x /alpha/b"},
-		{[]string{"--folder", "@1", "--recursive=false"}, "/alpha/C /alpha/a /alpha/b"},
-		{[]string{"--folder", "/alpha/a/x"}, ""},
+		{[]string{"/alpha"}, "/alpha/C /alpha/a /alpha/a/x /alpha/b"},
+		{[]string{"@1", "--recursive=false"}, "/alpha/C /alpha/a /alpha/b"},
+		{[]string{"/alpha/a/x"}, ""},
 	} {
 		r := ok(t, home, append([]string{"folder", "list"}, c.args...)...)
 		if got := paths(r); got != c.want {
@@ -393,9 +394,9 @@ func TestFolderList(t *testing.T) {
 
 	// --fields gives id first, then the fields named, in the record's
 	// order.
-	r = ok(t, home, "folder", "list", "--folder", "/alpha/a", "--fields", "dir,name", "--fields", "finished")
+	r = ok(t, home, "folder", "list", "/alpha/a", "--fields", "dir,name", "--fields", "finished")
 	golden(t, r, "folder-list-fields")
-	r = ok(t, home, "folder", "list", "--folder", "/alpha/a", "--fields", "id")
+	r = ok(t, home, "folder", "list", "/alpha/a", "--fields", "id")
 	if fmt.Sprint(r.Result()["folders"]) != "[map[id:5]]" {
 		t.Errorf("--fields id: %s", r.Line())
 	}
@@ -407,7 +408,7 @@ func TestFolderList(t *testing.T) {
 		{[]string{"--fields", "name,nope"}, "/fields/1"},
 		{[]string{"--fields", "name,path,name"}, "/fields/2"},
 		{[]string{"--limit", "0"}, "/limit"},
-		{[]string{"--folder", "@3.done"}, "/folder"},
+		{[]string{"@3.done"}, "/folder"},
 	} {
 		r := fails(t, home, "invalid-input", "", append([]string{"folder", "list"}, c.args...)...)
 		problems := r.Error()["problems"].([]any)
@@ -415,8 +416,8 @@ func TestFolderList(t *testing.T) {
 			t.Errorf("%q: %s", c.args, r.Line())
 		}
 	}
-	fails(t, home, "conflict", "case-mismatch", "folder", "list", "--folder", "/ALPHA")
-	fails(t, home, "not-found", "", "folder", "list", "--folder", "/gamma")
+	fails(t, home, "conflict", "case-mismatch", "folder", "list", "/ALPHA")
+	fails(t, home, "not-found", "", "folder", "list", "/gamma")
 }
 
 // A change left pending, by a write that crashed after COMMIT, gives

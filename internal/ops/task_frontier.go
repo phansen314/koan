@@ -14,9 +14,9 @@ import (
 // is ready.
 func TaskFrontier() *cli.Command {
 	return &cli.Command{
-		Name: "task frontier",
+		Name:    "task frontier",
+		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},

@@ -49,7 +49,6 @@ var shorts = map[string]string{
 // usages are each option's line in help, by field, or by command and
 // field where one command means something of its own by it.
 var usages = map[string]string{
-	"folder":                "only under this folder",
 	"task create/folder":    "the folder to make it in; the root when left out",
 	"recursive":             "include subfolders; --recursive=false for the folder's own only",
 	"priority":              "an integer, higher first, or null",
@@ -89,7 +88,6 @@ var usages = map[string]string{
 	"export/file":           "export the folder this file is in; the working directory when left out",
 	"kinds":                 "fix only these kinds of finding",
 	"ids_from":              "the first ID the new root issues",
-	"pick/folder":           "pick from this folder and what is under it; / when left out",
 	"pick/recursive":        "include subfolders; --recursive=false for the folder's own tasks and the folders directly in it",
 	"pick/kinds":            "offer only these kinds: task, gate, folder",
 	"frontier":              "offer the frontier's tasks, in work order",

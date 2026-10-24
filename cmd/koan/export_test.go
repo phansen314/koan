@@ -108,11 +108,11 @@ func TestExport(t *testing.T) {
 	}
 
 	// The records are those of folder list and task list with no limit.
-	folders := ok(t, home, "folder", "list", "--folder", "/work/api", "--limit", "null").Result()["folders"]
+	folders := ok(t, home, "folder", "list", "/work/api", "--limit", "null").Result()["folders"]
 	if !reflect.DeepEqual(res["folders"], folders) {
 		t.Errorf("folders differ from folder list")
 	}
-	tasks := ok(t, home, "task", "list", "--folder", "/work/api", "--state", "open,complete", "--limit", "null").Result()["tasks"]
+	tasks := ok(t, home, "task", "list", "/work/api", "--state", "open,complete", "--limit", "null").Result()["tasks"]
 	if !reflect.DeepEqual(res["tasks"], tasks) {
 		t.Errorf("tasks differ from task list")
 	}

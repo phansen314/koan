@@ -52,14 +52,17 @@ type Option struct {
 	Kind  Kind
 	// Nullable: the text null is JSON null. Elsewhere it is the word.
 	Nullable bool
-	// Required, for a subject: the command line must give one.
+	// Required, for a position: the command line must give one.
 	Required bool
+	// Short is the option's one letter, such as t for -t, if it has one.
+	Short string
 	// Usage is the option's line in help.
 	Usage string
 	// Complete, for an argument that takes a reference, is what it
 	// completes to at a shell's Tab.
 	Complete Completer
-	// Arg, for the words after a subject, is what help calls each.
+	// Arg, for a position, is what help calls each of its words; the
+	// field when not set.
 	Arg string
 }
 
@@ -67,6 +70,14 @@ type Option struct {
 // the field in kebab-case, such as blocked-by.
 func (o Option) flag() string {
 	return strings.ReplaceAll(o.Field, "_", "-")
+}
+
+// arg is what help calls each word of a position.
+func (o Option) arg() string {
+	if o.Arg != "" {
+		return o.Arg
+	}
+	return o.Field
 }
 
 // File is a convenience that sets an input field from a file read whole,
@@ -112,16 +123,21 @@ func (e *Env) Home() (string, *Error) {
 	return filepath.Clean(home), nil
 }
 
-// Command is one koan command: its name, its subject and options, and
-// what it does with an input whose fields are all its own.
+// Command is one koan command: its name, its subject, object and
+// options, and what it does with an input whose fields are all its own.
 type Command struct {
-	Name    string
-	Short   string // its line in help
+	Name  string
+	Short string // its line in help
+	// Subject is the first position: one word, or with Kind List the
+	// words before the object, each read as a List option's text is.
 	Subject *Option
-	// Rest, for a command whose subject is followed by more words, is the
-	// list field they set, each word read as a List option's text is. At
-	// least one is needed.
-	Rest    *Option
+	// Object, for a command whose verb takes one, is the last position:
+	// one word, or with Kind List every word after the subject. A list
+	// subject's object is required, so the last word is always it.
+	Object *Option
+	// Instead, for a command an option can take the object's place on,
+	// is that option's field: given, every positional is a subject.
+	Instead string
 	Options []Option
 	Files   []File
 	Here    *Here
@@ -140,8 +156,8 @@ func (c *Command) fields() map[string]bool {
 	if c.Subject != nil {
 		f[c.Subject.Field] = true
 	}
-	if c.Rest != nil {
-		f[c.Rest.Field] = true
+	if c.Object != nil {
+		f[c.Object.Field] = true
 	}
 	for _, o := range c.Options {
 		f[o.Field] = true
@@ -276,15 +292,18 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 	l := newLine()
 	words := strings.Fields(c.Name)
 	use := words[len(words)-1]
-	if s := c.Subject; s != nil {
-		if s.Required {
-			use += " <" + s.Field + ">"
-		} else {
-			use += " [<" + s.Field + ">]"
+	for _, p := range []*Option{c.Subject, c.Object} {
+		if p == nil {
+			continue
 		}
-	}
-	if c.Rest != nil {
-		use += " <" + c.Rest.Arg + ">..."
+		word := "<" + p.arg() + ">"
+		if p.Kind == List {
+			word += "..."
+		}
+		if !p.Required {
+			word = "[" + word + "]"
+		}
+		use += " " + word
 	}
 	cc := &cobra.Command{
 		Use:   use,
@@ -311,7 +330,7 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 	}
 	for i := range c.Options {
 		o := &c.Options[i]
-		flags.Var(add(&value{opt: o, l: l}), o.flag(), o.Usage)
+		flags.VarP(add(&value{opt: o, l: l}), o.flag(), o.Short, o.Usage)
 		if o.Kind == Bool {
 			flags.Lookup(o.flag()).NoOptDefVal = "true"
 		}
@@ -343,7 +362,7 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 	return cc
 }
 
-// finish checks what pflag can't: --input alone, and the subject.
+// finish checks what pflag can't: --input alone, and the positions.
 func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 	if l.hasInput {
 		other := ""
@@ -361,32 +380,48 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 		}
 		return nil
 	}
-	if c.Subject == nil && len(args) > 0 {
-		return Usage(args[0], c.Name+" takes no subject")
-	}
-	if c.Rest != nil {
-		if len(args) == 0 {
-			return Usage("", c.Name+" needs a subject: "+c.Subject.Field)
-		}
-		if len(args) == 1 {
-			return Usage("", c.Name+" needs at least one "+c.Rest.Arg+" after the subject")
-		}
-		c.Subject.set(l.in, args[0])
-		for _, word := range args[1:] {
-			c.Rest.set(l.in, word)
+	if c.Subject == nil {
+		if len(args) > 0 {
+			return Usage(args[0], c.Name+" takes no subject")
 		}
 		return nil
 	}
-	if len(args) > 1 {
-		return Usage(args[1], "a second subject: "+c.Name+" takes one")
+	object := c.Object
+	if c.Instead != "" && cmd.Flags().Changed(strings.ReplaceAll(c.Instead, "_", "-")) {
+		object = nil
 	}
-	if len(args) == 1 {
-		c.Subject.set(l.in, args[0])
-		if c.Subject.Kind == Path {
-			l.paths = append(l.paths, c.Subject.Field)
+	// The subject's words, then the object's: one subject before a list,
+	// or a list of subjects before one object.
+	n := len(args)
+	if object != nil && n > 1 {
+		n = 1
+		if c.Subject.Kind == List {
+			n = len(args) - 1
 		}
-	} else if c.Subject != nil && c.Subject.Required {
-		return Usage("", c.Name+" needs a subject: "+c.Subject.Field)
+	}
+	subjects, objects := args[:n], args[n:]
+	if c.Subject.Kind != List && len(subjects) > 1 {
+		return Usage(subjects[1], "a second subject: "+c.Name+" takes one")
+	}
+	if object != nil && object.Kind != List && len(objects) > 1 {
+		return Usage(objects[1], "a word past the object: "+c.Name+" takes one "+object.arg())
+	}
+	if len(subjects) == 0 && c.Subject.Required {
+		return Usage("", c.Name+" needs a subject: "+c.Subject.arg())
+	}
+	if object != nil && len(objects) == 0 && object.Required {
+		return Usage("", c.Name+" needs a "+object.arg()+" after the subject")
+	}
+	for _, p := range []struct {
+		opt   *Option
+		words []string
+	}{{c.Subject, subjects}, {object, objects}} {
+		for _, word := range p.words {
+			p.opt.set(l.in, word)
+		}
+		if len(p.words) > 0 && p.opt.Kind == Path {
+			l.paths = append(l.paths, p.opt.Field)
+		}
 	}
 	return nil
 }

@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown flag: --join",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "--join",
+        "reason": "unknown flag: --join"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

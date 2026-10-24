@@ -278,15 +278,15 @@ func TestPickFilters(t *testing.T) {
 		{[]string{"--kinds", "folder", "--tags-all", "api"}, []string{"@1", "@2"}},
 		{[]string{"--readiness", "ready"}, []string{"@7", "@1", "@2", "@2.start"}},
 		{[]string{"--claimed"}, []string{"@1", "@2", "@4"}},
-		{[]string{"--claimed=false", "--folder", "/work/api"}, []string{"@2", "@3", "@2.start", "@2.done"}},
+		{[]string{"--claimed=false", "/work/api"}, []string{"@2", "@3", "@2.start", "@2.done"}},
 		{[]string{"--frontier"}, []string{"@7", "@2.start", "@1", "@2"}},
-		{[]string{"--frontier", "--folder", "/work"}, []string{"@2.start", "@1", "@2"}},
+		{[]string{"--frontier", "/work"}, []string{"@2.start", "@1", "@2"}},
 		{[]string{"--state", "complete"}, []string{"@1", "@1.start", "@1.done", "@6", "@2"}},
 		{[]string{"--state", "open,complete", "--kinds", "task"}, []string{"@7", "@5", "@6", "@3", "@4"}},
-		{[]string{"--folder", "/work/api"}, []string{"@2", "@3", "@4", "@2.start", "@2.done"}},
-		{[]string{"--folder", "@1", "--recursive=false"}, []string{"@1", "@1.start", "@1.done", "@5", "@2"}},
+		{[]string{"/work/api"}, []string{"@2", "@3", "@4", "@2.start", "@2.done"}},
+		{[]string{"@1", "--recursive=false"}, []string{"@1", "@1.start", "@1.done", "@5", "@2"}},
 		// The match is deeper than --recursive=false looks: nothing to offer.
-		{[]string{"--folder", "/work", "--recursive=false", "--tags-any", "api"}, nil},
+		{[]string{"/work", "--recursive=false", "--tags-any", "api"}, nil},
 	} {
 		r := p.run(c.args...)
 		if r.exit != 1 || r.out != "" || r.err != "" {
@@ -296,6 +296,24 @@ func TestPickFilters(t *testing.T) {
 			t.Errorf("%q: keys %v, want %v", c.args, got, c.want)
 		}
 	}
+}
+
+// pick takes the folder it picks from as its subject, one word, and
+// never with --here; --folder is gone.
+func TestPickSubject(t *testing.T) {
+	home := root(t)
+	batchOK(t, home, `{"folders": [{"path": "/work"}, {"path": "/work/api"}],
+	  "tasks": [{"title": "a", "folder": "/work/api"}, {"title": "b"}]}`)
+	p := newPicker(t, home).with("FAKE_FZF_EXIT=1")
+	if r := p.run("/work/api"); r.exit != 1 || r.out != "" || r.err != "" {
+		t.Errorf("/work/api: exit %d, stdout %q, stderr %q", r.exit, r.out, r.err)
+	}
+	if got, want := p.keys(), []string{"@2", "@2.start", "@2.done", "@3"}; !slices.Equal(got, want) {
+		t.Errorf("/work/api: keys %v, want %v", got, want)
+	}
+	p.run("--here", "/work").failed(t, 1, "invalid-input", "folder and file")
+	p.run("/work", "/work/api").failed(t, 2, "usage", "")
+	p.run("--folder", "/work").failed(t, 2, "usage", "folder")
 }
 
 // pick prints what was picked in the candidates' order, comma-joined;
@@ -408,16 +426,16 @@ func TestPickFailures(t *testing.T) {
 	p := newPicker(t, home)
 	p.run("--frob").failed(t, 2, "usage", "frob")
 	p.run("--frontier", "--readiness", "ready").failed(t, 1, "invalid-input", "frontier")
-	p.run("--here", "--folder", "/work").failed(t, 1, "invalid-input", "folder and file")
+	p.run("--here", "/work").failed(t, 1, "invalid-input", "folder and file")
 	p.run("--kinds", "material").failed(t, 1, "invalid-input", "material")
-	p.run("--folder", "/nope").failed(t, 1, "not-found", "/nope")
+	p.run("/nope").failed(t, 1, "not-found", "/nope")
 
 	fresh := newPicker(t, t.TempDir())
 	fresh.run().failed(t, 1, "not-initialized", "")
 
 	noTTY := *p
 	noTTY.tty = false
-	noTTY.run("--folder", "/nope").failed(t, 1, "unavailable", "no terminal")
+	noTTY.run("/nope").failed(t, 1, "unavailable", "no terminal")
 
 	noFzf := *p
 	noFzf.path = t.TempDir()

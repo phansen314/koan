@@ -1,0 +1,50 @@
+{
+  "ok": true,
+  "result": {
+    "tasks": [
+      {
+        "id": 6,
+        "title": "a1",
+        "folder": {
+          "id": 1,
+          "path": "/alpha"
+        },
+        "state": "open",
+        "readiness": "ready"
+      },
+      {
+        "id": 9,
+        "title": "a2",
+        "folder": {
+          "id": 1,
+          "path": "/alpha"
+        },
+        "state": "open",
+        "readiness": "ready"
+      },
+      {
+        "id": 10,
+        "title": "T",
+        "folder": {
+          "id": 1,
+          "path": "/alpha"
+        },
+        "state": "open",
+        "readiness": "blocked"
+      },
+      {
+        "id": 4,
+        "title": "b1",
+        "folder": {
+          "id": 2,
+          "path": "/alpha/b"
+        },
+        "state": "open",
+        "readiness": "ready"
+      }
+    ],
+    "total": 4,
+    "truncated": false
+  },
+  "warnings": []
+}

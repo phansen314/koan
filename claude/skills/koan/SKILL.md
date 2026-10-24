@@ -113,7 +113,7 @@ The result names everything by ID: `folders` made, parents first (`/work` @40, `
 koan task frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order: only @45, the start gate
 koan task why 43                                    # .result.ready: [45], what to finish to move @43
 koan task complete 45                               # .result.released: [42], the tasks it made ready
-koan task claim-next --folder /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
+koan task claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
 koan task show 42                                   # the whole task: .result.task, with its notes_path
 koan task complete 42                               # ends the claim; .result.released: [43]
 ```
@@ -199,7 +199,7 @@ Everything koan prints lands in your context. **Pass `--limit` and `--fields` to
 ```sh
 koan task list --limit 20 --fields ref,title,readiness           # open tasks, in tree order
 koan task list --state complete --limit 1 --fields id            # how many are complete: .result.total
-koan folder list --folder /work --recursive=false --fields path,title,open,finished
+koan folder list /work --recursive=false --fields path,title,open,finished
 ```
 
 - `--fields` gives `id` first, then the fields named, in the record's order. Task fields: `ref`, `gate`, `title`, `priority`, `folder`, `created_at`, `completed_at`, `updated_at`, `state`, `readiness`, `blocked_by`, `blocks`, `tags`, `extra`, `claim`, `notes_path`. Folder fields: `ref`, `name`, `path`, `title`, `extra`, `gates`, `open`, `complete`, `finished`, `notes_path`, `dir`.
@@ -245,7 +245,7 @@ koan folder move /work/api2 --to /work/api
 ```sh
 koan task move 48 --to /work/api                    # its notes move with it; .result.notes_path is the new path
 koan folder move /work/web/client --to /work/client  # --to is the whole new path; a case-only rename is a move too
-koan task list --folder /work/client --state open,complete --fields title,state,claim   # before deleting: what goes
+koan task list /work/client --state open,complete --fields title,state,claim   # before deleting: what goes
 koan folder delete /work/client                     # refused without --contents: conflict, rule not-empty
 koan folder delete /work/client --contents          # only once the user said so: .result.removed, .result.released
 ```

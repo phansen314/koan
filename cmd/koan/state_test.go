@@ -319,6 +319,16 @@ func TestTaskClaim(t *testing.T) {
 	fails(t, home, "not-found", "", "task", "release", "99")
 }
 
+// task claim-next takes the folder it looks under as its subject.
+func TestTaskClaimNextSubject(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/a/b")                 // 1, 2
+	ok(t, home, "task", "create", "r1", "--priority", "9")  // 3
+	ok(t, home, "task", "create", "b1", "--folder", "/a/b") // 4
+	goldenNow(t, ok(t, home, "task", "claim-next", "/a"), "task-claim-next-subject")
+	usageAt(t, home, "/a/b", "task", "claim-next", "/a", "/a/b")
+}
+
 // task claim-next claims the first ready task with no claim within task
 // frontier's filters, in work order, and returns its record with the new
 // claim; nulls when there is none.
@@ -354,10 +364,10 @@ func TestTaskClaimNext(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"--folder", "/a", "--recursive=false", "--tags-any", "x"}, "none"},
+		{[]string{"/a", "--recursive=false", "--tags-any", "x"}, "none"},
 		{[]string{"--tags-all", "x,y"}, "6"},
-		{[]string{"--folder", "@1", "--recursive=false"}, "4"},
-		{[]string{"--folder", "/a"}, "none"},
+		{[]string{"@1", "--recursive=false"}, "4"},
+		{[]string{"/a"}, "none"},
 		{nil, "3"},
 		{nil, "none"},
 	} {
@@ -368,16 +378,16 @@ func TestTaskClaimNext(t *testing.T) {
 	golden(t, ok(t, home, "task", "claim-next"), "task-claim-next-none")
 	// Completing 3 lets 7 in.
 	ok(t, home, "task", "complete", "3")
-	if got := next("--folder", "/a"); got != "7" {
+	if got := next("/a"); got != "7" {
 		t.Errorf("after complete: %s", got)
 	}
-	golden(t, fails(t, home, "not-found", "", "task", "claim-next", "--folder", "/z"), "task-claim-next-not-found")
-	fails(t, home, "conflict", "case-mismatch", "task", "claim-next", "--folder", "/A")
+	golden(t, fails(t, home, "not-found", "", "task", "claim-next", "/z"), "task-claim-next-not-found")
+	fails(t, home, "conflict", "case-mismatch", "task", "claim-next", "/A")
 	for _, c := range []struct {
 		args  []string
 		field string
 	}{
-		{[]string{"--folder", "/a.start"}, "/folder"},
+		{[]string{"/a.start"}, "/folder"},
 		{[]string{"--tags-any", "A"}, "/tags_any/0"},
 		{[]string{"--extra", "1"}, "/extra"},
 	} {

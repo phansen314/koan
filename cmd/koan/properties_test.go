@@ -581,7 +581,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				sc := model.Scope{Folder: pick([]string{"/", "/a", "/a/b", "/c"}), Recursive: rng.Intn(2) == 0}
 				var c *model.Claim
 				c, err = m.ClaimNext(sc, nil)
-				args = []string{"task", "claim-next", "--folder", sc.Folder, fmt.Sprintf("--recursive=%v", sc.Recursive)}
+				args = []string{"task", "claim-next", sc.Folder, fmt.Sprintf("--recursive=%v", sc.Recursive)}
 				want = "<nil>"
 				if c != nil {
 					want = fmt.Sprint(c.Task)

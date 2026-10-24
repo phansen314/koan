@@ -459,7 +459,7 @@ func TestTaskWhy(t *testing.T) {
 }
 
 // task frontier gives the ready tasks with no claim, gates included, in
-// work order, under --folder; the folder chooses where to look, never
+// work order, under its subject; the folder chooses where to look, never
 // what is ready.
 func TestTaskFrontier(t *testing.T) {
 	home := root(t)
@@ -489,15 +489,16 @@ func TestTaskFrontier(t *testing.T) {
 		return strings.Join(out, " ")
 	}
 	golden(t, ok(t, home, "task", "frontier", "--fields", "title,priority,folder,readiness"), "task-frontier")
+	golden(t, ok(t, home, "task", "frontier", "/a", "--fields", "title,priority,folder,readiness"), "task-frontier-subject")
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		{nil, "6 5 8 4 12"},
-		{[]string{"--folder", "/a"}, "6 5"},
-		{[]string{"--folder", "@1", "--recursive=false"}, "5"},
-		{[]string{"--folder", "/c"}, "12"},
-		{[]string{"--folder", "/", "--recursive=false"}, "8 4"},
+		{[]string{"/a"}, "6 5"},
+		{[]string{"@1", "--recursive=false"}, "5"},
+		{[]string{"/c"}, "12"},
+		{[]string{"/", "--recursive=false"}, "8 4"},
 		{[]string{"--tags-any", "x,q"}, "6 8"},
 		{[]string{"--tags-all", "x,y"}, "8"},
 		{[]string{"--tags-any", "x", "--tags-all", "y"}, "8"},
@@ -525,15 +526,15 @@ func TestTaskFrontier(t *testing.T) {
 	}{
 		{[]string{"--limit", "0"}, "/limit"},
 		{[]string{"--fields", "nope"}, "/fields/0"},
-		{[]string{"--folder", "/a.start"}, "/folder"},
+		{[]string{"/a.start"}, "/folder"},
 		{[]string{"--tags-any", "A"}, "/tags_any/0"},
 	} {
 		if r := fails(t, home, "invalid-input", "", append([]string{"task", "frontier"}, c.args...)...); problemFields(r) != c.field {
 			t.Errorf("%q: %s", c.args, r.Line())
 		}
 	}
-	fails(t, home, "not-found", "", "task", "frontier", "--folder", "/z")
-	fails(t, home, "conflict", "case-mismatch", "task", "frontier", "--folder", "/A")
+	fails(t, home, "not-found", "", "task", "frontier", "/z")
+	fails(t, home, "conflict", "case-mismatch", "task", "frontier", "/A")
 }
 
 // An edge given more than once, however it is written and from whichever
