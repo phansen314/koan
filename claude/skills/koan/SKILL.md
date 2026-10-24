@@ -17,7 +17,7 @@ Every command prints **exactly one line of JSON** on standard output. The exampl
 
 ```sh
 koan info      # .result.state: usable, not-initialized, unsupported-format or corrupt
-koan version   # .result.version: v0.4.0 or later is this skill's koan
+koan version   # .result.version: v0.9.0 or later is this skill's koan
 ```
 
 Ready when `.result.state` is `usable`. Otherwise `.result.error` is what every other command fails with:
@@ -26,7 +26,7 @@ Ready when `.result.state` is `usable`. Otherwise `.result.error` is what every 
 - `unsupported-format`: the database is in a format this binary doesn't read; the user needs a matching koan.
 - `corrupt`: report it; the user restores from a backup (see below).
 
-`version` printing `v0.4.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. Anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
+`version` printing `v0.9.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. An earlier `v` release lacks commands this skill names, and anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: either way, tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
 
 ## Reading output
 
