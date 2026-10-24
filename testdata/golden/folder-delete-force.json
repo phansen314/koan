@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown flag: --force",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "--force",
+        "reason": "unknown flag: --force"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

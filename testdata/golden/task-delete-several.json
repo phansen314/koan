@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "result": {
+    "removed": [
+      1,
+      2,
+      4
+    ],
+    "released": [
+      3,
+      5
+    ]
+  },
+  "warnings": []
+}

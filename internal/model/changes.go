@@ -892,72 +892,139 @@ type Removed struct {
 	Released []int64
 }
 
-// DeleteTask removes a task, its claim and every edge to and from it. It
-// never splices: what waited on it isn't passed its blockers.
-func (t *Tree) DeleteTask(task string) (out Removed, err error) {
+// DeleteTask removes tasks, their claims and every edge to and from
+// them, as one change. It never splices: what waited on them isn't passed
+// their blockers.
+func (t *Tree) DeleteTask(tasks ...string) (out Removed, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
+		var ids []int64
+		for _, x := range xs {
+			ids = append(ids, x.ID)
+		}
 		before, existed := c.readySet(), c.taskIDs()
-		c.remove([]int64{x.ID}, nil)
-		out = Removed{Removed: []int64{x.ID}, Released: c.released(before, existed)}
+		c.remove(ids, nil)
+		out = Removed{Removed: slices.Sorted(slices.Values(ids)), Released: c.released(before, existed)}
 		return nil
 	})
 	return out, err
 }
 
-// DeleteFolder removes a folder and everything under it, gates included.
-func (t *Tree) DeleteFolder(folder string, contents, force bool) (out Removed, err error) {
+// subjectFolders resolves a list of folders to delete, in order: the root
+// can't be one, a folder named twice is invalid-input at its later
+// occurrence, and one inside another named at the one inside.
+func (c *Tree) subjectFolders(folders []string) ([]*Folder, error) {
+	var s shape
+	refs := make([]core.Ref, len(folders))
+	for i, folder := range folders {
+		at := fmt.Sprintf("/folders/%d", i)
+		refs[i] = s.ref(at, folder, core.WantFolder, false)
+		if refs[i].IsRoot() {
+			s.faultf(at, "the root can't be deleted")
+		}
+	}
+	if len(folders) == 0 {
+		s.faultf("/folders", "at least one folder is needed")
+	}
+	if err := s.done(nil); err != nil {
+		return nil, err
+	}
+	var out []*Folder
+	for i, ref := range refs {
+		at := fmt.Sprintf("/folders/%d", i)
+		r, err := core.Resolve(c, ref, core.WantFolder, nil)
+		if err != nil {
+			return nil, pointAt(err, at, false)
+		}
+		if r.Kind == core.ResolvedRoot {
+			return nil, problem(invalid("the root can't be deleted"), "%s", at)
+		}
+		f := c.Folders[r.ID]
+		if slices.Contains(out, f) {
+			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d is given twice", f.ID)}, "%s", at)
+		}
+		out = append(out, f)
+	}
+	var inside *core.Error
+	for i, f := range out {
+		for _, g := range out {
+			if c.Under(f.ID, g.ID) {
+				reason := fmt.Sprintf("@%d is inside @%d, also given", f.ID, g.ID)
+				if inside == nil {
+					inside = &core.Error{Kind: core.KindInvalidInput, Message: reason}
+				}
+				problem(inside, "/folders/%d", i)
+				break
+			}
+		}
+	}
+	if inside != nil {
+		return nil, inside
+	}
+	return out, nil
+}
+
+// DeleteFolder removes folders and everything under them, gates included,
+// as one change.
+func (t *Tree) DeleteFolder(folders []string, contents, material bool) (out Removed, err error) {
 	err = t.change(func(c *Tree) error {
-		f, err := c.subjectFolder(folder)
+		fs, err := c.subjectFolders(folders)
 		if err != nil {
 			return err
 		}
 		if !contents {
-			var direct []int64
-			for _, x := range c.Tasks {
-				if x.Folder == f.ID && x.Gate == core.EndNone {
-					direct = append(direct, x.ID)
+			for _, f := range fs {
+				var direct []int64
+				for _, x := range c.Tasks {
+					if x.Folder == f.ID && x.Gate == core.EndNone {
+						direct = append(direct, x.ID)
+					}
 				}
-			}
-			for _, g := range c.Folders {
-				if g.Parent == f.ID {
-					direct = append(direct, g.ID)
+				for _, g := range c.Folders {
+					if g.Parent == f.ID {
+						direct = append(direct, g.ID)
+					}
 				}
-			}
-			if direct != nil {
-				slices.Sort(direct)
-				return core.Conflict(core.RuleNotEmpty, direct, nil, "@%d holds %s", f.ID, core.FormatIDs(direct))
+				if direct != nil {
+					slices.Sort(direct)
+					return core.Conflict(core.RuleNotEmpty, direct, nil, "@%d holds %s", f.ID, core.FormatIDs(direct))
+				}
 			}
 		}
-		tasks, folders := c.under(f.ID)
-		if !force {
+		var tasks, gone []int64
+		var found []string
+		for _, f := range fs {
+			ts, under := c.under(f.ID)
+			tasks, gone = append(tasks, ts...), append(gone, under...)
+			if material {
+				continue
+			}
 			// In tree order: each folder's own entries, byte for byte,
 			// before those of the folders under it. .DS_Store is never
 			// material to the check.
-			under := map[int64]bool{}
-			for _, id := range folders {
-				under[id] = true
+			in := map[int64]bool{}
+			for _, id := range under {
+				in[id] = true
 			}
-			var material []string
 			for _, id := range c.TreeOrder() {
-				if under[id] {
+				if in[id] {
 					for _, name := range sortedKeys(c.Folders[id].Material) {
 						if name != ".DS_Store" {
-							material = append(material, c.Path(id)+":"+name)
+							found = append(found, c.Path(id)+":"+name)
 						}
 					}
 				}
 			}
-			if material != nil {
-				return core.Conflict(core.RuleHasMaterial, nil, material, "@%d holds material", f.ID)
-			}
+		}
+		if found != nil {
+			return core.Conflict(core.RuleHasMaterial, nil, found, "the folders hold material")
 		}
 		before, existed := c.readySet(), c.taskIDs()
-		c.remove(tasks, folders)
-		out = Removed{Removed: slices.Sorted(slices.Values(slices.Concat(tasks, folders))), Released: c.released(before, existed)}
+		c.remove(tasks, gone)
+		out = Removed{Removed: slices.Sorted(slices.Values(slices.Concat(tasks, gone))), Released: c.released(before, existed)}
 		return nil
 	})
 	return out, err

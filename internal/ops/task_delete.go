@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"slices"
+
 	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
@@ -13,22 +15,29 @@ type DeleteResult struct {
 	Released []int64 `json:"released"`
 }
 
-// TaskDelete removes a task, its notes, its claim and every edge to and
-// from it. It never splices: what waited on it isn't passed its blockers.
+// TaskDelete removes tasks, their notes, their claims and every edge to
+// and from them, as one change. It never splices: what waited on them
+// isn't passed their blockers, and a task deleted with them is never
+// released.
 func TaskDelete() *cli.Command {
-	return taskCommand("task delete", tasksAndGates, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
-		row, _, err := tx.Task(id)
+	return tasksCommand("task delete", tasksAndGates, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
+		var steps []fsstep.Step
+		for _, id := range ids {
+			row, _, err := tx.Task(id)
+			if err != nil {
+				return nil, nil, err
+			}
+			steps = append(steps, fsstep.Step{Op: fsstep.OpRemove, From: fsstep.TaskNotesPath(tx.Path(row.Folder), id, row.Gate)})
+		}
+		released, err := tx.RemoveTasks(ids, nil)
 		if err != nil {
 			return nil, nil, err
 		}
-		notes := fsstep.TaskNotesPath(tx.Path(row.Folder), id, row.Gate)
-		released, err := tx.RemoveTasks([]int64{id}, nil)
-		if err != nil {
-			return nil, nil, err
+		for _, step := range steps {
+			if _, err := fsstep.Add(tx, step); err != nil {
+				return nil, nil, err
+			}
 		}
-		if _, err := fsstep.Add(tx, fsstep.Step{Op: fsstep.OpRemove, From: notes}); err != nil {
-			return nil, nil, err
-		}
-		return DeleteResult{Removed: []int64{id}, Released: nonNil(released)}, nil, nil
+		return DeleteResult{Removed: slices.Sorted(slices.Values(ids)), Released: nonNil(released)}, nil, nil
 	})
 }

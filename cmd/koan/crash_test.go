@@ -279,7 +279,7 @@ var crashCases = []crashCase{
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes")
 		writeTree(t, home, "@a/@b/src/main.go", "package main")
 		writeTree(t, home, "@a/.DS_Store", "")
-	}, args: []string{"folder", "delete", "/a", "--contents", "--force"}},
+	}, args: []string{"folder", "delete", "/a", "--contents", "--material"}},
 	{name: "folder archive", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")

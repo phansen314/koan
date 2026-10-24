@@ -74,7 +74,7 @@ func TestProperties(t *testing.T) {
 	}
 	for _, cmd := range []string{"task create", "task update", "task block", "task unblock", "task complete", "task reopen",
 		"task claim", "task claim-next", "task release", "task move", "task delete", "task archive", "folder create",
-		"folder update", "folder move", "folder move case", "folder delete", "folder delete force", "folder archive", "batch"} {
+		"folder update", "folder move", "folder move case", "folder delete", "folder delete material", "folder archive", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -122,16 +122,17 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		return pick([]string{"/a.start", "/c.done", "@2.start"})
 	}
-	// subjects is a list of one to three tasks, the first x, now and then
-	// with one given twice, and the words that give it: each its own
-	// word, or joined to the one before by a comma.
-	subjects := func(x string) (xs, words []string) {
+	// subjects is a list of one to three references, the first x and the
+	// rest from more, now and then with one given twice, and the words
+	// that give it: each its own word, or joined to the one before by a
+	// comma.
+	subjects := func(x string, more func() string) (xs, words []string) {
 		xs = []string{x}
 		for range rng.Intn(3) {
 			if rng.Intn(6) == 0 {
 				xs = append(xs, xs[rng.Intn(len(xs))])
 			} else {
-				xs = append(xs, subject())
+				xs = append(xs, more())
 			}
 		}
 		for i, x := range xs {
@@ -430,10 +431,10 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			return []string{"folder", "move", x, "--to", string(p)}, "folder move case",
 				fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, out.Path, madeAt(out.Created), warnings(out.Warnings)), err
 		case op == 7:
-			x := folderRef()
+			xs, words := subjects(folderRef(), folderRef)
 			var out model.Removed
-			out, err = m.DeleteFolder(x, true, true)
-			return []string{"folder", "delete", x, "--contents", "--force"}, "folder delete force",
+			out, err = m.DeleteFolder(xs, true, true)
+			return append(append([]string{"folder", "delete"}, words...), "--contents", "--material"), "folder delete material",
 				fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released)), err
 		case op == 8:
 			// Material, by hand, in a folder or the root.
@@ -541,10 +542,10 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			args = []string{"task", "move", x, "--to", to}
 			want = fmt.Sprintf("%v %s", changed, warnings(ws))
 		case op == 14:
-			x := subject()
+			xs, words := subjects(subject(), subject)
 			var out model.Removed
-			out, err = m.DeleteTask(x)
-			args = []string{"task", "delete", x}
+			out, err = m.DeleteTask(xs...)
+			args = append([]string{"task", "delete"}, words...)
 			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
 		case op >= 18:
 			var left []int64
@@ -575,21 +576,22 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			default:
 				contents := rng.Intn(3) == 0
 				var out model.Removed
-				out, err = m.DeleteFolder(x, contents, false)
-				args = []string{"folder", "delete", x, fmt.Sprintf("--contents=%v", contents)}
+				xs, words := subjects(x, folderRef)
+				out, err = m.DeleteFolder(xs, contents, false)
+				args = append(append([]string{"folder", "delete"}, words...), fmt.Sprintf("--contents=%v", contents))
 				want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
 			}
 		default:
 			x := subject()
 			switch rng.Intn(5) {
 			case 0:
-				xs, words := subjects(x)
+				xs, words := subjects(x, subject)
 				var out model.CompleteResult
 				out, err = m.Complete(xs...)
 				args = append([]string{"task", "complete"}, words...)
 				want = fmt.Sprintf("%v %v", nonNil(out.Changed), nonNil(out.Released))
 			case 1:
-				xs, words := subjects(x)
+				xs, words := subjects(x, subject)
 				var out model.CompleteResult
 				out, err = m.Reopen(xs...)
 				args = append([]string{"task", "reopen"}, words...)

@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "has-material",
-    "message": "@1 holds material; give force to delete it with the folder",
+    "message": "@1 holds material; give material to delete it with the folder",
     "ids": [],
     "paths": [
       "/w:@start.md",

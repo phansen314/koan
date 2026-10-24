@@ -462,24 +462,71 @@ func TestDeleteFolder(t *testing.T) {
 	tr.PutMaterial(1, "b")
 	tr.PutMaterial(1, "B")
 
-	_, err := tr.DeleteFolder("/f", false, false)
+	_, err := tr.DeleteFolder([]string{"/f"}, false, false)
 	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{2, 3}) {
 		t.Errorf("not-empty ids %v", e.IDs)
 	}
-	_, err = tr.DeleteFolder("/f", true, false)
+	_, err = tr.DeleteFolder([]string{"/f"}, true, false)
 	if e := wantErr(t, err, core.KindConflict, core.RuleHasMaterial); !reflect.DeepEqual(e.Paths, []string{"/f:B", "/f:b", "/f/sub:notes.txt"}) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
-	r := must[Removed](t)(tr.DeleteFolder("/f", true, true))
+	r := must[Removed](t)(tr.DeleteFolder([]string{"/f"}, true, true))
 	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2, 3, 4}, Released: []int64{5}}) {
 		t.Errorf("delete: %+v", r)
 	}
 	// A folder holding only its gates is empty.
 	must[[]FolderAt](t)(tr.CreateFolder("/g", nil, nil))
 	must[EdgeResult](t)(tr.Block("5", []string{"/g.start"}, nil))
-	must[Removed](t)(tr.DeleteFolder("/g", false, false))
-	_, err = tr.DeleteFolder("/", true, true)
+	must[Removed](t)(tr.DeleteFolder([]string{"/g"}, false, false))
+	_, err = tr.DeleteFolder([]string{"/"}, true, true)
 	wantErr(t, err, core.KindInvalidInput, "")
+	checked(t, tr)
+}
+
+// Deletes over a list are one change: a duplicate, a folder inside
+// another given, or a refusal for any changes nothing.
+func TestDeleteSeveral(t *testing.T) {
+	tr := newTree()
+	for _, title := range []string{"a", "b", "c"} {
+		must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: title})) // @1 to @3
+	}
+	must[EdgeResult](t)(tr.Block("2", []string{"1"}, []string{"3"}))
+	_, err := tr.DeleteTask("1", "@1")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+		t.Errorf("duplicate %v", e.Problems)
+	}
+	_, err = tr.DeleteTask("1", "99")
+	wantErr(t, err, core.KindNotFound, "")
+	r := must[Removed](t)(tr.DeleteTask("2", "1"))
+	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2}, Released: []int64{3}}) {
+		t.Errorf("tasks: %+v", r)
+	}
+
+	must[[]FolderAt](t)(tr.CreateFolder("/f/sub", nil, nil)) // @4, @5
+	must[[]FolderAt](t)(tr.CreateFolder("/g", nil, nil))     // @6
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Folder: "/g"}))
+	tr.PutMaterial(5, "x")
+	tr.PutMaterial(6, "y")
+	_, err = tr.DeleteFolder([]string{"/f/sub", "/g", "/f"}, true, true)
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/0"}) {
+		t.Errorf("inside %v", e.Problems)
+	}
+	_, err = tr.DeleteFolder([]string{"/g", "6"}, true, true)
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+		t.Errorf("twice %v", e.Problems)
+	}
+	_, err = tr.DeleteFolder([]string{"/f", "/g"}, false, false)
+	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{5}) {
+		t.Errorf("not-empty ids %v", e.IDs)
+	}
+	_, err = tr.DeleteFolder([]string{"/g", "/f"}, true, false)
+	if e := wantErr(t, err, core.KindConflict, core.RuleHasMaterial); !reflect.DeepEqual(e.Paths, []string{"/g:y", "/f/sub:x"}) {
+		t.Errorf("has-material paths %v", e.Paths)
+	}
+	r = must[Removed](t)(tr.DeleteFolder([]string{"/g", "/f"}, true, true))
+	if !reflect.DeepEqual(r.Removed, []int64{4, 5, 6, 7}) || len(r.Released) != 0 {
+		t.Errorf("folders: %+v", r)
+	}
 	checked(t, tr)
 }
 
@@ -667,6 +714,6 @@ func TestDeleteFolderDSStore(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/f/sub", nil, nil)) // @1, @2
 	tr.PutMaterial(2, ".DS_Store")
 	tr.PutMaterial(1, ".DS_Store")
-	must[Removed](t)(tr.DeleteFolder("/f", true, false))
+	must[Removed](t)(tr.DeleteFolder([]string{"/f"}, true, false))
 	checked(t, tr)
 }
