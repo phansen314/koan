@@ -1,0 +1,54 @@
+{
+  "ok": true,
+  "result": {
+    "id": 4,
+    "ref": "@4 (/e)",
+    "dir": "$HOME/koan-root/tree/@e",
+    "notes_path": "$HOME/koan-root/tree/@e/@notes.md",
+    "created": [
+      {
+        "id": 4,
+        "path": "/e"
+      }
+    ],
+    "gates_made": [
+      {
+        "id": 5,
+        "folder": {
+          "id": 4,
+          "path": "/e"
+        },
+        "end": "start"
+      },
+      {
+        "id": 6,
+        "folder": {
+          "id": 4,
+          "path": "/e"
+        },
+        "end": "done"
+      },
+      {
+        "id": 7,
+        "folder": {
+          "id": 1,
+          "path": "/c"
+        },
+        "end": "start"
+      }
+    ],
+    "reblocked": [
+      3
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "claimed-blocked",
+      "message": "@3 is claimed, and waits again; its claim stays.",
+      "ids": [
+        3
+      ],
+      "paths": []
+    }
+  ]
+}

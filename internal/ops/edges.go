@@ -38,6 +38,27 @@ func (r *input) edgeRefs() []edgeIn {
 	return out
 }
 
+// joinIn is one folder a join names. At is its JSON Pointer.
+type joinIn struct {
+	ref core.Ref
+	at  string
+}
+
+// joinRefs reads the folders a join names, each checked as a folder-ref
+// other than the root, which has no gates.
+func (r *input) joinRefs(field string) []joinIn {
+	var out []joinIn
+	for i, ref := range r.refs(field, core.WantFolder) {
+		at := fmt.Sprintf("%s/%d", r.at(field), i)
+		if ref.IsRoot() {
+			r.fault(at, "%q: the root has no gates, so it joins no folder and no folder joins it", ref.Raw)
+			continue
+		}
+		out = append(out, joinIn{ref: ref, at: at})
+	}
+	return out
+}
+
 // edge is an edge resolved: From waits on To. At is where it was given.
 type edge struct {
 	core.Edge
@@ -126,6 +147,74 @@ func (w *edges) resolve(task int64, in []edgeIn, make bool) ([]edge, error) {
 	return out, nil
 }
 
+// member resolves the task a join or an unjoin is given: a task, never
+// a gate.
+func (w *edges) member(ref core.Ref) (int64, error) {
+	res, err := resolve(w.tx, ref, core.WantTask, "task")
+	if err != nil {
+		return 0, err
+	}
+	row, _, err := w.tx.Task(res.ID)
+	if err != nil {
+		return 0, err
+	}
+	if row.Gate != core.EndNone {
+		return 0, &core.Error{Kind: core.KindInvalidInput, Problems: []string{"/task"},
+			Message: fmt.Sprintf("@%d is a gate, and a gate joins no folder", res.ID)}
+	}
+	return res.ID, nil
+}
+
+// gates gives a folder's start and done gates. With make set, a gate it
+// lacks is made, the start gate first; else it is 0, a task no edge has.
+func (w *edges) gates(folder int64, make bool) (start, done int64, err error) {
+	var ids [2]int64
+	for i, end := range []core.End{core.EndStart, core.EndDone} {
+		id, ok := w.tx.Gate(folder, end)
+		if !ok && make {
+			if id, err = w.gate(folder, end); err != nil {
+				return 0, 0, err
+			}
+		}
+		ids[i] = id
+	}
+	return ids[0], ids[1], nil
+}
+
+// join resolves the edges of joining each folder given, in order: the
+// subject, a task or a folder's start and done gates, waits on the
+// folder's start gate, and the folder's done gate waits on the subject.
+// With make set, a gate a folder lacks is made, its start gate first;
+// else an edge naming one, or a subject's gate that is 0, is an edge that
+// isn't there, and is left out.
+func (w *edges) join(start, done int64, in []joinIn, make bool) ([]edge, error) {
+	var out []edge
+	for _, j := range in {
+		var res core.Resolved
+		var err error
+		if w.labels != nil {
+			res, err = core.Resolve(w.tx, j.ref, core.WantFolder, w.labels)
+			err = pointAt(err, j.at)
+		} else {
+			res, err = resolveAt(w.tx, j.ref, core.WantFolder, j.at)
+		}
+		if err != nil {
+			return nil, err
+		}
+		folderStart, folderDone, err := w.gates(res.ID, make)
+		if err != nil {
+			return nil, err
+		}
+		if start != 0 && folderStart != 0 {
+			out = append(out, edge{core.Edge{From: start, To: folderStart}, j.at})
+		}
+		if folderDone != 0 && done != 0 {
+			out = append(out, edge{core.Edge{From: folderDone, To: done}, j.at})
+		}
+	}
+	return out, nil
+}
+
 // add writes edges: an edge to itself is invalid-input at it, one that
 // closes a cycle is refused, and one already there is left as it is. It
 // reports whether it wrote any, the ready tasks they made wait, and the
@@ -158,7 +247,8 @@ func (w *edges) add(es []edge) (changed bool, reblocked []int64, warnings []cli.
 		for i := range cycle {
 			step := core.Edge{From: cycle[i], To: cycle[(i+1)%len(cycle)]}
 			for _, e := range fresh {
-				if e.Edge == step {
+				// A join's two edges share their pointer, named once.
+				if e.Edge == step && !slices.Contains(err.Problems, e.at) {
 					err.Problems = append(err.Problems, e.at)
 				}
 			}

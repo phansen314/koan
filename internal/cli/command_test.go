@@ -34,6 +34,14 @@ var optional = &Command{
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
+// rest takes a subject, then a list as more words.
+var rest = &Command{
+	Name:    "task join",
+	Subject: &Option{Field: "task", Required: true},
+	Rest:    &Option{Field: "join", Kind: List, Arg: "folder"},
+	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+}
+
 // bare takes nothing.
 var bare = &Command{
 	Name: "version",
@@ -102,6 +110,9 @@ func TestParseLines(t *testing.T) {
 		{optional, nil, `{}`},
 		{optional, []string{"@41:docs/plan.md"}, `{"ref":"@41:docs/plan.md"}`},
 		{bare, nil, `{}`},
+		{rest, []string{"42", "/a"}, `{"task":"42","join":["/a"]}`},
+		{rest, []string{"42", "/a,/b"}, `{"task":"42","join":["/a","/b"]}`},
+		{rest, []string{"42", "/a", "/b,/c"}, `{"task":"42","join":["/a","/b","/c"]}`},
 	}
 	for _, c := range cases {
 		l, e := c.cmd.parse(c.args)
@@ -186,6 +197,10 @@ func TestParseUsage(t *testing.T) {
 		{optional, []string{"a", "b"}, "b"},
 		{bare, []string{"x"}, "x"},
 		{bare, []string{"--", "x"}, "x"},
+		{rest, nil, ""},
+		{rest, []string{"42"}, ""},
+		{rest, []string{"-i", "f", "42"}, "42"},
+		{rest, []string{"42", "/a", "--join", "/b"}, "--join"},
 	}
 	for _, c := range cases {
 		_, e := c.cmd.parse(c.args)
