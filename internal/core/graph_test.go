@@ -42,13 +42,13 @@ func TestCycleExample(t *testing.T) {
 		cycle  []int64
 	}{
 		// @8 → @10 → @9.start → @7.done → @8
-		{"task block 8 --blocked-by 10", Edge{8, 10}, []int64{8, 10, 53, 52}},
+		{"task block 8 10", Edge{8, 10}, []int64{8, 10, 53, 52}},
 		// @7.start → @9.done → @10 → @9.start → @7.done → @8 → @7.start
-		{"task block @7.start --blocked-by @9", Edge{51, 54}, []int64{51, 54, 10, 53, 52, 8}},
+		{"task block @7.start @9", Edge{51, 54}, []int64{51, 54, 10, 53, 52, 8}},
 		// @8 → @7.done → @8
-		{"task block 8 --blocked-by @7", Edge{8, 52}, []int64{8, 52}},
+		{"task block 8 @7", Edge{8, 52}, []int64{8, 52}},
 		// Allowed.
-		{"task block 4 --blocked-by @1", Edge{4, 55}, nil},
+		{"task block 4 @1", Edge{4, 55}, nil},
 	}
 	g := exampleGraph()
 	for _, tt := range tests {

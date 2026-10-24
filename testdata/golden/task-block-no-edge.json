@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "at least one edge is needed, by --blocked-by or --blocks",
+    "message": "at least one edge is needed: what it waits on, after the task, or --blocks",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "",
-        "reason": "at least one edge is needed, by --blocked-by or --blocks"
+        "reason": "at least one edge is needed: what it waits on, after the task, or --blocks"
       }
     ],
     "archived": []

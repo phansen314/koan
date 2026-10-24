@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "marker bind needs a subject: folder",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "marker bind needs a subject: folder"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

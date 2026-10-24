@@ -82,7 +82,6 @@ var usages = map[string]string{
 	"contents":              "delete the folder's tasks and folders too",
 	"folder delete/force":   "delete the files of yours in it too",
 	"marker bind/force":     "bind a checkout, or a directory bound to another folder",
-	"dir":                   "the directory; the working directory when left out",
 	"where/file":            "find the folder this file is in",
 	"context/file":          "brief the folder this file is in; the working directory when left out",
 	"export/file":           "export the folder this file is in; the working directory when left out",

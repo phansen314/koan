@@ -64,9 +64,9 @@ EOF`, want: []string{`{"ok":true,"result":{"folders":[{"id":40,"path":"/work"},{
 Seen in CI on 2026-10-19; fails about 1 run in 20.
 EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":"~/koan-root/tree/@48.md"}}`}},
 	{cmd: `koan task update 48 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'`, want: []string{`{"ok":true,"result":{"id":48,"changed":true}}`}},
-	{cmd: "koan task block 44 --blocked-by 48", want: []string{`{"ok":true,"result":{"id":44,"changed":true}}`}},
-	{cmd: "koan task unblock 44 --blocked-by 48", want: []string{`{"ok":true,"result":{"id":44,"changed":true}}`}},
-	{cmd: "koan task block 42 --blocked-by 43", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"cycle","ids":[42,43]}}`}},
+	{cmd: "koan task block 44 48", want: []string{`{"ok":true,"result":{"id":44,"changed":true}}`}},
+	{cmd: "koan task unblock 44 48", want: []string{`{"ok":true,"result":{"id":44,"changed":true}}`}},
+	{cmd: "koan task block 42 43", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"cycle","ids":[42,43]}}`}},
 
 	// Folders
 	{cmd: "koan folder create /work/web/client --title 'Web client'", want: []string{`{"ok":true,"result":{"id":50,"created":[{"id":49,"path":"/work/web"},{"id":50,"path":"/work/web/client"}]}}`}},
@@ -75,7 +75,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 		"finished":false,"notes_path":"~/koan-root/tree/@work/@api/@notes.md"}}}`}},
 	{cmd: "koan task create 'Port the client' --folder /work/web/client --blocked-by /work/web/client.start --blocks /work/web/client",
 		want: []string{`{"ok":true,"result":{"id":51,"gates_made":[{"id":52,"end":"start"},{"id":53,"end":"done"}]}}`}},
-	{cmd: "koan task block /work/web/client.start --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":52,"changed":true,"gates_made":[],"reblocked":[52]}}`}},
+	{cmd: "koan task block /work/web/client.start /work/api", want: []string{`{"ok":true,"result":{"id":52,"changed":true,"gates_made":[],"reblocked":[52]}}`}},
 
 	// References
 	{cmd: "koan where @41:docs/plan.md", want: []string{`{"ok":true,"result":{"ref":"@41:docs/plan.md (/work/api:docs/plan.md)","kind":"material","id":41,"file":"~/koan-root/tree/@work/@api/docs/plan.md"}}`}},
@@ -91,13 +91,13 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "jq .ok api.json", want: []string{"true"}},
 
 	// Worktrees
-	{cmd: "koan marker bind @41 --dir ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":{"id":41,"path":"/work/api"},"replaced":false}}`}},
+	{cmd: "koan marker bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":{"id":41,"path":"/work/api"},"replaced":false}}`}},
 	{cmd: "cd ~/code/api-v2 && koan context", want: []string{`{"ok":true,"result":{"folder":{"id":41},"ancestors":[{"id":40}],"notes":"Move the API to v2.\n",
 		"tasks":[{"id":43},{"id":46},{"id":47}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
 	{cmd: "koan where --file ~/code/api-v2/src/main.go", want: []string{`{"ok":true,"result":{"ref":"@41 (/work/api)","kind":"folder","marker":"~/code/api-v2/.koan/marker.json"},"warnings":[]}`}},
 	{cmd: "koan folder move /work/api --to /work/api2", want: []string{`{"ok":true,"result":{"id":41,"changed":true,"path":"/work/api2"}}`}},
 	{cmd: "koan where --file ~/code/api-v2", want: []string{`{"ok":true,"result":{"ref":"@41 (/work/api2)"},"warnings":[{"kind":"stale-marker","ids":[41]}]}`}},
-	{cmd: "koan marker bind @41 --dir ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":{"id":41,"path":"/work/api2"},"replaced":true}}`}},
+	{cmd: "koan marker bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":{"id":41,"path":"/work/api2"},"replaced":true}}`}},
 	{cmd: "koan folder move /work/api2 --to /work/api", want: []string{`{"ok":true,"result":{"id":41,"changed":true,"path":"/work/api"}}`}},
 
 	// Moving, deleting and archiving
@@ -149,7 +149,7 @@ var readmeSteps = []docStep{
 
 	// Ordering folders
 	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":5,"gates_made":[{"id":6,"folder":{"id":2},"end":"done"}]}}`}},
-	{cmd: "koan task block /work/api.done --blocked-by 3,4", want: []string{`{"ok":true,"result":{"id":6,"changed":true,"reblocked":[6]}}`}},
+	{cmd: "koan task block /work/api.done 3,4", want: []string{`{"ok":true,"result":{"id":6,"changed":true,"reblocked":[6]}}`}},
 	{cmd: "koan task why 5", want: []string{`{"ok":true,"result":{"id":5,"readiness":"blocked","blockers":[{"id":6}],"ready":[4]}}`}},
 	{cmd: "koan export /work/api | jq '.result.external[].ref'", want: []string{`"@5 (/work)"`}},
 	{cmd: `koan batch -i - <<'EOF'

@@ -32,7 +32,7 @@ func TestTaskComplete(t *testing.T) {
 	}
 	// 3 waits on 2; 4 on 2 and 5; 5 on /w.start, made 6.
 	ok(t, home, "task", "block", "2", "--blocks", "3,4")
-	ok(t, home, "task", "block", "5", "--blocks", "4", "--blocked-by", "/w.start")
+	ok(t, home, "task", "block", "5", "/w.start", "--blocks", "4")
 	ok(t, home, "task", "claim", "2")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r := ok(t, home, "task", "complete", "2")
@@ -61,7 +61,7 @@ func TestTaskComplete(t *testing.T) {
 	if r := ok(t, home, "task", "complete", "5"); fmt.Sprint(r.Result()) != "map[changed:true id:5 released:[4]]" {
 		t.Errorf("last blocker: %s", r.Line())
 	}
-	ok(t, home, "task", "block", "3", "--blocked-by", "4")
+	ok(t, home, "task", "block", "3", "4")
 	if r := ok(t, home, "task", "complete", "3"); fmt.Sprint(r.Result()) != "map[changed:true id:3 released:[]]" {
 		t.Errorf("blocked: %s", r.Line())
 	}
@@ -83,7 +83,7 @@ func TestTaskReopen(t *testing.T) {
 	}
 	// 2, 3 and 4 wait on 1; 4 on 5 too.
 	ok(t, home, "task", "block", "1", "--blocks", "2,3,4")
-	ok(t, home, "task", "block", "4", "--blocked-by", "5")
+	ok(t, home, "task", "block", "4", "5")
 	ok(t, home, "task", "claim", "1")
 	ok(t, home, "task", "complete", "1")
 	ok(t, home, "task", "claim", "2")
@@ -185,8 +185,8 @@ func TestTaskUpdate(t *testing.T) {
 		t.Errorf("extra as spelled: %s", r.Line())
 	}
 	// A gate's fields change like any task's.
-	ok(t, home, "folder", "create", "/w")                         // 2
-	ok(t, home, "task", "block", "1", "--blocked-by", "/w.start") // 3
+	ok(t, home, "folder", "create", "/w")         // 2
+	ok(t, home, "task", "block", "1", "/w.start") // 3
 	if r := ok(t, home, "task", "update", "/w.start", "--title", "Begin"); fmt.Sprint(r.Result()) != "map[changed:true id:3]" || field(t, home, "3", "title") != "Begin" {
 		t.Errorf("gate: %s", r.Line())
 	}

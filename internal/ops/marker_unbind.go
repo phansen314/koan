@@ -10,7 +10,7 @@ import (
 // MarkerUnbindResult is marker unbind's result, in its schema's order.
 type MarkerUnbindResult struct {
 	Dir     string `json:"dir"`
-	Removed bool   `json:"removed"`
+	Changed bool   `json:"changed"`
 }
 
 // MarkerUnbind removes a directory's marker: the temp file, marker.json,
@@ -18,7 +18,7 @@ type MarkerUnbindResult struct {
 func MarkerUnbind() *cli.Command {
 	return &cli.Command{
 		Name:    "marker unbind",
-		Options: []cli.Option{{Field: "dir", Kind: cli.Path}},
+		Subject: &cli.Option{Field: "dir", Kind: cli.Path},
 		Here:    &cli.Here{Field: "dir"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
@@ -50,7 +50,7 @@ func MarkerUnbind() *cli.Command {
 				if err != nil {
 					return nil, nil, writeIO(err, markers.File(dir))
 				}
-				res.Removed = removed
+				res.Changed = removed
 			}
 			return res, warnings, nil
 		},

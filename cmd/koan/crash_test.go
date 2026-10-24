@@ -246,7 +246,7 @@ var crashCases = []crashCase{
 	{name: "task complete", prep: func(t *testing.T, home string) { ok(t, home, "task", "claim", "1") },
 		args: []string{"task", "complete", "1"}},
 	{name: "task block", prep: func(t *testing.T, home string) { ok(t, home, "folder", "create", "/a") },
-		args: []string{"task", "block", "1", "--blocked-by", "/a.done", "--blocks", "/a.start"}},
+		args: []string{"task", "block", "1", "/a.done", "--blocks", "/a.start"}},
 	{name: "task move", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "m", "--notes", "m notes")
@@ -272,7 +272,7 @@ var crashCases = []crashCase{
 	{name: "folder delete", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
-		ok(t, home, "task", "block", "1", "--blocked-by", "/a.done")
+		ok(t, home, "task", "block", "1", "/a.done")
 	}, args: []string{"folder", "delete", "/a", "--contents"}},
 	{name: "folder delete force", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")

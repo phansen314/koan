@@ -136,9 +136,9 @@ func TestCompleteReferences(t *testing.T) {
 		// Gates made or not where an edge names them.
 		{[]string{"task", "block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
-		{[]string{"task", "block", "5", "--blocked-by", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"task", "block", "5", "@"}, offered(byID, as("@", edges...)...)},
 		{[]string{"task", "block", "5", "--blocks", ""}, offered(byID, as("@", edges...)...)},
-		{[]string{"task", "unblock", "5", "--blocked-by", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"task", "unblock", "5", "@"}, offered(byID, as("@", edges...)...)},
 		{[]string{"task", "create", "t", "--blocked-by", "@2"}, offered(byID, as("@", "2", "2.start", "2.done")...)},
 		{[]string{"task", "create", "t", "--blocks=2."}, offered(byID, as("", "2.start", "2.done")...)},
 		// Folders.
@@ -203,8 +203,8 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "complete", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
 		{[]string{"task", "reopen", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
 		{[]string{"task", "block", "/work"}, offered(byPath, "/work", "/work.start", "/work.done")},
-		{[]string{"task", "block", "5", "--blocked-by", "/work."}, offered(byPath, "/work.start", "/work.done")},
-		{[]string{"task", "block", "5", "--blocked-by", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"task", "block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
+		{[]string{"task", "block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		// Only tasks: a path offers nothing.
 		{[]string{"task", "move", "/"}, offered(byPath)},
@@ -224,11 +224,11 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"where", "@2/api"}, offered(byID)},
 		{[]string{"where", "/work/api:"}, offered(byID)},
 		{[]string{"where", "@3:docs"}, offered(byID)},
-		{[]string{"task", "block", "5", "--blocked-by", "$design"}, offered(byID)},
+		{[]string{"task", "block", "5", "$design"}, offered(byID)},
 		{[]string{"task", "show", "work"}, offered(byID)},
 		// Only a list's first item completes.
-		{[]string{"task", "block", "5", "--blocked-by", "6,@"}, offered(byID)},
-		{[]string{"task", "block", "5", "--blocked-by", "6", "--blocked-by", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
+		{[]string{"task", "block", "5", "6,@"}, offered(byID)},
+		{[]string{"task", "block", "5", "6", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
 		{[]string{"task", "join", "5", "/old,/w"}, offered(byID)},
 		{[]string{"task", "create", "t", "--join", "/old,/w"}, offered(byID)},
 		// A subject given, and values that aren't references.
@@ -241,7 +241,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"backup", ""}, offered(byFiles)},
 		{[]string{"task", "create", "t", "--notes-file", ""}, offered(byFiles)},
 		{[]string{"where", "--file", ""}, offered(byFiles)},
-		{[]string{"marker", "bind", "3", "--dir", ""}, offered(byFiles)},
+		{[]string{"marker", "bind", "3", ""}, offered(byFiles)},
 		{[]string{"task", "show", "-i", ""}, offered(byFiles)},
 	} {
 		if got := completes(t, home, c.args...); got != c.want {

@@ -62,7 +62,7 @@ func TestMarkerBind(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api")
 	ok(t, home, "folder", "create", "/home")
 	wt := mkdir(t, home, "wt")
-	r := ok(t, home, "marker", "bind", "/work/api", "--dir", wt)
+	r := ok(t, home, "marker", "bind", "/work/api", wt)
 	golden(t, r, "marker-bind")
 	if r.Result()["replaced"] != false || r.Result()["file"] != markerFile(wt) {
 		t.Errorf("bind: %s", r.Line())
@@ -79,16 +79,16 @@ func TestMarkerBind(t *testing.T) {
 	// The same folder again replaces it, refreshing its path; another
 	// live folder needs --force.
 	ok(t, home, "folder", "move", "/work/api", "--to", "/work/web")
-	r = ok(t, home, "marker", "bind", "2", "--dir", wt)
+	r = ok(t, home, "marker", "bind", "2", wt)
 	if r.Result()["replaced"] != true || checkMarker(t, wt)["path"] != "/work/web" {
 		t.Errorf("rebind: %s", r.Line())
 	}
-	r = fails(t, home, "conflict", "bound", "marker", "bind", "/home", "--dir", wt)
+	r = fails(t, home, "conflict", "bound", "marker", "bind", "/home", wt)
 	golden(t, r, "marker-bind-bound")
 	if checkMarker(t, wt)["id"] != 2.0 {
 		t.Errorf("refused bind changed the marker")
 	}
-	r = ok(t, home, "marker", "bind", "/home", "--dir", wt, "--force")
+	r = ok(t, home, "marker", "bind", "/home", wt, "--force")
 	if r.Result()["replaced"] != true || checkMarker(t, wt)["id"] != 3.0 {
 		t.Errorf("force: %s", r.Line())
 	}
@@ -102,36 +102,36 @@ func TestMarkerBind(t *testing.T) {
 		`{"schema":1,"id":99,"path":"/work/web","dir":"` + wt + `"}`,
 	} {
 		os.WriteFile(markerFile(wt), []byte(content), 0o644)
-		if r := ok(t, home, "marker", "bind", "/work/web", "--dir", wt); r.Result()["replaced"] != true {
+		if r := ok(t, home, "marker", "bind", "/work/web", wt); r.Result()["replaced"] != true {
 			t.Errorf("over %s: %s", content, r.Line())
 		}
 	}
 	ok(t, home, "folder", "create", "/gone")
-	ok(t, home, "marker", "bind", "/gone", "--dir", wt, "--force")
+	ok(t, home, "marker", "bind", "/gone", wt, "--force")
 	ok(t, home, "folder", "delete", "/gone")
-	ok(t, home, "marker", "bind", "/home", "--dir", wt)
+	ok(t, home, "marker", "bind", "/home", wt)
 
 	// A temp file left by a crash is koan's own, and written over.
 	os.WriteFile(filepath.Join(wt, ".koan", "marker.json.tmp"), []byte("partial"), 0o644)
-	ok(t, home, "marker", "bind", "/home", "--dir", wt)
+	ok(t, home, "marker", "bind", "/home", wt)
 	if got := koanDir(t, wt); len(got) != 2 {
 		t.Errorf("temp file left: %q", got)
 	}
 
 	// The folder: by reference, never the root, never a task.
-	golden(t, fails(t, home, "invalid-input", "", "marker", "bind", "/", "--dir", wt), "marker-bind-root")
+	golden(t, fails(t, home, "invalid-input", "", "marker", "bind", "/", wt), "marker-bind-root")
 	ok(t, home, "task", "create", "a")
-	fails(t, home, "not-found", "", "marker", "bind", "@5", "--dir", wt)
-	fails(t, home, "not-found", "", "marker", "bind", "/nope", "--dir", wt)
-	fails(t, home, "conflict", "case-mismatch", "marker", "bind", "/HOME", "--dir", wt)
-	fails(t, home, "invalid-input", "", "marker", "bind", "/home.done", "--dir", wt)
-	if r := koan(t, home, "marker", "bind", "/home", "--dir", wt, "--force=x"); r.Exit != 2 || r.Kind() != "usage" {
+	fails(t, home, "not-found", "", "marker", "bind", "@5", wt)
+	fails(t, home, "not-found", "", "marker", "bind", "/nope", wt)
+	fails(t, home, "conflict", "case-mismatch", "marker", "bind", "/HOME", wt)
+	fails(t, home, "invalid-input", "", "marker", "bind", "/home.done", wt)
+	if r := koan(t, home, "marker", "bind", "/home", wt, "--force=x"); r.Exit != 2 || r.Kind() != "usage" {
 		t.Errorf("--force=x: %s", r.Line())
 	}
 	ok(t, home, "folder", "create", "/done")
 	ok(t, home, "folder", "archive", "/done")
-	fails(t, home, "not-found", "", "marker", "bind", "/done", "--dir", wt)
-	r = fails(t, home, "not-found", "", "marker", "bind", "@6", "--dir", wt)
+	fails(t, home, "not-found", "", "marker", "bind", "/done", wt)
+	r = fails(t, home, "not-found", "", "marker", "bind", "@6", wt)
 	if len(r.Error()["archived"].([]any)) != 1 {
 		t.Errorf("archived: %s", r.Line())
 	}
@@ -153,7 +153,7 @@ func TestMarkerBindRefusals(t *testing.T) {
 	mkdir(t, wt, ".koan", "sub")
 	os.WriteFile(filepath.Join(wt, ".koan", "notes"), nil, 0o644)
 	os.WriteFile(filepath.Join(wt, ".koan", ".gitignore"), []byte("*\n"), 0o644)
-	r := fails(t, home, "conflict", "foreign-files", "marker", "bind", "/work", "--dir", wt, "--force")
+	r := fails(t, home, "conflict", "foreign-files", "marker", "bind", "/work", wt, "--force")
 	golden(t, r, "marker-bind-foreign-files")
 	if p := errorPaths(r); len(p) != 2 || p[0] != wt+"/.koan/notes" || p[1] != wt+"/.koan/sub" {
 		t.Errorf("foreign files: %s", r.Line())
@@ -162,54 +162,54 @@ func TestMarkerBindRefusals(t *testing.T) {
 	// checkout: .git is a directory. A worktree's .git is a file.
 	co := mkdir(t, home, "co")
 	mkdir(t, co, ".git")
-	r = fails(t, home, "conflict", "checkout", "marker", "bind", "/work", "--dir", co)
+	r = fails(t, home, "conflict", "checkout", "marker", "bind", "/work", co)
 	golden(t, r, "marker-bind-checkout")
 	if p := errorPaths(r); len(p) != 1 || p[0] != co {
 		t.Errorf("checkout: %s", r.Line())
 	}
-	ok(t, home, "marker", "bind", "/work", "--dir", co, "--force")
+	ok(t, home, "marker", "bind", "/work", co, "--force")
 	worktree := mkdir(t, home, "worktree")
 	os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: /x\n"), 0o644)
-	ok(t, home, "marker", "bind", "/work", "--dir", worktree)
+	ok(t, home, "marker", "bind", "/work", worktree)
 
 	// The order: foreign-files before checkout before bound.
 	mkdir(t, co, ".koan", "x")
-	fails(t, home, "conflict", "foreign-files", "marker", "bind", "/home", "--dir", co)
+	fails(t, home, "conflict", "foreign-files", "marker", "bind", "/home", co)
 	os.Remove(filepath.Join(co, ".koan", "x"))
-	fails(t, home, "conflict", "checkout", "marker", "bind", "/home", "--dir", co)
+	fails(t, home, "conflict", "checkout", "marker", "bind", "/home", co)
 
 	// Under ~/koan-root, anywhere, is invalid-input at /dir.
 	root := filepath.Join(home, "koan-root")
 	for _, dir := range []string{root, root + "/tree", root + "/tree/@work", root + "/archived", root + "/tree/@work/missing"} {
-		r := fails(t, home, "invalid-input", "", "marker", "bind", "/work", "--dir", dir)
+		r := fails(t, home, "invalid-input", "", "marker", "bind", "/work", dir)
 		if p := r.Error()["problems"].([]any); len(p) != 1 || p[0].(map[string]any)["field"] != "/dir" {
-			t.Errorf("--dir %s: %s", dir, r.Line())
+			t.Errorf("<dir> %s: %s", dir, r.Line())
 		}
 	}
-	golden(t, fails(t, home, "invalid-input", "", "marker", "bind", "/work", "--dir", root+"/tree/@work"), "marker-bind-under-root")
+	golden(t, fails(t, home, "invalid-input", "", "marker", "bind", "/work", root+"/tree/@work"), "marker-bind-under-root")
 	// A directory beside the root is not under it.
-	ok(t, home, "marker", "bind", "/work", "--dir", mkdir(t, home, "koan-root-2"))
+	ok(t, home, "marker", "bind", "/work", mkdir(t, home, "koan-root-2"))
 
-	// A --dir that doesn't exist, or isn't a directory, is io.
-	r = fails(t, home, "io", "", "marker", "bind", "/work", "--dir", home+"/missing")
+	// A <dir> that doesn't exist, or isn't a directory, is io.
+	r = fails(t, home, "io", "", "marker", "bind", "/work", home+"/missing")
 	golden(t, r, "marker-bind-missing")
 	if p := errorPaths(r); len(p) != 1 || p[0] != home+"/missing" {
 		t.Errorf("missing: %s", r.Line())
 	}
 	os.WriteFile(home+"/file", nil, 0o644)
-	fails(t, home, "io", "", "marker", "bind", "/work", "--dir", home+"/file")
+	fails(t, home, "io", "", "marker", "bind", "/work", home+"/file")
 
 	// The order: under the root, then missing, then the folder, then the
 	// conflicts.
-	fails(t, home, "invalid-input", "", "marker", "bind", "/nope", "--dir", root+"/missing")
-	fails(t, home, "io", "", "marker", "bind", "/nope", "--dir", home+"/missing")
-	fails(t, home, "not-found", "", "marker", "bind", "/nope", "--dir", co)
+	fails(t, home, "invalid-input", "", "marker", "bind", "/nope", root+"/missing")
+	fails(t, home, "io", "", "marker", "bind", "/nope", home+"/missing")
+	fails(t, home, "not-found", "", "marker", "bind", "/nope", co)
 	// The input's shape before the root's state, and the root's state
 	// before the directory.
-	fails(t, home, "invalid-input", "", "marker", "bind", "/", "--dir", home+"/missing")
+	fails(t, home, "invalid-input", "", "marker", "bind", "/", home+"/missing")
 	bare := realDir(t)
-	fails(t, bare, "not-initialized", "", "marker", "bind", "/work", "--dir", bare+"/missing")
-	fails(t, bare, "not-initialized", "", "marker", "unbind", "--dir", bare)
+	fails(t, bare, "not-initialized", "", "marker", "bind", "/work", bare+"/missing")
+	fails(t, bare, "not-initialized", "", "marker", "unbind", bare)
 }
 
 // A second route to the root, such as a symlink, never gets past the
@@ -227,8 +227,8 @@ func TestMarkerBindRealPath(t *testing.T) {
 	link := filepath.Join(home, "link")
 	os.Symlink(filepath.Join(elsewhere, "tree"), link)
 	for _, dir := range []string{elsewhere, elsewhere + "/tree/@work", link, link + "/@work", home + "/koan-root/tree"} {
-		fails(t, home, "invalid-input", "", "marker", "bind", "/work", "--dir", dir)
-		fails(t, home, "invalid-input", "", "marker", "unbind", "--dir", dir)
+		fails(t, home, "invalid-input", "", "marker", "bind", "/work", dir)
+		fails(t, home, "invalid-input", "", "marker", "unbind", dir)
 	}
 
 	// Through a symlinked directory outside the root, as macOS's /tmp is:
@@ -236,15 +236,15 @@ func TestMarkerBindRealPath(t *testing.T) {
 	wt := mkdir(t, home, "wt")
 	via := filepath.Join(home, "via")
 	os.Symlink(wt, via)
-	r := ok(t, home, "marker", "bind", "/work", "--dir", via)
+	r := ok(t, home, "marker", "bind", "/work", via)
 	if r.Result()["file"] != via+"/.koan/marker.json" || r.Result()["marker"].(map[string]any)["dir"] != wt {
 		t.Errorf("via: %s", r.Line())
 	}
 	if got := koanDir(t, wt); len(got) != 2 {
 		t.Errorf("not written through the link: %q", got)
 	}
-	r = ok(t, home, "marker", "unbind", "--dir", via)
-	if r.Result()["dir"] != via || r.Result()["removed"] != true {
+	r = ok(t, home, "marker", "unbind", via)
+	if r.Result()["dir"] != via || r.Result()["changed"] != true {
 		t.Errorf("unbind via: %s", r.Line())
 	}
 }
@@ -255,15 +255,15 @@ func TestMarkerUnbind(t *testing.T) {
 	home := realRoot(t)
 	ok(t, home, "folder", "create", "/work")
 	wt := mkdir(t, home, "wt")
-	ok(t, home, "marker", "bind", "/work", "--dir", wt)
-	r := ok(t, home, "marker", "unbind", "--dir", wt)
+	ok(t, home, "marker", "bind", "/work", wt)
+	r := ok(t, home, "marker", "unbind", wt)
 	golden(t, r, "marker-unbind")
-	if r.Result()["removed"] != true || koanDir(t, wt) != nil {
+	if r.Result()["changed"] != true || koanDir(t, wt) != nil {
 		t.Errorf("unbind: %s %q", r.Line(), koanDir(t, wt))
 	}
-	r = ok(t, home, "marker", "unbind", "--dir", wt)
+	r = ok(t, home, "marker", "unbind", wt)
 	golden(t, r, "marker-unbind-none")
-	if r.Result()["removed"] != false {
+	if r.Result()["changed"] != false {
 		t.Errorf("again: %s", r.Line())
 	}
 
@@ -271,36 +271,36 @@ func TestMarkerUnbind(t *testing.T) {
 	mkdir(t, wt, ".koan")
 	os.WriteFile(filepath.Join(wt, ".koan", ".gitignore"), []byte("*\n"), 0o644)
 	os.WriteFile(filepath.Join(wt, ".koan", "marker.json.tmp"), []byte("x"), 0o644)
-	if r := ok(t, home, "marker", "unbind", "--dir", wt); r.Result()["removed"] != false || koanDir(t, wt) != nil {
+	if r := ok(t, home, "marker", "unbind", wt); r.Result()["changed"] != false || koanDir(t, wt) != nil {
 		t.Errorf("leftovers: %s %q", r.Line(), koanDir(t, wt))
 	}
 	mkdir(t, wt, ".koan")
 	os.WriteFile(markerFile(wt), []byte("not json"), 0o644)
-	if r := ok(t, home, "marker", "unbind", "--dir", wt); r.Result()["removed"] != true || koanDir(t, wt) != nil {
+	if r := ok(t, home, "marker", "unbind", wt); r.Result()["changed"] != true || koanDir(t, wt) != nil {
 		t.Errorf("unreadable: %s", r.Line())
 	}
 
 	// A .koan/ holding anything else is never touched.
-	ok(t, home, "marker", "bind", "/work", "--dir", wt)
+	ok(t, home, "marker", "bind", "/work", wt)
 	os.WriteFile(filepath.Join(wt, ".koan", "mine"), nil, 0o644)
-	r = fails(t, home, "conflict", "foreign-files", "marker", "unbind", "--dir", wt)
+	r = fails(t, home, "conflict", "foreign-files", "marker", "unbind", wt)
 	golden(t, r, "marker-unbind-foreign-files")
 	if got := koanDir(t, wt); len(got) != 3 {
 		t.Errorf("touched: %q", got)
 	}
 
-	// --dir: absolute through --input, made absolute or the working
+	// <dir>: absolute through --input, made absolute or the working
 	// directory on the command line; missing or under the root.
 	os.Remove(filepath.Join(wt, ".koan", "mine"))
-	if r := koanIn(t, home, filepath.Join(wt, ".koan"), "marker", "unbind", "--dir", ".."); r.Result()["dir"] != wt || r.Result()["removed"] != true {
+	if r := koanIn(t, home, filepath.Join(wt, ".koan"), "marker", "unbind", ".."); r.Result()["dir"] != wt || r.Result()["changed"] != true {
 		t.Errorf("relative: %s", r.Line())
 	}
-	ok(t, home, "marker", "bind", "/work", "--dir", wt)
-	if r := koanIn(t, home, wt, "marker", "unbind"); r.Result()["dir"] != wt || r.Result()["removed"] != true {
+	ok(t, home, "marker", "bind", "/work", wt)
+	if r := koanIn(t, home, wt, "marker", "unbind"); r.Result()["dir"] != wt || r.Result()["changed"] != true {
 		t.Errorf("cwd: %s", r.Line())
 	}
-	golden(t, fails(t, home, "io", "", "marker", "unbind", "--dir", home+"/missing"), "marker-unbind-missing")
-	fails(t, home, "invalid-input", "", "marker", "unbind", "--dir", filepath.Join(home, "koan-root", "tree"))
+	golden(t, fails(t, home, "io", "", "marker", "unbind", home+"/missing"), "marker-unbind-missing")
+	fails(t, home, "invalid-input", "", "marker", "unbind", filepath.Join(home, "koan-root", "tree"))
 	r = testrun.Run{Home: home, Dir: wt, Stdin: strings.NewReader(`{}`)}.Koan(t, "marker", "unbind", "-i", "-")
 	r.Check(t, "marker unbind")
 	if r.Kind() != "invalid-input" || r.Error()["problems"].([]any)[0].(map[string]any)["field"] != "/dir" {
@@ -308,7 +308,7 @@ func TestMarkerUnbind(t *testing.T) {
 	}
 }
 
-// --dir for bind: relative, or the working directory when left out;
+// <dir> for bind: relative, or the working directory when left out;
 // through --input, required and absolute.
 func TestMarkerBindDir(t *testing.T) {
 	home := realRoot(t)
@@ -318,7 +318,7 @@ func TestMarkerBindDir(t *testing.T) {
 	if r := koanIn(t, home, sub, "marker", "bind", "/work"); r.Result()["file"] != markerFile(sub) {
 		t.Errorf("cwd: %s", r.Line())
 	}
-	if r := koanIn(t, home, sub, "marker", "bind", "/work", "--dir", ".."); r.Result()["file"] != markerFile(wt) {
+	if r := koanIn(t, home, sub, "marker", "bind", "/work", ".."); r.Result()["file"] != markerFile(wt) {
 		t.Errorf("relative: %s", r.Line())
 	}
 	for _, c := range []struct{ in, field string }{
@@ -332,18 +332,19 @@ func TestMarkerBindDir(t *testing.T) {
 			t.Errorf("%s: %s", c.in, r.Line())
 		}
 	}
-	if r := koan(t, home, "marker", "bind"); r.Exit != 2 || r.Kind() != "usage" {
-		t.Errorf("no folder: %s", r.Line())
+	// The folder, then the directory: one word each, and --dir is gone.
+	golden(t, usageAt(t, home, "", "marker", "bind"), "marker-bind-no-subject")
+	golden(t, usageAt(t, home, sub, "marker", "bind", "/work", wt, sub), "marker-bind-extra")
+	golden(t, usageAt(t, home, "--dir", "marker", "bind", "/work", "--dir", wt), "marker-bind-dir")
+	usageAt(t, home, sub, "marker", "unbind", wt, sub)
+	usageAt(t, home, "--dir", "marker", "unbind", "--dir", wt)
+	usageAt(t, home, "/work", "marker", "bind", "/work", wt, "-i", "-")
+	r := testrun.Run{Home: home, Stdin: strings.NewReader(`{"folder":"/work","dir":"` + wt + `"}`)}.Koan(t, "marker", "bind", "-i", "-")
+	r.Check(t, "marker bind")
+	if r.Exit != 0 || r.Result()["file"] != markerFile(wt) {
+		t.Errorf("--input: %s", r.Line())
 	}
-	if r := koan(t, home, "marker", "unbind", "/work"); r.Exit != 2 || r.Kind() != "usage" {
-		t.Errorf("unbind subject: %s", r.Line())
-	}
-	if r := koan(t, home, "marker", "bind", "/work", "--dir", wt, "--dir", wt); r.Exit != 2 || r.Kind() != "usage" {
-		t.Errorf("--dir twice: %s", r.Line())
-	}
-	if r := koan(t, home, "marker", "bind", "/work", "--dir", wt, "-i", "-"); r.Exit != 2 || r.Kind() != "usage" {
-		t.Errorf("--dir with --input: %s", r.Line())
-	}
+	golden(t, r, "marker-bind-input")
 }
 
 // git ignores .koan/, so git status never shows it and git worktree
@@ -375,8 +376,8 @@ func TestMarkerGit(t *testing.T) {
 	git(repo, "commit", "-q", "-m", "first")
 	git(repo, "worktree", "add", "-q", wt)
 
-	fails(t, home, "conflict", "checkout", "marker", "bind", "/work", "--dir", repo)
-	ok(t, home, "marker", "bind", "/work", "--dir", wt)
+	fails(t, home, "conflict", "checkout", "marker", "bind", "/work", repo)
+	ok(t, home, "marker", "bind", "/work", wt)
 	if s := git(wt, "status", "--porcelain", "--ignored=no"); s != "" {
 		t.Errorf("git status shows: %q", s)
 	}

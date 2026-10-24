@@ -593,7 +593,7 @@ func TestNotFoundID(t *testing.T) {
 		{[]string{"folder", "show", "@5"}, "@5 is below this root's first ID, 100, so came from an earlier root"},
 		{[]string{"folder", "show", "@200"}, "@200 was never issued"},
 		{[]string{"task", "create", "x", "--folder", "@102"}, "@102 was deleted"},
-		{[]string{"task", "block", "101", "--blocked-by", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"task", "block", "101", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
 		{[]string{"task", "update", "150", "--title", "x"}, "@150 was never issued"},
 	} {
 		r := fails(t, home, "not-found", "", c.args...)

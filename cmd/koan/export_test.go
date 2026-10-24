@@ -25,7 +25,7 @@ func exportTree(t *testing.T) string {
 	ok(t, home, "folder", "create", "/other")                                                                               // 4
 	ok(t, home, "task", "create", "a", "--folder", "/work/api", "--blocked-by", "/work/api.start", "--blocks", "/work/api") // 5, gates 6 and 7
 	ok(t, home, "task", "create", "b", "--folder", "/work/api/sub")                                                         // 8
-	ok(t, home, "task", "block", "/work/api.start", "--blocked-by", "/other")                                               // gate 9
+	ok(t, home, "task", "block", "/work/api.start", "/other")                                                               // gate 9
 	ok(t, home, "task", "complete", "9")
 	ok(t, home, "task", "create", "waiter", "--folder", "/work", "--blocked-by", "/work/api,/other") // 10
 	ok(t, home, "task", "create", "loose", "--blocked-by", "8")                                      // 11
@@ -199,7 +199,7 @@ func TestExportMarkers(t *testing.T) {
 	ok(t, home, "task", "create", "a", "--folder", "/work/api")
 	byRef := ok(t, home, "export", "/work/api").Stdout
 	wt := mkdir(t, home, "wt")
-	ok(t, home, "marker", "bind", "/work/api", "--dir", wt)
+	ok(t, home, "marker", "bind", "/work/api", wt)
 	if r := ok(t, home, "export", "--file", wt+"/src/x.go"); r.Stdout != byRef {
 		t.Errorf("--file: %s", r.Line())
 	}
@@ -235,14 +235,14 @@ func TestExportMarkers(t *testing.T) {
 	// Its folder deleted, or archived.
 	dir := mkdir(t, home, "gone")
 	ok(t, home, "folder", "create", "/gone") // 4
-	ok(t, home, "marker", "bind", "/gone", "--dir", dir)
+	ok(t, home, "marker", "bind", "/gone", dir)
 	ok(t, home, "folder", "delete", "/gone")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[4]" || len(r.Error()["archived"].([]any)) != 0 {
 		t.Errorf("deleted: %s", r.Line())
 	}
 	ok(t, home, "folder", "create", "/done") // 5
-	ok(t, home, "marker", "bind", "/done", "--dir", dir)
+	ok(t, home, "marker", "bind", "/done", dir)
 	ok(t, home, "folder", "archive", "/done")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[5]" || len(r.Error()["archived"].([]any)) != 1 {

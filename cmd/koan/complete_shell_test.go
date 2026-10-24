@@ -184,8 +184,8 @@ echo READY
 	s.line("koan task show @3.s\t", "koan task show @3.start ")
 	s.line("koan task show 1\t", "koan task show 12 ")
 	s.list("koan task complete @\t\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
-	s.line("koan task block 5 --blocked-by /work.\t", "koan task block 5 --blocked-by /work.")
-	s.list("koan task block 5 --blocked-by /work.\t\t", "/work.start", "/work.done")
+	s.line("koan task block 5 /work.\t", "koan task block 5 /work.")
+	s.list("koan task block 5 /work.\t\t", "/work.start", "/work.done")
 
 	s = start(manyTree(t))
 	s.list("koan task show \t\t", "101 match: type more, or use koan pick")
@@ -222,7 +222,7 @@ echo READY
 	s.line("koan task show @3.s\t", "koan task show @3.start ")
 	s.line("koan task show 1\t", "koan task show 12 ")
 	s.list("koan task complete @\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
-	s.list("koan task block 5 --blocked-by /work.\t", "/work.start", "/work.done")
+	s.list("koan task block 5 /work.\t", "/work.start", "/work.done")
 
 	s = start(manyTree(t))
 	s.list("koan task show \t", "101 match: type more, or use koan pick")

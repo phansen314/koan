@@ -452,7 +452,7 @@ func TestPickFailures(t *testing.T) {
 func TestPickHereAndInput(t *testing.T) {
 	home := pickTree(t)
 	work := t.TempDir()
-	ok(t, home, "marker", "bind", "@2", "--dir", work)
+	ok(t, home, "marker", "bind", "@2", work)
 	p := newPicker(t, home).with("FAKE_FZF_EXIT=1")
 	p.dir = filepath.Join(work)
 	p.run("--here", "--kinds", "folder,task")

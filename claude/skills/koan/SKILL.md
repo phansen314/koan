@@ -152,9 +152,9 @@ koan task create 'Investigate the flaky test' --notes-file - <<'EOF'
 Seen in CI on 2026-10-19; fails about 1 run in 20.
 EOF
 koan task update 48 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'
-koan task block 44 --blocked-by 48              # @44 waits on @48 too
-koan task unblock 44 --blocked-by 48
-koan task block 42 --blocked-by 43              # refused: conflict, rule cycle, since @43 waits on @42
+koan task block 44 48                           # @44 waits on @48 too
+koan task unblock 44 48
+koan task block 42 43                           # refused: conflict, rule cycle, since @43 waits on @42
 ```
 
 - **A write returns identities, not records**: `.result.id` and what else it touched, such as `released`, `reblocked` and `gates_made`, or `changed: false` when it changed nothing. `task show` it when you need its fields.
@@ -172,7 +172,7 @@ koan folder create /work/web/client --title 'Web client'    # makes /work/web to
 koan folder update /work/web/client --extra-merge '{"jira":"WEB-12"}'
 koan folder show /work/api                                   # .result.folder: gates, open, complete, finished, notes_path
 koan task create 'Port the client' --folder /work/web/client --blocked-by /work/web/client.start --blocks /work/web/client
-koan task block /work/web/client.start --blocked-by /work/api   # the client's work starts once the API is done
+koan task block /work/web/client.start /work/api                # the client's work starts once the API is done
 ```
 
 - `folder create` makes any missing parents, and lists every folder made in `created`. It refuses a path that is taken (`exists`) or that differs from a sibling only in case (`case-mismatch`).
@@ -225,12 +225,12 @@ jq .ok api.json                     # true; when false, .error says why
 A **marker** binds a directory outside the tree, usually a git worktree, to a folder, so koan can tell which folder of work you are in from anywhere inside it. It is a `.koan/` directory there, which git ignores by itself.
 
 ```sh
-koan marker bind @41 --dir ~/code/api-v2           # right after git worktree add; --dir defaults to the working directory
+koan marker bind @41 ~/code/api-v2                 # right after git worktree add; <dir> defaults to the working directory
 cd ~/code/api-v2 && koan context                   # the brief: the folder, the folders above it, its notes, its open tasks
 koan where --file ~/code/api-v2/src/main.go        # which folder a file is in: .result.ref is @41 (/work/api)
 koan folder move /work/api --to /work/api2         # a rename: the marker still binds @41, by ID
 koan where --file ~/code/api-v2                    # still @41, with a stale-marker warning
-koan marker bind @41 --dir ~/code/api-v2           # refreshes the hint: .result.replaced is true
+koan marker bind @41 ~/code/api-v2                 # refreshes the hint: .result.replaced is true
 koan folder move /work/api2 --to /work/api
 ```
 

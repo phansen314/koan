@@ -236,7 +236,7 @@ var perfOps = []perfOp{
 	{name: "export", budget: 200 * ms, args: func(r *perfRoot, i int) []string { return []string{"export", r.folder(i)} }},
 	{name: "export all", budget: 200 * ms, args: always("export", "/")},
 	{name: "info", budget: 100 * ms, args: always("info")},
-	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "task", "block", "1", "--blocked-by", "@")},
+	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "task", "block", "1", "@")},
 	{name: "complete id", budget: 100 * ms, plain: true, args: func(r *perfRoot, i int) []string {
 		id := r.task(i, 50)
 		return []string{"__complete", "task", "show", "@" + id[:max(1, len(id)-1)]}
@@ -257,14 +257,14 @@ var perfOps = []perfOp{
 		prep: func(r *perfRoot, i int) { r.must("task", "complete", r.task(i, 95)) },
 		args: func(r *perfRoot, i int) []string { return []string{"task", "reopen", r.task(i, 95)} }},
 	{name: "task block", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "unblock", r.task(i, 94), "--blocked-by", r.task(i+1, 10)) },
+		prep: func(r *perfRoot, i int) { r.must("task", "unblock", r.task(i, 94), r.task(i+1, 10)) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"task", "block", r.task(i, 94), "--blocked-by", r.task(i+1, 10)}
+			return []string{"task", "block", r.task(i, 94), r.task(i+1, 10)}
 		}},
 	{name: "task unblock", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "block", r.task(i, 93), "--blocked-by", r.task(i, 92)) },
+		prep: func(r *perfRoot, i int) { r.must("task", "block", r.task(i, 93), r.task(i, 92)) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"task", "unblock", r.task(i, 93), "--blocked-by", r.task(i, 92)}
+			return []string{"task", "unblock", r.task(i, 93), r.task(i, 92)}
 		}},
 	{name: "task move", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		to := fmt.Sprint("@", r.moving)
@@ -334,13 +334,13 @@ var perfOps = []perfOp{
 		return string(b)
 	}},
 	{name: "marker bind", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("marker", "unbind", "--dir", r.dir) },
+		prep: func(r *perfRoot, i int) { r.must("marker", "unbind", r.dir) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"marker", "bind", r.folder(i), "--dir", r.dir, "--force"}
+			return []string{"marker", "bind", r.folder(i), r.dir, "--force"}
 		}},
 	{name: "marker unbind", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("marker", "bind", r.folder(i), "--dir", r.dir, "--force") },
-		args: func(r *perfRoot, i int) []string { return []string{"marker", "unbind", "--dir", r.dir} }},
+		prep: func(r *perfRoot, i int) { r.must("marker", "bind", r.folder(i), r.dir, "--force") },
+		args: func(r *perfRoot, i int) []string { return []string{"marker", "unbind", r.dir} }},
 	{name: "doctor", budget: time.Second, args: always("doctor")},
 	{name: "repair", budget: time.Second, args: always("repair")},
 	{name: "backup", once: true, args: func(r *perfRoot, i int) []string {
