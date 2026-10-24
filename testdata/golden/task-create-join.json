@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "ref": "@2 (/)",
+    "notes_path": "$HOME/koan-root/tree/@2.md",
+    "gates_made": [
+      {
+        "id": 3,
+        "folder": {
+          "id": 1,
+          "path": "/a"
+        },
+        "end": "start"
+      },
+      {
+        "id": 4,
+        "folder": {
+          "id": 1,
+          "path": "/a"
+        },
+        "end": "done"
+      }
+    ],
+    "reblocked": []
+  },
+  "warnings": []
+}

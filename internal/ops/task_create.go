@@ -19,7 +19,8 @@ type TaskCreateResult struct {
 }
 
 // TaskCreate makes a task in a folder or the root, with its notes file
-// and its edges, making any gate they name.
+// and its edges, those of the folders it joins after the rest, making any
+// gate they name.
 func TaskCreate() *cli.Command {
 	return &cli.Command{
 		Name:    "task create",
@@ -30,6 +31,7 @@ func TaskCreate() *cli.Command {
 			{Field: "tags", Kind: cli.List},
 			{Field: "blocked_by", Kind: cli.List, Complete: edgeEnds.complete()},
 			{Field: "blocks", Kind: cli.List, Complete: edgeEnds.complete()},
+			{Field: "join", Kind: cli.List, Complete: foldersOnly.complete()},
 			{Field: "extra", Kind: cli.JSON},
 			{Field: "notes", Kind: cli.String},
 		},
@@ -41,11 +43,15 @@ func TaskCreate() *cli.Command {
 			priority := r.priority("priority")
 			tags := r.tags("tags")
 			edgesIn := r.edgeRefs()
+			joins := r.joinRefs("join")
 			extra := r.object("extra")
 			notes := r.text("notes", "")
 			refs, at := []core.Ref{folderRef}, []string{"/folder"}
 			for _, e := range edgesIn {
 				refs, at = append(refs, e.ref), append(at, e.at)
+			}
+			for _, j := range joins {
+				refs, at = append(refs, j.ref), append(at, j.at)
 			}
 			r.sameCase(refs, at)
 			if e := r.err(); e != nil {
@@ -72,7 +78,11 @@ func TaskCreate() *cli.Command {
 				if err != nil {
 					return nil, nil, err
 				}
-				_, reblocked, warnings, err := w.add(es)
+				js, err := w.join(id, id, joins, true)
+				if err != nil {
+					return nil, nil, err
+				}
+				_, reblocked, warnings, err := w.add(append(es, js...))
 				if err != nil {
 					return nil, nil, err
 				}

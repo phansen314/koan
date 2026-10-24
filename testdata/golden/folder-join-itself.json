@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "@5 can't wait on itself",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/join/0",
+        "reason": "@5 can't wait on itself"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

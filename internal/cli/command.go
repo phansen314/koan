@@ -59,6 +59,8 @@ type Option struct {
 	// Complete, for an argument that takes a reference, is what it
 	// completes to at a shell's Tab.
 	Complete Completer
+	// Arg, for the words after a subject, is what help calls each.
+	Arg string
 }
 
 // flag is the option's name without its dashes, as pflag knows it:
@@ -116,6 +118,10 @@ type Command struct {
 	Name    string
 	Short   string // its line in help
 	Subject *Option
+	// Rest, for a command whose subject is followed by more words, is the
+	// list field they set, each word read as a List option's text is. At
+	// least one is needed.
+	Rest    *Option
 	Options []Option
 	Files   []File
 	Here    *Here
@@ -133,6 +139,9 @@ func (c *Command) fields() map[string]bool {
 	f := map[string]bool{}
 	if c.Subject != nil {
 		f[c.Subject.Field] = true
+	}
+	if c.Rest != nil {
+		f[c.Rest.Field] = true
 	}
 	for _, o := range c.Options {
 		f[o.Field] = true
@@ -274,6 +283,9 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 			use += " [<" + s.Field + ">]"
 		}
 	}
+	if c.Rest != nil {
+		use += " <" + c.Rest.Arg + ">..."
+	}
 	cc := &cobra.Command{
 		Use:   use,
 		Short: c.Short,
@@ -351,6 +363,19 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 	}
 	if c.Subject == nil && len(args) > 0 {
 		return Usage(args[0], c.Name+" takes no subject")
+	}
+	if c.Rest != nil {
+		if len(args) == 0 {
+			return Usage("", c.Name+" needs a subject: "+c.Subject.Field)
+		}
+		if len(args) == 1 {
+			return Usage("", c.Name+" needs at least one "+c.Rest.Arg+" after the subject")
+		}
+		c.Subject.set(l.in, args[0])
+		for _, word := range args[1:] {
+			c.Rest.set(l.in, word)
+		}
+		return nil
 	}
 	if len(args) > 1 {
 		return Usage(args[1], "a second subject: "+c.Name+" takes one")

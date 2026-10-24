@@ -62,6 +62,9 @@ func TestCommandsMatchSchemas(t *testing.T) {
 		if c.Subject != nil {
 			got = append(got, c.Subject.Field)
 		}
+		if c.Rest != nil {
+			got = append(got, c.Rest.Field)
+		}
 		for _, o := range c.Options {
 			got = append(got, o.Field)
 		}

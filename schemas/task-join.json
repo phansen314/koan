@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-join",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "task",
+        "join"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "types#/$defs/task-ref",
+          "description": "Subject. A task, never a gate."
+        },
+        "join": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-ref"
+          },
+          "minItems": 1,
+          "description": "The folders joined: the arguments after the subject."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "$ref": "task-block#/$defs/result"
+    }
+  }
+}

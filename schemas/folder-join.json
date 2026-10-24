@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folder-join",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "folder",
+        "join"
+      ],
+      "properties": {
+        "folder": {
+          "$ref": "types#/$defs/folder-ref",
+          "description": "Subject."
+        },
+        "join": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-ref"
+          },
+          "minItems": 1,
+          "description": "The folders joined: the arguments after the subject."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "$ref": "task-block#/$defs/result"
+    }
+  }
+}

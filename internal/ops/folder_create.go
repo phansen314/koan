@@ -17,16 +17,20 @@ type FolderCreateResult struct {
 	Dir       string     `json:"dir"`
 	NotesPath string     `json:"notes_path"`
 	Created   []FolderAt `json:"created"`
+	GatesMade []GateMade `json:"gates_made"`
+	Reblocked []int64    `json:"reblocked"`
 }
 
 // FolderCreate makes a folder at its path, with its directory and notes,
-// and any missing parents the same way, with no title.
+// and any missing parents the same way, with no title. Joining folders,
+// it makes its own gates, then those of each folder it joins.
 func FolderCreate() *cli.Command {
 	return &cli.Command{
 		Name:    "folder create",
 		Subject: &cli.Option{Field: "path", Required: true, Complete: newPaths.complete()},
 		Options: []cli.Option{
 			{Field: "title", Kind: cli.String, Nullable: true},
+			{Field: "join", Kind: cli.List, Complete: foldersOnly.complete()},
 			{Field: "extra", Kind: cli.JSON},
 			{Field: "notes", Kind: cli.String},
 		},
@@ -35,8 +39,14 @@ func FolderCreate() *cli.Command {
 			r := input{in: in}
 			ref := r.path("path")
 			title := r.title("title")
+			joins := r.joinRefs("join")
 			extra := r.object("extra")
 			notes := r.text("notes", "")
+			refs, at := []core.Ref{ref}, []string{"/path"}
+			for _, j := range joins {
+				refs, at = append(refs, j.ref), append(at, j.at)
+			}
+			r.sameCase(refs, at)
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}
@@ -51,12 +61,30 @@ func FolderCreate() *cli.Command {
 					return nil, nil, err
 				}
 				last := created[len(created)-1]
+				// Its joins resolve after the folders are made, so they
+				// can name a missing parent it made.
+				w := newEdges(tx)
+				reblocked, warnings := []int64{}, []cli.Warning(nil)
+				if len(joins) > 0 {
+					start, done, err := w.gates(*last.ID, true)
+					if err != nil {
+						return nil, nil, err
+					}
+					es, err := w.join(start, done, joins, true)
+					if err != nil {
+						return nil, nil, err
+					}
+					if _, reblocked, warnings, err = w.add(es); err != nil {
+						return nil, nil, err
+					}
+				}
 				return FolderCreateResult{
 					ID: *last.ID, Ref: core.Kept(*last.ID, last.Path, core.EndNone),
 					Dir:       fsstep.Abs(s.Root, fsstep.FolderDir(last.Path)),
 					NotesPath: fsstep.Abs(s.Root, fsstep.FolderNotesPath(last.Path)),
 					Created:   created,
-				}, nil, nil
+					GatesMade: w.made, Reblocked: reblocked,
+				}, warnings, nil
 			})
 		},
 	}

@@ -87,20 +87,21 @@ Warnings never stop a command, and come with failures too. **Always tell the use
 - **Tasks** sit in a folder or the root. A task has an ID, a title, a priority (an integer or `null`), tags, an `extra` object, and notes, `@<id>.md` in its folder's directory. It is `open` or `complete`; complete covers cancelled too.
 - **Edges** are between tasks, and nothing else: a task's `blocked_by` lists the tasks it waits on. An open task is `ready` when nothing it waits on is open, and `blocked` otherwise. **Where a task sits never orders it**: a folder holds its tasks without waiting on them, so moving changes no readiness.
 - **Gates** order whole folders. A folder can have a start gate, `/work/api.start`, which its work waits on, and a done gate, `/work/api.done`, which waits on its work and which what comes after waits on. Gates are ordinary tasks, made the first time an edge names them: someone completes a gate as they complete any task, and a ready gate is on the frontier like any other. In an edge, a folder with no end means its done gate: `--blocked-by /work/api` is "after /work/api".
-- **Joining a folder** is two edges: the task waits on the start gate, and the done gate waits on the task. A gate that waits on nothing is ready at once, so write a plan's edges together, in one batch.
+- **Joining a folder** is two edges: the task waits on the start gate, and the done gate waits on the task. `--join /work/api` on `task create` writes both, `koan task join 42 /work/api` joins a task that exists, and `koan folder join /work/api/impl /work/api` joins a folder through its gates; `task unjoin` and `folder unjoin` remove them. A gate that waits on nothing is ready at once, so write a plan's edges together, in one batch.
 
 ### A plan: several tasks at once
 
-When a request breaks into several tasks, make them in **one** `batch`: all of it lands or none of it. Folders are named by path; a task gets a label, such as `$design`, for other parts of the batch to name it by, before or after it. Here `/work/api` gets two tasks joined to it, and a task in `/work` waits for the whole folder:
+When a request breaks into several tasks, make them in **one** `batch`: all of it lands or none of it. Folders are named by path; a task gets a label, such as `$design`, for other parts of the batch to name it by, before or after it. Here every task joins `/work/api` through the batch's `join`, but the task in `/work`, whose `"join": []` opts out, waits for the whole folder:
 
 ```sh
 koan batch -i - <<'EOF'
 {"folders": [{"path": "/work/api", "title": "API rework", "notes": "Move the API to v2.\n"}],
  "folder": "/work/api",
+ "join": ["/work/api"],
  "tasks": [
-  {"label": "$design", "title": "Design the endpoints", "priority": 2, "blocked_by": ["/work/api.start"], "blocks": ["/work/api"]},
-  {"label": "$build", "title": "Build them", "blocked_by": ["$design"], "blocks": ["/work/api"]},
-  {"title": "Announce the new API", "folder": "/work", "blocked_by": ["/work/api"]}]}
+  {"label": "$design", "title": "Design the endpoints", "priority": 2},
+  {"label": "$build", "title": "Build them", "blocked_by": ["$design"]},
+  {"title": "Announce the new API", "folder": "/work", "blocked_by": ["/work/api"], "join": []}]}
 EOF
 ```
 
@@ -160,7 +161,7 @@ koan task block 42 --blocked-by 43              # refused: conflict, rule cycle,
 - `task create` puts the task in an existing folder, `--folder`, or the root. It never makes a folder: a path that names none is `not-found`.
 - `--blocked-by` lists what the task waits on; `--blocks` lists what waits on it. Both take tasks (`42`, `@42`), gates (`/work/api.start`, `@41.done`), and folders, which mean their done gate. They make any gate they name, and say so in `gates_made`.
 - **Titles** are one line, up to 200 characters; quote them with single quotes, and put one starting with `-` after `--`. **Tags** are lowercase letters, digits and hyphens. **Priority** is an integer, higher first; `null` clears it. Option lists are comma-separated or repeated, and `null` is written `null`.
-- `task update` changes the title, priority, tags (`--tags-add`, `--tags-remove`, `--tags-replace-all`) and `extra` (`--extra-merge`, top level only; `--extra-remove key`, once per key; `--extra-replace-all`). Edges change only through `task block` and `task unblock`; state only through `task complete` and `task reopen`.
+- `task update` changes the title, priority, tags (`--tags-add`, `--tags-remove`, `--tags-replace-all`) and `extra` (`--extra-merge`, top level only; `--extra-remove key`, once per key; `--extra-replace-all`). Edges change only through `task block` and `task unblock`, the join commands (`task join`, `task unjoin`, `folder join`, `folder unjoin`) and `--join`; state only through `task complete` and `task reopen`.
 - Notes: short text with `--notes`, anything longer through a quoted heredoc with `--notes-file -`.
 - `-i <file>` (or `-i -`) gives the whole input as JSON instead of options. Use it for `batch`, which takes nothing else, or when building input from other JSON.
 

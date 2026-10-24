@@ -28,12 +28,14 @@ type batchFolder struct {
 	at    string
 	ref   core.Ref
 	title *string
+	joins []joinIn
 	extra json.RawMessage
 	notes string
 }
 
 // batchTask is a task part, its shape checked. At is its own pointer;
-// folder is nil when it names none.
+// folder is nil when it names none, and joins when it gives no join of
+// its own.
 type batchTask struct {
 	at       string
 	label    string
@@ -42,21 +44,32 @@ type batchTask struct {
 	priority *int64
 	tags     []string
 	edges    []edgeIn
+	joins    []joinIn
 	extra    json.RawMessage
 	notes    string
+}
+
+// batchInput is a batch file, its shape checked.
+type batchInput struct {
+	folders []batchFolder
+	folder  core.Ref
+	joins   []joinIn
+	tasks   []batchTask
 }
 
 // Batch makes folders and tasks and writes edges as one change, read as
 // the tree it would leave: its folders first, parents first in tree
 // order, then its tasks in input order, binding each label, then every
-// edge, making any gate named, with the cycle check over them all.
+// edge and join, making any gate named, with the cycle check over them
+// all. A task that gives no join of its own takes the batch's.
 func Batch() *cli.Command {
 	return &cli.Command{
 		Name:   "batch",
-		Fields: []string{"folders", "folder", "tasks"},
+		Fields: []string{"folders", "folder", "join", "tasks"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in, batch: true}
-			folders, inBatch, tasks := readBatch(&r)
+			b := readBatch(&r)
+			folders, tasks := b.folders, b.tasks
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}
@@ -74,6 +87,7 @@ func Batch() *cli.Command {
 				slices.SortStableFunc(order, func(a, b int) int {
 					return slices.Compare(folders[a].ref.Names, folders[b].ref.Names)
 				})
+				ids := make([]int64, len(folders))
 				for _, i := range order {
 					f := folders[i]
 					made, err := makeFolders(tx, s.Root, f.ref, f.title, f.extra, f.notes)
@@ -81,9 +95,10 @@ func Batch() *cli.Command {
 						return nil, nil, pointAt(err, f.at)
 					}
 					res.Folders = append(res.Folders, made...)
+					ids[i] = *made[len(made)-1].ID
 				}
 				// The batch's folder resolves whether or not a task takes it.
-				at, err := batchFolderAt(tx, inBatch, "/folder")
+				at, err := batchFolderAt(tx, b.folder, "/folder")
 				if err != nil {
 					return nil, nil, err
 				}
@@ -106,13 +121,45 @@ func Batch() *cli.Command {
 						res.Labels[x.label] = id
 					}
 				}
+				// The batch's join resolves whether or not a task takes it,
+				// before any other edge.
+				for _, j := range b.joins {
+					if _, err := core.Resolve(tx, j.ref, core.WantFolder, w.labels); err != nil {
+						return nil, nil, pointAt(err, j.at)
+					}
+				}
+				// A folder part's joins name its own gates, then those of
+				// each folder joined, before any task part's edges.
 				var all []edge
-				for i, x := range tasks {
-					es, err := w.resolve(res.Tasks[i], x.edges, true)
+				for i, f := range folders {
+					if len(f.joins) == 0 {
+						continue
+					}
+					start, done, err := w.gates(ids[i], true)
 					if err != nil {
 						return nil, nil, err
 					}
-					all = append(all, es...)
+					js, err := w.join(start, done, f.joins, true)
+					if err != nil {
+						return nil, nil, err
+					}
+					all = append(all, js...)
+				}
+				for i, x := range tasks {
+					id := res.Tasks[i]
+					es, err := w.resolve(id, x.edges, true)
+					if err != nil {
+						return nil, nil, err
+					}
+					joins := b.joins
+					if x.joins != nil {
+						joins = x.joins
+					}
+					js, err := w.join(id, id, joins, true)
+					if err != nil {
+						return nil, nil, err
+					}
+					all = append(all, append(es, js...)...)
 				}
 				_, reblocked, warnings, err := w.add(all)
 				if err != nil {
@@ -127,7 +174,7 @@ func Batch() *cli.Command {
 
 // readBatch checks a batch file's shape, part by part, in its schema's
 // field order, then that no two paths in it differ only in case.
-func readBatch(r *input) ([]batchFolder, core.Ref, []batchTask) {
+func readBatch(r *input) batchInput {
 	n := 0
 	for _, field := range []string{"folders", "tasks"} {
 		if list, ok := r.in[field].([]any); ok {
@@ -142,7 +189,7 @@ func readBatch(r *input) ([]batchFolder, core.Ref, []batchTask) {
 	var folders []batchFolder
 	list, _ := r.list("folders")
 	for i, v := range list {
-		p, ok := r.part(fmt.Sprintf("/folders/%d", i), v, "path", "title", "extra", "notes")
+		p, ok := r.part(fmt.Sprintf("/folders/%d", i), v, "path", "title", "join", "extra", "notes")
 		if !ok {
 			continue
 		}
@@ -151,19 +198,27 @@ func readBatch(r *input) ([]batchFolder, core.Ref, []batchTask) {
 		if len(r.problems) == before {
 			refs, at = append(refs, f.ref), append(at, f.at)
 		}
-		f.title, f.extra, f.notes = p.title("title"), p.object("extra"), p.text("notes", "")
+		f.title, f.joins = p.title("title"), p.joinRefs("join")
+		for _, j := range f.joins {
+			refs, at = append(refs, j.ref), append(at, j.at)
+		}
+		f.extra, f.notes = p.object("extra"), p.text("notes", "")
 		folders = append(folders, f)
 	}
 	inBatch := r.ref("folder", core.WantFolder, "/")
 	if _, given := r.value("folder"); given {
 		refs, at = append(refs, inBatch), append(at, "/folder")
 	}
+	joins := r.joinRefs("join")
+	for _, j := range joins {
+		refs, at = append(refs, j.ref), append(at, j.at)
+	}
 	var tasks []batchTask
 	defined := map[string]bool{}
 	list, _ = r.list("tasks")
 	for i, v := range list {
 		p, ok := r.part(fmt.Sprintf("/tasks/%d", i), v,
-			"label", "title", "folder", "priority", "tags", "blocked_by", "blocks", "extra", "notes")
+			"label", "title", "folder", "priority", "tags", "blocked_by", "blocks", "join", "extra", "notes")
 		if !ok {
 			continue
 		}
@@ -185,11 +240,20 @@ func readBatch(r *input) ([]batchFolder, core.Ref, []batchTask) {
 		for _, e := range x.edges {
 			refs, at = append(refs, e.ref), append(at, e.at)
 		}
+		if _, given := p.value("join"); given {
+			x.joins = p.joinRefs("join")
+			if x.joins == nil {
+				x.joins = []joinIn{}
+			}
+		}
+		for _, j := range x.joins {
+			refs, at = append(refs, j.ref), append(at, j.at)
+		}
 		x.extra, x.notes = p.object("extra"), p.text("notes", "")
 		tasks = append(tasks, x)
 	}
 	r.sameCase(refs, at)
-	return folders, inBatch, tasks
+	return batchInput{folders: folders, folder: inBatch, joins: joins, tasks: tasks}
 }
 
 // batchFolderAt resolves a folder a batch's task goes in, given at a

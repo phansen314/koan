@@ -60,8 +60,9 @@ func fixed(directive cobra.ShellCompDirective) cobra.CompletionFunc {
 	}
 }
 
-// subjectCompletion is what the command's subject completes to: nothing
-// once it is given.
+// subjectCompletion is what the command's subject completes to, and
+// once it is given, what each word after it does: nothing, unless the
+// command takes more words.
 func (c *Command) subjectCompletion(env *Env) cobra.CompletionFunc {
 	var first cobra.CompletionFunc
 	switch s := c.Subject; {
@@ -74,9 +75,13 @@ func (c *Command) subjectCompletion(env *Env) cobra.CompletionFunc {
 	default:
 		first = fixed(noFiles)
 	}
+	rest := fixed(noFiles)
+	if c.Rest != nil && c.Rest.Complete != nil {
+		rest = completion(env, c.Rest.Complete)
+	}
 	return func(cmd *cobra.Command, args []string, word string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		if len(args) > 0 {
-			return nil, noFiles
+			return rest(cmd, args, word)
 		}
 		return first(cmd, args, word)
 	}

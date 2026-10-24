@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "result": {
+    "folders": [
+      {
+        "id": 1,
+        "path": "/a"
+      },
+      {
+        "id": 2,
+        "path": "/b"
+      },
+      {
+        "id": 3,
+        "path": "/c"
+      }
+    ],
+    "tasks": [
+      4,
+      5,
+      6
+    ],
+    "labels": {},
+    "gates_made": [
+      {
+        "id": 7,
+        "folder": {
+          "id": 1,
+          "path": "/a"
+        },
+        "end": "start"
+      },
+      {
+        "id": 8,
+        "folder": {
+          "id": 1,
+          "path": "/a"
+        },
+        "end": "done"
+      },
+      {
+        "id": 9,
+        "folder": {
+          "id": 2,
+          "path": "/b"
+        },
+        "end": "start"
+      },
+      {
+        "id": 10,
+        "folder": {
+          "id": 2,
+          "path": "/b"
+        },
+        "end": "done"
+      }
+    ],
+    "reblocked": []
+  },
+  "warnings": []
+}

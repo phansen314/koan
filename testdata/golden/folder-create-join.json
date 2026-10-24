@@ -1,0 +1,51 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "ref": "@2 (/f/g)",
+    "dir": "$HOME/koan-root/tree/@f/@g",
+    "notes_path": "$HOME/koan-root/tree/@f/@g/@notes.md",
+    "created": [
+      {
+        "id": 2,
+        "path": "/f/g"
+      }
+    ],
+    "gates_made": [
+      {
+        "id": 3,
+        "folder": {
+          "id": 2,
+          "path": "/f/g"
+        },
+        "end": "start"
+      },
+      {
+        "id": 4,
+        "folder": {
+          "id": 2,
+          "path": "/f/g"
+        },
+        "end": "done"
+      },
+      {
+        "id": 5,
+        "folder": {
+          "id": 1,
+          "path": "/f"
+        },
+        "end": "start"
+      },
+      {
+        "id": 6,
+        "folder": {
+          "id": 1,
+          "path": "/f"
+        },
+        "end": "done"
+      }
+    ],
+    "reblocked": []
+  },
+  "warnings": []
+}

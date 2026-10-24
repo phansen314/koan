@@ -131,6 +131,8 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
 		{[]string{"task", "release", "@"}, offered(byID, as("@", "6")...)},
 		{[]string{"task", "move", "@"}, offered(byID, as("@", allTasks...)...)},
+		{[]string{"task", "join", "@"}, offered(byID, as("@", allTasks...)...)},
+		{[]string{"task", "unjoin", "@"}, offered(byID, as("@", allTasks...)...)},
 		// Gates made or not where an edge names them.
 		{[]string{"task", "block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
@@ -154,6 +156,17 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"export", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"marker", "bind", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "join", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "unjoin", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"task", "create", "t", "--join", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "create", "/new", "--join", "@"}, offered(byID, as("@", folders...)...)},
+		// Each word after a join's subject offers folders.
+		{[]string{"task", "join", "5", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"task", "unjoin", "5", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "join", "3", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "unjoin", "3", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"task", "join", "5", "/work/api", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "join", "/work/api", "/old", "2"}, offered(byID, as("", "2")...)},
 		{[]string{"folder", "show", "3"}, offered(byID, as("", "3")...)},
 		{[]string{"folder", "archive", "@"}, offered(byID, as("@", "1", "4")...)},
 		// where: tasks, made gates and folders.
@@ -172,6 +185,12 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "show", "/work//"}, offered(byPath)},
 		{[]string{"task", "list", "--folder", "/w"}, offered(byPath, "/work")},
 		{[]string{"task", "move", "5", "--to", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"task", "join", "42", "/w"}, offered(byPath, "/work")},
+		{[]string{"task", "unjoin", "5", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"folder", "join", "/work/api", "/o"}, offered(byPath, "/old")},
+		{[]string{"folder", "unjoin", "/work/api", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"task", "create", "t", "--join", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"folder", "create", "/new", "--join", "/w"}, offered(byPath, "/work")},
 		{[]string{"context", "/o"}, offered(byPath, "/old")},
 		{[]string{"export", "/o"}, offered(byPath, "/old")},
 		// A folder is a step toward its gates, wherever a gate is taken.
@@ -189,6 +208,8 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		// Only tasks: a path offers nothing.
 		{[]string{"task", "move", "/"}, offered(byPath)},
+		{[]string{"task", "join", "/"}, offered(byPath)},
+		{[]string{"task", "unjoin", "/work/api"}, offered(byPath)},
 		// Finished folders, and the steps toward them.
 		{[]string{"folder", "archive", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"folder", "archive", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
@@ -208,6 +229,8 @@ func TestCompleteReferences(t *testing.T) {
 		// Only a list's first item completes.
 		{[]string{"task", "block", "5", "--blocked-by", "6,@"}, offered(byID)},
 		{[]string{"task", "block", "5", "--blocked-by", "6", "--blocked-by", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
+		{[]string{"task", "join", "5", "/old,/w"}, offered(byID)},
+		{[]string{"task", "create", "t", "--join", "/old,/w"}, offered(byID)},
 		// A subject given, and values that aren't references.
 		{[]string{"task", "show", "5", ""}, offered(byNothing)},
 		{[]string{"task", "create", ""}, offered(byNothing)},

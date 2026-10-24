@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "result": {
+    "id": 1,
+    "changed": true,
+    "released": [
+      3,
+      6
+    ]
+  },
+  "warnings": []
+}

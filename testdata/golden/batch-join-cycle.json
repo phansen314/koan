@@ -1,0 +1,27 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "cycle",
+    "message": "@12 would wait on itself through @17, @10, @13",
+    "ids": [
+      12,
+      17,
+      10,
+      13
+    ],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/join/0",
+        "reason": "@12 would wait on itself through @17, @10, @13"
+      },
+      {
+        "field": "/tasks/1/blocked_by/0",
+        "reason": "@12 would wait on itself through @17, @10, @13"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}
