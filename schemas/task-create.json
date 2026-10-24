@@ -42,6 +42,14 @@
           },
           "default": []
         },
+        "join": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-ref"
+          },
+          "default": [],
+          "description": "The folders it joins."
+        },
         "extra": {
           "$ref": "types#/$defs/extra",
           "default": {}
@@ -81,7 +89,7 @@
         },
         "reblocked": {
           "$ref": "types#/$defs/ids",
-          "description": "Ready tasks it made wait, through --blocks."
+          "description": "Ready tasks it made wait, through --blocks or --join."
         }
       },
       "unevaluatedProperties": false

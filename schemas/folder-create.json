@@ -28,6 +28,14 @@
           ],
           "default": null
         },
+        "join": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-ref"
+          },
+          "default": [],
+          "description": "The folders it joins."
+        },
         "extra": {
           "$ref": "types#/$defs/extra",
           "default": {}
@@ -47,7 +55,9 @@
         "ref",
         "dir",
         "notes_path",
-        "created"
+        "created",
+        "gates_made",
+        "reblocked"
       ],
       "properties": {
         "id": {
@@ -68,6 +78,17 @@
             "$ref": "types#/$defs/folder-at"
           },
           "description": "Every folder made, parents first, this one last."
+        },
+        "gates_made": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/gate-made"
+          },
+          "description": "Empty without --join."
+        },
+        "reblocked": {
+          "$ref": "types#/$defs/ids",
+          "description": "Ready tasks it made wait, through --join."
         }
       },
       "unevaluatedProperties": false

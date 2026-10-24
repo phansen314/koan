@@ -108,7 +108,7 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 
 **The command line** is read by cobra (`github.com/spf13/cobra`), with pflag for options (PRD Command surface). These rules are what koan asks of it; where they say nothing, cobra's behaviour is the rule.
 
-- **One subject, positional.** It is the task or folder the command acts on, or a new task's title or a new folder's path. Everything else is an option, so a bare word has one meaning.
+- **One subject, positional.** It is the task or folder the command acts on, or a new task's title or a new folder's path. Everything else is an option, so a bare word has one meaning. `task join`, `task unjoin`, `folder join` and `folder unjoin` are the exception: the subject comes first, as everywhere, and the folders it joins come after it, a list, comma-separated or as more words, so `koan task join 42 /a,/b` is `koan task join 42 /a /b`; they set `join`, and take no `--join` option.
 - **References** are taken with or without the `@`: `koan task show 42`, `koan task block @42 --blocked-by 17,@41.start`.
 - **Lists** are comma-separated, and the option can repeat: `--tags a,b` is `--tags a --tags b`. Every comma splits; there is no quoting. `--extra-remove` takes one key per occurrence, since a key can hold a comma.
 - **`null`** is written `null`: `--priority null` clears a priority, and a boolean writes it `--claimed=null`. It means null only where the field can be null, such as a priority or a folder's title; anywhere else it is the word itself, so a task can be titled null.
@@ -121,14 +121,14 @@ A command line is `koan <command> [<subject>] [<options>]`, and every command re
 - **Options go after the command's words.** cobra also takes some placed before them, such as `koan --priority 1 task create t`, but never a boolean, which takes the next word as its value (`koan --recursive task list` is `usage`); that is not a contract.
 - **Once each.** An option that isn't a list can be given once.
 
-**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, an argument that isn't an option's syntax, `koan task`, `koan folder` or `koan marker` with no command or an unknown one after it, `koan completion` with a shell it doesn't know, a missing or extra subject, an option without its value, a value its option's type refuses, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. A value its option's type refuses is an integer option's that isn't an integer or a null it can take, or a boolean option's that isn't `true`, `false` or a null it can take. Its problem names what is at fault:
+**`usage` versus `invalid-input`.** `usage` is only a command line that can't be turned into an input: an unknown command or option, an argument that isn't an option's syntax, `koan task`, `koan folder` or `koan marker` with no command or an unknown one after it, `koan completion` with a shell it doesn't know, a missing or extra subject, `task join`, `task unjoin`, `folder join` or `folder unjoin` with no folder after the subject, an option without its value, a value its option's type refuses, an option that isn't a list given twice, `--input` with anything else, or both `--notes` and `--notes-file`. A value its option's type refuses is an integer option's that isn't an integer or a null it can take, or a boolean option's that isn't `true`, `false` or a null it can take. Its problem names what is at fault:
 
 - an option by its long name: `--frob` for `--frob=1`, `--input` for a second `-i`, `--title` for a second `--title`;
 - an unknown short option as `-` and its letter: `-x` for `-x`, and for `-xy` too, since pflag reads the letters one at a time;
 - an argument pflag can't read as an option, such as `---x` or `--=x`, as typed;
 - an unknown command, or an extra subject, as typed;
 - for `--input` with anything else, the subject when one is given, else the first other option given, in byte order of their long names;
-- `""` when what is at fault is missing, such as the command, `koan task` alone included, or the subject; for both `--notes` and `--notes-file`; and for any line `completion`'s shell commands refuse, such as `koan completion bash extra`.
+- `""` when what is at fault is missing, such as the command, `koan task` alone included, the subject, or the folders a join or unjoin names; for both `--notes` and `--notes-file`; and for any line `completion`'s shell commands refuse, such as `koan completion bash extra`.
 
 When a line has several faults, which is named is cobra's: options are read before the command's words and subject are checked. Every check of a value other than its type's is the command's, and is `invalid-input` exactly as it would be through `--input`. So is an `--input` that isn't one JSON object, with its problem at `""`.
 
@@ -386,8 +386,8 @@ Every warning has one shape: a kind, a message for a person, and the IDs and pat
 | `pending-step` | Steps are pending with no write carrying them out: this write failed one, an earlier write crashed, or a step waits behind an earlier change's step on the same path | every command but `init`, `info`, `version`, `doctor` and `backup` |  | the paths the steps touch |
 | `stuck-step` | A step is set aside as stuck | every command but `init`, `info`, `version`, `doctor` and `backup`, until repair clears it |  | each stuck step's source, then its destination when it has one, in seq order: the steps that found both, neither or material, not the rest of their changes |
 | `missing-notes` | No file at a notes path; it reads as empty notes. Not given while a pending or stuck step is still to make the path, making it or a directory above it, since that step's own warning says why | `task show`, `folder show`, `context` | the task or folder | its notes path |
-| `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `batch` | the complete tasks |  |
-| `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task reopen`, `batch` | the claimed tasks |  |
+| `complete-blocker` | An edge was added to the `blocked_by` of a complete task, which holds nothing back | `task create`, `task block`, `task join`, `folder create`, `folder join`, `batch` | the complete tasks |  |
+| `claimed-blocked` | The change made a claimed task wait again: it was ready before the change, and is blocked after it, as for `reblocked` | `task create`, `task block`, `task join`, `task reopen`, `folder create`, `folder join`, `batch` | the claimed tasks |  |
 | `moved-claimed` | A move changed the notes path of a claimed task | `task move`, `folder move` | the claimed tasks | their new notes paths, in the same order |
 | `stale-marker` | A marker's path hint no longer matches its folder | `where`, `context`, `export` | the folder | the marker.json |
 
@@ -480,21 +480,21 @@ Each rule is a refusal the rules doc or the PRD makes, in the section its row na
 | `bound` | marker bind on a directory already bound to another live folder, without --force | PRD Markers | the folder it is bound to | the marker.json |
 | `no-ids` | The change would issue an ID past `999999999999999`, the last a root can have, to a task, a folder or a gate it makes. Any change that makes one can give it | rules Changes; PRD Writes, Issuing IDs in a change |  |  |
 
-For `cycle`, the closing edge is the first new edge that closes a cycle with the tree's edges and the new edges before it, taken in the order they are given, as PRD Issuing IDs in a change orders them: each task's `blocked_by` before its `blocks`, a batch's parts in input order. `problems` also names every input field whose new edge lies on that cycle, in cycle order. A refused change issues no ID, so a task or gate it was making is named in `ids` by the ID it would have had, which a later change may issue to something else: `problems` points at the part that made it.
+For `cycle`, the closing edge is the first new edge that closes a cycle with the tree's edges and the new edges before it, taken in the order they are given, as PRD Issuing IDs in a change orders them: each task's `blocked_by` before its `blocks`, then its `join`, each folder joined giving its start gate's edge before its done gate's; a batch's folder parts before its task parts, each in input order. `problems` also names every input field whose new edge lies on that cycle, in cycle order. A `join` entry writes two edges, and both can lie on one cycle; it is named once, at the first of them. An edge a task part takes from the batch's `join` points at that entry, `/join/<n>`, and an entry several task parts take is named once, at the first of its edges on the cycle. A refused change issues no ID, so a task or gate it was making is named in `ids` by the ID it would have had, which a later change may issue to something else: `problems` points at the part that made it.
 
 ## Commands
 
-Each command has one schema, named after it, holding its `input` and its `result`. Options are the input's fields in kebab-case; the subject is the field marked as such. Every command can also fail with `not-found` and `invalid-input`, and with `case-mismatch` wherever it takes a path; every command can give `pending-step` and `stuck-step`, and every read `pending-filesystem`. Only the warnings and refusals beyond those are listed.
+Each command has one schema, named after it, holding its `input` and its `result`. Options are the input's fields in kebab-case; the subject is the field marked as such. On `task join`, `task unjoin`, `folder join` and `folder unjoin`, `join` is the words after the subject, never an option (Invocation). Every command can also fail with `not-found` and `invalid-input`, and with `case-mismatch` wherever it takes a path; every command can give `pending-step` and `stuck-step`, and every read `pending-filesystem`. Only the warnings and refusals beyond those are listed.
 
-A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. An `extra` changes when it would print differently, since koan never interprets it: replacing `1.0` with `1` is a change. changed is in the result of every write that can change nothing: task and folder update, complete, reopen, block, unblock, release, and both moves, which change nothing when the destination is where the item already is. A gate is the exception: `task move` refuses it (`gate`) even to its own folder. An edge given more than once in one input, however it is written, counts once, as rules Changes says, so `blocked_by` and `blocks` take duplicates.
+A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. An `extra` changes when it would print differently, since koan never interprets it: replacing `1.0` with `1` is a change. changed is in the result of every write that can change nothing: task and folder update, complete, reopen, block, unblock, task and folder join and unjoin, release, and both moves, which change nothing when the destination is where the item already is. A gate is the exception: `task move` refuses it (`gate`) even to its own folder. An edge given more than once in one input, however it is written, counts once, as rules Changes says, so `blocked_by`, `blocks` and `join` take duplicates.
 
 ### Tasks
 
 #### task create
 
-`koan task create <title> [--folder] [--priority] [--tags] [--blocked-by] [--blocks] [--extra] [--notes | --notes-file]`
+`koan task create <title> [--folder] [--priority] [--tags] [--blocked-by] [--blocks] [--join] [--extra] [--notes | --notes-file]`
 
-Makes a task, with its notes file, in a folder or the root. Its edges are written in the same change, and a gate they name is made. Warns `complete-blocker`, `claimed-blocked`. Refused: `cycle`.
+Makes a task, with its notes file, in a folder or the root. Its edges are written in the same change, and a gate they name is made. `--join` joins it to each folder named, as `task join` does: `koan task create 'x' --folder /a --join /b` makes a task that sits in `/a` and is a member of `/b`. Warns `complete-blocker`, `claimed-blocked`. Refused: `cycle`.
 
 ```json
 { "$id": "task-create", "$defs": {
@@ -505,6 +505,7 @@ Makes a task, with its notes file, in a folder or the root. Its edges are writte
     "tags":       { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "uniqueItems": true, "default": [] },
     "blocked_by": { "type": "array", "items": { "$ref": "types#/$defs/edge-ref" }, "default": [] },
     "blocks":     { "type": "array", "items": { "$ref": "types#/$defs/edge-ref" }, "default": [] },
+    "join":       { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [], "description": "The folders it joins." },
     "extra":      { "$ref": "types#/$defs/extra", "default": {} },
     "notes":      { "type": "string", "default": "", "description": "The notes file's first content." } } },
   "result": { "type": "object", "required": ["id", "ref", "notes_path", "gates_made", "reblocked"], "properties": {
@@ -512,7 +513,7 @@ Makes a task, with its notes file, in a folder or the root. Its edges are writte
     "ref":        { "$ref": "types#/$defs/kept" },
     "notes_path": { "$ref": "types#/$defs/abs-path" },
     "gates_made": { "type": "array", "items": { "$ref": "types#/$defs/gate-made" } },
-    "reblocked":  { "$ref": "types#/$defs/ids", "description": "Ready tasks it made wait, through --blocks." } } } } }
+    "reblocked":  { "$ref": "types#/$defs/ids", "description": "Ready tasks it made wait, through --blocks or --join." } } } } }
 ```
 
 #### task show
@@ -649,6 +650,23 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
   "result": { "$ref": "task-complete#/$defs/result" } } }
 ```
 
+#### task join, task unjoin
+
+`koan task join <task> <folder>...` joins a task to each folder named: the task waits on the folder's start gate, and the folder's done gate waits on the task (rules Readiness, Joining a folder). `koan task unjoin <task> <folder>...` removes those two edges. At least one folder must be named. Each is a folder by path, ID or anchored path, never the root or an end. The subject is a task, never a gate, made or not: a gate is `invalid-input`, however it is written. Join makes any gate it names, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unjoin never makes a gate, and never refuses for a missing one, unlike `task unblock`: an edge to a gate the folder lacks is an edge that isn't there. Joining twice changes nothing; unjoining when only one of the two edges is there removes that one. koan keeps no record of a join, so unjoin removes the two edges however they were written, and `task unblock` removes either.
+
+```json
+{ "$id": "task-join", "$defs": {
+  "input": { "type": "object", "required": ["task", "join"], "properties": {
+    "task": { "$ref": "types#/$defs/task-ref", "description": "Subject. A task, never a gate." },
+    "join": { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "minItems": 1,
+              "description": "The folders joined: the arguments after the subject." } } },
+  "result": { "$ref": "task-block#/$defs/result" } } }
+
+{ "$id": "task-unjoin", "$defs": {
+  "input":  { "$ref": "task-join#/$defs/input" },
+  "result": { "$ref": "task-unblock#/$defs/result" } } }
+```
+
 #### task move
 
 `koan task move <task> --to <folder>`. Puts it in another folder or the root; its notes move with it. Warns `moved-claimed`. Refused: `gate`.
@@ -716,26 +734,29 @@ Changes fields; at least one option is needed. `--tags-replace-all` can't go wit
 
 ### Folders
 
-A folder subject is a `folder-ref`. The root can be read, but not updated, moved, deleted or archived: naming it there is `invalid-input`.
+A folder subject is a `folder-ref`. The root can be read, but not updated, moved, deleted or archived, and it has no gates, so it can't join a folder and nothing can join it: naming it there is `invalid-input`.
 
 #### folder create
 
-`koan folder create <path> [--title] [--extra] [--notes | --notes-file]`. Makes the folder, its directory and its notes, and any missing parents the same way, with no title. It has no gates until an edge names one. Refused: `case-mismatch`, `exists`.
+`koan folder create <path> [--title] [--join] [--extra] [--notes | --notes-file]`. Makes the folder, its directory and its notes, and any missing parents the same way, with no title. It has no gates until an edge names one, or until `--join` joins it to each folder named, as `folder join` does, which makes both. `--join` resolves after the folders are made, so it can name a missing parent the same command makes; it joins only the folder at the path, never its parents, and naming that folder itself is an edge to itself, `invalid-input`. `--join` warns `complete-blocker` and `claimed-blocked`, when a folder joined has a complete or a claimed, ready done gate. It is never refused by `cycle`: the new folder's gates are new, and only its joins' edges name them. Refused: `case-mismatch`, `exists`.
 
 ```json
 { "$id": "folder-create", "$defs": {
   "input": { "type": "object", "required": ["path"], "properties": {
     "path":  { "allOf": [ { "$ref": "types#/$defs/path" }, { "not": { "const": "/" } } ], "description": "Subject." },
     "title": { "type": ["string", "null"], "default": null },
+    "join":  { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [], "description": "The folders it joins." },
     "extra": { "$ref": "types#/$defs/extra", "default": {} },
     "notes": { "type": "string", "default": "", "description": "The @notes.md's first content, written by the step that makes the directory." } } },
-  "result": { "type": "object", "required": ["id", "ref", "dir", "notes_path", "created"], "properties": {
+  "result": { "type": "object", "required": ["id", "ref", "dir", "notes_path", "created", "gates_made", "reblocked"], "properties": {
     "id":         { "$ref": "types#/$defs/id" },
     "ref":        { "$ref": "types#/$defs/kept" },
     "dir":        { "$ref": "types#/$defs/abs-path" },
     "notes_path": { "$ref": "types#/$defs/abs-path" },
     "created":    { "type": "array", "items": { "$ref": "types#/$defs/folder-at" },
-                    "description": "Every folder made, parents first, this one last." } } } } }
+                    "description": "Every folder made, parents first, this one last." },
+    "gates_made": { "type": "array", "items": { "$ref": "types#/$defs/gate-made" }, "description": "Empty without --join." },
+    "reblocked":  { "$ref": "types#/$defs/ids", "description": "Ready tasks it made wait, through --join." } } } } }
 ```
 
 #### folder show
@@ -799,6 +820,23 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
                  "description": "Missing parents made for the new path, top first; empty when all were there." } } } } }
 ```
 
+#### folder join, folder unjoin
+
+`koan folder join <folder> <folder>...` joins the subject to each folder named after it, through its gates: its start gate waits on that folder's start gate, and that folder's done gate waits on its done gate (rules Readiness, Joining a folder). Its own tasks are not touched. `koan folder unjoin <folder> <folder>...` removes those two edges. At least one folder must be named after the subject. Neither the subject nor a folder named can be the root. Joining the subject to itself is an edge to itself, `invalid-input`, and unjoining it from itself changes nothing. Join makes any gate it names, the subject's included, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unjoin is as `task unjoin`: it never makes a gate and never refuses for a missing one, the subject's included. In both, `id` is the subject's.
+
+```json
+{ "$id": "folder-join", "$defs": {
+  "input": { "type": "object", "required": ["folder", "join"], "properties": {
+    "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject." },
+    "join":   { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "minItems": 1,
+                "description": "The folders joined: the arguments after the subject." } } },
+  "result": { "$ref": "task-block#/$defs/result" } } }
+
+{ "$id": "folder-unjoin", "$defs": {
+  "input":  { "$ref": "folder-join#/$defs/input" },
+  "result": { "$ref": "task-unblock#/$defs/result" } } }
+```
+
 #### folder delete
 
 `koan folder delete <folder> [--contents] [--force]`. Removes it and everything under it, gates included. Refused: `not-empty` without `--contents`, then `has-material` without `--force`, checked in that order.
@@ -824,7 +862,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 
 ### Batch
 
-`koan batch -i <file>`, or `-i -` for standard input. Makes folders and tasks and writes edges as one change: all of it or none. Its input is the batch file, under Input formats; there are no options. Warns `complete-blocker`, `claimed-blocked`. Refused by whatever refuses one of its parts, such as `cycle`, `case-mismatch` or `exists`, with `problems` pointing at the parts at fault.
+`koan batch -i <file>`, or `-i -` for standard input. Makes folders and tasks, writes edges and joins folders, as one change: all of it or none. Its input is the batch file, under Input formats; there are no options. Warns `complete-blocker`, `claimed-blocked`. Refused by whatever refuses one of its parts, such as `cycle`, `case-mismatch` or `exists`, with `problems` pointing at the parts at fault.
 
 ```json
 { "$id": "batch", "$defs": {
@@ -1024,11 +1062,11 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 | `task reopen`, `task archive` subject | complete tasks and made gates |
 | `task claim` subject | open, unclaimed tasks and made gates |
 | `task release` subject | claimed tasks and made gates |
-| `task move` subject | tasks |
+| `task move`, `task join`, `task unjoin` subject | tasks |
 | `task block` subject | tasks and gates, made or not |
 | `--blocked-by`, `--blocks` | tasks, gates made or not, and folders |
-| `--folder` (`task create`, `task list`, `task frontier`, `task claim-next`, `folder list`, `pick`), `task move --to` | folders |
-| `folder show`, `folder update`, `folder move`, `folder delete`, `context`, `export`, `marker bind` subject | folders |
+| `--folder` (`task create`, `task list`, `task frontier`, `task claim-next`, `folder list`, `pick`), `task move --to`, `--join` (`task create`, `folder create`), the folders joined after the subject (`task join`, `task unjoin`, `folder join`, `folder unjoin`) | folders |
+| `folder show`, `folder update`, `folder move`, `folder join`, `folder unjoin`, `folder delete`, `context`, `export`, `marker bind` subject | folders |
 | `folder archive` subject | finished folders |
 | `folder create` subject, `folder move --to` | folders as paths only, as steps toward a new path: the last name is the person's to type |
 | `where` subject | tasks, made gates, and folders |
@@ -1042,7 +1080,7 @@ A folder subject is a `folder-ref`. The root can be read, but not updated, moved
 - **An ID**: empty, `@`, or an optional `@` then digits, then for a gate `.` and the start of an end. The candidates are the tasks, gates and folders the argument takes whose IDs start with the digits typed, a gate by its folder's ID and end, as `pick` prints it (rules References): `@4` offers `@42`, `@41`, and `@41.start`. They are written with the `@` when the word starts with one or is empty, and without it otherwise: `4` offers `42`. Each carries a description: a task's title, two spaces, then its folder's path; a gate's `Start of <path>` or `Done of <path>`; a folder's path, then two spaces and its title when it has one.
 - **Anything else**, such as an anchored path, material after a `:`, or a label, offers nothing.
 
-**Lists.** Only a list's first item completes: a word holding a comma offers nothing. For more, repeat the option, `--blocked-by 42 --blocked-by @4`, as Invocation allows.
+**Lists.** Only a list's first item completes: a word holding a comma offers nothing. For more, repeat the option, `--blocked-by 42 --blocked-by @4`, as Invocation allows, or for the folders a join names, give another word: each word after the subject offers folders.
 
 **Order.** Candidates come in `pick`'s order (pick, The candidates), and the script asks the shell to keep it.
 
@@ -1128,16 +1166,18 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
 - **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch as `exists`; missing parents are made, as `folder create` makes them. Each folder made, a missing parent included, is a destination (rules doc, Changes).
 - **Tasks** go in their own `folder`, or the batch's `folder`, or the root. A task's folder can be one the batch makes. The batch's `folder` is resolved whether or not a task takes it, so one that names nothing is `not-found`.
 - **Labels** name a task within the batch only. Each is defined once, and takes no end and no material: `$a.start` is `invalid-input`. Labels are never stored.
-- **Edges** are written from either end, as on the command line, with labels allowed wherever an `edge-ref` is, and nowhere else: a label where a folder or a task subject is taken is `invalid-input`.
+- **Edges** are written from either end, as on the command line, with labels allowed wherever an `edge-ref` is, and nowhere else: a label where a folder or a task subject is taken, or in a `join`, is `invalid-input`.
+- **Joins** mean what `--join` means: a task part's `join` what it means on `task create`, and a folder part's what it means on `folder create`, joining only the folder at its path. The same edges are written and the same gates made, counted once alongside the part's `blocked_by` and `blocks`, and the cycle check covers them: a folder part's gates can be named by other parts, so its joins can close a cycle. A `join` names folders by path, ID or anchored path, the batch's own included. As the batch's `folder` gives the folder a task goes in when it names none, the batch's `join` gives the folders every task joins when it gives no `join` of its own: a task's `join` replaces it rather than adding to it, and `"join": []` joins nothing. Folder parts never take it. It is resolved whether or not a task takes it, so one that names nothing is `not-found`.
 
 ```json
 {
   "folders": [ { "path": "/work/api", "title": "API rework" } ],
   "folder": "/work/api",
+  "join": ["/work/api"],
   "tasks": [
-    { "label": "$design", "title": "Design the endpoints", "blocked_by": ["/work/api.start"] },
-    { "label": "$build",  "title": "Build them", "blocked_by": ["$design"], "blocks": ["/work/api"] },
-    { "title": "Review", "folder": "/work", "blocked_by": ["/work/api"] }
+    { "label": "$design", "title": "Design the endpoints" },
+    { "label": "$build",  "title": "Build them", "blocked_by": ["$design"] },
+    { "title": "Review", "folder": "/work", "blocked_by": ["/work/api"], "join": [] }
   ]
 }
 ```
@@ -1151,9 +1191,11 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
     "folders": { "type": "array", "default": [], "items": { "type": "object", "required": ["path"], "properties": {
       "path":  { "allOf": [ { "$ref": "types#/$defs/path" }, { "not": { "const": "/" } } ] },
       "title": { "type": ["string", "null"], "default": null },
+      "join":  { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [] },
       "extra": { "$ref": "types#/$defs/extra", "default": {} },
       "notes": { "type": "string", "default": "" } } } },
     "folder":  { "$ref": "types#/$defs/folder-ref", "default": "/", "description": "Where tasks go that name no folder." },
+    "join":    { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [], "description": "The folders tasks join that give no join of their own." },
     "tasks":   { "type": "array", "default": [], "items": { "type": "object", "required": ["title"], "properties": {
       "label":      { "$ref": "types#/$defs/label" },
       "title":      { "type": "string" },
@@ -1162,6 +1204,7 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
       "tags":       { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "uniqueItems": true, "default": [] },
       "blocked_by": { "type": "array", "default": [], "items": { "anyOf": [ { "$ref": "types#/$defs/edge-ref" }, { "$ref": "types#/$defs/label" } ] } },
       "blocks":     { "type": "array", "default": [], "items": { "anyOf": [ { "$ref": "types#/$defs/edge-ref" }, { "$ref": "types#/$defs/label" } ] } },
+      "join":       { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "description": "No default: left out, the batch's join." },
       "extra":      { "$ref": "types#/$defs/extra", "default": {} },
       "notes":      { "type": "string", "default": "" } } } }
   },

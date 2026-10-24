@@ -2,7 +2,6 @@
 
 Work that has been decided on but isn't needed yet. Nothing here is built, and nothing here is behaviour: an item becomes behaviour when it is written into the rules doc, the PRD or the spec, in that order, and is then built from those. Anything that would change a rule goes to the rules doc when it is taken up.
 
-- **A `join` shorthand.** `--join <folder>` on `task create`, and a `join` field in `batch`, writing the two edges of joining. Joining a folder whose done gate is already complete needs nothing new: the edge into the complete gate warns `complete-blocker`, as any such edge does.
 - **Unarchive.** Bringing an archived item back, with its IDs. For now, work needed again is made again.
 - **`--no-gates` on `task list`**, if gates in the list turn out to be noise.
 - **Material in `pick`.** Material references, such as `@41:docs/plan.md`, as their own kind, through fzf's walker rooted at the folder's directory.
