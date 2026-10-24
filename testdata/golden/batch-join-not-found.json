@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "no folder at /nope",
+    "ids": [],
+    "paths": [
+      "/nope"
+    ],
+    "problems": [
+      {
+        "field": "/join/1",
+        "reason": "no folder at /nope"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

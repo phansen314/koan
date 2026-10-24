@@ -1,0 +1,95 @@
+{
+  "ok": true,
+  "result": {
+    "folders": [
+      {
+        "id": 1,
+        "path": "/s"
+      },
+      {
+        "id": 2,
+        "path": "/s/impl"
+      },
+      {
+        "id": 3,
+        "path": "/t"
+      },
+      {
+        "id": 4,
+        "path": "/u"
+      }
+    ],
+    "tasks": [
+      5
+    ],
+    "labels": {},
+    "gates_made": [
+      {
+        "id": 6,
+        "folder": {
+          "id": 3,
+          "path": "/t"
+        },
+        "end": "start"
+      },
+      {
+        "id": 7,
+        "folder": {
+          "id": 3,
+          "path": "/t"
+        },
+        "end": "done"
+      },
+      {
+        "id": 8,
+        "folder": {
+          "id": 1,
+          "path": "/s"
+        },
+        "end": "start"
+      },
+      {
+        "id": 9,
+        "folder": {
+          "id": 1,
+          "path": "/s"
+        },
+        "end": "done"
+      },
+      {
+        "id": 10,
+        "folder": {
+          "id": 2,
+          "path": "/s/impl"
+        },
+        "end": "start"
+      },
+      {
+        "id": 11,
+        "folder": {
+          "id": 2,
+          "path": "/s/impl"
+        },
+        "end": "done"
+      },
+      {
+        "id": 12,
+        "folder": {
+          "id": 4,
+          "path": "/u"
+        },
+        "end": "start"
+      },
+      {
+        "id": 13,
+        "folder": {
+          "id": 4,
+          "path": "/u"
+        },
+        "end": "done"
+      }
+    ],
+    "reblocked": []
+  },
+  "warnings": []
+}
