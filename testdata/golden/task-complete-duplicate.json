@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "@4 is given twice",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/tasks/1",
+        "reason": "@4 is given twice"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -1,8 +1,9 @@
 {
   "ok": true,
   "result": {
-    "id": 1,
-    "changed": true,
+    "reopened": [
+      1
+    ],
     "reblocked": [
       2,
       3

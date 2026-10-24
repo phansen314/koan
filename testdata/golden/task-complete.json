@@ -1,8 +1,9 @@
 {
   "ok": true,
   "result": {
-    "id": 2,
-    "changed": true,
+    "completed": [
+      2
+    ],
     "released": [
       3
     ]

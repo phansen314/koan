@@ -46,10 +46,10 @@ EOF`, want: []string{`{"ok":true,"result":{"folders":[{"id":40,"path":"/work"},{
 	// The daily loop
 	{cmd: "koan task frontier --limit 10 --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":45,"ref":"@45 (/work/api.start)","title":"Start"}],"total":1,"truncated":false}}`}},
 	{cmd: "koan task why 43", want: []string{`{"ok":true,"result":{"id":43,"readiness":"blocked","ready":[45]}}`}},
-	{cmd: "koan task complete 45", want: []string{`{"ok":true,"result":{"id":45,"changed":true,"released":[42]}}`}},
+	{cmd: "koan task complete 45", want: []string{`{"ok":true,"result":{"completed":[45],"released":[42]}}`}},
 	{cmd: `koan task claim-next /work --extra '{"by":"agent-1"}'`, want: []string{`{"ok":true,"result":{"task":{"id":42,"claim":{"task":42,"extra":{"by":"agent-1"}}},"claim":{"task":42}}}`}},
 	{cmd: "koan task show 42", want: []string{`{"ok":true,"result":{"task":{"id":42,"title":"Design the endpoints","notes_path":"~/koan-root/tree/@work/@api/@42.md"}},"warnings":[]}`}},
-	{cmd: "koan task complete 42", want: []string{`{"ok":true,"result":{"id":42,"changed":true,"released":[43]}}`}},
+	{cmd: "koan task complete 42", want: []string{`{"ok":true,"result":{"completed":[42],"released":[43]}}`}},
 
 	// Claims
 	{cmd: `koan task claim 43 --extra '{"by":"agent-1"}'`, want: []string{`{"ok":true,"result":{"claim":{"task":43,"extra":{"by":"agent-1"}}}}`}},
@@ -144,7 +144,7 @@ var readmeSteps = []docStep{
 	{cmd: "koan task create 'Build them' --folder /work/api --blocked-by 3", want: []string{`{"ok":true,"result":{"id":4,"reblocked":[]}}`}},
 	{cmd: "koan task frontier --limit 10 --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1}}`}},
 	{cmd: `koan task claim-next --extra '{"by":"me"}'`, want: []string{`{"ok":true,"result":{"task":{"id":3},"claim":{"task":3,"extra":{"by":"me"}}}}`}},
-	{cmd: "koan task complete 3", want: []string{`{"ok":true,"result":{"id":3,"changed":true,"released":[4]}}`}},
+	{cmd: "koan task complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"released":[4]}}`}},
 	{cmd: "koan task show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
 
 	// Ordering folders

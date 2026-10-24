@@ -122,6 +122,27 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		return pick([]string{"/a.start", "/c.done", "@2.start"})
 	}
+	// subjects is a list of one to three tasks, the first x, now and then
+	// with one given twice, and the words that give it: each its own
+	// word, or joined to the one before by a comma.
+	subjects := func(x string) (xs, words []string) {
+		xs = []string{x}
+		for range rng.Intn(3) {
+			if rng.Intn(6) == 0 {
+				xs = append(xs, xs[rng.Intn(len(xs))])
+			} else {
+				xs = append(xs, subject())
+			}
+		}
+		for i, x := range xs {
+			if i > 0 && rng.Intn(2) == 0 {
+				words[len(words)-1] += "," + x
+			} else {
+				words = append(words, x)
+			}
+		}
+		return xs, words
+	}
 	edgeList := func() []string {
 		var out []string
 		for range rng.Intn(3) {
@@ -562,15 +583,17 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			x := subject()
 			switch rng.Intn(5) {
 			case 0:
+				xs, words := subjects(x)
 				var out model.CompleteResult
-				out, err = m.Complete(x)
-				args = []string{"task", "complete", x}
-				want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
+				out, err = m.Complete(xs...)
+				args = append([]string{"task", "complete"}, words...)
+				want = fmt.Sprintf("%v %v", nonNil(out.Changed), nonNil(out.Released))
 			case 1:
+				xs, words := subjects(x)
 				var out model.CompleteResult
-				out, err = m.Reopen(x)
-				args = []string{"task", "reopen", x}
-				want = fmt.Sprintf("%d %v %v %s", out.ID, out.Changed, nonNil(out.Reblocked), warnings(out.Warnings))
+				out, err = m.Reopen(xs...)
+				args = append([]string{"task", "reopen"}, words...)
+				want = fmt.Sprintf("%v %v %s", nonNil(out.Changed), nonNil(out.Reblocked), warnings(out.Warnings))
 			case 2:
 				var c model.Claim
 				c, err = m.ClaimTask(x, nil)
@@ -635,10 +658,12 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					got = fmt.Sprintf("%v %v %s %v %s", res["id"], res["changed"], koanGates(r), res["reblocked"], koanWarnings(r))
 				case "update":
 					got = fmt.Sprint(res["changed"])
-				case "unblock", "complete":
+				case "unblock":
 					got = fmt.Sprintf("%v %v %v", res["id"], res["changed"], res["released"])
+				case "complete":
+					got = fmt.Sprintf("%v %v", res["completed"], res["released"])
 				case "reopen":
-					got = fmt.Sprintf("%v %v %v %s", res["id"], res["changed"], res["reblocked"], koanWarnings(r))
+					got = fmt.Sprintf("%v %v %s", res["reopened"], res["reblocked"], koanWarnings(r))
 				case "claim":
 					got = fmt.Sprint(res["claim"].(map[string]any)["task"])
 				case "release":

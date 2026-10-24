@@ -646,48 +646,84 @@ func (t *Tree) Unblock(task string, blockedBy, blocks []string) (out EdgeResult,
 
 // CompleteResult is what complete and reopen return.
 type CompleteResult struct {
-	ID        int64
-	Changed   bool
+	Changed   []int64 // the tasks completed or reopened, in input order
 	Released  []int64 // complete only
 	Reblocked []int64 // reopen only
 	Warnings  []Warning
 }
 
-// Complete marks a task complete and ends its claim.
-func (t *Tree) Complete(task string) (out CompleteResult, err error) {
+// subjectTasks resolves a list of tasks, in order: a task named twice is
+// invalid-input at its later occurrence.
+func (c *Tree) subjectTasks(tasks []string) ([]*Task, error) {
+	var s shape
+	refs := make([]core.Ref, len(tasks))
+	for i, task := range tasks {
+		refs[i] = s.ref(fmt.Sprintf("/tasks/%d", i), task, core.WantTask, false)
+	}
+	if len(tasks) == 0 {
+		s.faultf("/tasks", "at least one task is needed")
+	}
+	if err := s.done(nil); err != nil {
+		return nil, err
+	}
+	var out []*Task
+	for i, ref := range refs {
+		at := fmt.Sprintf("/tasks/%d", i)
+		r, err := core.Resolve(c, ref, core.WantTask, nil)
+		if err != nil {
+			return nil, pointAt(err, at, false)
+		}
+		x := c.Tasks[r.ID]
+		if slices.Contains(out, x) {
+			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d given twice", x.ID)}, "%s", at)
+		}
+		out = append(out, x)
+	}
+	return out, nil
+}
+
+// Complete marks tasks complete and ends their claims, as one change.
+func (t *Tree) Complete(tasks ...string) (out CompleteResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
-		out.ID = x.ID
-		if !x.Open() {
-			return nil
-		}
 		before, existed := c.readySet(), c.taskIDs()
 		now := c.now
-		x.CompletedAt, x.UpdatedAt = &now, now
-		delete(c.Claims, x.ID)
-		out.Changed, out.Released = true, c.released(before, existed)
+		out.Changed = []int64{}
+		for _, x := range xs {
+			if !x.Open() {
+				continue
+			}
+			x.CompletedAt, x.UpdatedAt = &now, now
+			delete(c.Claims, x.ID)
+			out.Changed = append(out.Changed, x.ID)
+		}
+		out.Released = c.released(before, existed)
 		return nil
 	})
 	return out, err
 }
 
-// Reopen marks a task open again; whatever waits on it waits again.
-func (t *Tree) Reopen(task string) (out CompleteResult, err error) {
+// Reopen marks tasks open again, as one change; whatever waits on them
+// waits again.
+func (t *Tree) Reopen(tasks ...string) (out CompleteResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
-		out.ID = x.ID
-		if x.Open() {
-			return nil
-		}
 		before := c.readySet()
-		x.CompletedAt, x.UpdatedAt = nil, c.now
-		out.Changed, out.Reblocked = true, c.reblocked(before)
+		out.Changed = []int64{}
+		for _, x := range xs {
+			if x.Open() {
+				continue
+			}
+			x.CompletedAt, x.UpdatedAt = nil, c.now
+			out.Changed = append(out.Changed, x.ID)
+		}
+		out.Reblocked = c.reblocked(before)
 		out.Warnings = c.claimedBlocked(out.Reblocked)
 		return nil
 	})

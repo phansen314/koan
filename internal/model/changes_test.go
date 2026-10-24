@@ -228,20 +228,64 @@ func TestCompleteReopen(t *testing.T) {
 	must[Claim](t)(tr.ClaimTask("2", nil)) // a blocked task can be claimed
 
 	r := must[CompleteResult](t)(tr.Complete("1"))
-	if !r.Changed || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
+	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
 		t.Errorf("complete: %+v", r)
 	}
-	if r := must[CompleteResult](t)(tr.Complete("1")); r.Changed {
+	if r := must[CompleteResult](t)(tr.Complete("1")); len(r.Changed) != 0 {
 		t.Error("completing twice changed something")
 	}
 	r = must[CompleteResult](t)(tr.Reopen("1"))
-	if !r.Changed || !reflect.DeepEqual(r.Reblocked, []int64{2}) ||
+	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Reblocked, []int64{2}) ||
 		!reflect.DeepEqual(r.Warnings, []Warning{{"claimed-blocked", []int64{2}}}) {
 		t.Errorf("reopen: %+v", r)
 	}
 	// A reopened task starts unclaimed.
 	if tr.claimed(1) {
 		t.Error("reopened task is claimed")
+	}
+	checked(t, tr)
+}
+
+// Complete and reopen over a list are one change, all or none. Only the
+// tasks whose state changed are listed, in input order; one completed
+// in the same call is never released, and one reopened in the same call
+// never reblocked. A task named twice, however it is written, is
+// invalid-input at its later occurrence.
+func TestCompleteReopenSeveral(t *testing.T) {
+	tr := newTree()
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"}))                           // @1
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", BlockedBy: []string{"1"}})) // @2
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "c", BlockedBy: []string{"1"}})) // @3
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "d"}))                           // @4
+
+	// A blocker and its waiter together: @2 is completed, so only @3 is
+	// released.
+	r := must[CompleteResult](t)(tr.Complete("2", "1"))
+	if !reflect.DeepEqual(r.Changed, []int64{2, 1}) || !reflect.DeepEqual(r.Released, []int64{3}) {
+		t.Errorf("blocker and waiter: %+v", r)
+	}
+	// Only the open ones are listed.
+	r = must[CompleteResult](t)(tr.Complete("4", "@1", "3"))
+	if !reflect.DeepEqual(r.Changed, []int64{4, 3}) || len(r.Released) != 0 {
+		t.Errorf("some complete: %+v", r)
+	}
+	// A bad entry mid-list changes nothing.
+	_, err := tr.Reopen("1", "99", "2")
+	wantErr(t, err, core.KindNotFound, "")
+	if tr.Tasks[1].Open() || tr.Tasks[2].Open() {
+		t.Error("a refused reopen changed something")
+	}
+	// A duplicate, spelled differently, at its later occurrence.
+	_, err = tr.Reopen("1", "2", "@1")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/2"}) {
+		t.Errorf("duplicate: %v", e.Problems)
+	}
+	// Reopening the blocker and a waiter: @2 was complete, so not ready,
+	// and only @3, ready before, waits again.
+	must[CompleteResult](t)(tr.Reopen("3"))
+	r = must[CompleteResult](t)(tr.Reopen("1", "2"))
+	if !reflect.DeepEqual(r.Changed, []int64{1, 2}) || !reflect.DeepEqual(r.Reblocked, []int64{3}) {
+		t.Errorf("reopen several: %+v", r)
 	}
 	checked(t, tr)
 }

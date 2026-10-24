@@ -46,7 +46,7 @@ func TestShapeBeforeReferences(t *testing.T) {
 		{"a path with no end where a task is taken", func() error {
 			_, err := tr.Complete("/nope/x")
 			return err
-		}, []string{"/task"}},
+		}, []string{"/tasks/0"}},
 		{"two spellings point at both references", func() error {
 			_, err := tr.CreateTask(TaskInput{Title: "t", Folder: "/work", BlockedBy: []string{"/Work.start"}})
 			return err
