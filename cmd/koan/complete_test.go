@@ -130,7 +130,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "archive", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"task", "claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
 		{[]string{"task", "release", "@"}, offered(byID, as("@", "6")...)},
-		{[]string{"task", "move", "@"}, offered(byID, as("@", allTasks...)...)},
+		{[]string{"task", "mv", "@"}, offered(byID, as("@", allTasks...)...)},
 		{[]string{"task", "join", "@"}, offered(byID, as("@", allTasks...)...)},
 		{[]string{"task", "unjoin", "@"}, offered(byID, as("@", allTasks...)...)},
 		// Gates made or not where an edge names them.
@@ -148,7 +148,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "claim-next", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "list", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"pick", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "move", "5", "--to", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"task", "mv", "5", "-t", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "show", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "update", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "move", "@"}, offered(byID, as("@", folders...)...)},
@@ -184,7 +184,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "show", "/nope/"}, offered(byPath)},
 		{[]string{"folder", "show", "/work//"}, offered(byPath)},
 		{[]string{"task", "list", "/w"}, offered(byPath, "/work")},
-		{[]string{"task", "move", "5", "--to", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"task", "mv", "5", "-t", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"task", "join", "42", "/w"}, offered(byPath, "/work")},
 		{[]string{"task", "unjoin", "5", "/work/api"}, offered(byPath, "/work/api")},
 		{[]string{"folder", "join", "/work/api", "/o"}, offered(byPath, "/old")},
@@ -207,7 +207,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		// Only tasks: a path offers nothing.
-		{[]string{"task", "move", "/"}, offered(byPath)},
+		{[]string{"task", "mv", "/"}, offered(byPath)},
 		{[]string{"task", "join", "/"}, offered(byPath)},
 		{[]string{"task", "unjoin", "/work/api"}, offered(byPath)},
 		// Finished folders, and the steps toward them.

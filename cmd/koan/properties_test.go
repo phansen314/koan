@@ -73,7 +73,7 @@ func TestProperties(t *testing.T) {
 		return
 	}
 	for _, cmd := range []string{"task create", "task update", "task block", "task unblock", "task complete", "task reopen",
-		"task claim", "task claim-next", "task release", "task move", "task delete", "task archive", "folder create",
+		"task claim", "task claim-next", "task release", "task mv", "task delete", "task archive", "folder create",
 		"folder update", "folder move", "folder move case", "folder delete", "folder delete material", "folder archive", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
@@ -535,12 +535,15 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			args = edgeArgs([]string{"task", "unblock", x}, bb, bl)
 			want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
 		case op == 13:
-			x, to := subject(), folderRef()
-			var changed bool
-			var ws []model.Warning
-			changed, ws, err = m.MoveTask(x, to)
-			args = []string{"task", "move", x, "--to", to}
-			want = fmt.Sprintf("%v %s", changed, warnings(ws))
+			xs, words := subjects(subject(), subject)
+			into := folderRef()
+			var out model.TaskMoved
+			out, err = m.MoveTask(into, xs...)
+			args = append(append([]string{"task", "mv"}, words...), into)
+			if rng.Intn(2) == 0 {
+				args = append([]string{"task", "mv", "-t", into}, words...)
+			}
+			want = fmt.Sprintf("%v %s", nonNil(out.Moved), warnings(out.Warnings))
 		case op == 14:
 			xs, words := subjects(subject(), subject)
 			var out model.Removed
@@ -675,12 +678,10 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					if c, _ := res["claim"].(map[string]any); c != nil {
 						got = fmt.Sprint(c["task"])
 					}
+				case "mv":
+					got = fmt.Sprintf("%v %s", ids(res["moved"]), koanWarnings(r))
 				case "move":
-					if args[0] == "task" {
-						got = fmt.Sprintf("%v %s", res["changed"], koanWarnings(r))
-					} else {
-						got = fmt.Sprintf("%v %v %v %v %s", res["id"], res["changed"], res["path"], koanMade(res["created"]), koanWarnings(r))
-					}
+					got = fmt.Sprintf("%v %v %v %v %s", res["id"], res["changed"], res["path"], koanMade(res["created"]), koanWarnings(r))
 				case "delete":
 					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
 				case "archive":

@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "result": {
+    "moved": [
+      {
+        "id": 3,
+        "notes_path": "$HOME/koan-root/tree/@b/@3.md"
+      }
+    ]
+  },
+  "warnings": []
+}

@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "task mv needs a folder after the subject",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "task mv needs a folder after the subject"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

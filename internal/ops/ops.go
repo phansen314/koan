@@ -18,7 +18,7 @@ func Commands() []*cli.Command {
 		TaskUnblock(),
 		TaskJoin(),
 		TaskUnjoin(),
-		TaskMove(),
+		TaskMv(),
 		TaskDelete(),
 		TaskArchive(),
 		TaskClaim(),

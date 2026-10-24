@@ -101,7 +101,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "koan folder move /work/api2 --to /work/api", want: []string{`{"ok":true,"result":{"id":41,"changed":true,"path":"/work/api"}}`}},
 
 	// Moving, deleting and archiving
-	{cmd: "koan task move 48 --to /work/api", want: []string{`{"ok":true,"result":{"id":48,"changed":true,"notes_path":"~/koan-root/tree/@work/@api/@48.md"}}`}},
+	{cmd: "koan task mv 48 /work/api", want: []string{`{"ok":true,"result":{"moved":[{"id":48,"notes_path":"~/koan-root/tree/@work/@api/@48.md"}]}}`}},
 	{cmd: "koan folder move /work/web/client --to /work/client", want: []string{`{"ok":true,"result":{"id":50,"changed":true,"path":"/work/client","created":[]}}`}},
 	{cmd: "koan task list /work/client --state open,complete --fields title,state,claim", want: []string{`{"ok":true,"result":{"tasks":[{"id":51},{"id":52},{"id":53}],"total":3}}`}},
 	{cmd: "koan folder delete /work/client", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"not-empty","ids":[51]}}`}},

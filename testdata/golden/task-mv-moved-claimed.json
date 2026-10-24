@@ -1,9 +1,12 @@
 {
   "ok": true,
   "result": {
-    "id": 2,
-    "changed": true,
-    "notes_path": "$HOME/koan-root/tree/@a/@2.md"
+    "moved": [
+      {
+        "id": 2,
+        "notes_path": "$HOME/koan-root/tree/@a/@2.md"
+      }
+    ]
   },
   "warnings": [
     {

@@ -88,9 +88,9 @@ func TestMoveTaskResolvesFirst(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
-	_, _, err := tr.MoveTask("/a.done", "/nope")
+	_, err := tr.MoveTask("/nope", "/a.done")
 	wantErr(t, err, core.KindNotFound, "")
-	_, _, err = tr.MoveTask("/a.done", "/")
+	_, err = tr.MoveTask("/", "/a.done")
 	wantErr(t, err, core.KindConflict, core.RuleGate)
 }
 

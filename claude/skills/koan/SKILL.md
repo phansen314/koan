@@ -243,7 +243,7 @@ koan folder move /work/api2 --to /work/api
 ## Moving, deleting and archiving
 
 ```sh
-koan task move 48 --to /work/api                    # its notes move with it; .result.notes_path is the new path
+koan task mv 48 /work/api                       # its notes move with it; .result.moved[0].notes_path is the new path
 koan folder move /work/web/client --to /work/client  # --to is the whole new path; a case-only rename is a move too
 koan task list /work/client --state open,complete --fields title,state,claim   # before deleting: what goes
 koan folder delete /work/client                     # refused without --contents: conflict, rule not-empty

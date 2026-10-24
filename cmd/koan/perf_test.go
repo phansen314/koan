@@ -28,7 +28,7 @@ type perfRoot struct {
 	folders []int64   // each chain's folder
 	tasks   [][]int64 // each folder's tasks, in chain order
 	moving  int64     // a folder only the folder move moves
-	mover   int64     // a task only the task move moves
+	mover   int64     // a task only the task mv moves
 	away    map[int64]bool
 	dir     string // a directory outside the tree, for markers
 	seq     int
@@ -266,12 +266,12 @@ var perfOps = []perfOp{
 		args: func(r *perfRoot, i int) []string {
 			return []string{"task", "unblock", r.task(i, 93), r.task(i, 92)}
 		}},
-	{name: "task move", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
+	{name: "task mv", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		to := fmt.Sprint("@", r.moving)
 		if r.away[r.mover] = !r.away[r.mover]; r.away[r.mover] {
 			to = "/"
 		}
-		return []string{"task", "move", fmt.Sprint(r.mover), "--to", to}
+		return []string{"task", "mv", fmt.Sprint(r.mover), to}
 	}},
 	{name: "task delete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {

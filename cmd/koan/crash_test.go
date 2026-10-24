@@ -247,10 +247,10 @@ var crashCases = []crashCase{
 		args: []string{"task", "complete", "1"}},
 	{name: "task block", prep: func(t *testing.T, home string) { ok(t, home, "folder", "create", "/a") },
 		args: []string{"task", "block", "1", "/a.done", "--blocks", "/a.start"}},
-	{name: "task move", prep: func(t *testing.T, home string) {
+	{name: "task mv", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "m", "--notes", "m notes")
-	}, args: []string{"task", "move", "4", "--to", "/a/b"}},
+	}, args: []string{"task", "mv", "4", "/a/b"}},
 	{name: "task delete", prep: func(t *testing.T, home string) {
 		ok(t, home, "task", "create", "d", "--notes", "d notes", "--blocks", "1")
 	}, args: []string{"task", "delete", "2"}},

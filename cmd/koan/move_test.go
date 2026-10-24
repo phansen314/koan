@@ -25,9 +25,9 @@ func writeTree(t *testing.T, home, rel, content string) {
 	}
 }
 
-// task move puts a task in another folder or the root, its notes with
-// it; no edge changes, so no readiness does, and updated_at stays. A move
-// to where it already is changes nothing.
+// task mv puts tasks in another folder or the root, their notes with
+// them; no edge changes, so no readiness does, and updated_at stays. A
+// task already in the folder doesn't move.
 func TestTaskMove(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")                                     // 1
@@ -35,10 +35,10 @@ func TestTaskMove(t *testing.T) {
 	ok(t, home, "task", "create", "t", "--folder", "/a", "--notes", "mine")   // 3
 	ok(t, home, "task", "create", "u", "--folder", "/a", "--blocked-by", "3") // 4
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
-	r := ok(t, home, "task", "move", "3", "--to", "/b")
-	golden(t, r, "task-move")
-	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[changed:true id:3 notes_path:%s]", treePath(home, "@b/@3.md")) {
-		t.Errorf("move: %s", r.Line())
+	r := ok(t, home, "task", "mv", "3", "/b")
+	golden(t, r, "task-mv")
+	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[moved:[map[id:3 notes_path:%s]]]", treePath(home, "@b/@3.md")) {
+		t.Errorf("mv: %s", r.Line())
 	}
 	checkTree(t, home, "@a/", "@a/@notes.md=", "@a/@4.md=", "@b/", "@b/@notes.md=", "@b/@3.md=mine")
 	rec := ok(t, home, "task", "show", "3").Result()["task"].(map[string]any)
@@ -48,38 +48,111 @@ func TestTaskMove(t *testing.T) {
 	if field(t, home, "4", "readiness") != "blocked" || field(t, home, "4", "updated_at") != fixed {
 		t.Errorf("what waits on it doesn't change")
 	}
-	// Where it already is, by any reference: nothing changes.
-	for _, to := range []string{"/b", "@2", "2"} {
-		if r := ok(t, home, "task", "move", "@3", "--to", to); fmt.Sprint(r.Result()["changed"]) != "false" ||
-			r.Result()["notes_path"] != treePath(home, "@b/@3.md") {
-			t.Errorf("--to %s: %s", to, r.Line())
+	// Where it already is, by any reference: nothing moves.
+	for i, into := range []string{"/b", "@2", "2"} {
+		r := ok(t, home, "task", "mv", "@3", into)
+		if i == 0 {
+			golden(t, r, "task-mv-already-there")
+		}
+		if fmt.Sprint(r.Result()["moved"]) != "[]" {
+			t.Errorf("into %s: %s", into, r.Line())
 		}
 	}
 	// To the root; notes that are missing move as nothing.
-	ok(t, home, "task", "move", "3", "--to", "/")
+	ok(t, home, "task", "mv", "3", "/")
 	checkTree(t, home, "@a/", "@a/@notes.md=", "@a/@4.md=", "@b/", "@b/@notes.md=", "@3.md=mine")
 	os.Remove(treePath(home, "@a/@4.md"))
-	ok(t, home, "task", "move", "4", "--to", "/b")
+	ok(t, home, "task", "mv", "4", "/b")
 	checkTree(t, home, "@a/", "@a/@notes.md=", "@b/", "@b/@notes.md=", "@3.md=mine")
 	if koan(t, home, "task", "show", "4").Result()["task"].(map[string]any)["folder"].(map[string]any)["path"] != "/b" {
 		t.Errorf("moved without notes")
 	}
 
-	golden(t, fails(t, home, "not-found", "", "task", "move", "3", "--to", "/z"), "task-move-not-found")
-	fails(t, home, "not-found", "", "task", "move", "99", "--to", "/b")
-	fails(t, home, "conflict", "case-mismatch", "task", "move", "3", "--to", "/B")
+	golden(t, fails(t, home, "not-found", "", "task", "mv", "3", "/z"), "task-mv-not-found")
+	fails(t, home, "not-found", "", "task", "mv", "99", "/b")
+	fails(t, home, "conflict", "case-mismatch", "task", "mv", "3", "/B")
 	for in, fields := range map[string]string{
-		`{"task":3}`:                     "/to",
-		`{"to":"/b"}`:                    "/task",
-		`{"task":3,"to":"/b.start"}`:     "/to",
-		`{"task":"/b","to":"/a"}`:        "/task",
-		`{"task":"/a.start","to":"/A"}`:  "/task /to",
-		`{"task":3,"to":"/b","x":1}`:     "/x",
-		`{"task":3,"to":"/b:docs/x.md"}`: "/to",
+		`{"tasks":[3]}`:                       "/into",
+		`{"into":"/b"}`:                       "/tasks",
+		`{"tasks":[],"into":"/b"}`:            "/tasks",
+		`{"tasks":3,"into":"/b"}`:             "/tasks",
+		`{"tasks":[3],"into":"/b.start"}`:     "/into",
+		`{"tasks":["/b"],"into":"/a"}`:        "/tasks/0",
+		`{"tasks":["/a.start"],"into":"/A"}`:  "/tasks/0 /into",
+		`{"tasks":[3],"into":"/b","x":1}`:     "/x",
+		`{"tasks":[3],"into":"/b:docs/x.md"}`: "/into",
+		`{"tasks":[3,"@3"],"into":"/b"}`:      "/tasks/1",
 	} {
-		if r := input(t, home, "task move", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
+		if r := input(t, home, "task mv", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
 			t.Errorf("%s: %s", in, r.Line())
 		}
+	}
+}
+
+// task mv takes several tasks, as words, joined by commas, or after -t;
+// they move as one change, and moved lists those that moved in input
+// order.
+func TestTaskMoveSeveral(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/a")                // 1
+	ok(t, home, "folder", "create", "/b")                // 2
+	ok(t, home, "task", "create", "t", "--folder", "/a") // 3
+	ok(t, home, "task", "create", "u", "--folder", "/b") // 4
+	ok(t, home, "task", "create", "v", "--folder", "/a") // 5
+	ok(t, home, "task", "create", "w", "--blocked-by", "/a.done")
+
+	r := ok(t, home, "task", "mv", "5", "4", "3", "/b")
+	golden(t, r, "task-mv-several")
+	if ids(r.Result()["moved"]) != "[5 3]" {
+		t.Errorf("several: %s", r.Line())
+	}
+	checkTree(t, home, "@a/", "@a/@done.md=", "@a/@notes.md=", "@b/", "@b/@notes.md=", "@b/@3.md=", "@b/@4.md=", "@b/@5.md=", "@6.md=")
+
+	r = ok(t, home, "task", "mv", "-t", "/a", "3", "4")
+	golden(t, r, "task-mv-into")
+	if ids(r.Result()["moved"]) != "[3 4]" {
+		t.Errorf("-t: %s", r.Line())
+	}
+	if r := ok(t, home, "task", "mv", "--into", "/", "3,5", "4"); ids(r.Result()["moved"]) != "[3 5 4]" {
+		t.Errorf("--into, with commas: %s", r.Line())
+	}
+	r = input(t, home, "task mv", `{"tasks":[3,5],"into":"/b"}`)
+	golden(t, r, "task-mv-input")
+
+	// If any is refused, none moves.
+	before := tree(t, home)
+	if r := fails(t, home, "conflict", "gate", "task", "mv", "4", "/a.done", "/b"); fmt.Sprint(r.Error()["ids"]) != "[7]" {
+		t.Errorf("gate: %s", r.Line())
+	}
+	fails(t, home, "not-found", "", "task", "mv", "4", "99", "/b")
+	fails(t, home, "invalid-input", "", "task", "mv", "4", "@4", "/b")
+	if fmt.Sprint(tree(t, home)) != fmt.Sprint(before) || field(t, home, "4", "folder").(map[string]any)["path"] != "/" {
+		t.Errorf("a refused move moved something")
+	}
+}
+
+// The command line of task mv: the last word is the folder, or -t takes
+// its place and every word is a task; task move and --to are gone.
+func TestTaskMoveUsage(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w") // 1
+	ok(t, home, "task", "create", "t")    // 2
+	golden(t, usageAt(t, home, "", "task", "mv", "2"), "task-mv-no-object")
+	golden(t, usageAt(t, home, "", "task", "mv", "-t", "/w"), "task-mv-no-subject")
+	usageAt(t, home, "", "task", "mv")
+	golden(t, usageAt(t, home, "--to", "task", "mv", "2", "--to", "/w"), "task-mv-to")
+	golden(t, usageAt(t, home, "move", "task", "move", "2", "/w"), "task-move-old")
+	usageAt(t, home, "--to", "task", "move", "2", "--to", "/w")
+	golden(t, usageAt(t, home, "--into", "task", "mv", "-t", "/w", "--into", "/", "2"), "task-mv-into-twice")
+	usageAt(t, home, "2", "task", "mv", "2", "/w", "-i", "-")
+	// With -t, every word is a task: a folder there is no task.
+	r := koan(t, home, "task", "mv", "-t", "/w", "2", "/w")
+	if r.Kind() != "invalid-input" || problemFields(r) != "/tasks/1" {
+		t.Errorf("a folder after -t: %s", r.Line())
+	}
+	golden(t, r, "task-mv-into-and-object")
+	if field(t, home, "2", "folder").(map[string]any)["path"] != "/" {
+		t.Errorf("a refused line moved the task")
 	}
 }
 
@@ -89,21 +162,22 @@ func TestTaskMoveGate(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")                         // 1
 	ok(t, home, "task", "create", "t", "--blocked-by", "/a.done") // 2, 3
-	golden(t, fails(t, home, "conflict", "gate", "task", "move", "/a.done", "--to", "/"), "task-move-gate")
-	if r := fails(t, home, "conflict", "gate", "task", "move", "3", "--to", "/a"); fmt.Sprint(r.Error()["ids"]) != "[3]" {
+	golden(t, fails(t, home, "conflict", "gate", "task", "mv", "/a.done", "/"), "task-mv-gate")
+	if r := fails(t, home, "conflict", "gate", "task", "mv", "3", "/a"); fmt.Sprint(r.Error()["ids"]) != "[3]" {
 		t.Errorf("own folder: %s", r.Line())
 	}
 }
 
 // A move that changes a claimed task's notes path warns moved-claimed,
-// with its new notes path; one that changes nothing doesn't.
+// with its new notes path; one that changes nothing doesn't. Of several,
+// it names the claimed ones that moved.
 func TestTaskMoveClaimed(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a") // 1
 	ok(t, home, "task", "create", "t")    // 2
 	ok(t, home, "task", "claim", "2")
-	r := warned(t, home, []string{"moved-claimed"}, "task", "move", "2", "--to", "/a")
-	golden(t, r, "task-move-moved-claimed")
+	r := warned(t, home, []string{"moved-claimed"}, "task", "mv", "2", "/a")
+	golden(t, r, "task-mv-moved-claimed")
 	w := r.Envelope["warnings"].([]any)[0].(map[string]any)
 	if fmt.Sprint(w["ids"]) != "[2]" || fmt.Sprint(w["paths"]) != "["+treePath(home, "@a/@2.md")+"]" {
 		t.Errorf("warning: %v", w)
@@ -111,7 +185,16 @@ func TestTaskMoveClaimed(t *testing.T) {
 	if field(t, home, "2", "claim") == nil {
 		t.Errorf("the claim stays")
 	}
-	ok(t, home, "task", "move", "2", "--to", "/a")
+	ok(t, home, "task", "mv", "2", "/a")
+
+	ok(t, home, "task", "create", "u") // 3
+	ok(t, home, "task", "create", "v") // 4
+	ok(t, home, "task", "claim", "4")
+	r = warned(t, home, []string{"moved-claimed"}, "task", "mv", "4", "3", "2", "/")
+	w = r.Envelope["warnings"].([]any)[0].(map[string]any)
+	if fmt.Sprint(w["ids"]) != "[2]" || fmt.Sprint(w["paths"]) != "["+treePath(home, "@2.md")+"]" {
+		t.Errorf("of several: %v", w)
+	}
 }
 
 // folder move moves or renames a folder, everything under it included,

@@ -656,6 +656,15 @@ type CompleteResult struct {
 // invalid-input at its later occurrence.
 func (c *Tree) subjectTasks(tasks []string) ([]*Task, error) {
 	var s shape
+	refs := taskRefs(&s, tasks)
+	if err := s.done(nil); err != nil {
+		return nil, err
+	}
+	return c.resolveTasks(refs)
+}
+
+// taskRefs reads a list of tasks into s, at /tasks/0 on.
+func taskRefs(s *shape, tasks []string) []core.Ref {
 	refs := make([]core.Ref, len(tasks))
 	for i, task := range tasks {
 		refs[i] = s.ref(fmt.Sprintf("/tasks/%d", i), task, core.WantTask, false)
@@ -663,9 +672,11 @@ func (c *Tree) subjectTasks(tasks []string) ([]*Task, error) {
 	if len(tasks) == 0 {
 		s.faultf("/tasks", "at least one task is needed")
 	}
-	if err := s.done(nil); err != nil {
-		return nil, err
-	}
+	return refs
+}
+
+// resolveTasks resolves a list of tasks read by taskRefs, in order.
+func (c *Tree) resolveTasks(refs []core.Ref) ([]*Task, error) {
 	var out []*Task
 	for i, ref := range refs {
 		at := fmt.Sprintf("/tasks/%d", i)
@@ -730,36 +741,53 @@ func (t *Tree) Reopen(tasks ...string) (out CompleteResult, err error) {
 	return out, err
 }
 
-// MoveTask puts a task in another folder or the root. No edge changes.
-func (t *Tree) MoveTask(task, to string) (changed bool, warnings []Warning, err error) {
+// TaskMoved is what task mv returns.
+type TaskMoved struct {
+	Moved    []int64 // the tasks that moved, in input order
+	Warnings []Warning
+}
+
+// MoveTask puts tasks in a folder or the root, as one change. No edge
+// changes. A task already in the folder doesn't move.
+func (t *Tree) MoveTask(into string, tasks ...string) (out TaskMoved, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
-		tref := s.ref("/task", task, core.WantTask, false)
-		dest := s.ref("/to", to, core.WantFolder, false)
+		refs := taskRefs(&s, tasks)
+		dest := s.ref("/into", into, core.WantFolder, false)
 		if err := s.done(nil); err != nil {
 			return err
 		}
-		x, err := c.resolveTask(tref)
+		xs, err := c.resolveTasks(refs)
 		if err != nil {
 			return err
 		}
-		folder, err := c.resolveFolder(dest, "/to")
+		folder, err := c.resolveFolder(dest, "/into")
 		if err != nil {
 			return err
 		}
-		if x.Gate != core.EndNone {
-			return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
+		for _, x := range xs {
+			if x.Gate != core.EndNone {
+				return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
+			}
 		}
-		if folder == x.Folder {
-			return nil
+		out.Moved = []int64{}
+		var claimed []int64
+		for _, x := range xs {
+			if folder == x.Folder {
+				continue
+			}
+			x.Folder = folder
+			out.Moved = append(out.Moved, x.ID)
+			if c.claimed(x.ID) {
+				claimed = append(claimed, x.ID)
+			}
 		}
-		x.Folder, changed = folder, true
-		if c.claimed(x.ID) {
-			warnings = []Warning{{Kind: "moved-claimed", IDs: []int64{x.ID}}}
+		if len(claimed) > 0 {
+			out.Warnings = []Warning{{Kind: "moved-claimed", IDs: claimed}}
 		}
 		return nil
 	})
-	return changed, warnings, err
+	return out, err
 }
 
 // FolderMoved is what folder move returns.

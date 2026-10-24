@@ -373,24 +373,50 @@ func TestMoveTask(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))                                             // @1
 	must[[]FolderAt](t)(tr.CreateFolder("/b", nil, nil))                                             // @2
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Folder: "/a", Blocks: []string{"/a"}})) // @3, gate @4
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "y", Folder: "/b"}))                         // @5
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "z", Folder: "/a"}))                         // @6
 	must[Claim](t)(tr.ClaimTask("3", nil))
 	ready := tr.readySet()
 
-	changed, warnings, err := tr.MoveTask("3", "/b")
-	if err != nil || !changed || !reflect.DeepEqual(warnings, []Warning{{"moved-claimed", []int64{3}}}) {
-		t.Errorf("move: %v %v %v", changed, warnings, err)
+	out, err := tr.MoveTask("/b", "3")
+	if err != nil || !reflect.DeepEqual(out.Moved, []int64{3}) || !reflect.DeepEqual(out.Warnings, []Warning{{"moved-claimed", []int64{3}}}) {
+		t.Errorf("move: %v %v", out, err)
 	}
 	// No edge changes, so no readiness does.
 	if !tr.Tasks[4].BlockedBy[3] || !reflect.DeepEqual(tr.readySet(), ready) {
 		t.Error("a move changed edges or readiness")
 	}
-	_, _, err = tr.MoveTask("@1.done", "/b")
+	_, err = tr.MoveTask("/b", "@1.done")
 	if e := wantErr(t, err, core.KindConflict, core.RuleGate); !reflect.DeepEqual(e.IDs, []int64{4}) {
 		t.Errorf("ids %v", e.IDs)
 	}
-	if changed, _, _ := tr.MoveTask("3", "@2"); changed {
+	if out, _ := tr.MoveTask("@2", "3"); len(out.Moved) != 0 {
 		t.Error("a move to where it is changed something")
 	}
+	// Several, in input order; one already there isn't listed.
+	out, err = tr.MoveTask("/", "6", "5", "3")
+	if err != nil || !reflect.DeepEqual(out.Moved, []int64{6, 5, 3}) {
+		t.Errorf("several: %v %v", out, err)
+	}
+	out, err = tr.MoveTask("/a", "5", "6")
+	if err != nil || !reflect.DeepEqual(out.Moved, []int64{5, 6}) || out.Warnings != nil {
+		t.Errorf("several: %v %v", out, err)
+	}
+	// One refused, none moves.
+	_, err = tr.MoveTask("/b", "5", "/a.done")
+	wantErr(t, err, core.KindConflict, core.RuleGate)
+	_, err = tr.MoveTask("/b", "5", "99")
+	wantErr(t, err, core.KindNotFound, "")
+	if tr.Tasks[5].Folder != 1 {
+		t.Error("a refused move moved a task")
+	}
+	// Given twice, however written, at the later occurrence.
+	_, err = tr.MoveTask("/b", "5", "@5")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+		t.Errorf("problems %v", e.Problems)
+	}
+	_, err = tr.MoveTask("/b")
+	wantErr(t, err, core.KindInvalidInput, "")
 	checked(t, tr)
 }
 
@@ -684,7 +710,7 @@ func TestMoveGateToItsFolder(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
-	_, _, err := tr.MoveTask("/a.done", "/a")
+	_, err := tr.MoveTask("/a", "/a.done")
 	wantErr(t, err, core.KindConflict, core.RuleGate)
 }
 
