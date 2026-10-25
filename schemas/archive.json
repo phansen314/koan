@@ -11,7 +11,7 @@
         "id",
         "archive",
         "json",
-        "left"
+        "removed"
       ],
       "properties": {
         "id": {
@@ -32,7 +32,7 @@
           "$ref": "types#/$defs/abs-path",
           "description": "The JSON beside it."
         },
-        "left": {
+        "removed": {
           "$ref": "types#/$defs/ids",
           "description": "Every ID that left the tree, now retired."
         }

@@ -28,16 +28,17 @@
       "type": "object",
       "required": [
         "marker",
-        "file",
+        "binding",
         "replaced"
       ],
       "properties": {
         "marker": {
-          "$ref": "marker-file"
-        },
-        "file": {
           "$ref": "types#/$defs/abs-path",
           "description": "The marker.json written."
+        },
+        "binding": {
+          "$ref": "marker-file",
+          "description": "What it holds."
         },
         "replaced": {
           "type": "boolean",
