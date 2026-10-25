@@ -619,12 +619,12 @@ func TestTaskClaimNextRace(t *testing.T) {
 		if !r.OK() {
 			t.Fatalf("failed: %s", r.Line())
 		}
-		c, _ := r.Result()["claim"].(map[string]any)
+		c, _ := r.Result()["task"].(map[string]any)
 		if c == nil {
 			nulls++
 			continue
 		}
-		id := fmt.Sprint(c["task"])
+		id := fmt.Sprint(c["id"])
 		if seen[id] {
 			t.Errorf("@%s handed out twice", id)
 		}

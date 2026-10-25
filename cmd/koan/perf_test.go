@@ -115,11 +115,11 @@ func getPerfRoot(tb testing.TB, n int) *perfRoot {
 		b, _ := json.Marshal(map[string]any{"folders": []any{map[string]any{"path": path}}, "folder": path, "tasks": tasks})
 		res := r.input("batch", string(b))
 		var ids []int64
-		for _, id := range res["tasks"].([]any) {
+		for _, id := range res["tasks_made"].([]any) {
 			ids = append(ids, num(id))
 		}
 		r.tasks = append(r.tasks, ids)
-		r.folders = append(r.folders, num(res["folders"].([]any)[0].(map[string]any)["id"]))
+		r.folders = append(r.folders, num(res["folders_made"].([]any)[0].(map[string]any)["id"]))
 	}
 	// A third of each chain complete, the start gate with it; a claim on
 	// every tenth folder's first open task.
@@ -132,11 +132,11 @@ func getPerfRoot(tb testing.TB, n int) *perfRoot {
 		}
 	}
 	r.db(stmts...)
-	r.moving = num(r.must("folder", "create", "/mv/f")["created"].([]any)[1].(map[string]any)["id"])
+	r.moving = num(r.must("folder", "create", "/mv/f")["folders_made"].([]any)[1].(map[string]any)["id"])
 	r.mover = num(r.must("task", "create", "mover", "--folder", "/mv/f")["id"])
 	r.must("folder", "create", "/moved")
 	info := r.must("info")
-	tb.Logf("a root of %v live tasks and %v folders, built in %v, in %s", info["tasks"], info["folders"], time.Since(start).Round(time.Millisecond), home)
+	tb.Logf("a root of %v live tasks and %v folders, built in %v, in %s", info["counts"].(map[string]any)["tasks"], info["counts"].(map[string]any)["folders"], time.Since(start).Round(time.Millisecond), home)
 	perfRoots[n] = r
 	return r
 }
@@ -361,7 +361,7 @@ func (r *perfRoot) smallFolder(top string, done bool) int {
 	}
 	b, _ := json.Marshal(map[string]any{"folders": []any{map[string]any{"path": path}}, "folder": path, "tasks": tasks})
 	res := r.input("batch", string(b))
-	id := num(res["folders"].([]any)[len(res["folders"].([]any))-1].(map[string]any)["id"])
+	id := num(res["folders_made"].([]any)[len(res["folders_made"].([]any))-1].(map[string]any)["id"])
 	if done {
 		r.db(fmt.Sprintf("UPDATE task SET completed_at = updated_at WHERE folder = %d", id))
 	}
