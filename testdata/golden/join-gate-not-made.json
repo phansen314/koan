@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"/b.start\": a gate joins no folder; the subject is a task or a folder",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "\"/b.start\": a gate joins no folder; the subject is a task or a folder"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

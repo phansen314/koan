@@ -15,11 +15,16 @@ func TestOldSpellings(t *testing.T) {
 	ok(t, home, "task", "create", "a", "--folder", "/w") // 2
 	ok(t, home, "task", "create", "b", "--folder", "/w") // 3
 	golden(t, usageAt(t, home, "show", "task", "show", "2"), "task-show-old")
+	golden(t, usageAt(t, home, "join", "folder", "join", "/w", "/w"), "folder-join-old")
 	for _, args := range [][]string{
 		{"task", "show", "2"},
 		{"folder", "show", "/w"},
 		{"task", "archive", "2"},
 		{"folder", "archive", "/w"},
+		{"task", "join", "2", "/w"},
+		{"folder", "join", "/w", "/w"},
+		{"task", "unjoin", "2", "/w"},
+		{"folder", "unjoin", "/w", "/w"},
 		{"task", "why", "2"},
 		{"task", "complete", "2"},
 		{"task", "reopen", "2"},

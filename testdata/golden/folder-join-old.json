@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command folder join",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "join",
+        "reason": "unknown command folder join"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -188,7 +188,7 @@ func TestBatchJoinInvalid(t *testing.T) {
 // in cycle order: the batch's own at /join/<n>, however many task parts
 // take it, and a folder part's, whose gates other parts can name.
 func TestBatchJoinCycle(t *testing.T) {
-	// The rules example's task join 10 @7, as a batch's join two parts
+	// The rules example's join 10 @7, as a batch's join two parts
 	// take: the second, waiting on @10, closes it.
 	home := example(t)
 	r := batchFails(t, home, "conflict", "cycle", "/join/0 /tasks/1/blocked_by/0",

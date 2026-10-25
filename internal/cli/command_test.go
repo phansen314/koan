@@ -36,8 +36,8 @@ var optional = &Command{
 
 // join takes a subject, then a list as its object.
 var join = &Command{
-	Name:    "task join",
-	Subject: &Option{Field: "task", Required: true},
+	Name:    "join",
+	Subject: &Option{Field: "ref", Required: true},
 	Object:  &Option{Field: "join", Kind: List, Arg: "folder", Required: true},
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
@@ -150,9 +150,9 @@ func TestParseLines(t *testing.T) {
 		{optional, nil, `{}`},
 		{optional, []string{"@41:docs/plan.md"}, `{"ref":"@41:docs/plan.md"}`},
 		{bare, nil, `{}`},
-		{join, []string{"42", "/a"}, `{"task":"42","join":["/a"]}`},
-		{join, []string{"42", "/a,/b"}, `{"task":"42","join":["/a","/b"]}`},
-		{join, []string{"42", "/a", "/b,/c"}, `{"task":"42","join":["/a","/b","/c"]}`},
+		{join, []string{"42", "/a"}, `{"ref":"42","join":["/a"]}`},
+		{join, []string{"42", "/a,/b"}, `{"ref":"42","join":["/a","/b"]}`},
+		{join, []string{"42", "/a", "/b,/c"}, `{"ref":"42","join":["/a","/b","/c"]}`},
 		{move, []string{"42", "/w"}, `{"tasks":["42"],"into":"/w"}`},
 		{move, []string{"41", "42", "/w"}, `{"tasks":["41","42"],"into":"/w"}`},
 		{move, []string{"41,42", "/w"}, `{"tasks":["41","42"],"into":"/w"}`},

@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"/\": the root has no gates, so it joins no folder",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "\"/\": the root has no gates, so it joins no folder"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

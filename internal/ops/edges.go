@@ -147,22 +147,33 @@ func (w *edges) resolve(task int64, in []edgeIn, make bool) ([]edge, error) {
 	return out, nil
 }
 
-// member resolves the task a join or an unjoin is given: a task, never
-// a gate.
-func (w *edges) member(ref core.Ref) (int64, error) {
-	res, err := resolve(w.tx, ref, core.WantTask, "task")
+// member resolves the subject a join or an unjoin is given, a task or a
+// folder, never a gate, to its ID and the ends a join's edges name: a
+// task is both its own ends, and a folder's are its start and done
+// gates. With make set, a gate a folder lacks is made, the start gate
+// first; else it is 0.
+func (w *edges) member(ref core.Ref, make bool) (id, start, done int64, err error) {
+	res, err := resolve(w.tx, ref, core.WantRef, "ref")
 	if err != nil {
-		return 0, err
+		return 0, 0, 0, err
+	}
+	if res.Kind == core.ResolvedRoot {
+		return 0, 0, 0, &core.Error{Kind: core.KindInvalidInput, Problems: []string{"/ref"},
+			Message: "the root has no gates, so it joins no folder"}
+	}
+	if res.Kind != core.ResolvedTask {
+		start, done, err = w.gates(res.ID, make)
+		return res.ID, start, done, err
 	}
 	row, _, err := w.tx.Task(res.ID)
 	if err != nil {
-		return 0, err
+		return 0, 0, 0, err
 	}
 	if row.Gate != core.EndNone {
-		return 0, &core.Error{Kind: core.KindInvalidInput, Problems: []string{"/task"},
+		return 0, 0, 0, &core.Error{Kind: core.KindInvalidInput, Problems: []string{"/ref"},
 			Message: fmt.Sprintf("@%d is a gate, and a gate joins no folder", res.ID)}
 	}
-	return res.ID, nil
+	return res.ID, res.ID, res.ID, nil
 }
 
 // gates gives a folder's start and done gates. With make set, a gate it

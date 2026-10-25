@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "@4 is a gate, and a gate joins no folder",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "@4 is a gate, and a gate joins no folder"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}
