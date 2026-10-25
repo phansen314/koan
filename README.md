@@ -34,6 +34,8 @@ eval "$(koan pick --bash)"
 bind -x '"\ek": __koan_pick_widget'     # Alt-K
 ```
 
+koan paths are never globbed: a shell expands `/work/old/*` against your disk before koan runs, so it never means the folders under `/work/old`. Name each folder, completing it with Tab, or pick them with `$(koan pick)`.
+
 ### Choosing a key
 
 - **Alt-K on Linux**, in the default emacs editing mode, works as above.

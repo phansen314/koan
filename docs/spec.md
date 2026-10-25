@@ -1081,11 +1081,11 @@ A case-only rename is `koan folder mv /work /Work`, since `/Work` names no folde
 | `task join`, `task unjoin` subject; `task mv` subject with `-t` | tasks |
 | `task mv` without `-t`: the first word | tasks |
 | `task mv` without `-t`: every word after the first, since any can be the last | tasks and folders |
-| `task block`, `task unblock` subject | tasks and gates, made or not |
+| `task block` subject | tasks and gates, made or not |
 | the words after the subject (`task block`, `task unblock`), `--blocked-by`, `--blocks` | tasks, gates made or not, and folders |
 | `--folder` (`task create`), `-t` (`task mv`, `folder mv`), `--join` (`task create`, `folder create`), the folders joined after the subject (`task join`, `task unjoin`, `folder join`, `folder unjoin`) | folders |
 | `folder show`, `folder update`, `folder join`, `folder unjoin`, `folder delete`, `context`, `export`, `marker bind` subject; the folder looked under (`task list`, `task frontier`, `task claim-next`, `folder list`, `pick`) | folders |
-| `folder mv`: every word, but with `-T` the second | folders |
+| `folder mv`: every word, but with `-T` only the first; with `-T`, a word past the second offers nothing | folders |
 | `folder archive` subject | finished folders |
 | `folder create` subject, `folder mv -T`'s second word | folders as paths only, as steps toward a new path: the last name is the person's to type |
 | `where` subject | tasks, made gates, and folders |
