@@ -644,16 +644,16 @@ func TestArchive(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "w", BlockedBy: []string{"2"}}))             // @4
 	tr.PutMaterial(1, ".git")
 
-	_, err := tr.ArchiveTask("2")
+	_, err := tr.Archive("2")
 	wantErr(t, err, core.KindConflict, core.RuleNotFinished)
 	must[CompleteResult](t)(tr.Complete("2"))
-	_, err = tr.ArchiveFolder("/f")
+	_, err = tr.Archive("/f")
 	if e := wantErr(t, err, core.KindConflict, core.RuleNotFinished); !reflect.DeepEqual(e.IDs, []int64{3}) {
 		t.Errorf("open ids %v", e.IDs)
 	}
 	must[CompleteResult](t)(tr.Complete("@1.done"))
 	ready := tr.readySet()
-	left := must[[]int64](t)(tr.ArchiveFolder("/f"))
+	left := must[[]int64](t)(tr.Archive("/f"))
 	if !reflect.DeepEqual(left, []int64{1, 2, 3}) {
 		t.Errorf("left %v", left)
 	}
@@ -668,7 +668,7 @@ func TestArchive(t *testing.T) {
 		t.Errorf("archive %+v", a)
 	}
 	// Retired IDs never resolve again, and are never issued again.
-	_, err = tr.ArchiveTask("2")
+	_, err = tr.Archive("2")
 	if e := wantErr(t, err, core.KindNotFound, ""); !reflect.DeepEqual(e.Archived, []int64{2}) {
 		t.Errorf("archived %v", e.Archived)
 	}
@@ -676,6 +676,13 @@ func TestArchive(t *testing.T) {
 		t.Errorf("issued %d", id)
 	}
 	checked(t, tr)
+	// The root can't be archived, and material isn't taken.
+	for _, ref := range []string{"/", "@4:x"} {
+		_, err = tr.Archive(ref)
+		if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/ref"}) {
+			t.Errorf("%s: problems %v", ref, e.Problems)
+		}
+	}
 }
 
 func TestClaims(t *testing.T) {

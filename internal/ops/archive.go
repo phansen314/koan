@@ -8,6 +8,7 @@ import (
 	"path"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/core"
@@ -15,8 +16,7 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// ArchiveResult is task archive's result, and folder archive's, in its
-// schema's order.
+// ArchiveResult is archive's result, in its schema's order.
 type ArchiveResult struct {
 	ID      int64   `json:"id"`
 	Archive *string `json:"archive"`
@@ -101,40 +101,119 @@ type leaving struct {
 	missing bool
 }
 
-// TaskArchive moves a complete task to the archive, its notes as
+// Archive moves a complete task, a gate included, or a finished folder
+// with everything under it, to the archive, with its JSON beside it.
+func Archive() *cli.Command {
+	return &cli.Command{
+		Name:    "archive",
+		Subject: &cli.Option{Field: "ref", Required: true, Complete: completeOnes.complete()},
+		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
+			r := input{in: in}
+			ref := r.ref("ref", core.WantRef, "")
+			if ref.IsRoot() {
+				r.fault("/ref", "the root can't be archived")
+			}
+			if e := r.err(); e != nil {
+				return nil, nil, e
+			}
+			s, e := openStore(env)
+			if e != nil {
+				return nil, nil, e
+			}
+			defer s.Close()
+			return s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
+				got, err := resolve(tx, ref, core.WantRef, "ref")
+				if err != nil {
+					return nil, nil, err
+				}
+				t, err := loadTasks(tx, s.Root)
+				if err != nil {
+					return nil, nil, err
+				}
+				if got.Kind == core.ResolvedTask {
+					return t.archiveTask(tx, s.Root, got.ID)
+				}
+				return t.archiveFolder(tx, s.Root, got.ID)
+			})
+		},
+	}
+}
+
+// archiveTask moves a complete task to the archive, its notes as
 // @<id>.md, or a gate's as @<id>_start.md or @<id>_done.md, with its JSON
 // beside them, under directories named after the folders it was in.
-func TaskArchive() *cli.Command {
-	return rootedTaskCommand("task archive", completeOnes, func(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error) {
-		t, err := loadTasks(tx, root)
-		if err != nil {
-			return nil, nil, err
+func (t *tasks) archiveTask(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error) {
+	if t.Open(id) {
+		return nil, nil, core.Conflict(core.RuleNotFinished, []int64{id}, nil, "@%d is open; complete it before archiving it", id)
+	}
+	row := t.rows[id]
+	above, err := archiveAbove(tx, root, t.paths[row.Folder])
+	if err != nil {
+		return nil, nil, err
+	}
+	name := "@" + strconv.FormatInt(id, 10)
+	if row.Gate != core.EndNone {
+		name += "_" + string(row.Gate)
+	}
+	l := leaving{id: id, kind: "task", path: t.paths[row.Folder], tasks: []int64{id},
+		from: t.notesRel(id), to: path.Join(above, name+".md"), file: path.Join(above, name+".json")}
+	there, err := fsstep.There(root, l.from)
+	if err != nil {
+		return nil, nil, lookErr(root, path.Dir(l.from), err)
+	}
+	l.missing = !there
+	l.index = map[int64]string{id: l.to}
+	if l.missing {
+		l.index[id] = l.file
+	}
+	return t.archive(tx, l)
+}
+
+// archiveFolder moves a finished folder to the archive with everything
+// under it, gates, notes and material included: its directory, renamed
+// @<id>_<name>, with its JSON beside it, under directories named after
+// the folders it was in.
+func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error) {
+	l := leaving{id: id, kind: "folder", path: t.paths[id], folders: append([]int64{id}, t.under(id, true)...), dir: true}
+	var open []int64
+	for _, tid := range t.order {
+		if t.in(tid, id, true) {
+			l.tasks = append(l.tasks, tid)
+			if t.Open(tid) {
+				open = append(open, tid)
+			}
 		}
-		if t.Open(id) {
-			return nil, nil, core.Conflict(core.RuleNotFinished, []int64{id}, nil, "@%d is open; complete it before archiving it", id)
-		}
-		row := t.rows[id]
-		above, err := archiveAbove(tx, root, t.paths[row.Folder])
-		if err != nil {
-			return nil, nil, err
-		}
-		name := "@" + strconv.FormatInt(id, 10)
-		if row.Gate != core.EndNone {
-			name += "_" + string(row.Gate)
-		}
-		l := leaving{id: id, kind: "task", path: t.paths[row.Folder], tasks: []int64{id},
-			from: t.notesRel(id), to: path.Join(above, name+".md"), file: path.Join(above, name+".json")}
-		there, err := fsstep.There(root, l.from)
-		if err != nil {
-			return nil, nil, lookErr(root, path.Dir(l.from), err)
-		}
-		l.missing = !there
-		l.index = map[int64]string{id: l.to}
-		if l.missing {
-			l.index[id] = l.file
-		}
-		return t.archive(tx, l)
-	})
+	}
+	if len(open) > 0 {
+		slices.Sort(open)
+		return nil, nil, core.Conflict(core.RuleNotFinished, open, nil,
+			"%s under @%d %s open; complete them before archiving it", core.FormatIDs(open), id, isAre(len(open)))
+	}
+	row := t.folders.rows[id]
+	above, err := archiveAbove(tx, root, t.paths[row.Parent])
+	if err != nil {
+		return nil, nil, err
+	}
+	name := "@" + strconv.FormatInt(id, 10) + "_" + row.Name
+	l.from = fsstep.FolderDir(l.path)
+	l.to, l.file = path.Join(above, name), path.Join(above, name+".json")
+	// Everything under it keeps its place in the directory, so each is
+	// indexed there, whether or not it is on disk.
+	l.index = map[int64]string{}
+	for _, f := range l.folders {
+		l.index[f] = l.to + strings.TrimPrefix(fsstep.FolderDir(t.paths[f]), l.from)
+	}
+	for _, tid := range l.tasks {
+		l.index[tid] = l.to + strings.TrimPrefix(t.notesRel(tid), l.from)
+	}
+	return t.archive(tx, l)
+}
+
+func isAre(n int) string {
+	if n == 1 {
+		return "is"
+	}
+	return "are"
 }
 
 // archiveAbove is the directories above an item archived from a folder,

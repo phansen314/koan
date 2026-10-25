@@ -143,7 +143,7 @@ func TestConcurrency(t *testing.T) {
 		add("", "folder", "delete", fmt.Sprintf("/d%d", i), "--contents")
 	}
 	for i := range archivers {
-		add("", "folder", "archive", fmt.Sprintf("/a%d", i))
+		add("", "archive", fmt.Sprintf("/a%d", i))
 	}
 	for _, id := range cIDs {
 		add("", "complete", id)

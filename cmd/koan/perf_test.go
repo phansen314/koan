@@ -279,12 +279,12 @@ var perfOps = []perfOp{
 			r.seq = int(num(r.must("task", "create", "doomed", "--folder", r.folder(i), "--blocks", r.task(i, 97))["id"]))
 		},
 		args: func(r *perfRoot, i int) []string { return []string{"task", "delete", fmt.Sprint(r.seq)} }},
-	{name: "task archive", budget: 100 * ms,
+	{name: "archive task", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			r.seq = int(num(r.must("task", "create", "done", "--folder", r.folder(i), "--notes", "notes")["id"]))
 			r.must("complete", fmt.Sprint(r.seq))
 		},
-		args: func(r *perfRoot, i int) []string { return []string{"task", "archive", fmt.Sprint(r.seq)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"archive", fmt.Sprint(r.seq)} }},
 	{name: "claim", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.must("release", r.task(i, 90)) },
 		args: func(r *perfRoot, i int) []string { return []string{"claim", r.task(i, 90)} }},
@@ -317,9 +317,9 @@ var perfOps = []perfOp{
 		args: func(r *perfRoot, i int) []string {
 			return []string{"folder", "delete", fmt.Sprint(r.seq), "--contents"}
 		}},
-	{name: "folder archive", budget: 100 * ms,
+	{name: "archive folder", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.seq = r.smallFolder("/arc", true) },
-		args: func(r *perfRoot, i int) []string { return []string{"folder", "archive", fmt.Sprint(r.seq)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"archive", fmt.Sprint(r.seq)} }},
 	{name: "batch", budget: 100*ms + batchParts*ms, args: always("batch", "-i", "-"), stdin: func(r *perfRoot, i int) string {
 		r.seq++
 		var tasks []any

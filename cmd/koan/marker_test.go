@@ -129,7 +129,7 @@ func TestMarkerBind(t *testing.T) {
 		t.Errorf("--force=x: %s", r.Line())
 	}
 	ok(t, home, "folder", "create", "/done")
-	ok(t, home, "folder", "archive", "/done")
+	ok(t, home, "archive", "/done")
 	fails(t, home, "not-found", "", "marker", "bind", "/done", wt)
 	r = fails(t, home, "not-found", "", "marker", "bind", "@6", wt)
 	if len(r.Error()["archived"].([]any)) != 1 {

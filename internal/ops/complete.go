@@ -38,7 +38,6 @@ var (
 	edgeEnds        = offers{kinds: []string{"task", "gate", "folder"}, unmade: true}
 	foldersOnly     = offers{kinds: []string{"folder"}}
 	tasksAndFolders = offers{kinds: []string{"task", "folder"}}
-	finishedOnes    = offers{kinds: []string{"folder"}, finished: true}
 	newPaths        = offers{steps: true}
 	anyRef          = offers{kinds: []string{"task", "gate", "folder"}}
 )

@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "kind": "task",
+  "archived_at": "$NOW",
+  "path": "/work/api",
+  "folders": [],
+  "tasks": [
+    {
+      "id": 4,
+      "gate": "start",
+      "folder": {
+        "id": 2,
+        "path": "/work/api"
+      },
+      "title": "Start",
+      "priority": null,
+      "created_at": "2026-10-20T10:00:00Z",
+      "completed_at": "2026-10-20T10:00:00Z",
+      "updated_at": "2026-10-20T10:00:00Z",
+      "tags": [],
+      "extra": {}
+    }
+  ],
+  "edges": [
+    {
+      "task": 3,
+      "blocker": 4
+    }
+  ]
+}

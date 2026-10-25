@@ -18,6 +18,8 @@ func TestOldSpellings(t *testing.T) {
 	for _, args := range [][]string{
 		{"task", "show", "2"},
 		{"folder", "show", "/w"},
+		{"task", "archive", "2"},
+		{"folder", "archive", "/w"},
 		{"task", "why", "2"},
 		{"task", "complete", "2"},
 		{"task", "reopen", "2"},

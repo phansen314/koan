@@ -254,11 +254,11 @@ var crashCases = []crashCase{
 	{name: "task delete", prep: func(t *testing.T, home string) {
 		ok(t, home, "task", "create", "d", "--notes", "d notes", "--blocks", "1")
 	}, args: []string{"task", "delete", "2"}},
-	{name: "task archive", prep: func(t *testing.T, home string) {
+	{name: "archive task", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
 		ok(t, home, "complete", "4")
-	}, args: []string{"task", "archive", "4"}},
+	}, args: []string{"archive", "4"}},
 	{name: "folder mv", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b", "--notes", "b notes")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes")
@@ -281,12 +281,12 @@ var crashCases = []crashCase{
 		writeTree(t, home, "@a/@b/src/main.go", "package main")
 		writeTree(t, home, "@a/.DS_Store", "")
 	}, args: []string{"folder", "delete", "/a", "--contents", "--material"}},
-	{name: "folder archive", prep: func(t *testing.T, home string) {
+	{name: "archive folder", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
 		ok(t, home, "complete", "4")
 		writeTree(t, home, "@a/@b/src/main.go", "package main")
-	}, args: []string{"folder", "archive", "/a"}},
+	}, args: []string{"archive", "/a"}},
 	{name: "batch", args: []string{"batch", "-i", "-"}, stdin: `{"folders":[{"path":"/p/q"}],"tasks":[
 		{"label":"$a","title":"a","folder":"/p/q","blocks":["$b","/p.done"]},
 		{"label":"$b","title":"b","folder":"/p","blocked_by":["/p/q.start"],"blocks":["1"]}]}`},

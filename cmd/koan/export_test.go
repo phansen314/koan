@@ -243,7 +243,7 @@ func TestExportMarkers(t *testing.T) {
 	}
 	ok(t, home, "folder", "create", "/done") // 5
 	ok(t, home, "marker", "bind", "/done", dir)
-	ok(t, home, "folder", "archive", "/done")
+	ok(t, home, "archive", "/done")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[5]" || len(r.Error()["archived"].([]any)) != 1 {
 		t.Errorf("archived: %s", r.Line())
@@ -254,7 +254,7 @@ func TestExportMarkers(t *testing.T) {
 func TestExportRefusals(t *testing.T) {
 	home := exportTree(t)
 	ok(t, home, "folder", "create", "/old") // 12
-	ok(t, home, "folder", "archive", "/old")
+	ok(t, home, "archive", "/old")
 	r := fails(t, home, "not-found", "", "export", "@12")
 	golden(t, r, "export-archived")
 	if a := r.Error()["archived"].([]any); len(a) != 1 {

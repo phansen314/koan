@@ -128,7 +128,7 @@ func TestCompleteReferences(t *testing.T) {
 		// By state and claim, gates as tasks.
 		{[]string{"complete", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
 		{[]string{"reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
-		{[]string{"task", "archive", "@"}, offered(byID, as("@", "8", "3.start")...)},
+		{[]string{"archive", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
 		{[]string{"release", "@"}, offered(byID, as("@", "6")...)},
 		{[]string{"task", "mv", "@"}, offered(byID, as("@", allTasks...)...)},
@@ -169,7 +169,6 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "join", "5", "/work/api", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "join", "/work/api", "/old", "2"}, offered(byID, as("", "2")...)},
 		{[]string{"context", "3"}, offered(byID, as("", "3")...)},
-		{[]string{"folder", "archive", "@"}, offered(byID, as("@", "1", "4")...)},
 		// task mv: the first word offers tasks, and every word after it
 		// tasks and folders, since any can be the last; after -t, every
 		// word is a task.
@@ -250,9 +249,6 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "mv", "/"}, offered(byPath)},
 		{[]string{"task", "join", "/"}, offered(byPath)},
 		{[]string{"task", "unjoin", "/work/api"}, offered(byPath)},
-		// Finished folders, and the steps toward them.
-		{[]string{"folder", "archive", "/"}, offered(byPath, "/old", "/work")},
-		{[]string{"folder", "archive", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		// Paths only, as steps toward a new path.
 		{[]string{"folder", "create", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "create", "/work/api"}, offered(byPath, "/work/api")},

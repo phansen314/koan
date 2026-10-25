@@ -109,7 +109,7 @@ func TestWhereRef(t *testing.T) {
 
 	// An archived ID is not-found, with where it went.
 	ok(t, home, "complete", "6")
-	ok(t, home, "task", "archive", "6")
+	ok(t, home, "archive", "6")
 	r := fails(t, home, "not-found", "", "where", "@6")
 	golden(t, r, "where-archived")
 	if a := r.Error()["archived"].([]any); len(a) != 1 {
@@ -204,8 +204,8 @@ func TestWhereRootPath(t *testing.T) {
 	ok(t, home, "task", "create", "b")                          // 4
 	ok(t, home, "complete", "3")
 	ok(t, home, "complete", "4")
-	ok(t, home, "task", "archive", "4")
-	ok(t, home, "folder", "archive", "/work/api")
+	ok(t, home, "archive", "4")
+	ok(t, home, "archive", "/work/api")
 	root := filepath.Join(home, "koan-root")
 
 	for _, file := range []string{root, root + "/koan.db", root + "/elsewhere/x", root + "/archived", root + "/archived/work"} {
@@ -381,7 +381,7 @@ func TestWhereMarkerBindsNothing(t *testing.T) {
 		t.Errorf("deleted: %s", r.Line())
 	}
 	ok(t, home, "marker", "bind", "/archive", dir)
-	ok(t, home, "folder", "archive", "/archive")
+	ok(t, home, "archive", "/archive")
 	r = fails(t, home, "not-found", "", "where", "--file", dir+"/x")
 	golden(t, r, "where-marker-archived")
 	a := r.Error()["archived"].([]any)

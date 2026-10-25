@@ -92,7 +92,7 @@ func goldenBackup(t *testing.T, r *testrun.Result, name string) {
 func TestBackup(t *testing.T) {
 	home := base(t)
 	ok(t, home, "folder", "create", "/done/old") // 7, 8
-	ok(t, home, "folder", "archive", "/done/old")
+	ok(t, home, "archive", "/done/old")
 	hand(t, os.MkdirAll(filepath.Join(treeDir(home), "@work", "src", "@types"), 0o755))
 	write(t, home, "@work/src/main.go", "package main")
 	hand(t, os.Chmod(filepath.Join(treeDir(home), "@work", "src", "main.go"), 0o600))

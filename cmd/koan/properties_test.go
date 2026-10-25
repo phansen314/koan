@@ -73,8 +73,8 @@ func TestProperties(t *testing.T) {
 		return
 	}
 	for _, cmd := range []string{"task create", "task update", "block", "unblock", "complete", "reopen",
-		"claim", "claim-next", "release", "task mv", "task delete", "task archive", "folder create",
-		"folder update", "folder mv", "folder mv case", "folder delete", "folder delete material", "folder archive", "batch"} {
+		"claim", "claim-next", "release", "task mv", "task delete", "archive task", "folder create",
+		"folder update", "folder mv", "folder mv case", "folder delete", "folder delete material", "archive folder", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -555,15 +555,14 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
 		case op >= 18:
 			var left []int64
+			var x string
 			if op == 18 {
-				x := subject()
-				left, err = m.ArchiveTask(x)
-				args = []string{"task", "archive", x}
+				x, name = subject(), "archive task"
 			} else {
-				x := folderRef()
-				left, err = m.ArchiveFolder(x)
-				args = []string{"folder", "archive", x}
+				x, name = folderRef(), "archive folder"
 			}
+			left, err = m.Archive(x)
+			args = []string{"archive", x}
 			want = fmt.Sprint(nonNil(left))
 		case op >= 15:
 			// Creates come most often and deletes least, so the folders
@@ -822,7 +821,7 @@ func TestCheckRoot(t *testing.T) {
 	ok(t, home, "task", "create", "a", "--folder", "/work", "--blocked-by", "/work.start")
 	ok(t, home, "task", "create", "b")
 	ok(t, home, "complete", "5")
-	ok(t, home, "task", "archive", "5")
+	ok(t, home, "archive", "5")
 	ok(t, home, "task", "create", "c")
 	snap, bad := testrun.CheckRoot(home, nil, testrun.Checks{Notes: true})
 	if len(bad) > 0 {

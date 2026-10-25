@@ -262,8 +262,8 @@ koan folder delete /work/client --contents       # only once the user said so: .
 Archiving moves complete work out of the tree into `~/koan-root/archived/`, kept as files with a JSON of its fields beside it, so the tree stays small. There is no unarchive.
 
 ```sh
-koan folder archive /work/api                       # refused while anything under it is open: conflict, rule not-finished
-koan task update 48 --tags-add cancelled && koan complete 48 && koan task archive 48   # one task: .result.archive
+koan archive /work/api                              # refused while anything under it is open: conflict, rule not-finished
+koan task update 48 --tags-add cancelled && koan complete 48 && koan archive 48   # one task: .result.archive
 koan show 48                                        # not-found: .error.archived says where it went
 ```
 

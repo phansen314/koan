@@ -106,8 +106,8 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "koan task list /work/client --state open,complete --fields title,state,claim", want: []string{`{"ok":true,"result":{"tasks":[{"id":51},{"id":52},{"id":53}],"total":3}}`}},
 	{cmd: "koan folder delete /work/client", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"not-empty","ids":[51]}}`}},
 	{cmd: "koan folder delete /work/client --contents", want: []string{`{"ok":true,"result":{"removed":[50,51,52,53],"released":[]}}`}},
-	{cmd: "koan folder archive /work/api", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"not-finished","ids":[43,46,47,48]}}`}},
-	{cmd: "koan task update 48 --tags-add cancelled && koan complete 48 && koan task archive 48", want: []string{
+	{cmd: "koan archive /work/api", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"not-finished","ids":[43,46,47,48]}}`}},
+	{cmd: "koan task update 48 --tags-add cancelled && koan complete 48 && koan archive 48", want: []string{
 		`{"ok":true,"result":{"id":48,"changed":true}}`,
 		`{"ok":true,"result":{"completed":[48],"released":[]}}`,
 		`{"ok":true,"result":{"id":48,"archive":"~/koan-root/archived/work/api/@48.md","left":[48]}}`}},
