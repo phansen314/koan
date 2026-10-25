@@ -100,7 +100,7 @@ func readPick(in cli.Input) (*pickIn, string, *cli.Error) {
 	_, p.hasFile = r.value("file")
 	_, hasFolder := r.value("folder")
 	if p.hasFile && hasFolder {
-		r.fault("", "give at most one of folder and file")
+		r.fault("", "give at most one of the folder, --file and --here")
 	}
 	if p.frontier {
 		for _, f := range []string{"state", "readiness", "claimed"} {

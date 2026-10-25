@@ -862,7 +862,7 @@ A case-only rename is `koan mv /work /Work`, since `/Work` names no folder byte 
 ```json
 { "$id": "context", "$defs": {
   "input": { "type": "object", "properties": {
-    "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject; the root when neither it nor file is given." },
+    "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject: the root when neither it nor file is given." },
     "file":   { "$ref": "task-list#/$defs/filter/properties/file" } },
     "not": { "required": ["folder", "file"] } },
   "result": { "$ref": "brief" } } }
@@ -881,7 +881,7 @@ A case-only rename is `koan mv /work /Work`, since `/Work` names no folder byte 
 ```json
 { "$id": "export", "$defs": {
   "input": { "type": "object", "properties": {
-    "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject; the root when neither it nor file is given." },
+    "folder": { "$ref": "types#/$defs/folder-ref", "description": "Subject: the root when neither it nor file is given." },
     "file":   { "$ref": "task-list#/$defs/filter/properties/file" } },
     "not": { "required": ["folder", "file"] } },
   "result": { "type": "object", "required": ["folder", "folders", "tasks", "external", "edges"], "properties": {

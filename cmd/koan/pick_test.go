@@ -311,7 +311,7 @@ func TestPickSubject(t *testing.T) {
 	if got, want := p.keys(), []string{"@2", "@2.start", "@2.done", "@3"}; !slices.Equal(got, want) {
 		t.Errorf("/work/api: keys %v, want %v", got, want)
 	}
-	p.run("--here", "/work").failed(t, 1, "invalid-input", "folder and file")
+	p.run("--here", "/work").failed(t, 1, "invalid-input", "the folder, --file and --here")
 	p.run("/work", "/work/api").failed(t, 2, "usage", "")
 	p.run("--folder", "/work").failed(t, 2, "usage", "folder")
 }
@@ -426,7 +426,7 @@ func TestPickFailures(t *testing.T) {
 	p := newPicker(t, home)
 	p.run("--frob").failed(t, 2, "usage", "frob")
 	p.run("--frontier", "--readiness", "ready").failed(t, 1, "invalid-input", "frontier")
-	p.run("--here", "/work").failed(t, 1, "invalid-input", "folder and file")
+	p.run("--here", "/work").failed(t, 1, "invalid-input", "the folder, --file and --here")
 	p.run("--kinds", "material").failed(t, 1, "invalid-input", "material")
 	p.run("/nope").failed(t, 1, "not-found", "/nope")
 

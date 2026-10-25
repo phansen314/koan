@@ -7,7 +7,7 @@
       "properties": {
         "folder": {
           "$ref": "types#/$defs/folder-ref",
-          "description": "Subject; the root when neither it nor file is given."
+          "description": "Subject: the root when neither it nor file is given."
         },
         "file": {
           "$ref": "task-list#/$defs/filter/properties/file"

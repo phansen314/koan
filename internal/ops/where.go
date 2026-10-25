@@ -87,7 +87,7 @@ func (r *input) locating(field string, want core.Want) *query {
 	q.file = r.absPath("file", false)
 	_, hasFile := r.value("file")
 	if q.hasRef == hasFile {
-		r.fault("", "give exactly one of %s, file and --here", field)
+		r.fault("", "give exactly one of the reference, --file and --here")
 	}
 	return q
 }
@@ -101,7 +101,7 @@ func (r *input) foldering(field string) *query {
 	q.file = r.absPath("file", false)
 	_, hasFile := r.value("file")
 	if hasFolder && hasFile {
-		r.fault("", "give at most one of %s, file and --here", field)
+		r.fault("", "give at most one of the folder, --file and --here")
 	}
 	q.hasRef = !hasFile
 	if q.hasRef {
