@@ -64,7 +64,7 @@ Every field is always there; a field with no value is `null` or empty. **Branch 
   - `exists`: the destination is taken: a folder path for a create or a move, an entry on disk there, or a non-empty directory for a backup.
   - `not-finished`: archiving work that isn't complete; `.error.ids` is the open tasks. Ask the user; never complete them to get past it.
   - `not-empty`, `has-material`: a folder delete without `--contents` or `--material`. Never add them on your own (see Moving, deleting and archiving).
-  - `gate`: a gate can't be moved out of its folder.
+  - `gate`: a gate never moves, even into its own folder.
   - `into-itself`: a folder can't move inside itself.
   - `checkout`, `bound`, `foreign-files`: `marker bind` refused the directory (see Worktrees).
   - `not-a-root`: `init` found files that aren't koan's (above).
@@ -243,11 +243,11 @@ koan folder mv -T /work/api2 /work/api
 ## Moving, deleting and archiving
 
 ```sh
-koan task mv 48 /work/api                       # its notes move with it; .result.moved[0].notes_path is the new path
+koan task mv 48 /work/api                        # its notes move with it; .result.moved[0].notes_path is the new path
 koan folder mv -T /work/web/client /work/client  # -T: the new path; -t: the folder to move into
 koan task list /work/client --state open,complete --fields title,state,claim   # before deleting: what goes
-koan folder delete /work/client                     # refused without --contents: conflict, rule not-empty
-koan folder delete /work/client --contents          # only once the user said so: .result.removed, .result.released
+koan folder delete /work/client                  # refused without --contents: conflict, rule not-empty
+koan folder delete /work/client --contents       # only once the user said so: .result.removed, .result.released
 ```
 
 - Always pass `-t` or `-T` to `folder mv`, so what you type never depends on what exists.

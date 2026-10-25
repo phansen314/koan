@@ -80,7 +80,7 @@ var usages = map[string]string{
 	"task mv/into":           "the folder to move them into, in place of the last word",
 	"folder mv/into":         "the folder to move them into, in place of the last word",
 	"folder mv/rename":       "the last word is the folder's new path, never a folder to move into",
-	"contents":               "delete the folder's tasks and folders too",
+	"contents":               "delete their tasks and folders too",
 	"folder delete/material": "delete the files of yours in them too",
 	"marker bind/force":      "bind a checkout, or a directory bound to another folder",
 	"where/file":             "find the folder this file is in",

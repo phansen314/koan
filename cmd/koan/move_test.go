@@ -420,7 +420,9 @@ func TestFolderMoveRefused(t *testing.T) {
 		{[]string{"-T", "@1", "/a/b"}, "into-itself", "/a/b"},
 		{[]string{"-T", "@1", "/a/b/c/d"}, "into-itself", "/a/b/c/d"},
 		{[]string{"-T", "@2", "/a/b/x"}, "into-itself", "/a/b/x"},
-		{[]string{"-T", "@1", "@2/x"}, "into-itself", "@2/x"},
+		{[]string{"-T", "@1", "@2/x"}, "into-itself", "/a/b/x"},
+		{[]string{"-T", "@1", "@1/x"}, "into-itself", "/a/x"},
+		{[]string{"-T", "@1", "2"}, "into-itself", "/a/b"},
 		{[]string{"@1", "/a/B/x"}, "into-itself", "/a/B/x"},
 		{[]string{"@1", "/a/b"}, "into-itself", "/a/b/a"},
 		{[]string{"-t", "@2", "@1"}, "into-itself", "/a/b/a"},
@@ -551,5 +553,12 @@ func TestFolderMoveUsage(t *testing.T) {
 	}
 	if fmt.Sprint(tree(t, home)) != "[@a/ @a/@notes.md= @c/ @c/@notes.md=]" {
 		t.Errorf("a refused line moved a folder: %q", tree(t, home))
+	}
+	// --rename=false is no rename, so it goes with -t, as through -i.
+	if r := ok(t, home, "folder", "mv", "--rename=false", "-t", "/c", "/a"); fmt.Sprint(r.Result()["moved"]) == "[]" {
+		t.Errorf("--rename=false with -t: %s", r.Line())
+	}
+	if fmt.Sprint(tree(t, home)) != "[@c/ @c/@a/ @c/@a/@notes.md= @c/@notes.md=]" {
+		t.Errorf("--rename=false with -t: %q", tree(t, home))
 	}
 }

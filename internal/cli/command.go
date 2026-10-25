@@ -146,7 +146,8 @@ type Command struct {
 	// SingleObject, with Single, is what the object completes to once
 	// Single is given true, if not the object's own Complete.
 	SingleObject Completer
-	// Apart are the fields of options that can't be given together.
+	// Apart are the fields of options that can't be given together. A
+	// boolean given false isn't given: it sets what leaving it out does.
 	Apart   []string
 	Options []Option
 	Files   []File
@@ -400,7 +401,7 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 	for _, field := range c.Apart {
 		f := cmd.Flags().Lookup(strings.ReplaceAll(field, "_", "-"))
 		switch {
-		case !f.Changed:
+		case !f.Changed, l.in[field] == false:
 		case f.Shorthand != "":
 			apart = append(apart, "-"+f.Shorthand)
 		default:

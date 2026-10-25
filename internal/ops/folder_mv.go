@@ -277,12 +277,13 @@ func FolderMv() *cli.Command {
 // folder itself, or inside it, is into-itself, checked at each step of
 // the walk, before what is further along it; a part that matches a
 // folder only ignoring case is case-mismatch, and one that matches none
-// not-found.
+// not-found. Into-itself gives the new path from the root.
 func newPath(tx *store.Tx, f *folders, ref core.Ref, self int64) (int64, string, error) {
+	dest := ""
 	inside := func(at int64) error {
 		if at == self || f.inside(at, self) {
-			return core.Conflict(core.RuleIntoItself, []int64{self}, []string{ref.TargetString()},
-				"@%d would land inside itself at %s", self, ref.TargetString())
+			return core.Conflict(core.RuleIntoItself, []int64{self}, []string{dest},
+				"@%d would land inside itself at %s", self, dest)
 		}
 		return nil
 	}
@@ -295,6 +296,7 @@ func newPath(tx *store.Tx, f *folders, ref core.Ref, self int64) (int64, string,
 		if res.ID == self {
 			return row.Parent, row.Name, nil
 		}
+		dest = tx.Path(res.ID)
 		return row.Parent, row.Name, inside(row.Parent)
 	}
 	at, given := core.RootID, ""
@@ -307,6 +309,7 @@ func newPath(tx *store.Tx, f *folders, ref core.Ref, self int64) (int64, string,
 		}
 		at, given = res.ID, strings.SplitN(ref.Raw, "/", 2)[0]
 	}
+	dest = strings.TrimSuffix(tx.Path(at), "/") + "/" + strings.Join(ref.Names, "/")
 	n := len(ref.Names)
 	for _, name := range ref.Names[:n-1] {
 		if err := inside(at); err != nil {

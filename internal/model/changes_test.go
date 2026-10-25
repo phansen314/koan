@@ -808,8 +808,14 @@ func TestMoveFolderOrder(t *testing.T) {
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
 	_, err = tr.MoveFolder(MvDest, "/a/B/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
-	_, err = tr.MoveFolder(MvRename, "@2/x", "@1")
-	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	// Into itself names the new path from the root, however it is written.
+	for dest, path := range map[string]string{"@2/x": "/a/b/x", "@1/x": "/a/x", "2": "/a/b"} {
+		_, err = tr.MoveFolder(MvRename, dest, "@1")
+		wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+		if e := err.(*core.Error); len(e.Paths) != 1 || e.Paths[0] != path {
+			t.Errorf("%s: into-itself at %v, want %s", dest, e.Paths, path)
+		}
+	}
 	_, err = tr.MoveFolder(MvRename, "/C/d", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
 	_, err = tr.MoveFolder(MvRename, "/A/x", "@1")

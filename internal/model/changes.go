@@ -940,12 +940,14 @@ func (t *Tree) MoveFolder(mv Mv, dest string, folders ...string) (out FolderMove
 // newPath finds where a rename puts a folder: the folder its new path's
 // parent names, which must exist, and the new name. A bare ID names a
 // folder that exists, so its path is the new one. Walking the parent
-// through the folder itself, or anchoring inside it, is into-itself.
+// through the folder itself, or anchoring inside it, is into-itself, at
+// the new path from the root.
 func (c *Tree) newPath(ref core.Ref, self int64, pointer string) (int64, string, error) {
+	dest := ""
 	inside := func(at int64) error {
 		if at == self || c.Under(at, self) {
-			return core.Conflict(core.RuleIntoItself, []int64{self}, []string{ref.TargetString()},
-				"@%d would land inside itself at %s", self, ref.TargetString())
+			return core.Conflict(core.RuleIntoItself, []int64{self}, []string{dest},
+				"@%d would land inside itself at %s", self, dest)
 		}
 		return nil
 	}
@@ -958,6 +960,7 @@ func (c *Tree) newPath(ref core.Ref, self int64, pointer string) (int64, string,
 		if g.ID == self {
 			return g.Parent, g.Name, nil
 		}
+		dest = c.Path(g.ID)
 		return g.Parent, g.Name, inside(g.Parent)
 	}
 	at, given := core.RootID, ""
@@ -970,6 +973,7 @@ func (c *Tree) newPath(ref core.Ref, self int64, pointer string) (int64, string,
 		}
 		at, given = r.ID, strings.SplitN(ref.Raw, "/", 2)[0]
 	}
+	dest = strings.TrimSuffix(c.Path(at), "/") + "/" + strings.Join(ref.Names, "/")
 	n := len(ref.Names)
 	for _, name := range ref.Names[:n-1] {
 		if err := inside(at); err != nil {
