@@ -14,7 +14,7 @@ import (
 type GateMade struct {
 	ID     int64    `json:"id"`
 	Folder FolderAt `json:"folder"`
-	End    string   `json:"end"`
+	Gate   string   `json:"gate"`
 }
 
 // edgeIn is one edge as given to the task being changed: an entry of its
@@ -91,7 +91,7 @@ func (w *edges) gate(folder int64, end core.End) (int64, error) {
 		return 0, err
 	}
 	w.new[id] = true
-	w.made = append(w.made, GateMade{ID: id, Folder: FolderAt{ID: &folder, Path: path}, End: string(end)})
+	w.made = append(w.made, GateMade{ID: id, Folder: FolderAt{ID: &folder, Path: path}, Gate: string(end)})
 	return id, nil
 }
 

@@ -5,7 +5,7 @@
     "ref": "@4 (/e)",
     "notes_path": "$HOME/koan-root/tree/@e/@notes.md",
     "dir": "$HOME/koan-root/tree/@e",
-    "created": [
+    "folders_made": [
       {
         "id": 4,
         "path": "/e"
@@ -18,7 +18,7 @@
           "id": 4,
           "path": "/e"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 6,
@@ -26,7 +26,7 @@
           "id": 4,
           "path": "/e"
         },
-        "end": "done"
+        "gate": "done"
       },
       {
         "id": 7,
@@ -34,7 +34,7 @@
           "id": 1,
           "path": "/c"
         },
-        "end": "start"
+        "gate": "start"
       }
     ],
     "reblocked": [

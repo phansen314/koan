@@ -545,18 +545,15 @@ func TestTaskClaimNext(t *testing.T) {
 	r := ok(t, home, "claim-next", "--extra", `{"who":"w"}`)
 	goldenNow(t, r, "claim-next")
 	res := r.Result()
-	if res["task"].(map[string]any)["id"] != json.Number("5") || fmt.Sprint(res["task"].(map[string]any)["claim"]) != fmt.Sprint(res["claim"]) {
+	if res["task"].(map[string]any)["id"] != json.Number("5") || res["task"].(map[string]any)["claim"] == nil || res["claim"] != nil {
 		t.Errorf("first: %s", r.Line())
 	}
 	next := func(args ...string) string {
 		r := ok(t, home, append([]string{"claim-next"}, args...)...)
 		if r.Result()["task"] == nil {
-			if r.Result()["claim"] != nil {
-				t.Errorf("a claim with no task: %s", r.Line())
-			}
 			return "none"
 		}
-		return fmt.Sprint(r.Result()["claim"].(map[string]any)["task"])
+		return fmt.Sprint(r.Result()["task"].(map[string]any)["id"])
 	}
 	for _, c := range []struct {
 		args []string

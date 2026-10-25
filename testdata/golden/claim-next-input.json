@@ -28,13 +28,6 @@
         }
       },
       "notes_path": "$HOME/koan-root/tree/@w/@2.md"
-    },
-    "claim": {
-      "task": 2,
-      "claimed_at": "$NOW",
-      "extra": {
-        "by": "me"
-      }
     }
   },
   "warnings": []

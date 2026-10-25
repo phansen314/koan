@@ -415,7 +415,7 @@ func TestInitSymlinkRoot(t *testing.T) {
 	}
 	r := testrun.Run{Home: home}.Koan(t, "init")
 	r.Check(t, "init")
-	created, _ := r.Result()["created"].([]any)
+	created, _ := r.Result()["made"].([]any)
 	if r.Exit != 0 || len(created) != 3 {
 		t.Errorf("exit %d: %s", r.Exit, r.Line())
 	}
@@ -507,7 +507,7 @@ func TestInitRace(t *testing.T) {
 		if r.Exit != 0 {
 			t.Fatalf("exit %d: %s", r.Exit, r.Line())
 		}
-		for _, c := range r.Result()["created"].([]any) {
+		for _, c := range r.Result()["made"].([]any) {
 			made[c.(string)]++
 		}
 	}
@@ -537,7 +537,7 @@ func TestIDsRunOut(t *testing.T) {
 	ok(t, home, "mv", "-T", "/work", "/Work")
 	ok(t, home, "complete", "999999999999999")
 	r = ok(t, home, "info")
-	if r.Result()["next_id"] != nil || r.Result()["tasks"] != json.Number("1") || r.Result()["folders"] != json.Number("1") {
+	if c, _ := r.Result()["counts"].(map[string]any); r.Result()["next_id"] != nil || c["tasks"] != json.Number("1") || c["folders"] != json.Number("1") {
 		t.Errorf("info: %s", r.Line())
 	}
 	if r := ok(t, home, "doctor"); len(r.Result()["findings"].([]any)) != 0 {

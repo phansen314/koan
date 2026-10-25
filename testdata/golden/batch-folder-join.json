@@ -1,7 +1,7 @@
 {
   "ok": true,
   "result": {
-    "folders": [
+    "folders_made": [
       {
         "id": 1,
         "path": "/s"
@@ -19,7 +19,7 @@
         "path": "/u"
       }
     ],
-    "tasks": [
+    "tasks_made": [
       5
     ],
     "labels": {},
@@ -30,7 +30,7 @@
           "id": 3,
           "path": "/t"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 7,
@@ -38,7 +38,7 @@
           "id": 3,
           "path": "/t"
         },
-        "end": "done"
+        "gate": "done"
       },
       {
         "id": 8,
@@ -46,7 +46,7 @@
           "id": 1,
           "path": "/s"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 9,
@@ -54,7 +54,7 @@
           "id": 1,
           "path": "/s"
         },
-        "end": "done"
+        "gate": "done"
       },
       {
         "id": 10,
@@ -62,7 +62,7 @@
           "id": 2,
           "path": "/s/impl"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 11,
@@ -70,7 +70,7 @@
           "id": 2,
           "path": "/s/impl"
         },
-        "end": "done"
+        "gate": "done"
       },
       {
         "id": 12,
@@ -78,7 +78,7 @@
           "id": 4,
           "path": "/u"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 13,
@@ -86,7 +86,7 @@
           "id": 4,
           "path": "/u"
         },
-        "end": "done"
+        "gate": "done"
       }
     ],
     "reblocked": []

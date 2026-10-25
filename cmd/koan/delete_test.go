@@ -282,8 +282,8 @@ func TestTaskDeleteSeveral(t *testing.T) {
 // delete takes a list of folders and removes them as one change:
 // if any is refused, none goes. A folder given twice is invalid-input at
 // its later occurrence, and one inside another given is invalid-input at
-// the one inside. not-empty names the direct contents of the first
-// folder given that holds any; has-material lists the material of every
+// the one inside. not-empty names the direct contents of every folder
+// given that holds any; has-material lists the material of every
 // folder given, in input order. --contents and --material apply to every
 // folder; --force is gone.
 func TestFolderDeleteSeveral(t *testing.T) {
@@ -324,10 +324,10 @@ func TestFolderDeleteSeveral(t *testing.T) {
 	fails(t, home, "not-found", "", "delete", "/c", "/nope")
 	unchanged()
 
-	// /c holds only material, so /b is the first that holds tasks.
+	// /c holds only material; /b holds a task and /a a folder, both listed.
 	r = fails(t, home, "conflict", "not-empty", "delete", "/c", "/b", "/a")
-	golden(t, r, "folder-delete-not-empty-first")
-	if fmt.Sprint(r.Error()["ids"]) != "[4]" {
+	golden(t, r, "folder-delete-not-empty-several")
+	if fmt.Sprint(r.Error()["ids"]) != "[2 4]" {
 		t.Errorf("not-empty: %s", r.Line())
 	}
 	r = fails(t, home, "conflict", "has-material", "delete", "/c", "/b", "/a", "--contents")

@@ -19,7 +19,7 @@ func TestBatchJoin(t *testing.T) {
 	home := root(t)
 	r := batchOK(t, home, `{"folders": [{"path": "/a"}], "tasks": [{"title": "x", "join": ["/a"]}]}`)
 	golden(t, r, "batch-join")
-	if fmt.Sprint(r.Result()["gates_made"]) != "[map[end:start folder:map[id:1 path:/a] id:3] map[end:done folder:map[id:1 path:/a] id:4]]" {
+	if fmt.Sprint(r.Result()["gates_made"]) != "[map[folder:map[id:1 path:/a] gate:start id:3] map[folder:map[id:1 path:/a] gate:done id:4]]" {
 		t.Errorf("gates: %s", r.Line())
 	}
 	if got := waitsOn(t, home, "2"); fmt.Sprint(got) != "[3]" {
@@ -34,7 +34,7 @@ func TestBatchJoin(t *testing.T) {
 	home = root(t)
 	r = batchOK(t, home, `{"folders": [{"path": "/a"}, {"path": "/b"}],
   "tasks": [{"label": "$x", "title": "x", "blocked_by": ["/a.start"], "join": ["/b", "@1"]}]}`)
-	if fmt.Sprint(r.Result()["gates_made"]) != "[map[end:start folder:map[id:1 path:/a] id:4] map[end:start folder:map[id:2 path:/b] id:5] map[end:done folder:map[id:2 path:/b] id:6] map[end:done folder:map[id:1 path:/a] id:7]]" {
+	if fmt.Sprint(r.Result()["gates_made"]) != "[map[folder:map[id:1 path:/a] gate:start id:4] map[folder:map[id:2 path:/b] gate:start id:5] map[folder:map[id:2 path:/b] gate:done id:6] map[folder:map[id:1 path:/a] gate:done id:7]]" {
 		t.Errorf("gates: %s", r.Line())
 	}
 	if got := waitsOn(t, home, "3"); fmt.Sprint(got) != "[4 5]" {
@@ -59,7 +59,7 @@ func TestBatchFolderJoin(t *testing.T) {
 	gates := ""
 	for _, g := range r.Result()["gates_made"].([]any) {
 		m := g.(map[string]any)
-		gates += fmt.Sprintf(" %v=%v.%v", m["id"], m["folder"].(map[string]any)["path"], m["end"])
+		gates += fmt.Sprintf(" %v=%v.%v", m["id"], m["folder"].(map[string]any)["path"], m["gate"])
 	}
 	if gates != " 6=/t.start 7=/t.done 8=/s.start 9=/s.done 10=/s/impl.start 11=/s/impl.done 12=/u.start 13=/u.done" {
 		t.Errorf("gates:%s", gates)
@@ -76,7 +76,7 @@ func TestBatchFolderJoin(t *testing.T) {
 	// part with "join": [] makes no gates.
 	home = root(t)
 	r = batchOK(t, home, `{"folders": [{"path": "/m/n", "join": ["/u"]}, {"path": "/u"}, {"path": "/v", "join": []}]}`)
-	if fmt.Sprint(r.Result()["folders"]) != "[map[id:1 path:/m] map[id:2 path:/m/n] map[id:3 path:/u] map[id:4 path:/v]]" {
+	if fmt.Sprint(r.Result()["folders_made"]) != "[map[id:1 path:/m] map[id:2 path:/m/n] map[id:3 path:/u] map[id:4 path:/v]]" {
 		t.Errorf("folders: %s", r.Line())
 	}
 	if gatesIn(t, home, "/m") != "[]" || gatesIn(t, home, "/v") != "[]" ||

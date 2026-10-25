@@ -30,13 +30,6 @@
         }
       },
       "notes_path": "$HOME/koan-root/tree/@a/@b/@5.md"
-    },
-    "claim": {
-      "task": 5,
-      "claimed_at": "$NOW",
-      "extra": {
-        "who": "w"
-      }
     }
   },
   "warnings": []

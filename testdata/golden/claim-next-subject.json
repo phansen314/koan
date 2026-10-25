@@ -26,11 +26,6 @@
         "extra": {}
       },
       "notes_path": "$HOME/koan-root/tree/@a/@b/@4.md"
-    },
-    "claim": {
-      "task": 4,
-      "claimed_at": "$NOW",
-      "extra": {}
     }
   },
   "warnings": []

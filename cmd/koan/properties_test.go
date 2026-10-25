@@ -196,7 +196,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		for _, g := range r.Result()["gates_made"].([]any) {
 			g := g.(map[string]any)
 			f := g["folder"].(map[string]any)
-			out = append(out, fmt.Sprintf("%v %v %v %v", g["id"], f["id"], f["path"], g["end"]))
+			out = append(out, fmt.Sprintf("%v %v %v %v", g["id"], f["id"], f["path"], g["gate"]))
 		}
 		return fmt.Sprint(out)
 	}
@@ -705,11 +705,11 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				verb := commandName(args)
 				switch verb[strings.LastIndex(verb, " ")+1:] {
 				case "batch":
-					got = fmt.Sprintf("%v %v %v %s %v %s", koanMade(res["folders"]), res["tasks"], res["labels"],
+					got = fmt.Sprintf("%v %v %v %s %v %s", koanMade(res["folders_made"]), res["tasks_made"], res["labels"],
 						koanGates(r), res["reblocked"], koanWarnings(r))
 				case "create":
 					if args[0] == "folder" {
-						got = fmt.Sprint(koanMade(res["created"]))
+						got = fmt.Sprint(koanMade(res["folders_made"]))
 						break
 					}
 					got = fmt.Sprintf("%v %s %v %s", res["id"], koanGates(r), res["reblocked"], koanWarnings(r))
@@ -729,8 +729,8 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					got = fmt.Sprint(res["unclaimed"])
 				case "claim-next":
 					got = "<nil>"
-					if c, _ := res["claim"].(map[string]any); c != nil {
-						got = fmt.Sprint(c["task"])
+					if x, _ := res["task"].(map[string]any); x != nil {
+						got = fmt.Sprint(x["id"])
 					}
 				case "mv":
 					got = fmt.Sprintf("%v %s", koanMoved(res["moved"]), koanWarnings(r))

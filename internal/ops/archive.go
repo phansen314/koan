@@ -139,6 +139,27 @@ func Archive() *cli.Command {
 				}
 				// Each archive is made from the tree as it was, so it keeps
 				// the edges to the others archived with it.
+				var open []int64
+				for _, sub := range subs {
+					if !sub.folder {
+						if t.Open(sub.id) {
+							open = append(open, sub.id)
+						}
+						continue
+					}
+					for _, tid := range t.order {
+						if t.in(tid, sub.id, true) && t.Open(tid) {
+							open = append(open, tid)
+						}
+					}
+				}
+				// One subject keeps its own message, from its own check.
+				if len(open) > 0 && len(subs) > 1 {
+					slices.Sort(open)
+					open = slices.Compact(open)
+					return nil, nil, core.Conflict(core.RuleNotFinished, open, nil,
+						"%s %s open; complete them before archiving", core.FormatIDs(open), isAre(len(open)))
+				}
 				res := ArchiveResult{Archived: []ArchivedItem{}, Removed: []int64{}}
 				for _, sub := range subs {
 					var l leaving

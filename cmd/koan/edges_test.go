@@ -182,7 +182,7 @@ func TestTaskBlockGates(t *testing.T) {
 		var out []string
 		for _, g := range r.Result()["gates_made"].([]any) {
 			g := g.(map[string]any)
-			out = append(out, fmt.Sprintf("%v %v.%v", g["id"], g["folder"].(map[string]any)["path"], g["end"]))
+			out = append(out, fmt.Sprintf("%v %v.%v", g["id"], g["folder"].(map[string]any)["path"], g["gate"]))
 		}
 		return strings.Join(out, ", ")
 	}

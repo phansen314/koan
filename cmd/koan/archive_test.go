@@ -517,6 +517,12 @@ func TestArchiveSeveral(t *testing.T) {
 		t.Errorf("not-finished: %s", r.Line())
 	}
 	unchanged("a refused archive")
+	// Every open task of every subject is listed, in ascending order.
+	r = fails(t, home, "conflict", "not-finished", "archive", "5", "/work/a", "3")
+	if fmt.Sprint(r.Error()["ids"]) != "[4 5]" {
+		t.Errorf("not-finished lists every subject: %s", r.Line())
+	}
+	unchanged("a refused archive of several")
 	for _, c := range []struct{ args, field string }{
 		{"3 @3", "/refs/1"},
 		{"6,3,@6", "/refs/2"},

@@ -12,13 +12,13 @@ import (
 
 // FolderCreateResult is folder create's result, in its schema's order.
 type FolderCreateResult struct {
-	ID        int64      `json:"id"`
-	Ref       string     `json:"ref"`
-	NotesPath string     `json:"notes_path"`
-	Dir       string     `json:"dir"`
-	Created   []FolderAt `json:"created"`
-	GatesMade []GateMade `json:"gates_made"`
-	Reblocked []int64    `json:"reblocked"`
+	ID          int64      `json:"id"`
+	Ref         string     `json:"ref"`
+	NotesPath   string     `json:"notes_path"`
+	Dir         string     `json:"dir"`
+	FoldersMade []FolderAt `json:"folders_made"`
+	GatesMade   []GateMade `json:"gates_made"`
+	Reblocked   []int64    `json:"reblocked"`
 }
 
 // FolderCreate makes a folder at its path, with its directory and notes,
@@ -80,10 +80,10 @@ func FolderCreate() *cli.Command {
 				}
 				return FolderCreateResult{
 					ID: *last.ID, Ref: core.Kept(*last.ID, last.Path, core.EndNone),
-					Dir:       fsstep.Abs(s.Root, fsstep.FolderDir(last.Path)),
-					NotesPath: fsstep.Abs(s.Root, fsstep.FolderNotesPath(last.Path)),
-					Created:   created,
-					GatesMade: w.made, Reblocked: reblocked,
+					Dir:         fsstep.Abs(s.Root, fsstep.FolderDir(last.Path)),
+					NotesPath:   fsstep.Abs(s.Root, fsstep.FolderNotesPath(last.Path)),
+					FoldersMade: created,
+					GatesMade:   w.made, Reblocked: reblocked,
 				}, warnings, nil
 			})
 		},

@@ -8,11 +8,7 @@
     "state": "not-initialized",
     "format": null,
     "next_id": null,
-    "tasks": null,
-    "folders": null,
-    "claims": null,
-    "pending": null,
-    "stuck": null,
+    "counts": null,
     "error": {
       "kind": "not-initialized",
       "rule": null,

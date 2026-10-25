@@ -160,7 +160,7 @@ func TestFolderCreate(t *testing.T) {
 
 	// A third level under parents that are there makes only itself.
 	r = ok(t, home, "folder", "create", "/work/api/v2")
-	if created := r.Result()["created"].([]any); len(created) != 1 || r.Result()["id"] != json.Number("3") {
+	if created := r.Result()["folders_made"].([]any); len(created) != 1 || r.Result()["id"] != json.Number("3") {
 		t.Errorf("created: %s", r.Line())
 	}
 	// Through --input, as the options would give it.
@@ -527,7 +527,7 @@ func TestFolderCreateModel(t *testing.T) {
 		for _, f := range made {
 			want = append(want, fmt.Sprintf("map[id:%d path:%s]", f.ID, f.Path))
 		}
-		if got := fmt.Sprint(r.Result()["created"]); got != "["+strings.Join(want, " ")+"]" {
+		if got := fmt.Sprint(r.Result()["folders_made"]); got != "["+strings.Join(want, " ")+"]" {
 			t.Errorf("%s: model %v, koan %s", p, want, r.Line())
 		}
 	}

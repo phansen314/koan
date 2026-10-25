@@ -15,7 +15,7 @@ type InitResult struct {
 	Tree     string   `json:"tree"`
 	Archive  string   `json:"archive"`
 	Database string   `json:"database"`
-	Created  []string `json:"created"`
+	Made     []string `json:"made"`
 	FirstID  int64    `json:"first_id"`
 }
 
@@ -48,7 +48,7 @@ func Init() *cli.Command {
 				created = []string{}
 			}
 			return InitResult{Root: root.Path, Tree: root.Tree, Archive: root.Archive, Database: root.Database,
-				Created: created, FirstID: first}, nil, nil
+				Made: created, FirstID: first}, nil, nil
 		},
 	}
 }

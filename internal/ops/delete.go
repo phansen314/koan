@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"fmt"
 	"path"
 	"slices"
 
@@ -88,6 +89,7 @@ func Delete() *cli.Command {
 					under[i] = append([]int64{id}, t.under(id, true)...)
 				}
 				if !contents {
+					var all []int64
 					for _, id := range ids {
 						var direct []int64
 						for tid, row := range t.rows {
@@ -96,11 +98,16 @@ func Delete() *cli.Command {
 							}
 						}
 						direct = append(direct, t.under(id, false)...)
-						if len(direct) > 0 {
-							slices.Sort(direct)
-							return nil, nil, core.Conflict(core.RuleNotEmpty, direct, nil,
-								"@%d holds %s; give contents to delete them with it", id, core.FormatIDs(direct))
+						all = append(all, direct...)
+					}
+					if len(all) > 0 {
+						slices.Sort(all)
+						all = slices.Compact(all)
+						msg := fmt.Sprintf("%s held by the folders given; give contents to delete them with it", core.FormatIDs(all))
+						if len(ids) == 1 {
+							msg = fmt.Sprintf("@%d holds %s; give contents to delete them with it", ids[0], core.FormatIDs(all))
 						}
+						return nil, nil, core.Conflict(core.RuleNotEmpty, all, nil, "%s", msg)
 					}
 				}
 				tasks := slices.Clone(given)

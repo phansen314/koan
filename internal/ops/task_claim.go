@@ -12,10 +12,10 @@ type TaskClaimResult struct {
 }
 
 // TaskClaimNextResult is claim-next's result, in its schema's
-// order: both null when the frontier is empty.
+// order: the task it claimed, its claim included, or null when the
+// frontier is empty.
 type TaskClaimNextResult struct {
-	Task  *Task  `json:"task"`
-	Claim *Claim `json:"claim"`
+	Task *Task `json:"task"`
 }
 
 // TaskClaim claims open tasks with no claim, blocked or not, as one
@@ -106,8 +106,8 @@ func TaskClaimNext() *cli.Command {
 					return nil, nil, err
 				}
 				t.claims[id] = c
-				rec, claim := t.record(id), claimOf(c)
-				return TaskClaimNextResult{Task: &rec, Claim: &claim}, nil, nil
+				rec := t.record(id)
+				return TaskClaimNextResult{Task: &rec}, nil, nil
 			})
 		},
 	}
