@@ -301,7 +301,11 @@ func TestConcurrency(t *testing.T) {
 		t.Errorf("invariants:\n%s", strings.Join(bad, "\n"))
 	}
 	r := ok(t, home, "info")
-	want := pool + completers + movers + 3*(batches-busyBy["batch -i"]) + creators - busyBy["task create"] + 2*busyBy["delete"]
+	busyDeletes := 0
+	for i := range deleters {
+		busyDeletes += busyBy[fmt.Sprintf("delete /d%d", i)]
+	}
+	want := pool + completers + movers + 3*(batches-busyBy["batch -i"]) + creators - busyBy["task create"] + 2*busyDeletes
 	if r.Result()["counts"].(map[string]any)["tasks"] != json.Number(fmt.Sprint(want)) {
 		t.Errorf("info: want %d tasks: %s", want, r.Line())
 	}

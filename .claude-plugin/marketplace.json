@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "koan",
-      "source": { "source": "github", "repo": "phansen314/koan", "ref": "v0.10.0" },
+      "source": { "source": "github", "repo": "phansen314/koan", "ref": "v0.11.0" },
       "description": "Track and work through your tasks with the koan CLI: a local task tree with dependencies, kept in SQLite, with notes as plain files."
     }
   ]
