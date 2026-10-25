@@ -1140,8 +1140,8 @@ func (t *Tree) Delete(refs []string, contents, material *bool) (out Removed, err
 			}
 		}
 		if contents == nil || !*contents {
+			var direct []int64
 			for _, f := range fs {
-				var direct []int64
 				for _, x := range c.Tasks {
 					if x.Folder == f && x.Gate == core.EndNone {
 						direct = append(direct, x.ID)
@@ -1152,10 +1152,10 @@ func (t *Tree) Delete(refs []string, contents, material *bool) (out Removed, err
 						direct = append(direct, g.ID)
 					}
 				}
-				if direct != nil {
-					slices.Sort(direct)
-					return core.Conflict(core.RuleNotEmpty, direct, nil, "@%d holds %s", f, core.FormatIDs(direct))
-				}
+			}
+			if direct != nil {
+				slices.Sort(direct)
+				return core.Conflict(core.RuleNotEmpty, direct, nil, "%s are in folders given", core.FormatIDs(direct))
 			}
 		}
 		var gone []int64
@@ -1228,21 +1228,22 @@ func (t *Tree) Archive(refs ...string) (archived, left []int64, err error) {
 			return err
 		}
 		var as []Archived
+		var open []int64
 		for _, sub := range subs {
 			tasks, folders := []int64{sub.id}, []int64(nil)
 			if sub.folder {
 				tasks, folders = c.under(sub.id)
 			}
-			var open []int64
 			for _, id := range tasks {
 				if c.Tasks[id].Open() {
 					open = append(open, id)
 				}
 			}
-			if open != nil {
-				return core.Conflict(core.RuleNotFinished, open, nil, "%s is open", core.FormatIDs(open))
-			}
 			as = append(as, c.archived(sub.id, tasks, folders))
+		}
+		if open != nil {
+			slices.Sort(open)
+			return core.Conflict(core.RuleNotFinished, open, nil, "%s is open", core.FormatIDs(open))
 		}
 		archived = []int64{}
 		for _, a := range as {

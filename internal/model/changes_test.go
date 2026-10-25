@@ -623,7 +623,7 @@ func TestDeleteSeveral(t *testing.T) {
 		t.Errorf("twice %v", e.Problems)
 	}
 	_, err = tr.DeleteFolder([]string{"/f", "/g"}, false, false)
-	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{5}) {
+	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{5, 7}) {
 		t.Errorf("not-empty ids %v", e.IDs)
 	}
 	_, err = tr.DeleteFolder([]string{"/g", "/f"}, true, false)

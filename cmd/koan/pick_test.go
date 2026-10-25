@@ -200,9 +200,9 @@ func pickTree(t *testing.T) string {
 	    {"title": "Old", "folder": "/work"},
 	    {"title": "Root task"}]}`)
 	res := r.Result()
-	got, _ := json.Marshal([]any{res["folders"], res["tasks"], res["gates_made"]})
+	got, _ := json.Marshal([]any{res["folders_made"], res["tasks_made"], res["gates_made"]})
 	want := `[[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}],[3,4,5,6,7],` +
-		`[{"end":"start","folder":{"id":2,"path":"/work/api"},"id":8},{"end":"done","folder":{"id":2,"path":"/work/api"},"id":9}]]`
+		`[{"folder":{"id":2,"path":"/work/api"},"gate":"start","id":8},{"folder":{"id":2,"path":"/work/api"},"gate":"done","id":9}]]`
 	if string(got) != want {
 		t.Fatalf("the tree's IDs: %s", got)
 	}

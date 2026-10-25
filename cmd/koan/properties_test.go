@@ -30,18 +30,17 @@ var (
 // fields, the frontier and the folders after each; doctor finds nothing,
 // and I1 to I12 and T1 to T6 hold, read directly from the database and
 // the disk. A failure prints its seed and the commands run; -seed N runs
-// that seed alone. -short runs one seed; the full run adds more, each
-// longer, from a seed of the moment, which it prints.
+// that seed alone. -short runs the fixed seeds; the full run adds more,
+// each longer, from a seed of the moment, which it prints.
 func TestProperties(t *testing.T) {
 	t.Parallel()
-	// The first seed alone makes every command succeed, for -short.
+	// These seeds together make every command succeed, for -short.
 	seeds := []int64{1, 59, 11, 2}
 	steps := 200
 	switch {
 	case *seedFlag != 0:
 		seeds = []int64{*seedFlag}
 	case testing.Short():
-		seeds = seeds[:1]
 	default:
 		steps = 1000
 		now := time.Now().UnixNano()
