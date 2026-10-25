@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "task-reopen",
+  "$id": "reopen",
   "$defs": {
     "input": {
-      "$ref": "task-complete#/$defs/input"
+      "$ref": "complete#/$defs/input"
     },
     "result": {
       "type": "object",

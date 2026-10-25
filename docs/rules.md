@@ -39,11 +39,11 @@ A folder can have two tasks of its own, its **gates**. A folder used only to org
 - **A gate stays in its folder.** It can't be moved.
 - **The root has no gates.**
 
-**Joining a folder** is the structured way to group work: the task waits on `@F.start`, and `@F.done` waits on the task. These are two ordinary edges, so a move keeps them. A folder joins another through its gates the same way: `@sub.start` waits on `@F.start`, and `@F.done` waits on `@sub.done`. `--join` on `task create` and `folder create`, and `join` in a batch, write the two edges as the task or folder is made; `task join` and `folder join` write them for one that exists, and `task unjoin` and `folder unjoin` remove them (Changes). koan keeps no record that two edges came from a join: `task unblock` removes either, as it removes any edge.
+**Joining a folder** is the structured way to group work: the task waits on `@F.start`, and `@F.done` waits on the task. These are two ordinary edges, so a move keeps them. A folder joins another through its gates the same way: `@sub.start` waits on `@F.start`, and `@F.done` waits on `@sub.done`. `--join` on `task create` and `folder create`, and `join` in a batch, write the two edges as the task or folder is made; `join` writes them for a task or a folder that exists, and `unjoin` removes them (Changes). koan keeps no record that two edges came from a join: `unblock` removes either, as it removes any edge.
 
 **A member** of F is a task joined to it. Membership is edges and containment is place, and they can differ: a task can be a member of a folder it doesn't sit in, and sit in a folder it isn't a member of.
 
-**Writing an edge from either end.** `--blocked-by` writes an edge from the task being changed; `--blocks` writes the same edge from the task it points at. `task block X @42` writes what X waits on, as `--blocked-by @42` does on `task create`. Given to a task X:
+**Writing an edge from either end.** `--blocked-by` writes an edge from the task being changed; `--blocks` writes the same edge from the task it points at. `block X @42` writes what X waits on, as `--blocked-by @42` does on `task create`. Given to a task X:
 
 | Input | Edge written |
 | --- | --- |
@@ -72,21 +72,21 @@ Its edges, each written as the task that waits, then what it waits on: `@8` → 
 
 | Change | Result |
 | --- | --- |
-| `task block 8 10` | Refused: `@8` → `@10` → `@9.start` → `@7.done` → `@8` |
-| `task block @7.start @9` | Refused: `@7.start` → `@9.done` → `@10` → `@9.start` → `@7.done` → `@8` → `@7.start` |
-| `task block 8 @7` | Refused: `@8` → `@7.done` → `@8`. A member can't wait for its own folder's done gate. |
-| `task block 4 @1` | Allowed. `@1.done` waits only on `@7.done`, and nothing there waits on `@4`. |
-| `task join 4 @1` | Allowed: the common case, a task joined to the folder it sits in. `@4` waits on `@1.start`, made by the change, and `@1.done` waits on `@4` as well as `@7.done`. |
-| `task join 8 @1` | Allowed. `@8` is a member of both `@7` and `@1`. `@1.start` is made. |
-| `task join 10 @7` | Refused: `@7.done` → `@10` → `@9.start` → `@7.done`. `@10` → `@7.start` is written first and closes nothing; the done gate's edge closes the cycle. |
-| `task join 8 @7` | Changes nothing: both edges are there. |
-| `task join @7.start @1` | Refused (`invalid-input`): the subject of `task join` is a task, never a gate. |
-| `folder join @9 @1` | Allowed: a folder joined to the folder it sits in. `@9.start` waits on `@1.start`, made by the change, and `@1.done` waits on `@9.done`. |
-| `folder join @1 @9` | Allowed: a folder joined to one inside it, since containment never orders. `@1.start`, made by the change, waits on `@9.start`, and `@9.done` waits on `@1.done`. |
-| `folder join @7 @1` | Allowed. `@1.done` → `@7.done` is there already and counts once, so only `@7.start` → `@1.start` is written, and `@1.start` is made. |
+| `block 8 10` | Refused: `@8` → `@10` → `@9.start` → `@7.done` → `@8` |
+| `block @7.start @9` | Refused: `@7.start` → `@9.done` → `@10` → `@9.start` → `@7.done` → `@8` → `@7.start` |
+| `block 8 @7` | Refused: `@8` → `@7.done` → `@8`. A member can't wait for its own folder's done gate. |
+| `block 4 @1` | Allowed. `@1.done` waits only on `@7.done`, and nothing there waits on `@4`. |
+| `join 4 @1` | Allowed: the common case, a task joined to the folder it sits in. `@4` waits on `@1.start`, made by the change, and `@1.done` waits on `@4` as well as `@7.done`. |
+| `join 8 @1` | Allowed. `@8` is a member of both `@7` and `@1`. `@1.start` is made. |
+| `join 10 @7` | Refused: `@7.done` → `@10` → `@9.start` → `@7.done`. `@10` → `@7.start` is written first and closes nothing; the done gate's edge closes the cycle. |
+| `join 8 @7` | Changes nothing: both edges are there. |
+| `join @7.start @1` | Refused (`invalid-input`): the subject of `join` is a task or a folder, never a gate. |
+| `join @9 @1` | Allowed: a folder joined to the folder it sits in. `@9.start` waits on `@1.start`, made by the change, and `@1.done` waits on `@9.done`. |
+| `join @1 @9` | Allowed: a folder joined to one inside it, since containment never orders. `@1.start`, made by the change, waits on `@9.start`, and `@9.done` waits on `@1.done`. |
+| `join @7 @1` | Allowed. `@1.done` → `@7.done` is there already and counts once, so only `@7.start` → `@1.start` is written, and `@1.start` is made. |
 | `folder create /work/phase3 --join @1` | Allowed. The folder is made with both gates, and `@1.start` is made too: `/work/phase3.start` waits on `@1.start`, and `@1.done` waits on `/work/phase3.done`. That done gate waits on nothing and is ready at once, so make the folder and the work that joins it in one batch (Write the edges before anything waits on them). |
-| `task unjoin 10 @9` | Allowed. Both edges go, releasing `@10` and `@9.done`, which now wait on nothing. |
-| `task unjoin 4 @7` | Changes nothing: `@4` waits on `@7.done`, which isn't one of joining's edges. |
+| `unjoin 10 @9` | Allowed. Both edges go, releasing `@10` and `@9.done`, which now wait on nothing. |
+| `unjoin 4 @7` | Changes nothing: `@4` waits on `@7.done`, which isn't one of joining's edges. |
 
 **The rules**
 
@@ -108,10 +108,10 @@ Its edges, each written as the task that waits, then what it waits on: `@8` → 
 A claim reserves a task, so that two workers taking work from one tree are never handed the same one. Reading the list of ready tasks can't give that; a claim can.
 
 - **The frontier** is the ready tasks that have no claim, in work order. Gates are tasks, so a ready gate is on it like any other.
-- **Claiming.** `task claim` takes an open task that has no claim; a second claim of it fails at once, as `conflict` (`claimed`), and a claim of a complete task fails as conflict (complete). `task claim-next` claims the first task of the frontier, in the whole tree or under one folder. That scope is the one place containment affects which work is handed out: it chooses where to look, never what is ready.
+- **Claiming.** `claim` takes an open task that has no claim; a second claim of it fails at once, as `conflict` (`claimed`), and a claim of a complete task fails as conflict (complete). `claim-next` claims the first task of the frontier, in the whole tree or under one folder. That scope is the one place containment affects which work is handed out: it chooses where to look, never what is ready.
 - **A blocked task can be claimed.** A claim reserves work ahead of time; it doesn't make the task ready.
-- **A claim refuses other claims and takes the task off the frontier, and nothing else.** Every other change works on a claimed task as on any other, and `task release` works whoever made the claim.
-- **A claim ends** with `task release`, or when its task is marked complete or deleted. A reopened task starts unclaimed. Archiving never ends one, since only complete tasks leave.
+- **A claim refuses other claims and takes the task off the frontier, and nothing else.** Every other change works on a claimed task as on any other, and `release` works whoever made the claim.
+- **A claim ends** with `release`, or when its task is marked complete or deleted. A reopened task starts unclaimed. Archiving never ends one, since only complete tasks leave.
 - **It never expires.** It outlasts the process that made it. Who holds it, and whether they are still alive, is the caller's business: a claim carries `claimed_at`, and an `extra` object koan stores and never interprets. A claim is its own record, not a field of its task.
 - **It doesn't lock the notes.** Nothing stops two editors overwriting each other in a task's notes; the convention is that whoever holds the claim edits them.
 - **A claimed task can become blocked.** A new edge to an open task, or a blocker reopened, makes it wait again, and the claim stays. A move never does this, since containment never orders.
@@ -170,7 +170,7 @@ Resolution turns a reference into a task or a folder, and a material reference i
       - **`/`** is the root. It has no ID and no gates, so no edge can name it: `/` where a task, an edge, or a folder that joins or is joined is taken is `invalid-input`.
       - **A label** names a task made in the same batch, wherever in the batch its part comes. Labels are compared byte for byte. A label defined twice in one batch, used outside a batch, or never defined in it is `invalid-input`. A label takes no end and no material: `$a.start` and `$a:x` are `invalid-input`.
 4. **Resolve the end.**
-      - **On a folder**, an end names that folder's gate. A change that writes an edge naming a gate the folder doesn't have yet, at either end, makes it; anywhere else, a missing gate is not-found. In an edge (`--blocked-by`, `--blocks`, or the words after `task block`'s task), a folder with no end means its done gate: "after this folder" is the common case, and `.start` must be written. Where a command takes a folder, as `folder show` or `task mv`'s destination do, an end is `invalid-input`.
+      - **On a folder**, an end names that folder's gate. A change that writes an edge naming a gate the folder doesn't have yet, at either end, makes it; anywhere else, a missing gate is not-found. In an edge (`--blocked-by`, `--blocks`, or the words after `block`'s task), a folder with no end means its done gate: "after this folder" is the common case, and `.start` must be written. Where a command takes a folder, as `context` or `task mv`'s destination do, an end is `invalid-input`.
       - **On a task**, an end is `invalid-input`: a task has no gates.
       - **On the root**, an end is `invalid-input`: the root has no gates.
 5. **Resolve the material.** It names where a file is or would be inside the target's directory. The target must be a folder or the root, since a task has no directory: material on a task is `invalid-input`. koan never checks that the file exists, and never reads it. Below the first part, `@` means nothing: `@41:node_modules/@types/x` is a file in material.
@@ -228,7 +228,7 @@ Every change is whole (I10), resolves its references inside itself (see Resoluti
 | Create a task | Makes the task in a folder or the root, with any edges given, those of the folders it joins included. A gate an edge names is made if the folder lacks it. | an edge would close a cycle (`cycle`) |
 | Update a task or folder | Changes its title, priority, tags or `extra`. | a tag is both added and removed, or a key of `extra` both merged and removed (`invalid-input`) |
 | Block, unblock | Adds or removes edges. A gate an added edge names is made if the folder lacks it. An added edge can block a claimed task. | an added edge would close a cycle (`cycle`), or point a task at itself (`invalid-input`). Removing an edge a task doesn't have, itself included, changes nothing. |
-| Join, unjoin | Adds or removes the two edges of joining a folder (Readiness, Joining a folder): for a task, or for a folder through its gates, with each folder named. A gate an added edge names is made if the folder lacks it. Removing never deletes a gate, and never makes one: an edge to a gate either folder lacks is an edge that isn't there. An added edge can block a claimed task. | an added edge would close a cycle (`cycle`); the subject of a task's join or unjoin is a gate, made or not, a folder is joined to itself, or the root is named (`invalid-input`). Removing an edge a task doesn't have changes nothing, a folder unjoined from itself included, and with only one of the two there, that one is removed. |
+| Join, unjoin | Adds or removes the two edges of joining a folder (Readiness, Joining a folder): for a task, or for a folder through its gates, with each folder named. A gate an added edge names is made if the folder lacks it. Removing never deletes a gate, and never makes one: an edge to a gate either folder lacks is an edge that isn't there. An added edge can block a claimed task. | an added edge would close a cycle (`cycle`); the subject is a gate, made or not, a folder is joined to itself, or the root is named (`invalid-input`). Removing an edge a task doesn't have changes nothing, a folder unjoined from itself included, and with only one of the two there, that one is removed. |
 | Complete, reopen | Sets or clears `completed_at`, for one task or several, as one change. Completing ends the task's claim. Reopening blocks again whatever waits on it. | a task is named twice (`invalid-input`) |
 | Batch | Makes tasks and folders, and writes edges, as one change: all of it, or none. It only creates, blocks and joins; completing, moving and deleting are changes of their own. A task or folder it makes can join folders, as `--join` joins one, and a task that gives no `join` of its own takes the batch's. A task it makes can carry a label, such as `$a`, that names it only within the batch, so any other part, before or after it, can write edges to it; a folder it makes is named by its path. The cycle check runs over the whole batch, and several parts naming the same gate make one gate. Labels appear only in a batch's input, which comes from a file or standard input, never from command-line arguments, so a shell never sees them. The result maps each label to the ID it got. A batch resolves its paths and labels against the tree as the whole batch would leave it, so a part can name a folder or a task that another part of the same batch makes, whatever their order. | whatever would refuse one of its parts |
 | Move a task | Puts one task or several in a folder that exists, or the root, as one change; their notes move with them. A task has no path, so it is never renamed. A task already in the folder doesn't move. No edge changes, so no readiness does. | it is a gate (`gate`), even into its own folder; a task is named twice (`invalid-input`) |

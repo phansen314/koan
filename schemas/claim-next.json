@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "task-claim-next",
+  "$id": "claim-next",
   "$defs": {
     "input": {
       "type": "object",
@@ -37,7 +37,7 @@
         "claim": {
           "anyOf": [
             {
-              "$ref": "claim"
+              "$ref": "claim-record"
             },
             {
               "type": "null"

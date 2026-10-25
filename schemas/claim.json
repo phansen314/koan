@@ -1,23 +1,35 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "claim",
-  "type": "object",
-  "required": [
-    "task",
-    "claimed_at",
-    "extra"
-  ],
-  "properties": {
-    "task": {
-      "$ref": "types#/$defs/id"
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "task"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "types#/$defs/task-ref",
+          "description": "Subject."
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra",
+          "default": {}
+        }
+      },
+      "unevaluatedProperties": false
     },
-    "claimed_at": {
-      "$ref": "types#/$defs/timestamp"
-    },
-    "extra": {
-      "$ref": "types#/$defs/extra",
-      "description": "The caller's, never interpreted: who holds it, for instance."
+    "result": {
+      "type": "object",
+      "required": [
+        "claim"
+      ],
+      "properties": {
+        "claim": {
+          "$ref": "claim-record"
+        }
+      },
+      "unevaluatedProperties": false
     }
-  },
-  "unevaluatedProperties": false
+  }
 }

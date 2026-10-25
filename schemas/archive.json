@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "task-archive",
+  "$id": "archive",
   "$defs": {
     "input": {
-      "$ref": "task-show#/$defs/input"
+      "$ref": "show#/$defs/input"
     },
     "result": {
       "type": "object",

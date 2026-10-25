@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "folder-archive",
+  "$id": "unjoin",
   "$defs": {
     "input": {
-      "$ref": "folder-show#/$defs/input"
+      "$ref": "join#/$defs/input"
     },
     "result": {
-      "$ref": "task-archive#/$defs/result"
+      "$ref": "unblock#/$defs/result"
     }
   }
 }

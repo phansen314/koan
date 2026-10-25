@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "task-join",
+  "$id": "join",
   "$defs": {
     "input": {
       "type": "object",
       "required": [
-        "task",
+        "ref",
         "join"
       ],
       "properties": {
-        "task": {
-          "$ref": "types#/$defs/task-ref",
-          "description": "Subject. A task, never a gate."
+        "ref": {
+          "$ref": "show#/$defs/input/properties/ref",
+          "description": "Subject. A task or a folder, never a gate."
         },
         "join": {
           "type": "array",
@@ -25,7 +25,7 @@
       "unevaluatedProperties": false
     },
     "result": {
-      "$ref": "task-block#/$defs/result"
+      "$ref": "block#/$defs/result"
     }
   }
 }

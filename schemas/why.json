@@ -1,9 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "task-why",
+  "$id": "why",
   "$defs": {
     "input": {
-      "$ref": "task-show#/$defs/input"
+      "type": "object",
+      "required": [
+        "task"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "types#/$defs/task-ref",
+          "description": "Subject."
+        }
+      },
+      "unevaluatedProperties": false
     },
     "result": {
       "type": "object",

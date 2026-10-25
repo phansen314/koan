@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "task-show",
+  "$id": "release",
   "$defs": {
     "input": {
       "type": "object",
@@ -16,16 +16,7 @@
       "unevaluatedProperties": false
     },
     "result": {
-      "type": "object",
-      "required": [
-        "task"
-      ],
-      "properties": {
-        "task": {
-          "$ref": "task"
-        }
-      },
-      "unevaluatedProperties": false
+      "$ref": "task-update#/$defs/id-only"
     }
   }
 }

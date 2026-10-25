@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "show",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "ref": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/task-ref"
+            },
+            {
+              "$ref": "types#/$defs/folder-ref"
+            }
+          ],
+          "description": "Subject: a task or a folder, never material."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "$ref": "task"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "folder"
+          ],
+          "properties": {
+            "folder": {
+              "$ref": "folder"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    }
+  }
+}
