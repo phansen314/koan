@@ -100,6 +100,7 @@ func TestCompleteReferences(t *testing.T) {
 	edges := []string{"9", "12", "1", "1.start", "1.done", "8", "2", "2.start", "2.done", "7",
 		"3", "5", "6", "3.start", "3.done", "4", "4.start", "4.done"}
 	folders := []string{"1", "2", "3", "4"}
+	tasksAndFolders := []string{"9", "12", "1", "8", "2", "7", "3", "5", "6", "4"}
 	for _, c := range []struct {
 		args []string
 		want string
@@ -169,6 +170,32 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "join", "/work/api", "/old", "2"}, offered(byID, as("", "2")...)},
 		{[]string{"folder", "show", "3"}, offered(byID, as("", "3")...)},
 		{[]string{"folder", "archive", "@"}, offered(byID, as("@", "1", "4")...)},
+		// task mv: the first word offers tasks, and every word after it
+		// tasks and folders, since any can be the last; after -t, every
+		// word is a task.
+		{[]string{"task", "mv", "5", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"task", "mv", "5", "6", ""}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"task", "mv", "5", "2"}, offered(byID, as("", "2")...)},
+		{[]string{"task", "mv", "-t", "/work", "@"}, offered(byID, as("@", allTasks...)...)},
+		{[]string{"task", "mv", "-t", "/work", "5", "@"}, offered(byID, as("@", allTasks...)...)},
+		{[]string{"task", "mv", "5", "-t", "/work", "@"}, offered(byID, as("@", allTasks...)...)},
+		{[]string{"task", "mv", "--into=/work", "5", "@"}, offered(byID, as("@", allTasks...)...)},
+		// folder mv: every word offers folders, but with -T the second.
+		{[]string{"folder", "mv", "3", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "mv", "3", "4", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "mv", "-t", "/old", "3", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "mv", "-T", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "mv", "-T", "3", "@"}, offered(byID)},
+		{[]string{"folder", "mv", "3", "-T", ""}, offered(byID)},
+		{[]string{"folder", "mv", "--rename", "3", "2"}, offered(byID)},
+		{[]string{"folder", "mv", "-T", "3", "/old", ""}, offered(byNothing)},
+		// Each word of a list subject offers what the subject takes.
+		{[]string{"task", "complete", "9", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
+		{[]string{"task", "complete", "9", "12", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"task", "reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
+		{[]string{"task", "delete", "9", "@"}, offered(byID, as("@", all...)...)},
+		{[]string{"folder", "delete", "3", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"task", "unblock", "5", "6", "@"}, offered(byID, as("@", edges...)...)},
 		// where: tasks, made gates and folders.
 		{[]string{"where", ""}, offered(byID, as("@", "9", "12", "1", "8", "2", "7", "3", "5", "6", "3.start", "3.done", "4")...)},
 		{[]string{"where", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
@@ -193,6 +220,19 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "create", "/new", "--join", "/w"}, offered(byPath, "/work")},
 		{[]string{"context", "/o"}, offered(byPath, "/old")},
 		{[]string{"export", "/o"}, offered(byPath, "/old")},
+		{[]string{"task", "frontier", "/w"}, offered(byPath, "/work")},
+		{[]string{"task", "claim-next", "/w"}, offered(byPath, "/work")},
+		{[]string{"folder", "list", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"pick", "/o"}, offered(byPath, "/old")},
+		{[]string{"marker", "bind", "/o"}, offered(byPath, "/old")},
+		{[]string{"task", "mv", "5", "/w"}, offered(byPath, "/work")},
+		{[]string{"task", "mv", "5", "6", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"task", "mv", "-t", "/work", "5", "/"}, offered(byPath)},
+		{[]string{"folder", "mv", "/work/api", "/o"}, offered(byPath, "/old")},
+		{[]string{"folder", "mv", "/work/api", "/old", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"folder", "mv", "-T", "/w"}, offered(byPath, "/work")},
+		{[]string{"folder", "delete", "/work/api", "/o"}, offered(byPath, "/old")},
+		{[]string{"task", "complete", "9", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
 		// A folder is a step toward its gates, wherever a gate is taken.
 		{[]string{"task", "show", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"task", "show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
@@ -216,6 +256,8 @@ func TestCompleteReferences(t *testing.T) {
 		// Paths only, as steps toward a new path.
 		{[]string{"folder", "create", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "create", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"folder", "mv", "-T", "/work/api", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"folder", "mv", "/work/api", "-T", "/o"}, offered(byPath, "/old")},
 		{[]string{"folder", "create", "@"}, offered(byID)},
 		{[]string{"folder", "create", ""}, offered(byID)},
 		// Anything else offers nothing: an anchored path, material, a label.
@@ -235,11 +277,17 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "create", "t", "--tags", ""}, offered(byNothing)},
 		{[]string{"task", "list", "--state", ""}, offered(byNothing)},
 		{[]string{"task", "update", "5", "--priority", ""}, offered(byNothing)},
+		{[]string{"task", "list", "2", ""}, offered(byNothing)},
+		{[]string{"task", "mv", "-t", ""}, offered(byID, as("@", folders...)...)},
 		// Files.
 		{[]string{"backup", ""}, offered(byFiles)},
 		{[]string{"task", "create", "t", "--notes-file", ""}, offered(byFiles)},
 		{[]string{"where", "--file", ""}, offered(byFiles)},
 		{[]string{"marker", "bind", "3", ""}, offered(byFiles)},
+		{[]string{"marker", "unbind", ""}, offered(byFiles)},
+		{[]string{"marker", "bind", "3", "/tmp", ""}, offered(byNothing)},
+		{[]string{"marker", "unbind", "/tmp", ""}, offered(byNothing)},
+		{[]string{"backup", "/tmp", ""}, offered(byNothing)},
 		{[]string{"task", "show", "-i", ""}, offered(byFiles)},
 	} {
 		if got := completes(t, home, c.args...); got != c.want {

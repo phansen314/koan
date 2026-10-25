@@ -186,6 +186,9 @@ echo READY
 	s.list("koan task complete @\t\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
 	s.line("koan task block 5 /work.\t", "koan task block 5 /work.")
 	s.list("koan task block 5 /work.\t\t", "/work.start", "/work.done")
+	s.line("koan task mv 5 /wo\t", "koan task mv 5 /work")
+	s.line("koan task complete 9 1\t", "koan task complete 9 12 ")
+	s.line("koan folder mv -T /old /work/api\t", "koan folder mv -T /old /work/api")
 
 	s = start(manyTree(t))
 	s.list("koan task show \t\t", "101 match: type more, or use koan pick")
@@ -223,6 +226,9 @@ echo READY
 	s.line("koan task show 1\t", "koan task show 12 ")
 	s.list("koan task complete @\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
 	s.list("koan task block 5 /work.\t", "/work.start", "/work.done")
+	s.line("koan task mv 5 /wo\t", "koan task mv 5 /work")
+	s.line("koan task complete 9 1\t", "koan task complete 9 12 ")
+	s.line("koan folder mv -T /old /work/api\t", "koan folder mv -T /old /work/api")
 
 	s = start(manyTree(t))
 	s.list("koan task show \t", "101 match: type more, or use koan pick")

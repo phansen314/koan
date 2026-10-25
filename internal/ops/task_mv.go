@@ -28,7 +28,7 @@ func TaskMv() *cli.Command {
 	return &cli.Command{
 		Name:    "task mv",
 		Subject: &cli.Option{Field: "tasks", Kind: cli.List, Arg: "task", Required: true, Complete: tasksOnly.complete()},
-		Object:  &cli.Option{Field: "into", Arg: "folder", Required: true, Complete: foldersOnly.complete()},
+		Object:  &cli.Option{Field: "into", Arg: "folder", Required: true, Complete: tasksAndFolders.complete()},
 		Instead: "into",
 		Options: []cli.Option{{Field: "into", Short: "t", Complete: foldersOnly.complete()}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {

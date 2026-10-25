@@ -30,12 +30,13 @@ type FolderMoved struct {
 // only of the folder's own name.
 func FolderMv() *cli.Command {
 	return &cli.Command{
-		Name:    "folder mv",
-		Subject: &cli.Option{Field: "folders", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
-		Object:  &cli.Option{Field: "dest", Required: true, Complete: foldersOnly.complete()},
-		Instead: "into",
-		Single:  "rename",
-		Apart:   []string{"into", "rename"},
+		Name:         "folder mv",
+		Subject:      &cli.Option{Field: "folders", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
+		Object:       &cli.Option{Field: "dest", Required: true, Complete: foldersOnly.complete()},
+		Instead:      "into",
+		Single:       "rename",
+		SingleObject: newPaths.complete(),
+		Apart:        []string{"into", "rename"},
 		Options: []cli.Option{
 			{Field: "into", Short: "t", Complete: foldersOnly.complete()},
 			{Field: "rename", Short: "T", Kind: cli.Bool},

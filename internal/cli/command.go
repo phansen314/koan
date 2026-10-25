@@ -133,7 +133,9 @@ type Command struct {
 	Subject *Option
 	// Object, for a command whose verb takes one, is the last position:
 	// one word, or with Kind List every word after the subject. A list
-	// subject's object is required, so the last word is always it.
+	// subject's object is required, so the last word is always it; its
+	// Complete then offers what either position takes, since any word
+	// after the first can be the last.
 	Object *Option
 	// Instead, for a command an option can take the object's place on,
 	// is that option's field: given, every positional is a subject.
@@ -141,6 +143,9 @@ type Command struct {
 	// Single, for a command a Bool option limits to one subject, is that
 	// option's field: given true, the subject is one word.
 	Single string
+	// SingleObject, with Single, is what the object completes to once
+	// Single is given true, if not the object's own Complete.
+	SingleObject Completer
 	// Apart are the fields of options that can't be given together.
 	Apart   []string
 	Options []Option
@@ -322,7 +327,7 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 			return nil
 		},
 	}
-	cc.ValidArgsFunction = c.subjectCompletion(env)
+	cc.ValidArgsFunction = c.subjectCompletion(env, l)
 	flags := cc.Flags()
 	add := func(v pflag.Value) pflag.Value {
 		if completing {
