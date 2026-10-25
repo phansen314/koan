@@ -447,12 +447,12 @@ func TestPickFailures(t *testing.T) {
 	}
 }
 
-// --here picks from the folder the working directory's marker binds, and
+// --here picks from the folder the working directory's binds, and
 // fails as context does without one; -i gives the whole input.
 func TestPickHereAndInput(t *testing.T) {
 	home := pickTree(t)
 	work := t.TempDir()
-	ok(t, home, "marker", "bind", "@2", work)
+	ok(t, home, "bind", "@2", work)
 	p := newPicker(t, home).with("FAKE_FZF_EXIT=1")
 	p.dir = filepath.Join(work)
 	p.run("--here", "--kinds", "folder,task")

@@ -67,7 +67,7 @@ var rename = &Command{
 
 // bind takes a subject, then a directory it can do without.
 var bind = &Command{
-	Name:    "marker bind",
+	Name:    "bind",
 	Subject: &Option{Field: "folder", Required: true},
 	Object:  &Option{Field: "dir", Kind: Path},
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },

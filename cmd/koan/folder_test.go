@@ -38,7 +38,7 @@ func koan(t *testing.T, home string, args ...string) *testrun.Result {
 // one word.
 func commandName(args []string) string {
 	name := args[0]
-	if len(args) > 1 && (name == "folder" || name == "task" || name == "marker") {
+	if len(args) > 1 && (name == "folder" || name == "task") {
 		name += " " + args[1]
 	}
 	return name

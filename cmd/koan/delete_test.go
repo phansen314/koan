@@ -423,7 +423,7 @@ func TestDeleteMixed(t *testing.T) {
 		t.Errorf("inside, later: %s", r.Line())
 	}
 	sameFault(t, home, "invalid-input", "/contents", []string{"delete", "4", "5", "--contents"}, "delete", `{"refs":[4,5],"contents":true}`)
-	sameFault(t, home, "invalid-input", "/material", []string{"delete", "4", "--material=false"}, "delete", `{"refs":[4],"material":false}`)
+	sameFault(t, home, "invalid-input", "/material", []string{"delete", "4", "--material"}, "delete", `{"refs":[4],"material":true}`)
 	if r := fails(t, home, "invalid-input", "", "delete", "4", "--contents", "--material"); problemFields(r) != "/contents /material" {
 		t.Errorf("both: %s", r.Line())
 	}
@@ -441,4 +441,16 @@ func TestDeleteMixed(t *testing.T) {
 		t.Errorf("mixed: %s", r.Line())
 	}
 	checkTree(t, home, "@5.md=", "@k/", "@k/@notes.md=", "@k/@7.md=", "@k/docs/", "@k/docs/x.md=x")
+}
+
+// A false folder option does what leaving it out does, so it is not given:
+// a task alone may carry it.
+func TestDeleteTaskFalseFolderOptions(t *testing.T) {
+	home := t.TempDir()
+	ok(t, home, "init")
+	ok(t, home, "task", "create", "a")
+	r := ok(t, home, "delete", "1", "--contents=false", "--material=false")
+	if fmt.Sprint(r.Result()["removed"]) != "[1]" {
+		t.Errorf("false options: %s", r.Line())
+	}
 }

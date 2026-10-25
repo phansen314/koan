@@ -334,8 +334,8 @@ func TestMainCompleteReferences(t *testing.T) {
 		{[]string{"thing", "join", "1", "/a", "/b"}, "/b0\tnumber 0\n:36\n"},
 		{[]string{"thing", "join", "1", "/a,/b"}, ":36\n"},
 		// A directory as the object, as the shell completes it.
-		{[]string{"marker", "bind", "@1", ""}, ":0\n"},
-		{[]string{"marker", "bind", "@1", "d", ""}, ":4\n"},
+		{[]string{"bind", "@1", ""}, ":0\n"},
+		{[]string{"bind", "@1", "d", ""}, ":4\n"},
 	} {
 		r := runMain(t, "", cmds, append([]string{"__complete"}, c.args...)...)
 		if r.code != 0 || r.stdout != c.want {
@@ -450,8 +450,8 @@ func TestMainPaths(t *testing.T) {
 		{"", []string{"where", "@1", "--file", "x"}, `{"file":"` + q(filepath.Join(wd, "x")) + `","ref":"@1"}`},
 		{`{"file":"rel"}`, []string{"where", "-i", "-"}, `{"file":"rel"}`},
 		{`{}`, []string{"where", "-i", "-"}, `{}`},
-		{"", []string{"marker", "bind", "@1", "a/../b"}, `{"dir":"` + q(filepath.Join(wd, "b")) + `","folder":"@1"}`},
-		{"", []string{"marker", "bind", "@1"}, `{"folder":"@1"}`},
+		{"", []string{"bind", "@1", "a/../b"}, `{"dir":"` + q(filepath.Join(wd, "b")) + `","folder":"@1"}`},
+		{"", []string{"bind", "@1"}, `{"folder":"@1"}`},
 	} {
 		r := runMain(t, c.stdin, []*Command{cmd, bind}, c.args...)
 		want := `{"ok":true,"result":` + c.want + `,"warnings":[]}` + "\n"

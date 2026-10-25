@@ -55,8 +55,10 @@ func Delete() *cli.Command {
 				// Options only a folder takes.
 				if _, ok := firstOf(subs, true); !ok {
 					k := input{}
-					for _, field := range []string{"contents", "material"} {
-						if _, given := r.value(field); given {
+					// Given only when it does something: false is
+					// what leaving it out does.
+					for field, set := range map[string]bool{"contents": contents, "material": material} {
+						if set {
 							k.fault(cli.Pointer(field), "%s is for folders, and no folder is given", field)
 						}
 					}

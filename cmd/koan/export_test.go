@@ -199,7 +199,7 @@ func TestExportMarkers(t *testing.T) {
 	ok(t, home, "task", "create", "a", "--folder", "/work/api")
 	byRef := ok(t, home, "export", "/work/api").Stdout
 	wt := mkdir(t, home, "wt")
-	ok(t, home, "marker", "bind", "/work/api", wt)
+	ok(t, home, "bind", "/work/api", wt)
 	if r := ok(t, home, "export", "--file", wt+"/src/x.go"); r.Stdout != byRef {
 		t.Errorf("--file: %s", r.Line())
 	}
@@ -218,7 +218,7 @@ func TestExportMarkers(t *testing.T) {
 	}
 	goldenNow(t, r, "export-stale-marker")
 
-	// A copied marker binds nothing.
+	// A copied binds nothing.
 	copied := mkdir(t, home, "copy", ".koan")
 	for _, f := range []string{"marker.json", ".gitignore"} {
 		b, err := os.ReadFile(filepath.Join(wt, ".koan", f))
@@ -235,14 +235,14 @@ func TestExportMarkers(t *testing.T) {
 	// Its folder deleted, or archived.
 	dir := mkdir(t, home, "gone")
 	ok(t, home, "folder", "create", "/gone") // 4
-	ok(t, home, "marker", "bind", "/gone", dir)
+	ok(t, home, "bind", "/gone", dir)
 	ok(t, home, "delete", "/gone")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[4]" || len(r.Error()["archived"].([]any)) != 0 {
 		t.Errorf("deleted: %s", r.Line())
 	}
 	ok(t, home, "folder", "create", "/done") // 5
-	ok(t, home, "marker", "bind", "/done", dir)
+	ok(t, home, "bind", "/done", dir)
 	ok(t, home, "archive", "/done")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[5]" || len(r.Error()["archived"].([]any)) != 1 {

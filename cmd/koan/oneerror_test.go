@@ -163,7 +163,7 @@ func TestWrongKindIsInvalidInput(t *testing.T) {
 		{[]string{"mv", "-t", "2", "2"}, "mv", `{"refs":[2],"into":2}`, "/into", "task"},
 		{[]string{"mv", "/v", "2"}, "mv", `{"refs":["/v"],"dest":2}`, "/dest", "task"},
 		{[]string{"mv", "-t", "2", "/v"}, "mv", `{"refs":["/v"],"into":2}`, "/into", "task"},
-		{[]string{"marker", "bind", "2"}, "marker bind", `{"folder":2,"dir":"/tmp"}`, "/folder", "task"},
+		{[]string{"bind", "2"}, "bind", `{"folder":2,"dir":"/tmp"}`, "/folder", "task"},
 		{[]string{"join", "2", "2"}, "join", `{"ref":2,"join":[2]}`, "/join/0", "task"},
 		{[]string{"join", "2", "/w", "2"}, "join", `{"ref":2,"join":["/w",2]}`, "/join/1", "task"},
 	} {

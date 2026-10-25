@@ -130,7 +130,6 @@ func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran 
 var groupShorts = map[string]string{
 	"task":   "Make, change and find tasks",
 	"folder": "Make, change and find folders",
-	"marker": "Bind directories outside the tree, such as worktrees, to folders",
 }
 
 // unknown refuses a line that names no command under group, "" for the

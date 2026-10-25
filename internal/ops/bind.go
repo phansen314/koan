@@ -12,19 +12,19 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// MarkerBindResult is marker bind's result, in its schema's order.
-type MarkerBindResult struct {
+// BindResult is bind's result, in its schema's order.
+type BindResult struct {
 	Marker   string         `json:"marker"`
 	Binding  markers.Marker `json:"binding"`
 	Replaced bool           `json:"replaced"`
 }
 
-// MarkerBind binds a directory outside the tree to a folder. It writes
+// Bind binds a directory outside the tree to a folder. It writes
 // no row and nothing in the tree, so it takes no lock: it reads the
 // database as a read does, then writes the marker whole.
-func MarkerBind() *cli.Command {
+func Bind() *cli.Command {
 	return &cli.Command{
-		Name:    "marker bind",
+		Name:    "bind",
 		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
 		Object:  &cli.Option{Field: "dir", Kind: cli.Path},
 		Options: []cli.Option{{Field: "force", Kind: cli.Bool}},
@@ -49,7 +49,7 @@ func MarkerBind() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			res := MarkerBindResult{Marker: markers.File(dir)}
+			res := BindResult{Marker: markers.File(dir)}
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
 				id, err := resolveFolder(tx, ref, "folder")
 				if err != nil {

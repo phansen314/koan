@@ -334,14 +334,14 @@ var perfOps = []perfOp{
 		b, _ := json.Marshal(map[string]any{"folders": []any{map[string]any{"path": path}}, "folder": path, "tasks": tasks})
 		return string(b)
 	}},
-	{name: "marker bind", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("marker", "unbind", r.dir) },
+	{name: "bind", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("unbind", r.dir) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"marker", "bind", r.folder(i), r.dir, "--force"}
+			return []string{"bind", r.folder(i), r.dir, "--force"}
 		}},
-	{name: "marker unbind", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("marker", "bind", r.folder(i), r.dir, "--force") },
-		args: func(r *perfRoot, i int) []string { return []string{"marker", "unbind", r.dir} }},
+	{name: "unbind", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("bind", r.folder(i), r.dir, "--force") },
+		args: func(r *perfRoot, i int) []string { return []string{"unbind", r.dir} }},
 	{name: "doctor", budget: time.Second, args: always("doctor")},
 	{name: "repair", budget: time.Second, args: always("repair")},
 	{name: "backup", once: true, args: func(r *perfRoot, i int) []string {

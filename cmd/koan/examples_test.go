@@ -91,13 +91,13 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "jq .ok api.json", want: []string{"true"}},
 
 	// Worktrees
-	{cmd: "koan marker bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"binding":{"id":41,"path":"/work/api"},"replaced":false}}`}},
+	{cmd: "koan bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"binding":{"id":41,"path":"/work/api"},"replaced":false}}`}},
 	{cmd: "cd ~/code/api-v2 && koan context", want: []string{`{"ok":true,"result":{"folder":{"id":41},"ancestors":[{"id":40}],"notes":"Move the API to v2.\n",
 		"tasks":[{"id":43},{"id":46},{"id":47}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
 	{cmd: "koan where --file ~/code/api-v2/src/main.go", want: []string{`{"ok":true,"result":{"ref":"@41 (/work/api)","kind":"folder","marker":"~/code/api-v2/.koan/marker.json"},"warnings":[]}`}},
 	{cmd: "koan folder mv -T /work/api /work/api2", want: []string{`{"ok":true,"result":{"moved":[{"id":41,"path":"/work/api2"}]}}`}},
 	{cmd: "koan where --file ~/code/api-v2", want: []string{`{"ok":true,"result":{"ref":"@41 (/work/api2)"},"warnings":[{"kind":"stale-marker","ids":[41]}]}`}},
-	{cmd: "koan marker bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"binding":{"id":41,"path":"/work/api2"},"replaced":true}}`}},
+	{cmd: "koan bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"binding":{"id":41,"path":"/work/api2"},"replaced":true}}`}},
 	{cmd: "koan folder mv -T /work/api2 /work/api", want: []string{`{"ok":true,"result":{"moved":[{"id":41,"path":"/work/api"}]}}`}},
 
 	// Moving, deleting and archiving

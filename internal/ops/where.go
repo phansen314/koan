@@ -191,7 +191,7 @@ func (q *query) locate(tx *store.Tx, t *tasks, field string) (Location, int64, [
 	}
 	if p.marker == nil {
 		return Location{}, 0, nil, core.NotFound(nil, []string{p.printed},
-			"%s is outside the tree, and no marker is at or above it; bind one with koan marker bind", p.printed)
+			"%s is outside the tree, and no marker is at or above it; bind one with koan bind", p.printed)
 	}
 	return t.locateMarker(tx, p)
 }

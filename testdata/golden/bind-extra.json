@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "a word past the object: marker bind takes one dir",
+    "message": "a word past the object: bind takes one dir",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "$HOME/wt/sub",
-        "reason": "a word past the object: marker bind takes one dir"
+        "reason": "a word past the object: bind takes one dir"
       }
     ],
     "archived": []

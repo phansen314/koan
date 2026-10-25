@@ -89,3 +89,15 @@ func TestMovedCommandsInput(t *testing.T) {
 	ok(t, home, "complete", "2", "3")
 	golden(t, input(t, home, "reopen", `{"tasks":[2,"@3"]}`), "reopen-input")
 }
+
+// The marker group is gone: its old commands are unknown commands at
+// marker, with no pointer to the new ones.
+func TestMarkerGroupGone(t *testing.T) {
+	home := t.TempDir()
+	for _, args := range [][]string{{"marker", "bind", "2"}, {"marker", "unbind"}, {"marker"}} {
+		r := koan(t, home, args...)
+		if r.Exit != 2 || r.Kind() != "usage" || strings.Contains(r.Error()["message"].(string), " is koan ") {
+			t.Errorf("koan %q: %s", args, r.Line())
+		}
+	}
+}
