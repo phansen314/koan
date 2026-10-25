@@ -6,7 +6,7 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// TaskBlockResult is task block's result, in its schema's order.
+// TaskBlockResult is block's result, in its schema's order.
 type TaskBlockResult struct {
 	ID        int64      `json:"id"`
 	Changed   bool       `json:"changed"`
@@ -14,14 +14,14 @@ type TaskBlockResult struct {
 	Reblocked []int64    `json:"reblocked"`
 }
 
-// TaskUnblockResult is task unblock's result, in its schema's order.
+// TaskUnblockResult is unblock's result, in its schema's order.
 type TaskUnblockResult struct {
 	ID       int64   `json:"id"`
 	Changed  bool    `json:"changed"`
 	Released []int64 `json:"released"`
 }
 
-// edgeCommand is the shape task block and task unblock share: a task,
+// edgeCommand is the shape block and unblock share: a task,
 // then what it waits on, and at least one edge.
 func edgeCommand(name string, subject offers, run func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error)) *cli.Command {
 	return &cli.Command{
@@ -60,7 +60,7 @@ func edgeCommand(name string, subject offers, run func(env *cli.Env, task core.R
 // TaskBlock adds edges to a task, making any gate they name, its own
 // included, whose ID is issued first.
 func TaskBlock() *cli.Command {
-	return edgeCommand("task block", blockable, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
+	return edgeCommand("block", blockable, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e
@@ -87,7 +87,7 @@ func TaskBlock() *cli.Command {
 
 // TaskUnblock removes edges from a task. It never makes a gate.
 func TaskUnblock() *cli.Command {
-	return edgeCommand("task unblock", tasksAndGates, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
+	return edgeCommand("unblock", tasksAndGates, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e

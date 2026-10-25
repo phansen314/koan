@@ -122,7 +122,7 @@ func TestCaseTable(t *testing.T) {
 			{args: []string{"repair", "--kinds", "case-differs"}, check: listed("@a", "@Bc", "@notes.md")},
 		}},
 		{"koan's own names are matched exactly", []caseRow{
-			{args: []string{"task", "block", "/work.start", "--blocks", "/work.done"}, check: func(t *testing.T, home string, r *testrun.Result) {
+			{args: []string{"block", "/work.start", "--blocks", "/work.done"}, check: func(t *testing.T, home string, r *testrun.Result) {
 				for _, name := range []string{"@Start.md", "@DONE.md", "@Notes.md", "@5.MD", "@.Tmp-1", "@.CASE-1"} {
 					if ignoresCase(t, treePath(home, "@work")) && slices.Contains([]string{"@Start.md", "@DONE.md", "@Notes.md"}, name) {
 						// Here the file would be the gates' or the

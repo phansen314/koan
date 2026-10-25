@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "task complete needs a subject: task",
+    "message": "complete needs a subject: task",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "",
-        "reason": "task complete needs a subject: task"
+        "reason": "complete needs a subject: task"
       }
     ],
     "archived": []

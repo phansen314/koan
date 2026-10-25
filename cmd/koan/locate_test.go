@@ -37,11 +37,7 @@ func realRoot(t *testing.T) string {
 func koanIn(t *testing.T, home, dir string, args ...string) *testrun.Result {
 	t.Helper()
 	r := testrun.Run{Home: home, Dir: dir}.Koan(t, args...)
-	name := args[0]
-	if len(args) > 1 && (name == "folder" || name == "task" || name == "marker") {
-		name += " " + args[1]
-	}
-	r.Check(t, name)
+	r.Check(t, commandName(args))
 	return r
 }
 
@@ -112,7 +108,7 @@ func TestWhereRef(t *testing.T) {
 	fails(t, home, "invalid-input", "", "where", "$a")
 
 	// An archived ID is not-found, with where it went.
-	ok(t, home, "task", "complete", "6")
+	ok(t, home, "complete", "6")
 	ok(t, home, "task", "archive", "6")
 	r := fails(t, home, "not-found", "", "where", "@6")
 	golden(t, r, "where-archived")
@@ -206,8 +202,8 @@ func TestWhereRootPath(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api")
 	ok(t, home, "task", "create", "a", "--folder", "/work/api") // 3
 	ok(t, home, "task", "create", "b")                          // 4
-	ok(t, home, "task", "complete", "3")
-	ok(t, home, "task", "complete", "4")
+	ok(t, home, "complete", "3")
+	ok(t, home, "complete", "4")
 	ok(t, home, "task", "archive", "4")
 	ok(t, home, "folder", "archive", "/work/api")
 	root := filepath.Join(home, "koan-root")
@@ -474,7 +470,7 @@ func TestContext(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api/sub")                                               // 7
 	ok(t, home, "task", "create", "d", "--folder", "/work/api/sub")                                // 8
 	ok(t, home, "task", "create", "e")                                                             // 9
-	ok(t, home, "task", "complete", "6")
+	ok(t, home, "complete", "6")
 
 	r := ok(t, home, "context", "/work/api")
 	goldenNow(t, r, "context")

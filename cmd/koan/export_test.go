@@ -25,12 +25,12 @@ func exportTree(t *testing.T) string {
 	ok(t, home, "folder", "create", "/other")                                                                               // 4
 	ok(t, home, "task", "create", "a", "--folder", "/work/api", "--blocked-by", "/work/api.start", "--blocks", "/work/api") // 5, gates 6 and 7
 	ok(t, home, "task", "create", "b", "--folder", "/work/api/sub")                                                         // 8
-	ok(t, home, "task", "block", "/work/api.start", "/other")                                                               // gate 9
-	ok(t, home, "task", "complete", "9")
+	ok(t, home, "block", "/work/api.start", "/other")                                                                       // gate 9
+	ok(t, home, "complete", "9")
 	ok(t, home, "task", "create", "waiter", "--folder", "/work", "--blocked-by", "/work/api,/other") // 10
 	ok(t, home, "task", "create", "loose", "--blocked-by", "8")                                      // 11
-	ok(t, home, "task", "complete", "8")
-	ok(t, home, "task", "claim", "5", "--extra", `{"by":"me"}`)
+	ok(t, home, "complete", "8")
+	ok(t, home, "claim", "5", "--extra", `{"by":"me"}`)
 	return home
 }
 

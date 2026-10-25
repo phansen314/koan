@@ -17,9 +17,9 @@ func TestTaskDelete(t *testing.T) {
 		ok(t, home, "task", "create", "t") // 1 to 4
 	}
 	// 2 waits on 1; 3 on 2; 4 on 2 and 1.
-	ok(t, home, "task", "block", "2", "1", "--blocks", "3,4")
-	ok(t, home, "task", "block", "4", "1")
-	ok(t, home, "task", "claim", "2")
+	ok(t, home, "block", "2", "1", "--blocks", "3,4")
+	ok(t, home, "block", "4", "1")
+	ok(t, home, "claim", "2")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r := ok(t, home, "task", "delete", "2")
 	golden(t, r, "task-delete")
@@ -84,8 +84,8 @@ func TestFolderDelete(t *testing.T) {
 	ok(t, home, "task", "create", "t", "--folder", "/w/a", "--notes", "notes") // 3
 	ok(t, home, "task", "create", "u", "--blocked-by", "/w.done,3")            // 4, 5
 	ok(t, home, "task", "create", "v", "--blocked-by", "5")                    // 6
-	ok(t, home, "task", "block", "5", "3")
-	ok(t, home, "task", "claim", "3")
+	ok(t, home, "block", "5", "3")
+	ok(t, home, "claim", "3")
 	ok(t, home, "folder", "create", "/k") // 7
 	writeTree(t, home, "@w/.DS_Store", "finder")
 	writeTree(t, home, "@w/@a/@notes.md", "folder notes")
@@ -111,7 +111,7 @@ func TestFolderDelete(t *testing.T) {
 		t.Errorf("folders left: %s", r.Line())
 	}
 	// A folder holding only its gates is empty.
-	ok(t, home, "task", "block", "4", "/k.start,/k.done") // 8, 9
+	ok(t, home, "block", "4", "/k.start,/k.done") // 8, 9
 	r = ok(t, home, "folder", "delete", "/k")
 	if fmt.Sprint(r.Result()) != "map[released:[4] removed:[7 8 9]]" {
 		t.Errorf("gates only: %s", r.Line())
@@ -162,7 +162,7 @@ func TestFolderDeleteMaterial(t *testing.T) {
 	ok(t, home, "folder", "create", "/w/a")                                   // 3
 	ok(t, home, "task", "create", "t", "--folder", "/w/a", "--notes", "mine") // 4
 	ok(t, home, "task", "create", "u")                                        // 5
-	ok(t, home, "task", "block", "5", "/w/a.done")                            // 6
+	ok(t, home, "block", "5", "/w/a.done")                                    // 6
 	for rel, content := range map[string]string{
 		"@w/docs/x.md":        "x",
 		"@w/.DS_Store":        "finder",
@@ -192,8 +192,8 @@ func TestFolderDeleteMaterial(t *testing.T) {
 	// With only what isn't material, --material isn't needed, and what isn't
 	// material goes with it: a gate's notes, and a @start.md or @done.md
 	// with no gate that is empty.
-	ok(t, home, "folder", "create", "/v")         // 7
-	ok(t, home, "task", "block", "5", "/v.start") // 8
+	ok(t, home, "folder", "create", "/v") // 7
+	ok(t, home, "block", "5", "/v.start") // 8
 	writeTree(t, home, "@v/.DS_Store", "finder")
 	writeTree(t, home, "@v/@hollow/@y.md", "")
 	writeTree(t, home, "@v/@start.md", "its gate's")
@@ -246,8 +246,8 @@ func TestTaskDeleteSeveral(t *testing.T) {
 		ok(t, home, "task", "create", "t") // 1 to 5
 	}
 	// 2 waits on 1; 3 on 2; 5 on 4.
-	ok(t, home, "task", "block", "2", "1", "--blocks", "3")
-	ok(t, home, "task", "block", "5", "4")
+	ok(t, home, "block", "2", "1", "--blocks", "3")
+	ok(t, home, "block", "5", "4")
 
 	// A bad entry mid-list removes nothing.
 	fails(t, home, "not-found", "", "task", "delete", "4", "99", "1")

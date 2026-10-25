@@ -417,7 +417,7 @@ func TestTaskList(t *testing.T) {
 	golden(t, usageAt(t, home, "/Zeta", "task", "list", "/alpha", "/Zeta"), "task-list-extra")
 	golden(t, usageAt(t, home, "--folder", "task", "list", "--folder", "/alpha"), "task-list-folder")
 	golden(t, usageAt(t, home, "/alpha", "task", "list", "/alpha", "-i", "-"), "task-list-input-positional")
-	for _, args := range [][]string{{"task", "frontier"}, {"task", "claim-next"}, {"folder", "list"}} {
+	for _, args := range [][]string{{"frontier"}, {"claim-next"}, {"folder", "list"}} {
 		usageAt(t, home, "/Zeta", append(args, "/alpha", "/Zeta")...)
 		usageAt(t, home, "--folder", append(args, "--folder", "/alpha")...)
 	}
@@ -593,7 +593,7 @@ func TestNotFoundID(t *testing.T) {
 		{[]string{"folder", "show", "@5"}, "@5 is below this root's first ID, 100, so came from an earlier root"},
 		{[]string{"folder", "show", "@200"}, "@200 was never issued"},
 		{[]string{"task", "create", "x", "--folder", "@102"}, "@102 was deleted"},
-		{[]string{"task", "block", "101", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"block", "101", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
 		{[]string{"task", "update", "150", "--title", "x"}, "@150 was never issued"},
 	} {
 		r := fails(t, home, "not-found", "", c.args...)

@@ -112,8 +112,8 @@ func TestTaskArchive(t *testing.T) {
 		"--priority", "2", "--tags", "trip,a", "--extra", `{"z":1,"a":"x"}`) // 3
 	ok(t, home, "task", "create", "u", "--blocked-by", "3") // 4
 	ok(t, home, "task", "create", "v", "--blocks", "3")     // 5
-	ok(t, home, "task", "complete", "5")
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "5")
+	ok(t, home, "complete", "3")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"', created_at = '"+fixed+"'",
 		"UPDATE task SET completed_at = '"+fixed+"' WHERE completed_at IS NOT NULL")
 
@@ -153,7 +153,7 @@ func TestTaskArchive(t *testing.T) {
 	if got := archivedTo(t, home, "task", "archive", "@3"); got != archivePath(home, "work/HOME-777/@3.md") {
 		t.Errorf("archived to %s", got)
 	}
-	r = fails(t, home, "not-found", "", "task", "block", "4", "3")
+	r = fails(t, home, "not-found", "", "block", "4", "3")
 	if fmt.Sprint(r.Error()["archived"]) != fmt.Sprintf("[map[archive:%s id:3]]", archivePath(home, "work/HOME-777/@3.md")) {
 		t.Errorf("an edge to it: %s", r.Line())
 	}
@@ -184,7 +184,7 @@ func TestTaskArchive(t *testing.T) {
 func TestTaskArchiveNoNotes(t *testing.T) {
 	home := root(t)
 	ok(t, home, "task", "create", "t") // 1
-	ok(t, home, "task", "complete", "1")
+	ok(t, home, "complete", "1")
 	os.Remove(treePath(home, "@1.md"))
 	r := ok(t, home, "task", "archive", "1")
 	golden(t, r, "task-archive-no-notes")
@@ -198,7 +198,7 @@ func TestTaskArchiveNoNotes(t *testing.T) {
 
 	// With its notes there, a task in the root goes to the archive's top.
 	ok(t, home, "task", "create", "u") // 2
-	ok(t, home, "task", "complete", "2")
+	ok(t, home, "complete", "2")
 	r = ok(t, home, "task", "archive", "2")
 	if r.Result()["archive"] != archivePath(home, "@2.md") {
 		t.Errorf("root: %s", r.Line())
@@ -214,7 +214,7 @@ func TestTaskArchiveGate(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api")                          // 1, 2
 	ok(t, home, "task", "create", "x", "--blocked-by", "/work/api.start") // 3, 4
 	writeTree(t, home, "@work/@api/@start.md", "kickoff")
-	ok(t, home, "task", "complete", "/work/api.start")
+	ok(t, home, "complete", "/work/api.start")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"', created_at = '"+fixed+"'",
 		"UPDATE task SET completed_at = '"+fixed+"' WHERE completed_at IS NOT NULL")
 	r := ok(t, home, "task", "archive", "/work/api.start")
@@ -238,9 +238,9 @@ func TestTaskArchiveGate(t *testing.T) {
 	// The folder lacks it now; the next start gate is made afresh, with
 	// notes of its own in the tree.
 	fails(t, home, "not-found", "", "task", "show", "/work/api.start")
-	ok(t, home, "task", "block", "3", "/work/api.start") // 5
+	ok(t, home, "block", "3", "/work/api.start") // 5
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=", "@work/@api/@start.md=", "@3.md=")
-	ok(t, home, "task", "complete", "5")
+	ok(t, home, "complete", "5")
 	ok(t, home, "task", "archive", "5")
 	checkArchive(t, home, "work/", "work/api/", "work/api/@4_start.md=kickoff", "work/api/@4_start.json=task",
 		"work/api/@5_start.md=", "work/api/@5_start.json=task")
@@ -257,7 +257,7 @@ func TestFolderArchive(t *testing.T) {
 	ok(t, home, "task", "create", "u", "--folder", "/work/HOME-12345/api", "--blocked-by", "/work/HOME-12345.start,4") // 5, 6
 	ok(t, home, "task", "create", "outside", "--blocked-by", "/work/HOME-12345.done")                                  // 7, 8
 	ok(t, home, "task", "create", "before")                                                                            // 9
-	ok(t, home, "task", "block", "4", "9")
+	ok(t, home, "block", "4", "9")
 	for rel, content := range map[string]string{
 		"@work/@HOME-12345/docs/x.md":      "x",
 		"@work/@HOME-12345/.hidden":        "h",
@@ -273,7 +273,7 @@ func TestFolderArchive(t *testing.T) {
 		t.Errorf("not-finished: %s", r.Line())
 	}
 	for _, id := range []string{"9", "6", "4", "5", "8"} {
-		ok(t, home, "task", "complete", id)
+		ok(t, home, "complete", id)
 	}
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"', created_at = '"+fixed+"'",
 		"UPDATE task SET completed_at = '"+fixed+"' WHERE completed_at IS NOT NULL")
@@ -353,7 +353,7 @@ func TestFolderArchiveEmpty(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/f/g")                // 1, 2
 	ok(t, home, "task", "create", "t", "--folder", "/f/g") // 3
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "3")
 	os.Remove(treePath(home, "@f/@g/@3.md"))
 	r := ok(t, home, "folder", "archive", "/f")
 	if fmt.Sprint(r.Result()["left"]) != "[1 2 3]" || r.Result()["archive"] != archivePath(home, "@1_f") {
@@ -375,8 +375,8 @@ func TestArchiveCase(t *testing.T) {
 	for range 2 {
 		ok(t, home, "task", "create", "t", "--folder", "/Work") // 2, 3
 	}
-	ok(t, home, "task", "complete", "2")
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "2")
+	ok(t, home, "complete", "3")
 	ok(t, home, "task", "archive", "2")
 	ok(t, home, "folder", "mv", "-T", "/Work", "/work")
 	r := ok(t, home, "task", "archive", "3")
@@ -401,7 +401,7 @@ func TestArchiveCasePending(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/Work")                // 1
 	ok(t, home, "task", "create", "t", "--folder", "/Work") // 2
-	ok(t, home, "task", "complete", "2")
+	ok(t, home, "complete", "2")
 	dir := filepath.Join(home, "koan-root", "archived")
 	os.Chmod(dir, 0o555)
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
@@ -414,7 +414,7 @@ func TestArchiveCasePending(t *testing.T) {
 	// The rename waits behind the archive step, its paths overlapping.
 	warned(t, home, pending, "folder", "mv", "-T", "/Work", "/work")
 	warned(t, home, pending, "task", "create", "u", "--folder", "/work") // 3
-	warned(t, home, pending, "task", "complete", "3")
+	warned(t, home, pending, "complete", "3")
 	// Its notes are still to be written, so they aren't there when the
 	// change is made: the index names its JSON. The write runs before the
 	// archive step, so the notes still go into the archive, beside it.

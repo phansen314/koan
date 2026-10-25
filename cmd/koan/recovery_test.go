@@ -228,7 +228,7 @@ func TestRepair(t *testing.T) {
 			ok(t, home, "task", "create", "Gone") // 7
 			ok(t, home, "task", "delete", "7")
 			write(t, home, "@7.md", "")
-			ok(t, home, "task", "complete", "4")
+			ok(t, home, "complete", "4")
 			ok(t, home, "task", "archive", "4")
 			write(t, home, "@work/@api/@4.md", "")
 			write(t, home, "@99.md", "never")
@@ -449,7 +449,7 @@ func TestDoctorClean(t *testing.T) {
 	ok(t, home, "folder", "mv", "-T", "/home/x", "/work/X")
 	ok(t, home, "folder", "mv", "-T", "/work/X", "/work/x")
 	ok(t, home, "task", "mv", "4", "/work/x/y")
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "3")
 	ok(t, home, "task", "archive", "3")
 	ok(t, home, "folder", "delete", "/home")
 	hand(t, os.Mkdir(filepath.Join(treeDir(home), "@work", "docs"), 0o755))

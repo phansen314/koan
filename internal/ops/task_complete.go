@@ -9,13 +9,13 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// TaskCompleteResult is task complete's result, in its schema's order.
+// TaskCompleteResult is complete's result, in its schema's order.
 type TaskCompleteResult struct {
 	Completed []int64 `json:"completed"`
 	Released  []int64 `json:"released"`
 }
 
-// TaskReopenResult is task reopen's result, in its schema's order.
+// TaskReopenResult is reopen's result, in its schema's order.
 type TaskReopenResult struct {
 	Reopened  []int64 `json:"reopened"`
 	Reblocked []int64 `json:"reblocked"`
@@ -117,7 +117,7 @@ func waiting(tx *store.Tx, ids []int64) []int64 {
 // What waited on them alone is released; a task completed with them never
 // is.
 func TaskComplete() *cli.Command {
-	return tasksCommand("task complete", openOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
+	return tasksCommand("complete", openOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
 		watched := watch(tx, waiting(tx, ids))
 		completed := []int64{}
 		for _, id := range ids {
@@ -137,7 +137,7 @@ func TaskComplete() *cli.Command {
 // them waits again, a claimed task with its claim kept. A task reopened
 // with them wasn't ready, so it never waits again.
 func TaskReopen() *cli.Command {
-	return tasksCommand("task reopen", completeOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
+	return tasksCommand("reopen", completeOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
 		watched := watch(tx, waiting(tx, ids))
 		reopened := []int64{}
 		for _, id := range ids {

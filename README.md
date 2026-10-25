@@ -92,9 +92,9 @@ Folders and tasks share one ID sequence. On a new root:
 koan folder create /work/api --title 'API rework'                        # makes /work too: @1, and /work/api @2
 koan task create 'Design the endpoints' --folder /work/api --priority 2  # @3
 koan task create 'Build them' --folder /work/api --blocked-by 3          # @4, which waits on @3
-koan task frontier --limit 10 --fields ref,title                         # what can be taken now: only @3
-koan task claim-next --extra '{"by":"me"}'                               # claims @3 and returns it, so no one else takes it
-koan task complete 3                                                     # .result.released: [4], now ready
+koan frontier --limit 10 --fields ref,title                         # what can be taken now: only @3
+koan claim-next --extra '{"by":"me"}'                               # claims @3 and returns it, so no one else takes it
+koan complete 3                                                     # .result.released: [4], now ready
 koan task show 4                                                         # the whole task, with its notes_path
 ```
 
@@ -106,8 +106,8 @@ Edges are only ever between tasks: where a task sits never orders it. To order w
 
 ```sh
 koan task create 'Announce it' --folder /work --blocked-by /work/api    # @5 waits on /work/api's done gate, made as @6
-koan task block /work/api.done 3,4                                      # the done gate waits on the folder's work
-koan task why 5                                                         # .result.ready: [4], what to finish to move @5
+koan block /work/api.done 3,4                                      # the done gate waits on the folder's work
+koan why 5                                                         # .result.ready: [4], what to finish to move @5
 koan export /work/api | jq '.result.external[].ref'                     # the tasks outside /work/api at the other end of an edge: @5
 ```
 

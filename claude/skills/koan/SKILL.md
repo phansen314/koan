@@ -110,12 +110,12 @@ The result names everything by ID: `folders` made, parents first (`/work` @40, `
 ## The daily loop
 
 ```sh
-koan task frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order: only @45, the start gate
-koan task why 43                                    # .result.ready: [45], what to finish to move @43
-koan task complete 45                               # .result.released: [42], the tasks it made ready
-koan task claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
+koan frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order: only @45, the start gate
+koan why 43                                    # .result.ready: [45], what to finish to move @43
+koan complete 45                               # .result.released: [42], the tasks it made ready
+koan claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
 koan task show 42                                   # the whole task: .result.task, with its notes_path
-koan task complete 42                               # ends the claim; .result.released: [43]
+koan complete 42                               # ends the claim; .result.released: [43]
 ```
 
 - **Work order** is highest `priority` first, `null` last, then lowest ID. Scope the frontier, and `claim-next`, with the folder as the subject, `--recursive=false`, `--tags-any` and `--tags-all`.
@@ -128,10 +128,10 @@ koan task complete 42                               # ends the claim; .result.re
 Other agents may be working from the same tree. A **claim** reserves a task: no one else can claim it, and it leaves the frontier, until it is released or completed.
 
 ```sh
-koan task claim 43 --extra '{"by":"agent-1"}'      # this task: .result.claim
-koan task claim 43                                 # a second claim fails: conflict, rule claimed
+koan claim 43 --extra '{"by":"agent-1"}'      # this task: .result.claim
+koan claim 43                                 # a second claim fails: conflict, rule claimed
 koan task list --claimed --limit 20 --fields title,claim   # what is taken, by whom, since when
-koan task release 43                               # you won't do it after all
+koan release 43                               # you won't do it after all
 ```
 
 - **Claim a task before starting it**, whether you picked it or the user named it. `task claim-next` picks and claims in one step and returns the task's record, so prefer it when the choice is yours. Its `task` is `null` when nothing ready is free.
@@ -152,9 +152,9 @@ koan task create 'Investigate the flaky test' --notes-file - <<'EOF'
 Seen in CI on 2026-10-19; fails about 1 run in 20.
 EOF
 koan task update 48 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'
-koan task block 44 48                           # @44 waits on @48 too
-koan task unblock 44 48
-koan task block 42 43                           # refused: conflict, rule cycle, since @43 waits on @42
+koan block 44 48                           # @44 waits on @48 too
+koan unblock 44 48
+koan block 42 43                           # refused: conflict, rule cycle, since @43 waits on @42
 ```
 
 - **A write returns identities, not records**: `.result.id`, or the IDs it changed, such as `completed` and `moved`, and what else it touched, such as `released`, `reblocked` and `gates_made`, or `changed: false` when it changed nothing. `task show` it when you need its fields.
@@ -172,7 +172,7 @@ koan folder create /work/web/client --title 'Web client'    # makes /work/web to
 koan folder update /work/web/client --extra-merge '{"jira":"WEB-12"}'
 koan folder show /work/api                                   # .result.folder: gates, open, complete, finished, notes_path
 koan task create 'Port the client' --folder /work/web/client --blocked-by /work/web/client.start --blocks /work/web/client
-koan task block /work/web/client.start /work/api                # the client's work starts once the API is done
+koan block /work/web/client.start /work/api                # the client's work starts once the API is done
 ```
 
 - `folder create` makes any missing parents, and lists every folder made in `created`. It refuses a path that is taken (`exists`) or that differs from a sibling only in case (`case-mismatch`).
@@ -263,7 +263,7 @@ Archiving moves complete work out of the tree into `~/koan-root/archived/`, kept
 
 ```sh
 koan folder archive /work/api                       # refused while anything under it is open: conflict, rule not-finished
-koan task update 48 --tags-add cancelled && koan task complete 48 && koan task archive 48   # one task: .result.archive
+koan task update 48 --tags-add cancelled && koan complete 48 && koan task archive 48   # one task: .result.archive
 koan task show 48                                   # not-found: .error.archived says where it went
 ```
 

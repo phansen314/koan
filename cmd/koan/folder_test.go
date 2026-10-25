@@ -30,12 +30,18 @@ func root(t *testing.T) string {
 func koan(t *testing.T, home string, args ...string) *testrun.Result {
 	t.Helper()
 	r := testrun.Run{Home: home}.Koan(t, args...)
+	r.Check(t, commandName(args))
+	return r
+}
+
+// commandName is the command a line names: a group and its command, or
+// one word.
+func commandName(args []string) string {
 	name := args[0]
 	if len(args) > 1 && (name == "folder" || name == "task" || name == "marker") {
 		name += " " + args[1]
 	}
-	r.Check(t, name)
-	return r
+	return name
 }
 
 // ok runs a command that must succeed with no warnings.

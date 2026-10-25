@@ -116,7 +116,7 @@ func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran 
 
 // groupShorts are each group's line in help.
 var groupShorts = map[string]string{
-	"task":   "Make, change, find and claim tasks",
+	"task":   "Make, change and find tasks",
 	"folder": "Make, change and find folders",
 	"marker": "Bind directories outside the tree, such as worktrees, to folders",
 }

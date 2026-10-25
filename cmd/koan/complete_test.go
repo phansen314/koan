@@ -29,9 +29,9 @@ func completeTree(t *testing.T) string {
 	    {"title": "Shipped", "folder": "/old"},
 	    {"title": "Root task"}]}`)
 	ok(t, home, "task", "create", "Notes")
-	ok(t, home, "task", "complete", "8")
-	ok(t, home, "task", "complete", "10")
-	ok(t, home, "task", "claim", "6")
+	ok(t, home, "complete", "8")
+	ok(t, home, "complete", "10")
+	ok(t, home, "claim", "6")
 	return home
 }
 
@@ -108,10 +108,10 @@ func TestCompleteReferences(t *testing.T) {
 		// Tasks and made gates, in pick's order.
 		{[]string{"task", "show", ""}, offered(byID, as("@", all...)...)},
 		{[]string{"task", "show", "@"}, offered(byID, as("@", all...)...)},
-		{[]string{"task", "why", "@"}, offered(byID, as("@", all...)...)},
+		{[]string{"why", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"task", "update", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"task", "delete", "@"}, offered(byID, as("@", all...)...)},
-		{[]string{"task", "unblock", "@"}, offered(byID, as("@", all...)...)},
+		{[]string{"unblock", "@"}, offered(byID, as("@", all...)...)},
 		// An ID's digits, with or without the @, as typed; a gate by its
 		// folder's ID and end.
 		{[]string{"task", "show", "1"}, offered(byID, as("", "12")...)},
@@ -126,27 +126,27 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "show", "@.start"}, offered(byID)},
 		{[]string{"task", "show", "@@1"}, offered(byID)},
 		// By state and claim, gates as tasks.
-		{[]string{"task", "complete", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
-		{[]string{"task", "reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
+		{[]string{"complete", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
+		{[]string{"reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"task", "archive", "@"}, offered(byID, as("@", "8", "3.start")...)},
-		{[]string{"task", "claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
-		{[]string{"task", "release", "@"}, offered(byID, as("@", "6")...)},
+		{[]string{"claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
+		{[]string{"release", "@"}, offered(byID, as("@", "6")...)},
 		{[]string{"task", "mv", "@"}, offered(byID, as("@", allTasks...)...)},
 		{[]string{"task", "join", "@"}, offered(byID, as("@", allTasks...)...)},
 		{[]string{"task", "unjoin", "@"}, offered(byID, as("@", allTasks...)...)},
 		// Gates made or not where an edge names them.
-		{[]string{"task", "block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
+		{[]string{"block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
-		{[]string{"task", "block", "5", "@"}, offered(byID, as("@", edges...)...)},
-		{[]string{"task", "block", "5", "--blocks", ""}, offered(byID, as("@", edges...)...)},
-		{[]string{"task", "unblock", "5", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"block", "5", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"block", "5", "--blocks", ""}, offered(byID, as("@", edges...)...)},
+		{[]string{"unblock", "5", "@"}, offered(byID, as("@", edges...)...)},
 		{[]string{"task", "create", "t", "--blocked-by", "@2"}, offered(byID, as("@", "2", "2.start", "2.done")...)},
 		{[]string{"task", "create", "t", "--blocks=2."}, offered(byID, as("", "2.start", "2.done")...)},
 		// Folders.
 		{[]string{"task", "create", "t", "--folder", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "list", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "frontier", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "claim-next", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"frontier", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"claim-next", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "list", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"pick", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "mv", "5", "-t", "@"}, offered(byID, as("@", folders...)...)},
@@ -190,12 +190,12 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "mv", "--rename", "3", "2"}, offered(byID)},
 		{[]string{"folder", "mv", "-T", "3", "/old", ""}, offered(byNothing)},
 		// Each word of a list subject offers what the subject takes.
-		{[]string{"task", "complete", "9", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
-		{[]string{"task", "complete", "9", "12", "1"}, offered(byID, as("", "12")...)},
-		{[]string{"task", "reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
+		{[]string{"complete", "9", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
+		{[]string{"complete", "9", "12", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"task", "delete", "9", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"folder", "delete", "3", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "unblock", "5", "6", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"unblock", "5", "6", "@"}, offered(byID, as("@", edges...)...)},
 		// where: tasks, made gates and folders.
 		{[]string{"where", ""}, offered(byID, as("@", "9", "12", "1", "8", "2", "7", "3", "5", "6", "3.start", "3.done", "4")...)},
 		{[]string{"where", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
@@ -220,8 +220,8 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "create", "/new", "--join", "/w"}, offered(byPath, "/work")},
 		{[]string{"context", "/o"}, offered(byPath, "/old")},
 		{[]string{"export", "/o"}, offered(byPath, "/old")},
-		{[]string{"task", "frontier", "/w"}, offered(byPath, "/work")},
-		{[]string{"task", "claim-next", "/w"}, offered(byPath, "/work")},
+		{[]string{"frontier", "/w"}, offered(byPath, "/work")},
+		{[]string{"claim-next", "/w"}, offered(byPath, "/work")},
 		{[]string{"folder", "list", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"pick", "/o"}, offered(byPath, "/old")},
 		{[]string{"marker", "bind", "/o"}, offered(byPath, "/old")},
@@ -232,7 +232,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "mv", "/work/api", "/old", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "mv", "-T", "/w"}, offered(byPath, "/work")},
 		{[]string{"folder", "delete", "/work/api", "/o"}, offered(byPath, "/old")},
-		{[]string{"task", "complete", "9", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
+		{[]string{"complete", "9", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
 		// A folder is a step toward its gates, wherever a gate is taken.
 		{[]string{"task", "show", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"task", "show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
@@ -240,11 +240,11 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "show", "/work/api.d"}, offered(byPath, "/work/api.done")},
 		{[]string{"task", "show", "/work/ap"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"task", "show", "/work"}, offered(byPath, "/work")},
-		{[]string{"task", "complete", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
-		{[]string{"task", "reopen", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
-		{[]string{"task", "block", "/work"}, offered(byPath, "/work", "/work.start", "/work.done")},
-		{[]string{"task", "block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
-		{[]string{"task", "block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"complete", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
+		{[]string{"reopen", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
+		{[]string{"block", "/work"}, offered(byPath, "/work", "/work.start", "/work.done")},
+		{[]string{"block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
+		{[]string{"block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		// Only tasks: a path offers nothing.
 		{[]string{"task", "mv", "/"}, offered(byPath)},
@@ -264,11 +264,11 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"where", "@2/api"}, offered(byID)},
 		{[]string{"where", "/work/api:"}, offered(byID)},
 		{[]string{"where", "@3:docs"}, offered(byID)},
-		{[]string{"task", "block", "5", "$design"}, offered(byID)},
+		{[]string{"block", "5", "$design"}, offered(byID)},
 		{[]string{"task", "show", "work"}, offered(byID)},
 		// Only a list's first item completes.
-		{[]string{"task", "block", "5", "6,@"}, offered(byID)},
-		{[]string{"task", "block", "5", "6", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
+		{[]string{"block", "5", "6,@"}, offered(byID)},
+		{[]string{"block", "5", "6", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
 		{[]string{"task", "join", "5", "/old,/w"}, offered(byID)},
 		{[]string{"task", "create", "t", "--join", "/old,/w"}, offered(byID)},
 		// A subject given, and values that aren't references.
@@ -321,8 +321,8 @@ func TestCompleteTooMany(t *testing.T) {
 	if got, want := completes(t, home, "task", "show", "@"), offered(byID, hint); got != want {
 		t.Errorf("101: %q, want %q", got, want)
 	}
-	ok(t, home, "task", "complete", "101")
-	got := completes(t, home, "task", "complete", "")
+	ok(t, home, "complete", "101")
+	got := completes(t, home, "complete", "")
 	if lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n"); len(lines) != 101 ||
 		lines[0] != "@1\tTask 1  /" || lines[99] != "@100\tTask 100  /" || lines[100] != ":36" {
 		t.Errorf("100: %d lines:\n%s", len(lines), got)

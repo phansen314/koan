@@ -265,7 +265,7 @@ func TestJoinWarnings(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")
 	ok(t, home, "task", "create", "x", "--blocks", "/a")
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "3")
 	r := warned(t, home, []string{"complete-blocker"}, "task", "create", "y", "--join", "/a")
 	if fmt.Sprint(r.Envelope["warnings"].([]any)[0].(map[string]any)["ids"]) != "[3]" {
 		t.Errorf("warning: %s", r.Line())
@@ -277,7 +277,7 @@ func TestJoinWarnings(t *testing.T) {
 	home = root(t)
 	ok(t, home, "folder", "create", "/b")
 	ok(t, home, "task", "create", "x")
-	ok(t, home, "task", "claim", "2")
+	ok(t, home, "claim", "2")
 	r = warned(t, home, []string{"claimed-blocked"}, "task", "join", "2", "/b")
 	golden(t, r, "task-join-claimed-blocked")
 	if fmt.Sprint(r.Result()["reblocked"]) != "[2]" {
@@ -289,7 +289,7 @@ func TestJoinWarnings(t *testing.T) {
 	home = root(t)
 	ok(t, home, "folder", "create", "/c")
 	ok(t, home, "task", "create", "x", "--blocks", "/c")
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "3")
 	r = warned(t, home, []string{"complete-blocker"}, "folder", "create", "/c/d", "--join", "/c")
 	if fmt.Sprint(r.Result()["reblocked"]) != "[]" {
 		t.Errorf("reblocked: %s", r.Line())
@@ -297,8 +297,8 @@ func TestJoinWarnings(t *testing.T) {
 	home = root(t)
 	ok(t, home, "folder", "create", "/c")
 	ok(t, home, "task", "create", "x", "--blocks", "/c")
-	ok(t, home, "task", "complete", "2")
-	ok(t, home, "task", "claim", "3")
+	ok(t, home, "complete", "2")
+	ok(t, home, "claim", "3")
 	r = warned(t, home, []string{"claimed-blocked"}, "folder", "create", "/e", "--join", "/c")
 	golden(t, r, "folder-create-join-claimed-blocked")
 	if fmt.Sprint(r.Result()["reblocked"]) != "[3]" {
@@ -436,7 +436,7 @@ func TestTaskUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2 4]]" {
 		t.Errorf("both: %s", r.Line())
 	}
-	ok(t, home, "task", "block", "2", "/a.start")
+	ok(t, home, "block", "2", "/a.start")
 	r = ok(t, home, "task", "unjoin", "2", "/a")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2]]" {
 		t.Errorf("one: %s", r.Line())
@@ -471,7 +471,7 @@ func TestFolderUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3 6]]" {
 		t.Errorf("both: %s", r.Line())
 	}
-	ok(t, home, "task", "block", "/g.start", "/h.start")
+	ok(t, home, "block", "/g.start", "/h.start")
 	r = ok(t, home, "folder", "unjoin", "/g", "/h")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3]]" {
 		t.Errorf("one: %s", r.Line())
