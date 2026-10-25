@@ -101,13 +101,13 @@ func TestCompleteReferences(t *testing.T) {
 		"3", "5", "6", "3.start", "3.done", "4", "4.start", "4.done"}
 	folders := []string{"1", "2", "3", "4"}
 	tasksAndFolders := []string{"9", "12", "1", "8", "2", "7", "3", "5", "6", "4"}
+	anyRef := []string{"9", "12", "1", "8", "2", "7", "3", "5", "6", "3.start", "3.done", "4"}
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		// Tasks and made gates, in pick's order.
 		{[]string{"why", ""}, offered(byID, as("@", all...)...)},
-		{[]string{"why", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"why", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"task", "update", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"task", "delete", "@"}, offered(byID, as("@", all...)...)},
@@ -128,12 +128,9 @@ func TestCompleteReferences(t *testing.T) {
 		// By state and claim, gates as tasks.
 		{[]string{"complete", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
 		{[]string{"reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
-		{[]string{"archive", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
 		{[]string{"release", "@"}, offered(byID, as("@", "6")...)},
 		{[]string{"task", "mv", "@"}, offered(byID, as("@", allTasks...)...)},
-		{[]string{"join", "@"}, offered(byID, as("@", allTasks...)...)},
-		{[]string{"unjoin", "@"}, offered(byID, as("@", allTasks...)...)},
 		// Gates made or not where an edge names them.
 		{[]string{"block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
@@ -159,6 +156,12 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"marker", "bind", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "create", "t", "--join", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "create", "/new", "--join", "@"}, offered(byID, as("@", folders...)...)},
+		// A join's subject: tasks and folders, never gates.
+		{[]string{"join", ""}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"join", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"unjoin", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"join", "3"}, offered(byID, as("", "3")...)},
+		{[]string{"unjoin", "@3"}, offered(byID, as("@", "3")...)},
 		// Each word after a join's subject offers folders.
 		{[]string{"join", "5", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"unjoin", "5", "@"}, offered(byID, as("@", folders...)...)},
@@ -193,9 +196,17 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "delete", "9", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"folder", "delete", "3", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"unblock", "5", "6", "@"}, offered(byID, as("@", edges...)...)},
-		// where: tasks, made gates and folders.
-		{[]string{"where", ""}, offered(byID, as("@", "9", "12", "1", "8", "2", "7", "3", "5", "6", "3.start", "3.done", "4")...)},
+		// show and where: tasks, made gates and folders.
+		{[]string{"show", ""}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"show", "@"}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"show", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
+		{[]string{"where", ""}, offered(byID, as("@", anyRef...)...)},
 		{[]string{"where", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
+		// archive: complete tasks, made gates, and finished folders.
+		{[]string{"archive", ""}, offered(byID, as("@", "1", "8", "3.start", "4")...)},
+		{[]string{"archive", "@"}, offered(byID, as("@", "1", "8", "3.start", "4")...)},
+		{[]string{"archive", "1"}, offered(byID, as("", "1")...)},
+		{[]string{"archive", "@3"}, offered(byID, as("@", "3.start")...)},
 		// Paths as paths, folder by folder.
 		{[]string{"context", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"context", "/w"}, offered(byPath, "/work")},
@@ -243,10 +254,21 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
 		{[]string{"block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"show", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"show", "/work/api.s"}, offered(byPath, "/work/api.start")},
 		// Only tasks: a path offers nothing.
 		{[]string{"task", "mv", "/"}, offered(byPath)},
-		{[]string{"join", "/"}, offered(byPath)},
-		{[]string{"unjoin", "/work/api"}, offered(byPath)},
+		// A join's subject: folders, but no gates after a path.
+		{[]string{"join", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"unjoin", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"join", "/work/api."}, offered(byPath)},
+		// archive: finished folders and complete gates, and the steps
+		// toward them.
+		{[]string{"archive", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"archive", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"archive", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
+		{[]string{"archive", "/work/api.d"}, offered(byPath)},
 		// Paths only, as steps toward a new path.
 		{[]string{"folder", "create", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "create", "/work/api"}, offered(byPath, "/work/api")},
@@ -292,6 +314,11 @@ func TestCompleteReferences(t *testing.T) {
 	r := testrun.Run{Home: home}.Koan(t, "__completeNoDesc", "why", "@3")
 	if want := offered(byID, "@3.start", "@3.done"); r.Stdout != want {
 		t.Errorf("__completeNoDesc: %q, want %q", r.Stdout, want)
+	}
+	// complete and completion both start comp: one more letter settles it.
+	r = testrun.Run{Home: home}.Koan(t, "__completeNoDesc", "comp")
+	if want := offered(byNothing, "complete", "completion"); r.Stdout != want {
+		t.Errorf("__completeNoDesc comp: %q, want %q", r.Stdout, want)
 	}
 }
 

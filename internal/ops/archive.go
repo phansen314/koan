@@ -106,7 +106,7 @@ type leaving struct {
 func Archive() *cli.Command {
 	return &cli.Command{
 		Name:    "archive",
-		Subject: &cli.Option{Field: "ref", Required: true, Complete: completeOnes.complete()},
+		Subject: &cli.Option{Field: "ref", Required: true, Complete: archivable.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			ref := r.ref("ref", core.WantRef, "")

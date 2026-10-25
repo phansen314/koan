@@ -13,7 +13,7 @@ import (
 func joinCommand(name string, add bool) *cli.Command {
 	return &cli.Command{
 		Name:    name,
-		Subject: &cli.Option{Field: "ref", Required: true, Complete: tasksOnly.complete()},
+		Subject: &cli.Option{Field: "ref", Required: true, Complete: tasksAndFolders.complete()},
 		Object:  &cli.Option{Field: "join", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}

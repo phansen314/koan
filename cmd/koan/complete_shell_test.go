@@ -188,6 +188,9 @@ echo READY
 	s.list("koan block 5 /work.\t\t", "/work.start", "/work.done")
 	s.line("koan task mv 5 /wo\t", "koan task mv 5 /work")
 	s.line("koan complete 9 1\t", "koan complete 9 12 ")
+	s.line("koan show /wo\t", "koan show /work")
+	s.line("koan archive /work/api.\t", "koan archive /work/api.start")
+	s.line("koan join 4\t", "koan join 4 ")
 	s.line("koan folder mv -T /old /work/api\t", "koan folder mv -T /old /work/api")
 
 	s = start(manyTree(t))
@@ -228,6 +231,9 @@ echo READY
 	s.list("koan block 5 /work.\t", "/work.start", "/work.done")
 	s.line("koan task mv 5 /wo\t", "koan task mv 5 /work")
 	s.line("koan complete 9 1\t", "koan complete 9 12 ")
+	s.line("koan show /wo\t", "koan show /work")
+	s.line("koan archive /work/api.\t", "koan archive /work/api.start")
+	s.line("koan join 4\t", "koan join 4 ")
 	s.line("koan folder mv -T /old /work/api\t", "koan folder mv -T /old /work/api")
 
 	s = start(manyTree(t))
