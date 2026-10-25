@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "@1 is a folder, which has no priority: a folder's work is ordered through its gates, which are tasks, such as /w.start",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/priority",
+        "reason": "@1 is a folder, which has no priority: a folder's work is ordered through its gates, which are tasks, such as /w.start"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

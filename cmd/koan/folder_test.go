@@ -38,7 +38,7 @@ func koan(t *testing.T, home string, args ...string) *testrun.Result {
 // one word.
 func commandName(args []string) string {
 	name := args[0]
-	if len(args) > 1 && (name == "folder" || name == "task" || name == "marker") {
+	if len(args) > 1 && (name == "folder" || name == "task") {
 		name += " " + args[1]
 	}
 	return name
@@ -160,7 +160,7 @@ func TestFolderCreate(t *testing.T) {
 
 	// A third level under parents that are there makes only itself.
 	r = ok(t, home, "folder", "create", "/work/api/v2")
-	if created := r.Result()["created"].([]any); len(created) != 1 || r.Result()["id"] != json.Number("3") {
+	if created := r.Result()["folders_made"].([]any); len(created) != 1 || r.Result()["id"] != json.Number("3") {
 		t.Errorf("created: %s", r.Line())
 	}
 	// Through --input, as the options would give it.
@@ -378,15 +378,15 @@ func TestFolderList(t *testing.T) {
 	}
 	r := ok(t, home, "folder", "list")
 	golden(t, r, "folder-list")
-	golden(t, ok(t, home, "folder", "list", "/alpha", "--recursive=false"), "folder-list-subject")
+	golden(t, ok(t, home, "folder", "list", "/alpha", "--direct"), "folder-list-subject")
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		{nil, "/Zeta /alpha /alpha/C /alpha/a /alpha/a/x /alpha/b /beta"},
-		{[]string{"--recursive=false"}, "/Zeta /alpha /beta"},
+		{[]string{"--direct"}, "/Zeta /alpha /beta"},
 		{[]string{"/alpha"}, "/alpha/C /alpha/a /alpha/a/x /alpha/b"},
-		{[]string{"@1", "--recursive=false"}, "/alpha/C /alpha/a /alpha/b"},
+		{[]string{"@1", "--direct"}, "/alpha/C /alpha/a /alpha/b"},
 		{[]string{"/alpha/a/x"}, ""},
 	} {
 		r := ok(t, home, append([]string{"folder", "list"}, c.args...)...)
@@ -527,7 +527,7 @@ func TestFolderCreateModel(t *testing.T) {
 		for _, f := range made {
 			want = append(want, fmt.Sprintf("map[id:%d path:%s]", f.ID, f.Path))
 		}
-		if got := fmt.Sprint(r.Result()["created"]); got != "["+strings.Join(want, " ")+"]" {
+		if got := fmt.Sprint(r.Result()["folders_made"]); got != "["+strings.Join(want, " ")+"]" {
 			t.Errorf("%s: model %v, koan %s", p, want, r.Line())
 		}
 	}

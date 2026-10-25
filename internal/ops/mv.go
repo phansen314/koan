@@ -2,6 +2,7 @@ package ops
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -11,52 +12,44 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// FolderMvResult is folder mv's result, in its schema's order.
-type FolderMvResult struct {
-	Moved []FolderMoved `json:"moved"`
+// MvResult is mv's result, in its schema's order.
+type MvResult struct {
+	Moved []Moved `json:"moved"`
 }
 
-// FolderMoved is one folder that moved, at its new path.
-type FolderMoved struct {
-	ID   int64  `json:"id"`
-	Path string `json:"path"`
-	Dir  string `json:"dir"`
+// Moved is one task or folder that moved: its kept text with its new
+// path, its new notes path, and a folder's directory.
+type Moved struct {
+	ID        int64   `json:"id"`
+	Ref       string  `json:"ref"`
+	NotesPath string  `json:"notes_path"`
+	Dir       *string `json:"dir"`
 }
 
-// FolderMv moves folders into a folder that exists, or renames one to a
-// new path whose parent exists, everything under each included, material
-// too, as one change. Nothing is replaced and no parent is made. A
-// case-only rename is the one input allowed to name both spellings, and
-// only of the folder's own name.
-func FolderMv() *cli.Command {
+// Mv moves tasks and folders, mixed, into a folder that exists, or
+// renames one folder to a new path whose parent exists, as one change, as
+// Linux mv moves files and directories. A task's notes move with it, and
+// everything under a folder, material too. Nothing is replaced and no
+// parent is made; a gate stays in its folder, and what is already where
+// it would go doesn't move. A case-only rename is the one input allowed
+// to name both spellings, and only of the folder's own name.
+func Mv() *cli.Command {
 	return &cli.Command{
-		Name:         "folder mv",
-		Uses:         []string{"<folder> <dest>", "<folder>... <folder>", "-t <folder> <folder>...", "-T <folder> <path>"},
-		Subject:      &cli.Option{Field: "folders", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
-		Object:       &cli.Option{Field: "dest", Required: true, Complete: foldersOnly.complete()},
-		Instead:      "into",
-		Single:       "rename",
-		SingleObject: newPaths.complete(),
-		Apart:        []string{"into", "rename"},
+		Name:          "mv",
+		Uses:          []string{"<ref>... <dest>", "-t <folder> <ref>...", "-T <folder> <path>"},
+		Subject:       &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Required: true, Complete: tasksAndFolders.complete()},
+		Object:        &cli.Option{Field: "dest", Required: true, Complete: tasksAndFolders.complete()},
+		Instead:       "into",
+		Single:        "rename",
+		SingleSubject: foldersOnly.complete(),
+		SingleObject:  newPaths.complete(),
 		Options: []cli.Option{
 			{Field: "into", Short: "t", Arg: "folder", Complete: foldersOnly.complete()},
 			{Field: "rename", Short: "T", Kind: cli.Bool},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			if v, ok := r.required("folders"); ok {
-				if list, isList := v.([]any); isList && len(list) == 0 {
-					r.fault("/folders", "at least one folder is needed")
-				}
-			}
-			refs := r.refs("folders", core.WantFolder)
-			at := make([]string, len(refs))
-			for i, ref := range refs {
-				at[i] = fmt.Sprintf("/folders/%d", i)
-				if ref.IsRoot() {
-					r.fault(at[i], "the root can't be moved")
-				}
-			}
+			refs, at := r.subjectRefs("moved")
 			rename := r.boolean("rename", false)
 			_, hasDest := r.value("dest")
 			_, hasInto := r.value("into")
@@ -95,41 +88,17 @@ func FolderMv() *cli.Command {
 			}
 			defer s.Close()
 			return s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
-				var ids []int64
-				for i, ref := range refs {
-					res, err := resolveAt(tx, ref, core.WantFolder, at[i])
-					if err != nil {
-						return nil, nil, err
-					}
-					if res.Kind == core.ResolvedRoot {
-						return nil, nil, &core.Error{Kind: core.KindInvalidInput, Problems: []string{at[i]},
-							Message: "the root can't be moved"}
-					}
-					if slices.Contains(ids, res.ID) {
-						return nil, nil, &core.Error{Kind: core.KindInvalidInput, Problems: []string{at[i]},
-							Message: fmt.Sprintf("@%d is given twice", res.ID)}
-					}
-					ids = append(ids, res.ID)
-				}
-				f, err := loadFolders(tx, s.Root)
+				subs, err := resolveSubjects(tx, refs, at, "moved")
 				if err != nil {
 					return nil, nil, err
 				}
-				var inside *core.Error
-				for i, id := range ids {
-					for _, other := range ids {
-						if other != id && f.inside(id, other) {
-							if inside == nil {
-								inside = &core.Error{Kind: core.KindInvalidInput,
-									Message: fmt.Sprintf("@%d is inside @%d, also given", id, other)}
-							}
-							inside.Problems = append(inside.Problems, at[i])
-							break
-						}
-					}
+				if err := within(tx, subs, at); err != nil {
+					return nil, nil, err
 				}
-				if inside != nil {
-					return nil, nil, inside
+				task, hasTask := firstOf(subs, false)
+				if rename && hasTask {
+					return nil, nil, &core.Error{Kind: core.KindInvalidInput, Problems: []string{"/rename"},
+						Message: fmt.Sprintf("@%d is a task, which can't be renamed: rename renames a folder", task)}
 				}
 				into := core.RootID
 				switch {
@@ -142,10 +111,34 @@ func FolderMv() *cli.Command {
 					switch {
 					case err == nil:
 						into = res.ID
-					case len(ids) > 1 || dest.Kind == core.TargetID:
+					case len(subs) > 1 || hasTask || dest.Kind == core.TargetID:
 						return nil, nil, err
 					default:
 						rename = true
+					}
+				}
+				// Each task's row, and each folder given.
+				rows := map[int64]store.TaskRow{}
+				var ids []int64
+				for _, sub := range subs {
+					if sub.folder {
+						ids = append(ids, sub.id)
+						continue
+					}
+					row, _, err := tx.Task(sub.id)
+					if err != nil {
+						return nil, nil, err
+					}
+					if row.Gate != core.EndNone {
+						return nil, nil, core.Conflict(core.RuleGate, []int64{sub.id}, nil, "@%d is a gate, and stays in its folder", sub.id)
+					}
+					rows[sub.id] = row
+				}
+				// Tasks alone need no walk of the tree.
+				f := &folders{}
+				if len(ids) > 0 {
+					if f, err = loadFolders(tx, s.Root); err != nil {
+						return nil, nil, err
 					}
 				}
 				// Each folder that moves, and where it goes.
@@ -230,8 +223,40 @@ func FolderMv() *cli.Command {
 						return nil, nil, core.Conflict(core.RuleExists, nil, []string{at}, "%s is taken on disk by %s", p, at)
 					}
 				}
-				out := FolderMvResult{Moved: []FolderMoved{}}
-				for _, m := range moves {
+				// The moves, made in input order; the claimed tasks whose
+				// notes they move, with their new paths.
+				out := MvResult{Moved: []Moved{}}
+				claimed := map[int64]string{}
+				for _, sub := range subs {
+					if !sub.folder {
+						row := rows[sub.id]
+						if row.Folder == into {
+							continue
+						}
+						from := fsstep.TaskNotesPath(tx.Path(row.Folder), sub.id, core.EndNone)
+						notes := fsstep.TaskNotesPath(tx.Path(into), sub.id, core.EndNone)
+						if err := tx.SetTaskFolder(sub.id, into); err != nil {
+							return nil, nil, err
+						}
+						if _, err := fsstep.Add(tx, fsstep.Step{Op: fsstep.OpMove, From: from, To: notes}); err != nil {
+							return nil, nil, err
+						}
+						abs := fsstep.Abs(s.Root, notes)
+						out.Moved = append(out.Moved, Moved{ID: sub.id, Ref: core.Kept(sub.id, tx.Path(into), core.EndNone), NotesPath: abs})
+						c, err := tx.Claimed(sub.id)
+						if err != nil {
+							return nil, nil, err
+						}
+						if c {
+							claimed[sub.id] = abs
+						}
+						continue
+					}
+					i := slices.IndexFunc(moves, func(m place) bool { return m.id == sub.id })
+					if i < 0 {
+						continue
+					}
+					m := moves[i]
 					was := f.paths[m.id]
 					if err := tx.SetFolderPlace(m.id, m.parent, m.name); err != nil {
 						return nil, nil, err
@@ -241,35 +266,49 @@ func FolderMv() *cli.Command {
 					if _, err := fsstep.Add(tx, step); err != nil {
 						return nil, nil, err
 					}
-					out.Moved = append(out.Moved, FolderMoved{ID: m.id, Path: path, Dir: fsstep.Abs(s.Root, fsstep.FolderDir(path))})
+					dir := fsstep.Abs(s.Root, fsstep.FolderDir(path))
+					out.Moved = append(out.Moved, Moved{ID: m.id, Ref: core.Kept(m.id, path, core.EndNone),
+						NotesPath: fsstep.Abs(s.Root, fsstep.FolderNotesPath(path)), Dir: &dir})
 				}
-				if len(moves) == 0 {
-					return out, nil, nil
-				}
-				// Every task under them, gates included, has new notes.
-				t, err := loadTasks(tx, s.Root)
-				if err != nil {
-					return nil, nil, err
-				}
-				var claimed []int64
-				var notes []string
-				for tid := range t.claims {
-					for _, m := range moves {
-						if t.in(tid, m.id, true) {
-							claimed = append(claimed, tid)
-							break
+				// Every task under a folder that moved, gates included, has
+				// new notes.
+				if len(moves) > 0 {
+					t, err := loadTasks(tx, s.Root)
+					if err != nil {
+						return nil, nil, err
+					}
+					for tid := range t.claims {
+						for _, m := range moves {
+							if t.in(tid, m.id, false) {
+								claimed[tid] = fsstep.Abs(s.Root, t.notesRel(tid))
+								break
+							}
 						}
 					}
 				}
-				slices.Sort(claimed)
-				for _, tid := range claimed {
-					notes = append(notes, fsstep.Abs(s.Root, t.notesRel(tid)))
+				var claimedIDs []int64
+				var notes []string
+				for _, id := range slices.Sorted(maps.Keys(claimed)) {
+					claimedIDs, notes = append(claimedIDs, id), append(notes, claimed[id])
 				}
-				warnings, err := movedClaimed(tx, claimed, notes)
+				warnings, err := movedClaimed(claimedIDs, notes)
 				return out, warnings, err
 			})
 		},
 	}
+}
+
+// movedClaimed is the moved-claimed warning for the claimed tasks a move
+// gave new notes paths, each beside its new path.
+func movedClaimed(claimed []int64, at []string) ([]cli.Warning, error) {
+	if len(claimed) == 0 {
+		return nil, nil
+	}
+	message := core.FormatIDs(claimed) + " is claimed, and its notes moved; whoever holds it should read them at the new path."
+	if len(claimed) > 1 {
+		message = core.FormatIDs(claimed) + " are claimed, and their notes moved; whoever holds them should read them at the new paths."
+	}
+	return []cli.Warning{{Kind: "moved-claimed", Message: message, IDs: claimed, Paths: at}}, nil
 }
 
 // newPath finds where a rename puts a folder: the folder its new path's

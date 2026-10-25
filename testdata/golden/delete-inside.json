@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "kind": "usage",
+    "kind": "invalid-input",
     "rule": null,
-    "message": "marker bind needs a subject: folder",
+    "message": "@3 is inside @1, also given",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "",
-        "reason": "marker bind needs a subject: folder"
+        "field": "/refs/0",
+        "reason": "@3 is inside @1, also given"
       }
     ],
     "archived": []

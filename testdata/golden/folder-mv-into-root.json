@@ -4,7 +4,8 @@
     "moved": [
       {
         "id": 1,
-        "path": "/w3",
+        "ref": "@1 (/w3)",
+        "notes_path": "$HOME/koan-root/tree/@w3/@notes.md",
         "dir": "$HOME/koan-root/tree/@w3"
       }
     ]

@@ -24,7 +24,7 @@ func Pick() *cli.Command {
 		Plain:   true,
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "recursive", Kind: cli.Bool},
+			{Field: "direct", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},
 			{Field: "claimed", Kind: cli.Bool, Nullable: true},
@@ -47,7 +47,7 @@ type pickIn struct {
 	folder    core.Ref
 	file      string
 	hasFile   bool
-	recursive bool
+	direct    bool
 	states    []string
 	readiness []string
 	claimed   *bool
@@ -87,7 +87,7 @@ func readPick(in cli.Input) (*pickIn, string, *cli.Error) {
 	p := &pickIn{
 		folder:    r.ref("folder", core.WantFolder, "/"),
 		file:      r.absPath("file", false),
-		recursive: r.boolean("recursive", true),
+		direct:    r.boolean("direct", false),
 		states:    r.choices("state", []string{"open", "complete"}, []string{"open"}),
 		readiness: r.choices("readiness", []string{"ready", "blocked"}, []string{"ready", "blocked"}),
 		claimed:   r.nullBool("claimed"),
@@ -100,7 +100,7 @@ func readPick(in cli.Input) (*pickIn, string, *cli.Error) {
 	_, p.hasFile = r.value("file")
 	_, hasFolder := r.value("folder")
 	if p.hasFile && hasFolder {
-		r.fault("", "give at most one of folder and file")
+		r.fault("", "give at most one of the folder, --file and --here")
 	}
 	if p.frontier {
 		for _, f := range []string{"state", "readiness", "claimed"} {
@@ -231,12 +231,12 @@ func choices(t *tasks, p *pickIn, folder int64) []choice {
 	// within the scope, whatever kinds are asked for.
 	var matched []int64
 	if p.frontier {
-		for _, r := range t.frontier(scope{folder: folder, recursive: p.recursive, tagsAny: p.tagsAny, tagsAll: p.tagsAll}) {
+		for _, r := range t.frontier(scope{folder: folder, direct: p.direct, tagsAny: p.tagsAny, tagsAll: p.tagsAll}) {
 			matched = append(matched, r.ID)
 		}
 	} else {
 		for _, id := range t.order {
-			if t.in(id, folder, p.recursive) && t.passes(id, p) {
+			if t.in(id, folder, p.direct) && t.passes(id, p) {
 				matched = append(matched, id)
 			}
 		}
@@ -249,7 +249,7 @@ func choices(t *tasks, p *pickIn, folder int64) []choice {
 		if !p.filtered() {
 			return true
 		}
-		return slices.ContainsFunc(matched, func(id int64) bool { return t.in(id, f, true) })
+		return slices.ContainsFunc(matched, func(id int64) bool { return t.in(id, f, p.direct) })
 	}
 
 	var out []choice
@@ -286,7 +286,7 @@ func choices(t *tasks, p *pickIn, folder int64) []choice {
 			}
 		}
 		for _, c := range children[f] {
-			if top && !p.recursive {
+			if top && p.direct {
 				addFolder(c)
 			} else {
 				walk(c, false)

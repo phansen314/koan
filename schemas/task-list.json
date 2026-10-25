@@ -8,12 +8,16 @@
         "folder": {
           "$ref": "types#/$defs/folder-ref",
           "default": "/",
-          "description": "Subject: the folder the command looks under."
+          "description": "Subject: the folder the command looks under; the root when neither it nor file is given."
         },
-        "recursive": {
+        "file": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "Look under the folder this path is in, found as where --file finds it: --file, or --here for the working directory. Given with folder, invalid-input at \"\"."
+        },
+        "direct": {
           "type": "boolean",
-          "default": true,
-          "description": "false: only the tasks directly in the folder."
+          "default": false,
+          "description": "Only what is directly in the folder."
         },
         "tags_any": {
           "type": "array",

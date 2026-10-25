@@ -1,9 +1,13 @@
 {
   "ok": true,
   "result": {
-    "id": 1,
-    "archive": "$HOME/koan-root/archived/@1_f",
-    "json": "$HOME/koan-root/archived/@1_f.json",
+    "archived": [
+      {
+        "id": 1,
+        "archive": "$HOME/koan-root/archived/@1_f",
+        "json": "$HOME/koan-root/archived/@1_f.json"
+      }
+    ],
     "removed": [
       1
     ]

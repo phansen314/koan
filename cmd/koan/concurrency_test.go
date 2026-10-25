@@ -137,10 +137,10 @@ func TestConcurrency(t *testing.T) {
 		add("", "claim-next", "/pool")
 	}
 	for i := range movers {
-		add("", "folder", "mv", "-T", fmt.Sprintf("/m%d", i), fmt.Sprintf("/moved/m%d", i))
+		add("", "mv", "-T", fmt.Sprintf("/m%d", i), fmt.Sprintf("/moved/m%d", i))
 	}
 	for i := range deleters {
-		add("", "folder", "delete", fmt.Sprintf("/d%d", i), "--contents")
+		add("", "delete", fmt.Sprintf("/d%d", i), "--contents")
 	}
 	for i := range archivers {
 		add("", "archive", fmt.Sprintf("/a%d", i))
@@ -232,8 +232,8 @@ func TestConcurrency(t *testing.T) {
 		res := p.result()
 		switch p.args[0] + " " + p.args[1] {
 		case "claim-next /pool":
-			if c, _ := res["claim"].(map[string]any); c != nil {
-				claimed[fmt.Sprint(c["task"])]++
+			if c, _ := res["task"].(map[string]any); c != nil {
+				claimed[fmt.Sprint(c["id"])]++
 			} else {
 				nulls++
 			}
@@ -301,8 +301,8 @@ func TestConcurrency(t *testing.T) {
 		t.Errorf("invariants:\n%s", strings.Join(bad, "\n"))
 	}
 	r := ok(t, home, "info")
-	want := pool + completers + movers + 3*(batches-busyBy["batch -i"]) + creators - busyBy["task create"] + 2*busyBy["folder delete"]
-	if r.Result()["tasks"] != json.Number(fmt.Sprint(want)) {
+	want := pool + completers + movers + 3*(batches-busyBy["batch -i"]) + creators - busyBy["task create"] + 2*busyBy["delete"]
+	if r.Result()["counts"].(map[string]any)["tasks"] != json.Number(fmt.Sprint(want)) {
 		t.Errorf("info: want %d tasks: %s", want, r.Line())
 	}
 

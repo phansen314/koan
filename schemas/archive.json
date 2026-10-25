@@ -3,34 +3,61 @@
   "$id": "archive",
   "$defs": {
     "input": {
-      "$ref": "show#/$defs/input"
+      "type": "object",
+      "required": [
+        "refs"
+      ],
+      "properties": {
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "show#/$defs/input/properties/ref"
+          },
+          "minItems": 1,
+          "description": "Subject: tasks and folders, mixed."
+        }
+      },
+      "unevaluatedProperties": false
     },
     "result": {
       "type": "object",
       "required": [
-        "id",
-        "archive",
-        "json",
+        "archived",
         "removed"
       ],
       "properties": {
-        "id": {
-          "$ref": "types#/$defs/id"
-        },
-        "archive": {
-          "anyOf": [
-            {
-              "$ref": "types#/$defs/abs-path"
+        "archived": {
+          "type": "array",
+          "description": "Each subject, in input order.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "archive",
+              "json"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "types#/$defs/id"
+              },
+              "archive": {
+                "anyOf": [
+                  {
+                    "$ref": "types#/$defs/abs-path"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The archived notes, or for a folder its directory; null for a task archived without a notes file."
+              },
+              "json": {
+                "$ref": "types#/$defs/abs-path",
+                "description": "The JSON beside it."
+              }
             },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The archived notes, or for a folder its directory; null for a task archived without a notes file."
-        },
-        "json": {
-          "$ref": "types#/$defs/abs-path",
-          "description": "The JSON beside it."
+            "unevaluatedProperties": false
+          }
         },
         "removed": {
           "$ref": "types#/$defs/ids",

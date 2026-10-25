@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "@3 is a task, whose title can't be null",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/title",
+        "reason": "@3 is a task, whose title can't be null"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -182,7 +182,7 @@ func TestTaskBlockGates(t *testing.T) {
 		var out []string
 		for _, g := range r.Result()["gates_made"].([]any) {
 			g := g.(map[string]any)
-			out = append(out, fmt.Sprintf("%v %v.%v", g["id"], g["folder"].(map[string]any)["path"], g["end"]))
+			out = append(out, fmt.Sprintf("%v %v.%v", g["id"], g["folder"].(map[string]any)["path"], g["gate"]))
 		}
 		return strings.Join(out, ", ")
 	}
@@ -322,7 +322,7 @@ func TestTaskBlockRefused(t *testing.T) {
 		t.Errorf("subject first: %s", r.Line())
 	}
 	fails(t, home, "not-found", "", "block", "99", "2")
-	fails(t, home, "not-found", "", "block", "@1", "2")
+	fails(t, home, "invalid-input", "", "block", "@1", "2")
 	fails(t, home, "not-found", "", "block", "2", "--blocks", "/Work/api")
 	golden(t, fails(t, home, "conflict", "case-mismatch", "block", "2", "/work.start"), "block-case-mismatch")
 	fails(t, home, "conflict", "case-mismatch", "block", "/WORK.done", "2")
@@ -529,9 +529,9 @@ func TestTaskFrontier(t *testing.T) {
 	}{
 		{nil, "6 5 8 4 12"},
 		{[]string{"/a"}, "6 5"},
-		{[]string{"@1", "--recursive=false"}, "5"},
+		{[]string{"@1", "--direct"}, "5"},
 		{[]string{"/c"}, "12"},
-		{[]string{"/", "--recursive=false"}, "8 4"},
+		{[]string{"/", "--direct"}, "8 4"},
 		{[]string{"--tags-any", "x,q"}, "6 8"},
 		{[]string{"--tags-all", "x,y"}, "8"},
 		{[]string{"--tags-any", "x", "--tags-all", "y"}, "8"},

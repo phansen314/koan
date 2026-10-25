@@ -2,7 +2,6 @@ package ops
 
 import (
 	"github.com/phansen314/koan/internal/cli"
-	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
 )
@@ -21,14 +20,16 @@ func FolderList() *cli.Command {
 		Name:    "folder list",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "recursive", Kind: cli.Bool},
+			{Field: "file", Kind: cli.Path},
+			{Field: "direct", Kind: cli.Bool},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},
 		},
+		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			ref := r.ref("folder", core.WantFolder, "/")
-			recursive := r.boolean("recursive", true)
+			q := r.foldering("folder")
+			direct := r.boolean("direct", false)
 			limit := r.limit("limit", 100)
 			fields := r.fields("fields", folderFields)
 			if e := r.err(); e != nil {
@@ -40,16 +41,21 @@ func FolderList() *cli.Command {
 			}
 			defer s.Close()
 			res := FolderListResult{Folders: []Cut[Folder]{}}
+			var stale []cli.Warning
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
-				id, err := resolveFolder(tx, ref, "folder")
+				t, err := loadTasks(tx, s.Root)
 				if err != nil {
+					return nil, err
+				}
+				var id int64
+				if id, _, stale, err = subjectFolder(tx, t, q); err != nil {
 					return nil, err
 				}
 				f, err := loadFolders(tx, s.Root)
 				if err != nil {
 					return nil, err
 				}
-				matches := f.under(id, recursive)
+				matches := f.under(id, direct)
 				res.Total = len(matches)
 				if limit != nil && int64(len(matches)) > *limit {
 					matches, res.Truncated = matches[:*limit], true
@@ -65,7 +71,7 @@ func FolderList() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			return res, warnings, nil
+			return res, append(warnings, stale...), nil
 		},
 	}
 }

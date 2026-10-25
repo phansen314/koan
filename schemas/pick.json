@@ -10,10 +10,6 @@
         }
       ],
       "properties": {
-        "file": {
-          "$ref": "types#/$defs/abs-path",
-          "description": "Pick from the folder this path is in, found as where --file finds it: --here. Given with folder, invalid-input at \"\"."
-        },
         "state": {
           "$ref": "task-list#/$defs/input/properties/state"
         },

@@ -11,33 +11,29 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// FolderDelete removes folders and everything under them, gates
-// included, as task delete removes tasks, as one change. One holding
-// tasks or folders other than its gates needs contents, and one holding
-// material, at any depth, needs material.
-func FolderDelete() *cli.Command {
+// DeleteResult is delete's result, in its schema's order.
+type DeleteResult struct {
+	Removed  []int64 `json:"removed"`
+	Released []int64 `json:"released"`
+}
+
+// Delete removes tasks and folders, mixed, as one change: a task with its
+// notes, its claim and every edge to and from it, and a folder with
+// everything under it, gates included. It never splices: what waited on
+// them isn't passed their blockers, and a task deleted with them is never
+// released. A folder holding tasks or folders other than its gates needs
+// contents, and one holding material, at any depth, needs material.
+func Delete() *cli.Command {
 	return &cli.Command{
-		Name:    "folder delete",
-		Subject: &cli.Option{Field: "folders", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
+		Name:    "delete",
+		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Required: true, Complete: anyRef.complete()},
 		Options: []cli.Option{
 			{Field: "contents", Kind: cli.Bool},
 			{Field: "material", Kind: cli.Bool},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			if v, ok := r.required("folders"); ok {
-				if list, isList := v.([]any); isList && len(list) == 0 {
-					r.fault("/folders", "at least one folder is needed")
-				}
-			}
-			refs := r.refs("folders", core.WantFolder)
-			at := make([]string, len(refs))
-			for i, ref := range refs {
-				at[i] = fmt.Sprintf("/folders/%d", i)
-				if ref.IsRoot() {
-					r.fault(at[i], "the root can't be deleted")
-				}
-			}
+			refs, at := r.subjectRefs("deleted")
 			r.sameCase(refs, at)
 			contents := r.boolean("contents", false)
 			material := r.boolean("material", false)
@@ -50,49 +46,53 @@ func FolderDelete() *cli.Command {
 			}
 			defer s.Close()
 			return s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
-				var ids []int64
-				for i, ref := range refs {
-					res, err := resolveAt(tx, ref, core.WantFolder, at[i])
-					if err != nil {
-						return nil, nil, err
-					}
-					if res.Kind == core.ResolvedRoot {
-						return nil, nil, &core.Error{Kind: core.KindInvalidInput, Problems: []string{at[i]},
-							Message: "the root can't be deleted"}
-					}
-					if slices.Contains(ids, res.ID) {
-						return nil, nil, &core.Error{Kind: core.KindInvalidInput, Problems: []string{at[i]},
-							Message: fmt.Sprintf("@%d is given twice", res.ID)}
-					}
-					ids = append(ids, res.ID)
-				}
-				t, err := loadTasks(tx, s.Root)
+				subs, err := resolveSubjects(tx, refs, at, "deleted")
 				if err != nil {
 					return nil, nil, err
 				}
-				// under[i] is every folder under the one given at i, itself
-				// first; a folder given inside another given is refused.
-				under := make([][]int64, len(ids))
-				var inside *core.Error
-				for i, id := range ids {
-					under[i] = append([]int64{id}, t.under(id, true)...)
+				if err := within(tx, subs, at); err != nil {
+					return nil, nil, err
 				}
-				for i, id := range ids {
-					for j, other := range ids {
-						if i != j && slices.Contains(under[j], id) {
-							if inside == nil {
-								inside = &core.Error{Kind: core.KindInvalidInput,
-									Message: fmt.Sprintf("@%d is inside @%d, also given", id, other)}
-							}
-							inside.Problems = append(inside.Problems, at[i])
-							break
+				// Options only a folder takes.
+				if _, ok := firstOf(subs, true); !ok {
+					k := input{}
+					// Given only when it does something: false is
+					// what leaving it out does.
+					for _, o := range []struct {
+						field string
+						set   bool
+					}{{"contents", contents}, {"material", material}} {
+						if o.set {
+							k.fault(cli.Pointer(o.field), "%s is for folders, and no folder is given", o.field)
 						}
 					}
+					if e := k.err(); e != nil {
+						return nil, nil, store.Err(e)
+					}
 				}
-				if inside != nil {
-					return nil, nil, inside
+				var given, ids []int64
+				for _, sub := range subs {
+					if sub.folder {
+						ids = append(ids, sub.id)
+					} else {
+						given = append(given, sub.id)
+					}
+				}
+				// Tasks alone need no walk of the tree.
+				t := &tasks{folders: &folders{}}
+				if len(ids) > 0 {
+					if t, err = loadTasks(tx, s.Root); err != nil {
+						return nil, nil, err
+					}
+				}
+				// under[i] is every folder under the one at ids[i], itself
+				// first.
+				under := make([][]int64, len(ids))
+				for i, id := range ids {
+					under[i] = append([]int64{id}, t.under(id, false)...)
 				}
 				if !contents {
+					var all []int64
 					for _, id := range ids {
 						var direct []int64
 						for tid, row := range t.rows {
@@ -100,22 +100,35 @@ func FolderDelete() *cli.Command {
 								direct = append(direct, tid)
 							}
 						}
-						direct = append(direct, t.under(id, false)...)
-						if len(direct) > 0 {
-							slices.Sort(direct)
-							return nil, nil, core.Conflict(core.RuleNotEmpty, direct, nil,
-								"@%d holds %s; give contents to delete them with it", id, core.FormatIDs(direct))
+						direct = append(direct, t.under(id, true)...)
+						all = append(all, direct...)
+					}
+					if len(all) > 0 {
+						slices.Sort(all)
+						all = slices.Compact(all)
+						msg := fmt.Sprintf("%s held by the folders given; give contents to delete them with it", core.FormatIDs(all))
+						if len(ids) == 1 {
+							msg = fmt.Sprintf("@%d holds %s; give contents to delete them with it", ids[0], core.FormatIDs(all))
 						}
+						return nil, nil, core.Conflict(core.RuleNotEmpty, all, nil, "%s", msg)
 					}
 				}
-				var tasks, folders []int64
+				tasks := slices.Clone(given)
+				var fs []int64
 				var steps []fsstep.Step
+				for _, id := range given {
+					row, _, err := tx.Task(id)
+					if err != nil {
+						return nil, nil, err
+					}
+					steps = append(steps, fsstep.Step{Op: fsstep.OpRemove, From: fsstep.TaskNotesPath(tx.Path(row.Folder), id, row.Gate)})
+				}
 				var found []string
 				var holders []int64
 				for i, id := range ids {
 					var mine []int64
 					for _, tid := range t.order {
-						if t.in(tid, id, true) {
+						if t.in(tid, id, false) {
 							mine = append(mine, tid)
 						}
 					}
@@ -149,7 +162,7 @@ func FolderDelete() *cli.Command {
 							holders = append(holders, id)
 						}
 					}
-					tasks, folders = append(tasks, mine...), append(folders, under[i]...)
+					tasks, fs = append(tasks, mine...), append(fs, under[i]...)
 					steps = append(steps, fsstep.Step{Op: fsstep.OpRemove, From: fsstep.FolderDir(t.paths[id]), Dir: true, Force: material, Owns: owns})
 				}
 				if len(found) > 0 {
@@ -165,7 +178,7 @@ func FolderDelete() *cli.Command {
 					return nil, nil, err
 				}
 				// Each folder goes before its parent.
-				gone := slices.Clone(folders)
+				gone := slices.Clone(fs)
 				slices.Reverse(gone)
 				if err := tx.RemoveFolders(gone, nil); err != nil {
 					return nil, nil, err
@@ -175,7 +188,7 @@ func FolderDelete() *cli.Command {
 						return nil, nil, err
 					}
 				}
-				removed := slices.Concat(tasks, folders)
+				removed := slices.Concat(tasks, fs)
 				slices.Sort(removed)
 				return DeleteResult{Removed: removed, Released: nonNil(released)}, nil, nil
 			})

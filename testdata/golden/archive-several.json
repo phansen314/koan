@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "result": {
+    "archived": [
+      {
+        "id": 6,
+        "archive": "$HOME/koan-root/archived/@6.md",
+        "json": "$HOME/koan-root/archived/@6.json"
+      },
+      {
+        "id": 2,
+        "archive": "$HOME/koan-root/archived/work/@2_a",
+        "json": "$HOME/koan-root/archived/work/@2_a.json"
+      },
+      {
+        "id": 3,
+        "archive": "$HOME/koan-root/archived/work/@3.md",
+        "json": "$HOME/koan-root/archived/work/@3.json"
+      }
+    ],
+    "removed": [
+      2,
+      3,
+      4,
+      6
+    ]
+  },
+  "warnings": []
+}

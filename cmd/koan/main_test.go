@@ -186,14 +186,13 @@ func TestMalformed(t *testing.T) {
 		{[]string{"task"}, ""},
 		{[]string{"task", "frob"}, "frob"},
 		{[]string{"folder"}, ""},
-		{[]string{"marker", "Bind"}, "Bind"},
-		{[]string{"show"}, ""},
+		{[]string{"Bind"}, "Bind"},
 		{[]string{"task", "list", "--limit", "ten"}, "--limit"},
-		{[]string{"task", "list", "--recursive=maybe"}, "--recursive"},
+		{[]string{"task", "list", "--direct=maybe"}, "--direct"},
 		{[]string{"task", "list", "--claimed", "--claimed=false"}, "--claimed"},
 		{[]string{"task", "create", "t", "--notes", "n", "--notes-file", "f"}, ""},
 		{[]string{"task", "create", "t", "-i", "in.json"}, "t"},
-		{[]string{"task", "update", "1", "--title", "a", "--title", "b"}, "--title"},
+		{[]string{"update", "1", "--title", "a", "--title", "b"}, "--title"},
 		{[]string{"completion", "zhs"}, "zhs"},
 		{[]string{"completion", "bash", "extra"}, ""},
 		// An option pflag refuses comes before help.
@@ -242,12 +241,11 @@ func TestHelpText(t *testing.T) {
 		lacks []string
 	}{
 		{[]string{"where", "-h"}, []string{"koan where <ref> [flags]\n", "koan where --file <path> [flags]\n"}, []string{"[<ref>]"}},
-		{[]string{"folder", "mv", "-h"}, []string{
-			"koan folder mv <folder> <dest> [flags]\n", "koan folder mv <folder>... <folder> [flags]\n",
-			"koan folder mv -t <folder> <folder>... [flags]\n", "koan folder mv -T <folder> <path> [flags]\n",
+		{[]string{"mv", "-h"}, []string{
+			"koan mv <ref>... <dest> [flags]\n", "koan mv -t <folder> <ref>... [flags]\n", "koan mv -T <folder> <path> [flags]\n",
 			"-t, --into folder "}, []string{"string"}},
 		{[]string{"unblock", "-h"}, []string{"Remove edges: what a task waits on, or what waits on it"}, nil},
-		{[]string{"task", "mv", "-h"}, []string{"-t, --into folder "}, nil},
+		{[]string{"mv", "-h"}, []string{"-t, --into folder "}, nil},
 		{[]string{"task", "create", "-h"}, []string{"--folder folder "}, nil},
 	} {
 		r := testrun.Koan(t, c.args...)
@@ -417,7 +415,7 @@ func TestInitSymlinkRoot(t *testing.T) {
 	}
 	r := testrun.Run{Home: home}.Koan(t, "init")
 	r.Check(t, "init")
-	created, _ := r.Result()["created"].([]any)
+	created, _ := r.Result()["made"].([]any)
 	if r.Exit != 0 || len(created) != 3 {
 		t.Errorf("exit %d: %s", r.Exit, r.Line())
 	}
@@ -509,7 +507,7 @@ func TestInitRace(t *testing.T) {
 		if r.Exit != 0 {
 			t.Fatalf("exit %d: %s", r.Exit, r.Line())
 		}
-		for _, c := range r.Result()["created"].([]any) {
+		for _, c := range r.Result()["made"].([]any) {
 			made[c.(string)]++
 		}
 	}
@@ -535,11 +533,11 @@ func TestIDsRunOut(t *testing.T) {
 	if r := batch(t, home, `{"tasks":[{"title":"t"}]}`); r.Kind() != "conflict" || r.Error()["rule"] != "no-ids" {
 		t.Errorf("batch: %s", r.Line())
 	}
-	ok(t, home, "task", "update", "999999999999999", "--title", "still")
-	ok(t, home, "folder", "mv", "-T", "/work", "/Work")
+	ok(t, home, "update", "999999999999999", "--title", "still")
+	ok(t, home, "mv", "-T", "/work", "/Work")
 	ok(t, home, "complete", "999999999999999")
 	r = ok(t, home, "info")
-	if r.Result()["next_id"] != nil || r.Result()["tasks"] != json.Number("1") || r.Result()["folders"] != json.Number("1") {
+	if c, _ := r.Result()["counts"].(map[string]any); r.Result()["next_id"] != nil || c["tasks"] != json.Number("1") || c["folders"] != json.Number("1") {
 		t.Errorf("info: %s", r.Line())
 	}
 	if r := ok(t, home, "doctor"); len(r.Result()["findings"].([]any)) != 0 {

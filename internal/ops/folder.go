@@ -108,9 +108,9 @@ func loadFolders(tx *store.Tx, root store.Root) (*folders, error) {
 }
 
 // under is the folders under a folder, or the root, itself left out, in
-// tree order: at any depth, or with recursive false only those directly
+// tree order: at any depth, or with direct only those directly
 // in it.
-func (f *folders) under(folder int64, recursive bool) []int64 {
+func (f *folders) under(folder int64, direct bool) []int64 {
 	var out []int64
 	for _, id := range f.order {
 		for p := f.rows[id].Parent; ; p = f.rows[p].Parent {
@@ -118,7 +118,7 @@ func (f *folders) under(folder int64, recursive bool) []int64 {
 				out = append(out, id)
 				break
 			}
-			if p == core.RootID || !recursive {
+			if p == core.RootID || direct {
 				break
 			}
 		}

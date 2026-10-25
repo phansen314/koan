@@ -3,8 +3,9 @@
   "error": {
     "kind": "conflict",
     "rule": "not-empty",
-    "message": "@3 holds @4; give contents to delete them with it",
+    "message": "@2, @4 held by the folders given; give contents to delete them with it",
     "ids": [
+      2,
       4
     ],
     "paths": [],

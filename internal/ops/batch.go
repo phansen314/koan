@@ -12,11 +12,11 @@ import (
 
 // BatchResult is batch's result, in its schema's order.
 type BatchResult struct {
-	Folders   []FolderAt       `json:"folders"`
-	Tasks     []int64          `json:"tasks"`
-	Labels    map[string]int64 `json:"labels"`
-	GatesMade []GateMade       `json:"gates_made"`
-	Reblocked []int64          `json:"reblocked"`
+	FoldersMade []FolderAt       `json:"folders_made"`
+	TasksMade   []int64          `json:"tasks_made"`
+	Labels      map[string]int64 `json:"labels"`
+	GatesMade   []GateMade       `json:"gates_made"`
+	Reblocked   []int64          `json:"reblocked"`
 }
 
 // maxParts is the most folders and tasks a batch holds between them.
@@ -79,7 +79,7 @@ func Batch() *cli.Command {
 			}
 			defer s.Close()
 			return s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
-				res := BatchResult{Folders: []FolderAt{}, Tasks: []int64{}, Labels: map[string]int64{}}
+				res := BatchResult{FoldersMade: []FolderAt{}, TasksMade: []int64{}, Labels: map[string]int64{}}
 				order := make([]int, len(folders))
 				for i := range order {
 					order[i] = i
@@ -94,7 +94,7 @@ func Batch() *cli.Command {
 					if err != nil {
 						return nil, nil, pointAt(err, f.at)
 					}
-					res.Folders = append(res.Folders, made...)
+					res.FoldersMade = append(res.FoldersMade, made...)
 					ids[i] = *made[len(made)-1].ID
 				}
 				// The batch's folder resolves whether or not a task takes it.
@@ -116,7 +116,7 @@ func Batch() *cli.Command {
 						return nil, nil, err
 					}
 					w.new[id] = true
-					res.Tasks = append(res.Tasks, id)
+					res.TasksMade = append(res.TasksMade, id)
 					if x.label != "" {
 						res.Labels[x.label] = id
 					}
@@ -146,7 +146,7 @@ func Batch() *cli.Command {
 					all = append(all, js...)
 				}
 				for i, x := range tasks {
-					id := res.Tasks[i]
+					id := res.TasksMade[i]
 					es, err := w.resolve(id, x.edges, true)
 					if err != nil {
 						return nil, nil, err

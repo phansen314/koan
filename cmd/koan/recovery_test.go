@@ -223,10 +223,10 @@ func TestRepair(t *testing.T) {
 		// Notes of nothing: removed when empty, else left.
 		name: "orphan-notes",
 		make: func(t *testing.T, home string) {
-			ok(t, home, "task", "delete", "3")
+			ok(t, home, "delete", "3")
 			write(t, home, "@work/@3.md", "kept")
 			ok(t, home, "task", "create", "Gone") // 7
-			ok(t, home, "task", "delete", "7")
+			ok(t, home, "delete", "7")
 			write(t, home, "@7.md", "")
 			ok(t, home, "complete", "4")
 			ok(t, home, "archive", "4")
@@ -446,12 +446,12 @@ func TestDoctorTakesNoLock(t *testing.T) {
 func TestDoctorClean(t *testing.T) {
 	home := base(t)
 	ok(t, home, "folder", "create", "/home/x/y")
-	ok(t, home, "folder", "mv", "-T", "/home/x", "/work/X")
-	ok(t, home, "folder", "mv", "-T", "/work/X", "/work/x")
-	ok(t, home, "task", "mv", "4", "/work/x/y")
+	ok(t, home, "mv", "-T", "/home/x", "/work/X")
+	ok(t, home, "mv", "-T", "/work/X", "/work/x")
+	ok(t, home, "mv", "4", "/work/x/y")
 	ok(t, home, "complete", "3")
 	ok(t, home, "archive", "3")
-	ok(t, home, "folder", "delete", "/home")
+	ok(t, home, "delete", "/home")
 	hand(t, os.Mkdir(filepath.Join(treeDir(home), "@work", "docs"), 0o755))
 	write(t, home, "@work/docs/@types", "material")
 	write(t, home, "@work/.DS_Store", "")

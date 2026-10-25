@@ -9,19 +9,24 @@ import (
 
 // InfoResult is info's result, in its schema's order.
 type InfoResult struct {
-	Root     string     `json:"root"`
-	Tree     string     `json:"tree"`
-	Archive  string     `json:"archive"`
-	Database string     `json:"database"`
-	State    string     `json:"state"`
-	Format   *int       `json:"format"`
-	NextID   *int64     `json:"next_id"`
-	Tasks    *int64     `json:"tasks"`
-	Folders  *int64     `json:"folders"`
-	Claims   *int64     `json:"claims"`
-	Pending  *int64     `json:"pending"`
-	Stuck    *int64     `json:"stuck"`
-	Error    *cli.Error `json:"error"`
+	Root     string      `json:"root"`
+	Tree     string      `json:"tree"`
+	Archive  string      `json:"archive"`
+	Database string      `json:"database"`
+	State    string      `json:"state"`
+	Format   *int        `json:"format"`
+	NextID   *int64      `json:"next_id"`
+	Counts   *InfoCounts `json:"counts"`
+	Error    *cli.Error  `json:"error"`
+}
+
+// InfoCounts is what info counts in a usable root.
+type InfoCounts struct {
+	Tasks   int64 `json:"tasks"`
+	Folders int64 `json:"folders"`
+	Claims  int64 `json:"claims"`
+	Pending int64 `json:"pending"`
+	Stuck   int64 `json:"stuck"`
 }
 
 // StateUsable is info's state for a root other commands can use.
@@ -72,12 +77,11 @@ func Info() *cli.Command {
 				return nil, nil, e
 			}
 			r.State, r.Format = StateUsable, &format
-			r.Tasks, r.Folders, r.Claims = &st.Tasks, &st.Folders, &st.Claims
+			r.Counts = &InfoCounts{Tasks: st.Tasks, Folders: st.Folders, Claims: st.Claims, Pending: st.Pending, Stuck: st.Stuck}
 			// No --ids-from follows the last ID.
 			if st.NextID <= core.MaxID {
 				r.NextID = &st.NextID
 			}
-			r.Pending, r.Stuck = &st.Pending, &st.Stuck
 			return r, nil, nil
 		},
 	}

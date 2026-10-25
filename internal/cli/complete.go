@@ -66,13 +66,17 @@ func fixed(directive cobra.ShellCompDirective) cobra.CompletionFunc {
 // before an object offers the subject's for its first word, and the
 // object's after it, since any word after the first can be the last; so
 // such an object completes to what either position takes. With Single
-// given true, the subject is one word, and SingleObject, if set, is what
-// the object completes to. A word past the positions offers nothing.
+// given true, the first word is the subject and the second the object,
+// completing to SingleSubject and SingleObject when set. A word past the
+// positions offers nothing.
 func (c *Command) subjectCompletion(env *Env, l *line) cobra.CompletionFunc {
 	subject, object := c.Subject.completion(env), c.Object.completion(env)
-	single := object
+	singleSubject, singleObject := subject, object
+	if c.SingleSubject != nil {
+		singleSubject = completion(env, c.SingleSubject)
+	}
 	if c.SingleObject != nil {
-		single = completion(env, c.SingleObject)
+		singleObject = completion(env, c.SingleObject)
 	}
 	return func(cmd *cobra.Command, args []string, word string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		hasObject := c.Object != nil
@@ -83,6 +87,8 @@ func (c *Command) subjectCompletion(env *Env, l *line) cobra.CompletionFunc {
 		list := c.Subject != nil && c.Subject.Kind == List && !isSingle
 		var f cobra.CompletionFunc
 		switch {
+		case len(args) == 0 && isSingle:
+			f = singleSubject
 		case len(args) == 0, list && !hasObject:
 			f = subject
 		case !hasObject:
@@ -90,7 +96,7 @@ func (c *Command) subjectCompletion(env *Env, l *line) cobra.CompletionFunc {
 		case list:
 			f = object
 		case len(args) == 1 && isSingle:
-			f = single
+			f = singleObject
 		case len(args) == 1 || c.Object.Kind == List:
 			f = object
 		default:

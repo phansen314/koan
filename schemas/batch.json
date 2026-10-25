@@ -8,21 +8,21 @@
     "result": {
       "type": "object",
       "required": [
-        "folders",
-        "tasks",
+        "folders_made",
+        "tasks_made",
         "labels",
         "gates_made",
         "reblocked"
       ],
       "properties": {
-        "folders": {
+        "folders_made": {
           "type": "array",
           "items": {
             "$ref": "types#/$defs/folder-at"
           },
           "description": "Every folder made, parents first."
         },
-        "tasks": {
+        "tasks_made": {
           "type": "array",
           "items": {
             "$ref": "types#/$defs/id"

@@ -3,20 +3,24 @@
   "$id": "unclaim",
   "$defs": {
     "input": {
+      "$ref": "complete#/$defs/input"
+    },
+    "result": {
       "type": "object",
       "required": [
-        "task"
+        "unclaimed"
       ],
       "properties": {
-        "task": {
-          "$ref": "types#/$defs/task-ref",
-          "description": "Subject."
+        "unclaimed": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The tasks whose claim it ended. Input order."
         }
       },
       "unevaluatedProperties": false
-    },
-    "result": {
-      "$ref": "task-update#/$defs/id-only"
     }
   }
 }

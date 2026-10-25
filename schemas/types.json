@@ -190,7 +190,7 @@
       "required": [
         "id",
         "folder",
-        "end"
+        "gate"
       ],
       "properties": {
         "id": {
@@ -199,7 +199,7 @@
         "folder": {
           "$ref": "#/$defs/folder-at"
         },
-        "end": {
+        "gate": {
           "$ref": "#/$defs/end"
         }
       },

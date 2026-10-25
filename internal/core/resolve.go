@@ -180,14 +180,14 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 			return Resolved{}, invalid("%q: @%d is a task, and a task has no gates", ref.Raw, res.ID)
 		}
 		if want == WantFolder {
-			return Resolved{}, NotFound([]int64{res.ID}, nil, "@%d is a task, not a folder", res.ID)
+			return Resolved{}, invalid("%q: @%d is a task, not a folder", ref.Raw, res.ID)
 		}
 
 	case ResolvedFolder:
 		end := ref.End
 		switch {
 		case want == WantTask && end == EndNone:
-			return Resolved{}, NotFound([]int64{res.ID}, nil, "@%d is a folder, not a task", res.ID)
+			return Resolved{}, invalid("%q: @%d is a folder, not a task", ref.Raw, res.ID)
 		case want == WantEdge && end == EndNone:
 			end = EndDone
 		}

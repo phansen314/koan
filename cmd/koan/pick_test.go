@@ -200,9 +200,9 @@ func pickTree(t *testing.T) string {
 	    {"title": "Old", "folder": "/work"},
 	    {"title": "Root task"}]}`)
 	res := r.Result()
-	got, _ := json.Marshal([]any{res["folders"], res["tasks"], res["gates_made"]})
+	got, _ := json.Marshal([]any{res["folders_made"], res["tasks_made"], res["gates_made"]})
 	want := `[[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}],[3,4,5,6,7],` +
-		`[{"end":"start","folder":{"id":2,"path":"/work/api"},"id":8},{"end":"done","folder":{"id":2,"path":"/work/api"},"id":9}]]`
+		`[{"folder":{"id":2,"path":"/work/api"},"gate":"start","id":8},{"folder":{"id":2,"path":"/work/api"},"gate":"done","id":9}]]`
 	if string(got) != want {
 		t.Fatalf("the tree's IDs: %s", got)
 	}
@@ -284,9 +284,9 @@ func TestPickFilters(t *testing.T) {
 		{[]string{"--state", "complete"}, []string{"@1", "@1.start", "@1.done", "@6", "@2"}},
 		{[]string{"--state", "open,complete", "--kinds", "task"}, []string{"@7", "@5", "@6", "@3", "@4"}},
 		{[]string{"/work/api"}, []string{"@2", "@3", "@4", "@2.start", "@2.done"}},
-		{[]string{"@1", "--recursive=false"}, []string{"@1", "@1.start", "@1.done", "@5", "@2"}},
-		// The match is deeper than --recursive=false looks: nothing to offer.
-		{[]string{"/work", "--recursive=false", "--tags-any", "api"}, nil},
+		{[]string{"@1", "--direct"}, []string{"@1", "@1.start", "@1.done", "@5", "@2"}},
+		// The match is deeper than --direct looks: nothing to offer.
+		{[]string{"/work", "--direct", "--tags-any", "api"}, nil},
 	} {
 		r := p.run(c.args...)
 		if r.exit != 1 || r.out != "" || r.err != "" {
@@ -295,6 +295,9 @@ func TestPickFilters(t *testing.T) {
 		if got := p.keys(); !slices.Equal(got, c.want) {
 			t.Errorf("%q: keys %v, want %v", c.args, got, c.want)
 		}
+	}
+	if r := p.run("--recursive=false"); r.exit != 2 {
+		t.Errorf("--recursive=false: exit %d, stderr %q", r.exit, r.err)
 	}
 }
 
@@ -311,7 +314,7 @@ func TestPickSubject(t *testing.T) {
 	if got, want := p.keys(), []string{"@2", "@2.start", "@2.done", "@3"}; !slices.Equal(got, want) {
 		t.Errorf("/work/api: keys %v, want %v", got, want)
 	}
-	p.run("--here", "/work").failed(t, 1, "invalid-input", "folder and file")
+	p.run("--here", "/work").failed(t, 1, "invalid-input", "the folder, --file and --here")
 	p.run("/work", "/work/api").failed(t, 2, "usage", "")
 	p.run("--folder", "/work").failed(t, 2, "usage", "folder")
 }
@@ -426,7 +429,7 @@ func TestPickFailures(t *testing.T) {
 	p := newPicker(t, home)
 	p.run("--frob").failed(t, 2, "usage", "frob")
 	p.run("--frontier", "--readiness", "ready").failed(t, 1, "invalid-input", "frontier")
-	p.run("--here", "/work").failed(t, 1, "invalid-input", "folder and file")
+	p.run("--here", "/work").failed(t, 1, "invalid-input", "the folder, --file and --here")
 	p.run("--kinds", "material").failed(t, 1, "invalid-input", "material")
 	p.run("/nope").failed(t, 1, "not-found", "/nope")
 
@@ -447,12 +450,12 @@ func TestPickFailures(t *testing.T) {
 	}
 }
 
-// --here picks from the folder the working directory's marker binds, and
+// --here picks from the folder the working directory's binds, and
 // fails as context does without one; -i gives the whole input.
 func TestPickHereAndInput(t *testing.T) {
 	home := pickTree(t)
 	work := t.TempDir()
-	ok(t, home, "marker", "bind", "@2", work)
+	ok(t, home, "bind", "@2", work)
 	p := newPicker(t, home).with("FAKE_FZF_EXIT=1")
 	p.dir = filepath.Join(work)
 	p.run("--here", "--kinds", "folder,task")

@@ -145,17 +145,20 @@ type Command struct {
 	// is that option's field: given, every positional is a subject.
 	Instead string
 	// Single, for a command a Bool option limits to one subject, is that
-	// option's field: given true, the subject is one word.
+	// option's field. It changes only completion: given true, the first
+	// word completes to SingleSubject and the second to SingleObject, each
+	// if set, and no word after them completes. The line still reads as
+	// a list of subjects before an object, for the command to refuse more
+	// than one.
 	Single string
-	// SingleObject, with Single, is what the object completes to once
-	// Single is given true, if not the object's own Complete.
-	SingleObject Completer
-	// Apart are the fields of options that can't be given together. A
-	// boolean given false isn't given: it sets what leaving it out does.
-	Apart   []string
-	Options []Option
-	Files   []File
-	Here    *Here
+	// SingleSubject and SingleObject, with Single, are what the subject
+	// and the object complete to once Single is given true, if not the
+	// positions' own Complete.
+	SingleSubject Completer
+	SingleObject  Completer
+	Options       []Option
+	Files         []File
+	Here          *Here
 	// Fields are input fields only --input gives, with no option.
 	Fields []string
 	// Plain marks a command for people, which prints plain text rather
@@ -414,25 +417,11 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 		}
 		return nil
 	}
-	var apart []string
-	for _, field := range c.Apart {
-		f := cmd.Flags().Lookup(strings.ReplaceAll(field, "_", "-"))
-		switch {
-		case !f.Changed, l.in[field] == false:
-		case f.Shorthand != "":
-			apart = append(apart, "-"+f.Shorthand)
-		default:
-			apart = append(apart, "--"+f.Name)
-		}
-	}
-	if len(apart) > 1 {
-		return Usage("", strings.Join(apart, " and ")+" can't go together")
-	}
 	object := c.Object
 	if c.Instead != "" && cmd.Flags().Changed(strings.ReplaceAll(c.Instead, "_", "-")) {
 		object = nil
 	}
-	list := c.Subject.Kind == List && (c.Single == "" || l.in[c.Single] != true)
+	list := c.Subject.Kind == List
 	// The subject's words, then the object's: one subject before a list,
 	// or a list of subjects before one object.
 	n := len(args)
@@ -448,12 +437,6 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 	}
 	if object != nil && object.Kind != List && len(objects) > 1 {
 		return Usage(objects[1], "a word past the object: "+c.Name+" takes one "+object.arg())
-	}
-	if len(subjects) == 0 && c.Subject.Required {
-		return Usage("", c.Name+" needs a subject: "+c.Subject.arg())
-	}
-	if object != nil && len(objects) == 0 && object.Required {
-		return Usage("", c.Name+" needs a "+object.arg()+" after the subject")
 	}
 	for _, p := range []struct {
 		opt   *Option
@@ -646,6 +629,10 @@ func (c *Command) readFiles(env *Env, l *line) *Error {
 	}
 	if h := c.Here; h != nil && h.Flag != "" {
 		if l.here {
+			if _, ok := l.in[h.Field]; ok {
+				return InvalidInput("give at most one of the folder, --file and --here",
+					Problem{Field: "", Reason: "give at most one of the folder, --file and --here"})
+			}
 			wd, e := workingDir()
 			if e != nil {
 				return e

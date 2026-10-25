@@ -27,9 +27,10 @@ skill_src=$repo/claude/skills/koan
 claude_dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 claude_settings=$claude_dir/settings.json
 claude_allow='["Bash(koan:*)", "Bash(jq:*)"]'
-claude_ask='["Bash(koan init:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)", "Bash(koan repair:*)"]'
-# What the original koan's install.sh added that this koan has no use for.
-claude_old='["Bash(koan migrate:*)"]'
+claude_ask='["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan repair:*)"]'
+# What the original koan's install.sh added that this koan has no use for,
+# and the asks for the deletes before they were one command.
+claude_old='["Bash(koan migrate:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)"]'
 
 oc_dir=${XDG_CONFIG_HOME:-$HOME/.config}/opencode
 oc_json=$oc_dir/opencode.json
@@ -40,11 +41,10 @@ oc_rules='{
   "koan *": "allow",
   "jq *": "allow",
   "koan init*": "ask",
-  "koan task delete *": "ask",
-  "koan folder delete *": "ask",
+  "koan delete *": "ask",
   "koan repair*": "ask"
 }'
-oc_old='{"koan migrate*": "ask"}'
+oc_old='{"koan migrate*": "ask", "koan task delete *": "ask", "koan folder delete *": "ask"}'
 
 usage() {
 	echo "usage: $0 [--claude] [--opencode] [--uninstall]" >&2

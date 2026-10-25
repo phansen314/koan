@@ -9,7 +9,7 @@ import (
 // gives them.
 func gatesIn(t *testing.T, home, folder string) string {
 	t.Helper()
-	r := ok(t, home, "task", "list", folder, "--recursive=false", "--fields", "id", "--state", "open,complete")
+	r := ok(t, home, "task", "list", folder, "--direct", "--fields", "id", "--state", "open,complete")
 	return fmt.Sprint(r.Result()["tasks"])
 }
 
@@ -19,7 +19,7 @@ func TestBatchJoin(t *testing.T) {
 	home := root(t)
 	r := batchOK(t, home, `{"folders": [{"path": "/a"}], "tasks": [{"title": "x", "join": ["/a"]}]}`)
 	golden(t, r, "batch-join")
-	if fmt.Sprint(r.Result()["gates_made"]) != "[map[end:start folder:map[id:1 path:/a] id:3] map[end:done folder:map[id:1 path:/a] id:4]]" {
+	if fmt.Sprint(r.Result()["gates_made"]) != "[map[folder:map[id:1 path:/a] gate:start id:3] map[folder:map[id:1 path:/a] gate:done id:4]]" {
 		t.Errorf("gates: %s", r.Line())
 	}
 	if got := waitsOn(t, home, "2"); fmt.Sprint(got) != "[3]" {
@@ -34,7 +34,7 @@ func TestBatchJoin(t *testing.T) {
 	home = root(t)
 	r = batchOK(t, home, `{"folders": [{"path": "/a"}, {"path": "/b"}],
   "tasks": [{"label": "$x", "title": "x", "blocked_by": ["/a.start"], "join": ["/b", "@1"]}]}`)
-	if fmt.Sprint(r.Result()["gates_made"]) != "[map[end:start folder:map[id:1 path:/a] id:4] map[end:start folder:map[id:2 path:/b] id:5] map[end:done folder:map[id:2 path:/b] id:6] map[end:done folder:map[id:1 path:/a] id:7]]" {
+	if fmt.Sprint(r.Result()["gates_made"]) != "[map[folder:map[id:1 path:/a] gate:start id:4] map[folder:map[id:2 path:/b] gate:start id:5] map[folder:map[id:2 path:/b] gate:done id:6] map[folder:map[id:1 path:/a] gate:done id:7]]" {
 		t.Errorf("gates: %s", r.Line())
 	}
 	if got := waitsOn(t, home, "3"); fmt.Sprint(got) != "[4 5]" {
@@ -59,7 +59,7 @@ func TestBatchFolderJoin(t *testing.T) {
 	gates := ""
 	for _, g := range r.Result()["gates_made"].([]any) {
 		m := g.(map[string]any)
-		gates += fmt.Sprintf(" %v=%v.%v", m["id"], m["folder"].(map[string]any)["path"], m["end"])
+		gates += fmt.Sprintf(" %v=%v.%v", m["id"], m["folder"].(map[string]any)["path"], m["gate"])
 	}
 	if gates != " 6=/t.start 7=/t.done 8=/s.start 9=/s.done 10=/s/impl.start 11=/s/impl.done 12=/u.start 13=/u.done" {
 		t.Errorf("gates:%s", gates)
@@ -76,7 +76,7 @@ func TestBatchFolderJoin(t *testing.T) {
 	// part with "join": [] makes no gates.
 	home = root(t)
 	r = batchOK(t, home, `{"folders": [{"path": "/m/n", "join": ["/u"]}, {"path": "/u"}, {"path": "/v", "join": []}]}`)
-	if fmt.Sprint(r.Result()["folders"]) != "[map[id:1 path:/m] map[id:2 path:/m/n] map[id:3 path:/u] map[id:4 path:/v]]" {
+	if fmt.Sprint(r.Result()["folders_made"]) != "[map[id:1 path:/m] map[id:2 path:/m/n] map[id:3 path:/u] map[id:4 path:/v]]" {
 		t.Errorf("folders: %s", r.Line())
 	}
 	if gatesIn(t, home, "/m") != "[]" || gatesIn(t, home, "/v") != "[]" ||
@@ -139,8 +139,6 @@ func TestBatchJoinNotFound(t *testing.T) {
 		`{"tasks": [{"title": "a", "join": ["/nope"]}, {"title": "b", "blocked_by": [98]}]}`:                    "/tasks/0/join/0",
 		`{"folders": [{"path": "/x", "join": ["/w/y"]}, {"path": "/w/x", "join": ["/w/z"]}]}`:                   "/folders/0/join/0",
 		`{"tasks": [{"title": "a", "join": ["/w/y"]}], "folders": [{"path": "/w/x", "join": ["/w"]}]}`:          "/tasks/0/join/0",
-		`{"tasks": [{"label": "$a", "title": "a"}, {"title": "b", "join": ["/w", 3]}]}`:                         "/tasks/1/join/1",
-		`{"folders": [{"path": "/q"}], "join": [3], "tasks": [{"title": "a"}]}`:                                 "/join/0",
 		`{"folders": [{"path": "/q"}], "join": ["@2/r"], "tasks": [{"title": "a", "join": []}]}`:                "/join/0",
 		`{"folders": [{"path": "/q", "join": ["@1/x"]}, {"path": "/w/y", "join": ["/w"]}]}`:                     "/folders/0/join/0",
 		`{"folders": [{"path": "/w/y", "join": ["/w"]}], "tasks": [{"title": "a", "join": ["/w/y/z"]}]}`:        "/tasks/0/join/0",
@@ -148,6 +146,11 @@ func TestBatchJoinNotFound(t *testing.T) {
 	} {
 		batchFails(t, home, "not-found", "", fields, in)
 	}
+	// A task made in the batch is a task, not a folder to join.
+	batchFails(t, home, "invalid-input", "", "/tasks/1/join/1",
+		`{"tasks": [{"label": "$a", "title": "a"}, {"title": "b", "join": ["/w", 3]}]}`)
+	batchFails(t, home, "invalid-input", "", "/join/0",
+		`{"folders": [{"path": "/q"}], "join": [3], "tasks": [{"title": "a"}]}`)
 	checkTree(t, home, "@w/", "@w/@notes.md=")
 	nextID(t, home, 2)
 }

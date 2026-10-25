@@ -8,12 +8,15 @@
         "folder": {
           "$ref": "types#/$defs/folder-ref",
           "default": "/",
-          "description": "Subject: the folder the command looks under."
+          "description": "Subject: the folder the command looks under; the root when neither it nor file is given."
         },
-        "recursive": {
+        "file": {
+          "$ref": "task-list#/$defs/filter/properties/file"
+        },
+        "direct": {
           "type": "boolean",
-          "default": true,
-          "description": "false: only the folders directly in the folder."
+          "default": false,
+          "description": "Only the folders directly in the folder."
         },
         "limit": {
           "type": [

@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "folder is required",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/folder",
+        "reason": "folder is required"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

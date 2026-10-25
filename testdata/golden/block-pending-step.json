@@ -10,7 +10,7 @@
           "id": 1,
           "path": "/work"
         },
-        "end": "start"
+        "gate": "start"
       }
     ],
     "reblocked": [

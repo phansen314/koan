@@ -50,7 +50,7 @@ func nextID(t *testing.T, home string, want int) {
 	if r.Result()["id"] != json.Number(fmt.Sprint(want)) {
 		t.Errorf("a refused batch issued an ID: %s", r.Line())
 	}
-	ok(t, home, "task", "delete", fmt.Sprint(want))
+	ok(t, home, "delete", fmt.Sprint(want))
 }
 
 // The spec's batch file: a missing parent is made, folders first, then
@@ -125,14 +125,14 @@ func TestBatchReadAsTree(t *testing.T) {
 	// fields, whichever comes first; tasks alone, or folders alone, are a
 	// batch.
 	r = batchOK(t, home, `{"folders": [{"path": "/p/q"}, {"path": "/p", "title": "P", "notes": "p"}]}`)
-	if fmt.Sprint(r.Result()) != "map[folders:[map[id:9 path:/p] map[id:10 path:/p/q]] gates_made:[] labels:map[] reblocked:[] tasks:[]]" {
+	if fmt.Sprint(r.Result()) != "map[folders_made:[map[id:9 path:/p] map[id:10 path:/p/q]] gates_made:[] labels:map[] reblocked:[] tasks_made:[]]" {
 		t.Errorf("folders alone: %s", r.Line())
 	}
 	if ok(t, home, "show", "/p").Result()["folder"].(map[string]any)["title"] != "P" {
 		t.Errorf("/p's title")
 	}
 	r = batchOK(t, home, `{"tasks": [{"title": "t"}], "folders": []}`)
-	if fmt.Sprint(r.Result()) != "map[folders:[] gates_made:[] labels:map[] reblocked:[] tasks:[11]]" {
+	if fmt.Sprint(r.Result()) != "map[folders_made:[] gates_made:[] labels:map[] reblocked:[] tasks_made:[11]]" {
 		t.Errorf("tasks alone: %s", r.Line())
 	}
 }
@@ -146,7 +146,7 @@ func TestBatchOneGate(t *testing.T) {
   { "title": "b", "blocked_by": ["@1.start"], "blocks": ["/w"] },
   { "title": "c", "blocks": ["@1", "/w.done"], "blocked_by": ["/w.start"] }
 ]}`)
-	if fmt.Sprint(r.Result()["gates_made"]) != "[map[end:start folder:map[id:1 path:/w] id:5] map[end:done folder:map[id:1 path:/w] id:6]]" {
+	if fmt.Sprint(r.Result()["gates_made"]) != "[map[folder:map[id:1 path:/w] gate:start id:5] map[folder:map[id:1 path:/w] gate:done id:6]]" {
 		t.Errorf("gates: %s", r.Line())
 	}
 	if fmt.Sprint(field(t, home, "6", "blocked_by")) != "[map[id:3 ref:@3 (/) state:open] map[id:4 ref:@4 (/) state:open]]" {
@@ -342,11 +342,11 @@ func TestBatchSize(t *testing.T) {
 	golden(t, batchFails(t, home, "invalid-input", "", "", parts(500, 501)), "batch-too-many")
 	r := batchOK(t, home, parts(500, 500))
 	res := r.Result()
-	if len(res["folders"].([]any)) != 501 || len(res["tasks"].([]any)) != 500 || len(res["labels"].(map[string]any)) != 500 {
-		t.Errorf("1000 parts: %d folders, %d tasks", len(res["folders"].([]any)), len(res["tasks"].([]any)))
+	if len(res["folders_made"].([]any)) != 501 || len(res["tasks_made"].([]any)) != 500 || len(res["labels"].(map[string]any)) != 500 {
+		t.Errorf("1000 parts: %d folders, %d tasks", len(res["folders_made"].([]any)), len(res["tasks_made"].([]any)))
 	}
 	// /f, then its folders in byte order: p0, p1, p10, p100, ...
-	if f := res["folders"].([]any); fmt.Sprint(f[0], f[1], f[2], f[3]) != "map[id:1 path:/f] map[id:2 path:/f/p0] map[id:3 path:/f/p1] map[id:4 path:/f/p10]" {
+	if f := res["folders_made"].([]any); fmt.Sprint(f[0], f[1], f[2], f[3]) != "map[id:1 path:/f] map[id:2 path:/f/p0] map[id:3 path:/f/p1] map[id:4 path:/f/p10]" {
 		t.Errorf("tree order: %v", f[:4])
 	}
 	if res["labels"].(map[string]any)["$t499"] != json.Number("1001") {

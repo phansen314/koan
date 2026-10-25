@@ -7,17 +7,17 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// MarkerUnbindResult is marker unbind's result, in its schema's order.
-type MarkerUnbindResult struct {
+// UnbindResult is unbind's result, in its schema's order.
+type UnbindResult struct {
 	Dir     string `json:"dir"`
 	Changed bool   `json:"changed"`
 }
 
-// MarkerUnbind removes a directory's marker: the temp file, marker.json,
+// Unbind removes a directory's marker: the temp file, marker.json,
 // .gitignore, then .koan/. Like bind, it takes no lock.
-func MarkerUnbind() *cli.Command {
+func Unbind() *cli.Command {
 	return &cli.Command{
-		Name:    "marker unbind",
+		Name:    "unbind",
 		Subject: &cli.Option{Field: "dir", Kind: cli.Path},
 		Here:    &cli.Here{Field: "dir"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
@@ -44,7 +44,7 @@ func MarkerUnbind() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			res := MarkerUnbindResult{Dir: dir}
+			res := UnbindResult{Dir: dir}
 			if there {
 				removed, err := markers.Remove(dir, names)
 				if err != nil {

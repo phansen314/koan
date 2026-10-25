@@ -1,8 +1,8 @@
 {
   "ok": true,
   "result": {
-    "folders": [],
-    "tasks": [
+    "folders_made": [],
+    "tasks_made": [
       5
     ],
     "labels": {},

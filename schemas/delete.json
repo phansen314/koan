@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "delete",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "refs"
+      ],
+      "properties": {
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "show#/$defs/input/properties/ref"
+          },
+          "minItems": 1,
+          "description": "Subject: tasks and folders, mixed."
+        },
+        "contents": {
+          "type": "boolean",
+          "default": false,
+          "description": "Folders only: delete the tasks and folders in them too."
+        },
+        "material": {
+          "type": "boolean",
+          "default": false,
+          "description": "Folders only: delete the material in them too."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "removed",
+        "released"
+      ],
+      "properties": {
+        "removed": {
+          "$ref": "types#/$defs/ids",
+          "description": "Every task and folder removed."
+        },
+        "released": {
+          "$ref": "types#/$defs/ids",
+          "description": "Open tasks it made ready."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

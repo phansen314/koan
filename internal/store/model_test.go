@@ -153,7 +153,7 @@ func TestAgreesWithModel(t *testing.T) {
 	// Deleting each task in turn releases what the model releases.
 	for _, title := range []string{"design", "build"} {
 		id := findTask(m, title)
-		want, err := m.DeleteTask(fmt.Sprint(id))
+		want, err := m.Delete([]string{fmt.Sprint(id)}, nil, nil)
 		noErr(t, err)
 		var got []int64
 		write(t, s, func(tx *Tx) error {

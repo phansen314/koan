@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "a word past the object: marker bind takes one dir",
+    "message": "unknown command task update: update is koan update",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "$HOME/wt/sub",
-        "reason": "a word past the object: marker bind takes one dir"
+        "field": "update",
+        "reason": "unknown command task update: update is koan update"
       }
     ],
     "archived": []

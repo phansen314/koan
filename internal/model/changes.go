@@ -362,8 +362,8 @@ func (c *Tree) resolveTask(ref core.Ref) (*Task, error) {
 	return c.Tasks[r.ID], nil
 }
 
-// Update is what task update and folder update change. A nil field is left
-// alone; Priority and Title apply only when their Set flag is.
+// Update is what update changes. A nil field is left alone; Priority and
+// Title apply only when their Set flag is.
 type Update struct {
 	SetTitle    bool
 	Title       *string // a task's title can't be null; a folder's can
@@ -421,22 +421,94 @@ func applyExtra(extra map[string]any, u Update) map[string]any {
 	return out
 }
 
-// UpdateTask changes a task's title, priority, tags or extra. It reports
-// whether anything changed; updated_at moves only then.
-func (t *Tree) UpdateTask(task string, u Update) (changed bool, err error) {
+// subject is a task or a folder a change that takes both acts on.
+type subject struct {
+	id     int64
+	folder bool
+}
+
+// subjectRefs reads refs, tasks and folders mixed, into s, at /refs/0 on;
+// the root can't be one. verb says what is done to them.
+func subjectRefs(s *shape, refs []string, verb string) []core.Ref {
+	out := make([]core.Ref, len(refs))
+	for i, raw := range refs {
+		at := fmt.Sprintf("/refs/%d", i)
+		out[i] = s.ref(at, raw, core.WantRef, false)
+		if out[i].IsRoot() {
+			s.faultf(at, "the root can't be %s", verb)
+		}
+	}
+	if len(refs) == 0 {
+		s.faultf("/refs", "at least one task or folder is needed")
+	}
+	return out
+}
+
+// resolveSubjects resolves the references subjectRefs read, in order: one
+// named twice is invalid-input at its later occurrence. With within, one
+// under a folder also named is invalid-input at the one inside.
+func (c *Tree) resolveSubjects(refs []core.Ref, verb string, within bool) ([]subject, error) {
+	var out []subject
+	for i, ref := range refs {
+		at := fmt.Sprintf("/refs/%d", i)
+		r, err := core.Resolve(c, ref, core.WantRef, nil)
+		if err != nil {
+			return nil, pointAt(err, at, false)
+		}
+		if r.Kind == core.ResolvedRoot {
+			return nil, problem(invalid("the root can't be %s", verb), "%s", at)
+		}
+		if slices.ContainsFunc(out, func(x subject) bool { return x.id == r.ID }) {
+			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d is given twice", r.ID)}, "%s", at)
+		}
+		out = append(out, subject{id: r.ID, folder: r.Kind == core.ResolvedFolder})
+	}
+	if !within {
+		return out, nil
+	}
+	var inside *core.Error
+	for i, x := range out {
+		for _, g := range out {
+			if g.folder && c.Under(x.id, g.id) {
+				reason := fmt.Sprintf("@%d is inside @%d, also given", x.id, g.id)
+				if inside == nil {
+					inside = &core.Error{Kind: core.KindInvalidInput, Message: reason}
+				}
+				problem(inside, "/refs/%d", i)
+				break
+			}
+		}
+	}
+	if inside != nil {
+		return nil, inside
+	}
+	return out, nil
+}
+
+// firstOf is the first subject of a kind, or false when none is.
+func firstOf(subs []subject, folder bool) (int64, bool) {
+	for _, x := range subs {
+		if x.folder == folder {
+			return x.id, true
+		}
+	}
+	return 0, false
+}
+
+// Update changes the fields of tasks and folders, mixed, as one change. A
+// folder has no priority and no tags, and its title can be cleared; a
+// task's can't. It returns the subjects whose fields changed, in input
+// order; a task's updated_at moves only then.
+func (t *Tree) Update(refs []string, u Update) (updated []int64, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
-		ref := s.ref("/task", task, core.WantTask, false)
+		rs := subjectRefs(&s, refs, "updated")
 		if u.none() {
 			s.faultf("", "nothing to change")
 		}
-		var title string
+		var title *string
 		if u.SetTitle {
-			if u.Title == nil {
-				s.faultf("/title", "a task's title can't be null")
-			} else {
-				title = s.title("/title", *u.Title)
-			}
+			title = s.folderTitle("/title", u.Title)
 		}
 		if u.SetPriority {
 			s.priority("/priority", u.Priority)
@@ -452,100 +524,73 @@ func (t *Tree) UpdateTask(task string, u Update) (changed bool, err error) {
 		if err := s.done(nil); err != nil {
 			return err
 		}
-		x, err := c.resolveTask(ref)
+		subs, err := c.resolveSubjects(rs, "updated", false)
 		if err != nil {
 			return err
 		}
-		before := *x
-		if u.SetTitle {
-			x.Title = title
+		var k shape
+		if id, ok := firstOf(subs, false); ok && u.SetTitle && title == nil {
+			k.faultf("/title", "@%d is a task, whose title can't be null", id)
 		}
-		if u.SetPriority {
-			x.Priority = u.Priority
-		}
-		tags := maps.Clone(x.Tags)
-		if u.TagsReplaceAll != nil {
-			tags = replace
-		}
-		maps.Copy(tags, add)
-		for tag := range remove {
-			delete(tags, tag)
-		}
-		x.Tags = tags
-		x.Extra = applyExtra(x.Extra, u)
-		changed = x.Title != before.Title || !equalPtr(x.Priority, before.Priority) ||
-			!maps.Equal(x.Tags, before.Tags) || !equalJSON(x.Extra, before.Extra)
-		if changed {
-			x.UpdatedAt = c.now
-		}
-		return nil
-	})
-	return changed, err
-}
-
-// subjectFolder checks the shape of a folder subject, then resolves it.
-func (c *Tree) subjectFolder(folder string) (*Folder, error) {
-	var s shape
-	ref := s.ref("/folder", folder, core.WantFolder, false)
-	if err := s.done(nil); err != nil {
-		return nil, err
-	}
-	return c.resolveSubjectFolder(ref)
-}
-
-// resolveSubjectFolder resolves a folder subject whose shape is checked;
-// the root can be read but not changed.
-func (c *Tree) resolveSubjectFolder(ref core.Ref) (*Folder, error) {
-	r, err := core.Resolve(c, ref, core.WantFolder, nil)
-	if err != nil {
-		return nil, pointAt(err, "/folder", false)
-	}
-	if r.Kind == core.ResolvedRoot {
-		return nil, problem(invalid("the root can't be changed"), "/folder")
-	}
-	return c.Folders[r.ID], nil
-}
-
-// UpdateFolder changes a folder's title or extra.
-func (t *Tree) UpdateFolder(folder string, u Update) (changed bool, err error) {
-	err = t.change(func(c *Tree) error {
-		var s shape
-		ref := s.ref("/folder", folder, core.WantFolder, false)
-		if u.none() {
-			s.faultf("", "nothing to change")
-		}
-		var title *string
-		if u.SetTitle {
-			title = s.folderTitle("/title", u.Title)
-		}
-		if u.SetPriority {
-			s.faultf("/priority", "a folder has no priority")
-		}
-		for _, f := range []struct {
-			name string
-			tags []string
-		}{{"tags_add", u.TagsAdd}, {"tags_remove", u.TagsRemove}, {"tags_replace_all", u.TagsReplaceAll}} {
-			if f.tags != nil {
-				s.faultf("/"+f.name, "a folder has no tags")
+		if id, ok := firstOf(subs, true); ok {
+			if u.SetPriority {
+				k.faultf("/priority", "@%d is a folder, which has no priority", id)
+			}
+			for _, f := range []struct {
+				name string
+				tags []string
+			}{{"tags_add", u.TagsAdd}, {"tags_remove", u.TagsRemove}, {"tags_replace_all", u.TagsReplaceAll}} {
+				if f.tags != nil {
+					k.faultf("/"+f.name, "@%d is a folder, which has no tags", id)
+				}
 			}
 		}
-		s.extra(u)
-		if err := s.done(nil); err != nil {
-			return err
+		if k.err != nil {
+			return k.err
 		}
-		f, err := c.resolveSubjectFolder(ref)
-		if err != nil {
-			return err
+		updated = []int64{}
+		for _, sub := range subs {
+			var changed bool
+			if sub.folder {
+				f := c.Folders[sub.id]
+				before := *f
+				if u.SetTitle {
+					f.Title = title
+				}
+				f.Extra = applyExtra(f.Extra, u)
+				changed = !equalPtr(f.Title, before.Title) || !equalJSON(f.Extra, before.Extra)
+			} else {
+				x := c.Tasks[sub.id]
+				before := *x
+				if u.SetTitle {
+					x.Title = *title
+				}
+				if u.SetPriority {
+					x.Priority = u.Priority
+				}
+				tags := maps.Clone(x.Tags)
+				if u.TagsReplaceAll != nil {
+					tags = maps.Clone(replace)
+				}
+				maps.Copy(tags, add)
+				for tag := range remove {
+					delete(tags, tag)
+				}
+				x.Tags = tags
+				x.Extra = applyExtra(x.Extra, u)
+				changed = x.Title != before.Title || !equalPtr(x.Priority, before.Priority) ||
+					!maps.Equal(x.Tags, before.Tags) || !equalJSON(x.Extra, before.Extra)
+				if changed {
+					x.UpdatedAt = c.now
+				}
+			}
+			if changed {
+				updated = append(updated, sub.id)
+			}
 		}
-		before := *f
-		if u.SetTitle {
-			f.Title = title
-		}
-		f.Extra = applyExtra(f.Extra, u)
-		changed = !equalPtr(f.Title, before.Title) || !equalJSON(f.Extra, before.Extra)
 		return nil
 	})
-	return changed, err
+	return updated, err
 }
 
 // EdgeResult is what block and unblock return.
@@ -741,62 +786,16 @@ func (t *Tree) Reopen(tasks ...string) (out CompleteResult, err error) {
 	return out, err
 }
 
-// TaskMoved is what task mv returns.
-type TaskMoved struct {
-	Moved    []int64 // the tasks that moved, in input order
+// MoveResult is what mv returns.
+type MoveResult struct {
+	// Moved is the tasks and folders that moved, in input order: a
+	// folder at its new path, a task at the path of the folder it is now
+	// in.
+	Moved    []FolderAt
 	Warnings []Warning
 }
 
-// MoveTask puts tasks in a folder or the root, as one change. No edge
-// changes. A task already in the folder doesn't move.
-func (t *Tree) MoveTask(into string, tasks ...string) (out TaskMoved, err error) {
-	err = t.change(func(c *Tree) error {
-		var s shape
-		refs := taskRefs(&s, tasks)
-		dest := s.ref("/into", into, core.WantFolder, false)
-		if err := s.done(nil); err != nil {
-			return err
-		}
-		xs, err := c.resolveTasks(refs)
-		if err != nil {
-			return err
-		}
-		folder, err := c.resolveFolder(dest, "/into")
-		if err != nil {
-			return err
-		}
-		for _, x := range xs {
-			if x.Gate != core.EndNone {
-				return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
-			}
-		}
-		out.Moved = []int64{}
-		var claimed []int64
-		for _, x := range xs {
-			if folder == x.Folder {
-				continue
-			}
-			x.Folder = folder
-			out.Moved = append(out.Moved, x.ID)
-			if c.claimed(x.ID) {
-				claimed = append(claimed, x.ID)
-			}
-		}
-		if len(claimed) > 0 {
-			out.Warnings = []Warning{{Kind: "moved-claimed", IDs: claimed}}
-		}
-		return nil
-	})
-	return out, err
-}
-
-// FolderMoved is what folder mv returns.
-type FolderMoved struct {
-	Moved    []FolderAt // the folders that moved, in input order, at their new paths
-	Warnings []Warning
-}
-
-// Mv is how folder mv reads its destination.
+// Mv is how mv reads its destination.
 type Mv int
 
 const (
@@ -809,33 +808,38 @@ const (
 	MvRename
 )
 
-// MoveFolder moves folders into a folder that exists, or renames one to a
-// new path whose parent exists, everything under each included, as one
-// change. Nothing is replaced and no parent is made. A case-only rename
-// is the one input allowed to name both spellings, and only of the
-// folder's own name.
-func (t *Tree) MoveFolder(mv Mv, dest string, folders ...string) (out FolderMoved, err error) {
+// Move moves tasks and folders, mixed, into a folder that exists, or
+// renames one folder to a new path whose parent exists, everything under
+// each included, as one change. Nothing is replaced and no parent is
+// made; a gate stays in its folder, and what is already where it would go
+// doesn't move. No edge changes. A case-only rename is the one input
+// allowed to name both spellings, and only of the folder's own name.
+func (t *Tree) Move(mv Mv, dest string, refs ...string) (out MoveResult, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
-		refs := folderRefs(&s, folders, "moved")
+		rs := subjectRefs(&s, refs, "moved")
 		pointer := "/dest"
 		if mv == MvInto {
 			pointer = "/into"
 		}
-		if mv == MvRename && len(folders) > 1 {
-			s.faultf("/folders/1", "a rename takes one folder")
+		if mv == MvRename && len(refs) > 1 {
+			s.faultf("/refs/1", "a rename takes one folder")
 		}
 		to := s.ref(pointer, dest, core.WantFolder, false)
 		if mv == MvRename && to.IsRoot() {
 			s.faultf(pointer, "the root can't be a new path")
 		}
-		one := len(folders) == 1 && mv != MvInto
+		one := len(refs) == 1 && mv != MvInto
 		if err := s.done(func(a, b core.Ref) bool { return one && respells(a, b) }); err != nil {
 			return err
 		}
-		fs, err := c.resolveFolders(refs, "moved")
+		subs, err := c.resolveSubjects(rs, "moved", true)
 		if err != nil {
 			return err
+		}
+		task, hasTask := firstOf(subs, false)
+		if mv == MvRename && hasTask {
+			return problem(invalid("@%d is a task, which can't be renamed", task), "/rename")
 		}
 		into, rename := core.RootID, mv == MvRename
 		switch mv {
@@ -848,13 +852,21 @@ func (t *Tree) MoveFolder(mv Mv, dest string, folders ...string) (out FolderMove
 			switch {
 			case err == nil:
 				into = r.ID
-			case len(fs) > 1 || to.Kind == core.TargetID:
+			case len(subs) > 1 || hasTask || to.Kind == core.TargetID:
 				return pointAt(err, pointer, false)
 			default:
 				rename = true
 			}
 		}
-		var moved []*Folder
+		var fs []*Folder
+		for _, sub := range subs {
+			if sub.folder {
+				fs = append(fs, c.Folders[sub.id])
+			} else if x := c.Tasks[sub.id]; x.Gate != core.EndNone {
+				return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
+			}
+		}
+		moved := map[int64]bool{}
 		if rename {
 			f := fs[0]
 			parent, name, err := c.newPath(to, f.ID, pointer)
@@ -873,7 +885,7 @@ func (t *Tree) MoveFolder(mv Mv, dest string, folders ...string) (out FolderMove
 			}
 			if f.Parent != parent || f.Name != name {
 				f.Parent, f.Name = parent, name
-				moved = append(moved, f)
+				moved[f.ID] = true
 			}
 		} else {
 			at := strings.TrimSuffix(c.Path(into), "/") + "/"
@@ -915,15 +927,31 @@ func (t *Tree) MoveFolder(mv Mv, dest string, folders ...string) (out FolderMove
 			}
 			for _, f := range landing {
 				f.Parent = into
+				moved[f.ID] = true
 			}
-			moved = landing
+			for _, sub := range subs {
+				if x := c.Tasks[sub.id]; !sub.folder && x.Folder != into {
+					x.Folder = into
+					moved[x.ID] = true
+				}
+			}
 		}
 		out.Moved = []FolderAt{}
 		var claimed []int64
-		for _, f := range moved {
-			out.Moved = append(out.Moved, FolderAt{ID: f.ID, Path: c.Path(f.ID)})
+		for _, sub := range subs {
+			if !moved[sub.id] {
+				continue
+			}
+			if !sub.folder {
+				out.Moved = append(out.Moved, FolderAt{ID: sub.id, Path: c.Path(into)})
+				if c.claimed(sub.id) {
+					claimed = append(claimed, sub.id)
+				}
+				continue
+			}
+			out.Moved = append(out.Moved, FolderAt{ID: sub.id, Path: c.Path(sub.id)})
 			for id := range c.Claims {
-				if c.Under(id, f.ID) {
+				if c.Under(id, sub.id) {
 					claimed = append(claimed, id)
 				}
 			}
@@ -1007,16 +1035,13 @@ func respells(subject, dest core.Ref) bool {
 // remove takes tasks and folders out of the tree with every edge to and
 // from them (I5), and their claims. It returns the edges removed.
 func (c *Tree) remove(tasks, folders []int64) []core.Edge {
+	edges := c.touching(tasks)
 	gone := map[int64]bool{}
 	for _, id := range tasks {
 		gone[id] = true
 	}
-	var edges []core.Edge
 	for _, x := range c.Tasks {
 		for to := range x.BlockedBy {
-			if gone[x.ID] || gone[to] {
-				edges = append(edges, core.Edge{From: x.ID, To: to})
-			}
 			if !gone[x.ID] && gone[to] {
 				delete(x.BlockedBy, to)
 				x.UpdatedAt = c.now
@@ -1029,6 +1054,24 @@ func (c *Tree) remove(tasks, folders []int64) []core.Edge {
 	}
 	for _, id := range folders {
 		delete(c.Folders, id)
+	}
+	return edges
+}
+
+// touching is every edge with an end in tasks, sorted by the task that
+// waits, then the one it waits on.
+func (c *Tree) touching(tasks []int64) []core.Edge {
+	gone := map[int64]bool{}
+	for _, id := range tasks {
+		gone[id] = true
+	}
+	var edges []core.Edge
+	for _, x := range c.Tasks {
+		for to := range x.BlockedBy {
+			if gone[x.ID] || gone[to] {
+				edges = append(edges, core.Edge{From: x.ID, To: to})
+			}
+		}
 	}
 	slices.SortFunc(edges, func(a, b core.Edge) int {
 		return cmp.Or(cmp.Compare(a.From, b.From), cmp.Compare(a.To, b.To))
@@ -1060,126 +1103,67 @@ type Removed struct {
 	Released []int64
 }
 
-// DeleteTask removes tasks, their claims and every edge to and from
-// them, as one change. It never splices: what waited on them isn't passed
-// their blockers.
-func (t *Tree) DeleteTask(tasks ...string) (out Removed, err error) {
+// Delete removes tasks and folders, mixed, as one change: a task with
+// its claim and every edge to and from it, a folder with everything under
+// it, gates included. It never splices: what waited on them isn't passed
+// their blockers. contents and material are nil when not given; either
+// given with no folder among the subjects is invalid-input.
+func (t *Tree) Delete(refs []string, contents, material *bool) (out Removed, err error) {
 	err = t.change(func(c *Tree) error {
-		xs, err := c.subjectTasks(tasks)
+		var s shape
+		rs := subjectRefs(&s, refs, "deleted")
+		if err := s.done(nil); err != nil {
+			return err
+		}
+		subs, err := c.resolveSubjects(rs, "deleted", true)
 		if err != nil {
 			return err
 		}
-		var ids []int64
-		for _, x := range xs {
-			ids = append(ids, x.ID)
-		}
-		before, existed := c.readySet(), c.taskIDs()
-		c.remove(ids, nil)
-		out = Removed{Removed: slices.Sorted(slices.Values(ids)), Released: c.released(before, existed)}
-		return nil
-	})
-	return out, err
-}
-
-// subjectFolders resolves a list of folders to delete.
-func (c *Tree) subjectFolders(folders []string) ([]*Folder, error) {
-	var s shape
-	refs := folderRefs(&s, folders, "deleted")
-	if err := s.done(nil); err != nil {
-		return nil, err
-	}
-	return c.resolveFolders(refs, "deleted")
-}
-
-// folderRefs reads a list of folders to change into s, at /folders/0 on;
-// the root can't be one. verb says what is done to them.
-func folderRefs(s *shape, folders []string, verb string) []core.Ref {
-	refs := make([]core.Ref, len(folders))
-	for i, folder := range folders {
-		at := fmt.Sprintf("/folders/%d", i)
-		refs[i] = s.ref(at, folder, core.WantFolder, false)
-		if refs[i].IsRoot() {
-			s.faultf(at, "the root can't be %s", verb)
-		}
-	}
-	if len(folders) == 0 {
-		s.faultf("/folders", "at least one folder is needed")
-	}
-	return refs
-}
-
-// resolveFolders resolves a list of folders read by folderRefs, in order:
-// a folder named twice is invalid-input at its later occurrence, and one
-// inside another named at the one inside.
-func (c *Tree) resolveFolders(refs []core.Ref, verb string) ([]*Folder, error) {
-	var out []*Folder
-	for i, ref := range refs {
-		at := fmt.Sprintf("/folders/%d", i)
-		r, err := core.Resolve(c, ref, core.WantFolder, nil)
-		if err != nil {
-			return nil, pointAt(err, at, false)
-		}
-		if r.Kind == core.ResolvedRoot {
-			return nil, problem(invalid("the root can't be %s", verb), "%s", at)
-		}
-		f := c.Folders[r.ID]
-		if slices.Contains(out, f) {
-			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d is given twice", f.ID)}, "%s", at)
-		}
-		out = append(out, f)
-	}
-	var inside *core.Error
-	for i, f := range out {
-		for _, g := range out {
-			if c.Under(f.ID, g.ID) {
-				reason := fmt.Sprintf("@%d is inside @%d, also given", f.ID, g.ID)
-				if inside == nil {
-					inside = &core.Error{Kind: core.KindInvalidInput, Message: reason}
-				}
-				problem(inside, "/folders/%d", i)
-				break
+		if _, ok := firstOf(subs, true); !ok {
+			var k shape
+			if contents != nil {
+				k.faultf("/contents", "contents is for folders, and no folder is given")
+			}
+			if material != nil {
+				k.faultf("/material", "material is for folders, and no folder is given")
+			}
+			if k.err != nil {
+				return k.err
 			}
 		}
-	}
-	if inside != nil {
-		return nil, inside
-	}
-	return out, nil
-}
-
-// DeleteFolder removes folders and everything under them, gates included,
-// as one change.
-func (t *Tree) DeleteFolder(folders []string, contents, material bool) (out Removed, err error) {
-	err = t.change(func(c *Tree) error {
-		fs, err := c.subjectFolders(folders)
-		if err != nil {
-			return err
+		var tasks, fs []int64
+		for _, sub := range subs {
+			if sub.folder {
+				fs = append(fs, sub.id)
+			} else {
+				tasks = append(tasks, sub.id)
+			}
 		}
-		if !contents {
+		if contents == nil || !*contents {
+			var direct []int64
 			for _, f := range fs {
-				var direct []int64
 				for _, x := range c.Tasks {
-					if x.Folder == f.ID && x.Gate == core.EndNone {
+					if x.Folder == f && x.Gate == core.EndNone {
 						direct = append(direct, x.ID)
 					}
 				}
 				for _, g := range c.Folders {
-					if g.Parent == f.ID {
+					if g.Parent == f {
 						direct = append(direct, g.ID)
 					}
 				}
-				if direct != nil {
-					slices.Sort(direct)
-					return core.Conflict(core.RuleNotEmpty, direct, nil, "@%d holds %s", f.ID, core.FormatIDs(direct))
-				}
+			}
+			if direct != nil {
+				slices.Sort(direct)
+				return core.Conflict(core.RuleNotEmpty, direct, nil, "%s are in folders given", core.FormatIDs(direct))
 			}
 		}
-		var tasks, gone []int64
+		var gone []int64
 		var found []string
 		for _, f := range fs {
-			ts, under := c.under(f.ID)
+			ts, under := c.under(f)
 			tasks, gone = append(tasks, ts...), append(gone, under...)
-			if material {
+			if material != nil && *material {
 				continue
 			}
 			// In tree order: each folder's own entries, byte for byte,
@@ -1210,10 +1194,10 @@ func (t *Tree) DeleteFolder(folders []string, contents, material bool) (out Remo
 	return out, err
 }
 
-// archive takes tasks and folders out of the tree into the archive, and
-// retires their IDs.
-func (c *Tree) archive(id int64, tasks, folders []int64) []int64 {
-	a := Archived{ID: id}
+// archived is what archiving an item keeps: its tasks and folders, and
+// every edge they had, to or from anything. It changes nothing.
+func (c *Tree) archived(id int64, tasks, folders []int64) Archived {
+	a := Archived{ID: id, Edges: c.touching(tasks)}
 	for _, t := range tasks {
 		x := *c.Tasks[t]
 		x.BlockedBy, x.Tags = maps.Clone(x.BlockedBy), maps.Clone(x.Tags)
@@ -1224,72 +1208,89 @@ func (c *Tree) archive(id int64, tasks, folders []int64) []int64 {
 		y.Material = maps.Clone(y.Material)
 		a.Folders = append(a.Folders, y)
 	}
-	a.Edges = c.remove(tasks, folders)
-	c.Archives = append(c.Archives, a)
-	left := slices.Sorted(slices.Values(slices.Concat(tasks, folders)))
-	for _, l := range left {
-		c.Index[l] = len(c.Archives) - 1
-	}
-	return left
+	return a
 }
 
-// Archive archives a complete task, a gate included, or a finished
-// folder with everything under it. It returns every ID that left.
-func (t *Tree) Archive(ref string) (left []int64, err error) {
+// Archive archives complete tasks, gates included, and finished folders
+// with everything under them, mixed, as one change: if any is refused,
+// none goes. Each archive keeps every edge its item had, to or from
+// anything, those to the others archived with it included. It returns
+// the subjects archived, in input order, and every ID that left.
+func (t *Tree) Archive(refs ...string) (archived, left []int64, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
-		r := s.ref("/ref", ref, core.WantRef, false)
-		if r.IsRoot() {
-			s.faultf("/ref", "the root can't be archived")
-		}
+		rs := subjectRefs(&s, refs, "archived")
 		if err := s.done(nil); err != nil {
 			return err
 		}
-		got, err := core.Resolve(c, r, core.WantRef, nil)
-		if err != nil {
-			return pointAt(err, "/ref", false)
-		}
-		if got.Kind == core.ResolvedTask {
-			x := c.Tasks[got.ID]
-			if x.Open() {
-				return core.Conflict(core.RuleNotFinished, []int64{x.ID}, nil, "@%d is open", x.ID)
-			}
-			left = c.archive(x.ID, []int64{x.ID}, nil)
-			return nil
-		}
-		tasks, folders := c.under(got.ID)
-		var open []int64
-		for _, id := range tasks {
-			if c.Tasks[id].Open() {
-				open = append(open, id)
-			}
-		}
-		if open != nil {
-			return core.Conflict(core.RuleNotFinished, open, nil, "%s is open", core.FormatIDs(open))
-		}
-		left = c.archive(got.ID, tasks, folders)
-		return nil
-	})
-	return left, err
-}
-
-// ClaimTask claims an open task with no claim.
-func (t *Tree) ClaimTask(task string, extra map[string]any) (claim Claim, err error) {
-	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		subs, err := c.resolveSubjects(rs, "archived", true)
 		if err != nil {
 			return err
 		}
-		if c.claimed(x.ID) {
-			return core.Conflict(core.RuleClaimed, []int64{x.ID}, nil, "@%d is claimed", x.ID)
+		var as []Archived
+		var open []int64
+		for _, sub := range subs {
+			tasks, folders := []int64{sub.id}, []int64(nil)
+			if sub.folder {
+				tasks, folders = c.under(sub.id)
+			}
+			for _, id := range tasks {
+				if c.Tasks[id].Open() {
+					open = append(open, id)
+				}
+			}
+			as = append(as, c.archived(sub.id, tasks, folders))
 		}
-		if !x.Open() {
-			return core.Conflict(core.RuleComplete, []int64{x.ID}, nil, "@%d is complete", x.ID)
+		if open != nil {
+			slices.Sort(open)
+			return core.Conflict(core.RuleNotFinished, open, nil, "%s is open", core.FormatIDs(open))
 		}
-		claim = c.claim(x.ID, extra)
+		archived = []int64{}
+		for _, a := range as {
+			var tasks, folders []int64
+			for _, x := range a.Tasks {
+				tasks = append(tasks, x.ID)
+			}
+			for _, y := range a.Folders {
+				folders = append(folders, y.ID)
+			}
+			c.remove(tasks, folders)
+			c.Archives = append(c.Archives, a)
+			for _, l := range slices.Concat(tasks, folders) {
+				c.Index[l] = len(c.Archives) - 1
+			}
+			archived = append(archived, a.ID)
+			left = append(left, slices.Concat(tasks, folders)...)
+		}
+		slices.Sort(left)
 		return nil
 	})
-	return claim, err
+	return archived, left, err
+}
+
+// ClaimTask claims open tasks with no claim, blocked or not, as one
+// change: if any is refused, none is claimed. extra is kept with every
+// claim. It returns the tasks claimed, in input order.
+func (t *Tree) ClaimTask(tasks []string, extra map[string]any) (claimed []int64, err error) {
+	err = t.change(func(c *Tree) error {
+		xs, err := c.subjectTasks(tasks)
+		if err != nil {
+			return err
+		}
+		claimed = []int64{}
+		for _, x := range xs {
+			if c.claimed(x.ID) {
+				return core.Conflict(core.RuleClaimed, []int64{x.ID}, nil, "@%d is claimed", x.ID)
+			}
+			if !x.Open() {
+				return core.Conflict(core.RuleComplete, []int64{x.ID}, nil, "@%d is complete", x.ID)
+			}
+			c.claim(x.ID, extra)
+			claimed = append(claimed, x.ID)
+		}
+		return nil
+	})
+	return claimed, err
 }
 
 func (c *Tree) claim(id int64, extra map[string]any) Claim {
@@ -1298,13 +1299,12 @@ func (c *Tree) claim(id int64, extra map[string]any) Claim {
 	return *cl
 }
 
-// Scope is where claim-next looks, as task-list's filter says. The spec's
-// default for Recursive is true; Go's zero value is false, so set it.
+// Scope is where claim-next looks, as task-list's filter says.
 type Scope struct {
-	Folder    string // a folder-ref; empty means the root
-	Recursive bool
-	TagsAny   []string
-	TagsAll   []string
+	Folder  string // a folder-ref; empty means the root
+	Direct  bool
+	TagsAny []string
+	TagsAll []string
 }
 
 // ClaimNext claims the first task of the frontier within scope. It returns
@@ -1345,7 +1345,7 @@ func (t *Tree) ScopedFrontier(s Scope) ([]int64, error) {
 	var out []int64
 	for _, id := range t.Frontier() {
 		x := t.Tasks[id]
-		if s.Recursive && !t.Under(id, folder) || !s.Recursive && x.Folder != folder {
+		if !s.Direct && !t.Under(id, folder) || s.Direct && x.Folder != folder {
 			continue
 		}
 		if len(anyTags) > 0 && !hasAny(x.Tags, anyTags) || !hasAll(x.Tags, allTags) {
@@ -1374,18 +1374,24 @@ func hasAll(have, want map[string]bool) bool {
 	return true
 }
 
-// Unclaim ends a task's claim, whoever made it.
-func (t *Tree) Unclaim(task string) (changed bool, err error) {
+// Unclaim ends the claims of tasks, whoever made them, as one change.
+// It returns the tasks that had one, in input order.
+func (t *Tree) Unclaim(tasks ...string) (unclaimed []int64, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
-		_, changed = c.Claims[x.ID]
-		delete(c.Claims, x.ID)
+		unclaimed = []int64{}
+		for _, x := range xs {
+			if _, ok := c.Claims[x.ID]; ok {
+				delete(c.Claims, x.ID)
+				unclaimed = append(unclaimed, x.ID)
+			}
+		}
 		return nil
 	})
-	return changed, err
+	return unclaimed, err
 }
 
 func equalPtr[T comparable](a, b *T) bool {

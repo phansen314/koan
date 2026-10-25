@@ -1,44 +1,56 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "task-update",
+  "$id": "update",
   "$defs": {
     "input": {
       "type": "object",
       "required": [
-        "task"
+        "refs"
       ],
       "minProperties": 2,
       "properties": {
-        "task": {
-          "$ref": "types#/$defs/task-ref",
-          "description": "Subject."
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "show#/$defs/input/properties/ref"
+          },
+          "minItems": 1,
+          "description": "Subject: tasks and folders, mixed."
         },
         "title": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null clears a folder's title; a task refuses it."
         },
         "priority": {
-          "$ref": "types#/$defs/priority"
+          "$ref": "types#/$defs/priority",
+          "description": "Tasks only."
         },
         "tags_add": {
           "type": "array",
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "description": "Tasks only."
         },
         "tags_remove": {
           "type": "array",
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "description": "Tasks only."
         },
         "tags_replace_all": {
           "type": "array",
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "description": "Tasks only."
         },
         "extra_merge": {
           "$ref": "types#/$defs/extra"
@@ -85,21 +97,18 @@
       "unevaluatedProperties": false
     },
     "result": {
-      "$ref": "#/$defs/id-only"
-    },
-    "id-only": {
       "type": "object",
       "required": [
-        "id",
-        "changed"
+        "updated"
       ],
       "properties": {
-        "id": {
-          "$ref": "types#/$defs/id"
-        },
-        "changed": {
-          "type": "boolean",
-          "description": "false when the write changed nothing."
+        "updated": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The subjects it changed. Input order."
         }
       },
       "unevaluatedProperties": false

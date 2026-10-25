@@ -1,13 +1,13 @@
 {
   "ok": true,
   "result": {
-    "folders": [
+    "folders_made": [
       {
         "id": 2,
         "path": "/work/api"
       }
     ],
-    "tasks": [
+    "tasks_made": [
       3
     ],
     "labels": {},

@@ -107,7 +107,7 @@ func TestCreateTask(t *testing.T) {
 		{TaskInput{Title: "t", Priority: ptr(core.MaxInt + 1)}, core.KindInvalidInput, []string{"/priority"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"$a"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"/"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
-		{TaskInput{Title: "t", Folder: "@2"}, core.KindNotFound, nil}, // a task where a folder is taken
+		{TaskInput{Title: "t", Folder: "@2"}, core.KindInvalidInput, []string{"/folder"}}, // a task where a folder is taken
 		{TaskInput{Title: "t", BlockedBy: []string{"2.start"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
 	} {
 		_, err := tr.CreateTask(c.in)
@@ -125,25 +125,25 @@ func TestUpdate(t *testing.T) {
 	tr := newTree()
 	id := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Tags: []string{"a"}, Extra: map[string]any{"x": 1.0}})).ID
 	stamp := tr.Tasks[id].UpdatedAt
-	changed := must[bool](t)(tr.UpdateTask("1", Update{SetPriority: true, Priority: nil}))
-	if changed || tr.Tasks[id].UpdatedAt != stamp {
+	changed := must[[]int64](t)(tr.Update([]string{"1"}, Update{SetPriority: true, Priority: nil}))
+	if len(changed) != 0 || tr.Tasks[id].UpdatedAt != stamp {
 		t.Error("an update that changes nothing moved updated_at")
 	}
-	changed = must[bool](t)(tr.UpdateTask("1", Update{
+	changed = must[[]int64](t)(tr.Update([]string{"1"}, Update{
 		SetTitle: true, Title: ptr("u"), TagsAdd: []string{"b"}, TagsRemove: []string{"a"},
 		ExtraMerge: map[string]any{"y": 2.0}, ExtraRemove: []string{"x"},
 	}))
 	x := tr.Tasks[id]
-	if !changed || x.Title != "u" || !reflect.DeepEqual(x.Tags, map[string]bool{"b": true}) ||
+	if len(changed) == 0 || x.Title != "u" || !reflect.DeepEqual(x.Tags, map[string]bool{"b": true}) ||
 		!reflect.DeepEqual(x.Extra, map[string]any{"y": 2.0}) || x.UpdatedAt == stamp {
 		t.Errorf("task %+v", x)
 	}
-	_, err := tr.UpdateTask("1", Update{TagsReplaceAll: []string{}, TagsAdd: []string{"c"}})
+	_, err := tr.Update([]string{"1"}, Update{TagsReplaceAll: []string{}, TagsAdd: []string{"c"}})
 	wantErr(t, err, core.KindInvalidInput, "")
-	_, err = tr.UpdateTask("1", Update{SetTitle: true, Title: nil})
+	_, err = tr.Update([]string{"1"}, Update{SetTitle: true, Title: nil})
 	wantErr(t, err, core.KindInvalidInput, "")
 	// Added and removed at once, refused at the removing entry.
-	_, err = tr.UpdateTask("1", Update{TagsAdd: []string{"c", "d"}, TagsRemove: []string{"e", "d"}, ExtraMerge: map[string]any{"k": 1.0}, ExtraRemove: []string{"k"}})
+	_, err = tr.Update([]string{"1"}, Update{TagsAdd: []string{"c", "d"}, TagsRemove: []string{"e", "d"}, ExtraMerge: map[string]any{"k": 1.0}, ExtraRemove: []string{"k"}})
 	if e, _ := err.(*core.Error); e == nil || !reflect.DeepEqual(e.Problems, []string{"/tags_remove/1", "/extra_remove/0"}) {
 		t.Errorf("added and removed: %v", err)
 	}
@@ -153,19 +153,19 @@ func TestUpdate(t *testing.T) {
 		n    string
 		want bool
 	}{{"1.0", true}, {"1.0", false}, {"1", true}} {
-		if got := must[bool](t)(tr.UpdateTask("1", Update{ExtraMerge: map[string]any{"n": json.Number(c.n)}})); got != c.want {
+		if got := must[[]int64](t)(tr.Update([]string{"1"}, Update{ExtraMerge: map[string]any{"n": json.Number(c.n)}})); (len(got) > 0) != c.want {
 			t.Errorf("extra spelling %d (%s): changed %v", i, c.n, got)
 		}
 	}
 
 	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))
-	if !must[bool](t)(tr.UpdateFolder("/f", Update{SetTitle: true, Title: ptr("F")})) || *tr.Folders[2].Title != "F" {
+	if len(must[[]int64](t)(tr.Update([]string{"/f"}, Update{SetTitle: true, Title: ptr("F")}))) == 0 || *tr.Folders[2].Title != "F" {
 		t.Error("folder title")
 	}
-	if !must[bool](t)(tr.UpdateFolder("/f", Update{SetTitle: true, Title: nil})) || tr.Folders[2].Title != nil {
+	if len(must[[]int64](t)(tr.Update([]string{"/f"}, Update{SetTitle: true, Title: nil}))) == 0 || tr.Folders[2].Title != nil {
 		t.Error("folder title back to null")
 	}
-	_, err = tr.UpdateFolder("/", Update{SetTitle: true, Title: ptr("R")})
+	_, err = tr.Update([]string{"/"}, Update{SetTitle: true, Title: ptr("R")})
 	wantErr(t, err, core.KindInvalidInput, "")
 	checked(t, tr)
 }
@@ -174,7 +174,7 @@ func TestBlockUnblock(t *testing.T) {
 	tr := newTree()
 	a := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"})).ID // @1
 	b := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b"})).ID // @2
-	must[Claim](t)(tr.ClaimTask("2", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil))
 
 	// An added edge can block a claimed task; the claim stays.
 	r := must[EdgeResult](t)(tr.Block("2", []string{"1"}, nil))
@@ -224,8 +224,8 @@ func TestCompleteReopen(t *testing.T) {
 	tr := newTree()
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"}))                           // @1
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", BlockedBy: []string{"1"}})) // @2
-	must[Claim](t)(tr.ClaimTask("1", nil))
-	must[Claim](t)(tr.ClaimTask("2", nil)) // a blocked task can be claimed
+	must[[]int64](t)(tr.ClaimTask([]string{"1"}, nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil)) // a blocked task can be claimed
 
 	r := must[CompleteResult](t)(tr.Complete("1"))
 	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
@@ -375,47 +375,47 @@ func TestMoveTask(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Folder: "/a", Blocks: []string{"/a"}})) // @3, gate @4
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "y", Folder: "/b"}))                         // @5
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "z", Folder: "/a"}))                         // @6
-	must[Claim](t)(tr.ClaimTask("3", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"3"}, nil))
 	ready := tr.readySet()
 
-	out, err := tr.MoveTask("/b", "3")
-	if err != nil || !reflect.DeepEqual(out.Moved, []int64{3}) || !reflect.DeepEqual(out.Warnings, []Warning{{"moved-claimed", []int64{3}}}) {
+	out, err := tr.Move(MvInto, "/b", "3")
+	if err != nil || !reflect.DeepEqual(out.Moved, []FolderAt{{3, "/b"}}) || !reflect.DeepEqual(out.Warnings, []Warning{{"moved-claimed", []int64{3}}}) {
 		t.Errorf("move: %v %v", out, err)
 	}
 	// No edge changes, so no readiness does.
 	if !tr.Tasks[4].BlockedBy[3] || !reflect.DeepEqual(tr.readySet(), ready) {
 		t.Error("a move changed edges or readiness")
 	}
-	_, err = tr.MoveTask("/b", "@1.done")
+	_, err = tr.Move(MvInto, "/b", "@1.done")
 	if e := wantErr(t, err, core.KindConflict, core.RuleGate); !reflect.DeepEqual(e.IDs, []int64{4}) {
 		t.Errorf("ids %v", e.IDs)
 	}
-	if out, _ := tr.MoveTask("@2", "3"); len(out.Moved) != 0 {
+	if out, _ := tr.Move(MvInto, "@2", "3"); len(out.Moved) != 0 {
 		t.Error("a move to where it is changed something")
 	}
 	// Several, in input order; one already there isn't listed.
-	out, err = tr.MoveTask("/", "6", "5", "3")
-	if err != nil || !reflect.DeepEqual(out.Moved, []int64{6, 5, 3}) {
+	out, err = tr.Move(MvInto, "/", "6", "5", "3")
+	if err != nil || !reflect.DeepEqual(out.Moved, []FolderAt{{6, "/"}, {5, "/"}, {3, "/"}}) {
 		t.Errorf("several: %v %v", out, err)
 	}
-	out, err = tr.MoveTask("/a", "5", "6")
-	if err != nil || !reflect.DeepEqual(out.Moved, []int64{5, 6}) || out.Warnings != nil {
+	out, err = tr.Move(MvInto, "/a", "5", "6")
+	if err != nil || !reflect.DeepEqual(out.Moved, []FolderAt{{5, "/a"}, {6, "/a"}}) || out.Warnings != nil {
 		t.Errorf("several: %v %v", out, err)
 	}
 	// One refused, none moves.
-	_, err = tr.MoveTask("/b", "5", "/a.done")
+	_, err = tr.Move(MvInto, "/b", "5", "/a.done")
 	wantErr(t, err, core.KindConflict, core.RuleGate)
-	_, err = tr.MoveTask("/b", "5", "99")
+	_, err = tr.Move(MvInto, "/b", "5", "99")
 	wantErr(t, err, core.KindNotFound, "")
 	if tr.Tasks[5].Folder != 1 {
 		t.Error("a refused move moved a task")
 	}
 	// Given twice, however written, at the later occurrence.
-	_, err = tr.MoveTask("/b", "5", "@5")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+	_, err = tr.Move(MvInto, "/b", "5", "@5")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("problems %v", e.Problems)
 	}
-	_, err = tr.MoveTask("/b")
+	_, err = tr.Move(MvInto, "/b")
 	wantErr(t, err, core.KindInvalidInput, "")
 	checked(t, tr)
 }
@@ -425,10 +425,10 @@ func TestMoveFolder(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/work/api", nil, nil))                     // @1, @2
 	must[[]FolderAt](t)(tr.CreateFolder("/other", nil, nil))                        // @3
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Folder: "/work/api"})) // @4
-	must[Claim](t)(tr.ClaimTask("4", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"4"}, nil))
 
 	// Into a folder that exists; otherwise renamed.
-	r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/other", "/work"))
+	r := must[MoveResult](t)(tr.Move(MvDest, "/other", "/work"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{1, "/other/work"}}) ||
 		!reflect.DeepEqual(r.Warnings, []Warning{{"moved-claimed", []int64{4}}}) {
 		t.Errorf("into: %+v", r)
@@ -436,41 +436,41 @@ func TestMoveFolder(t *testing.T) {
 	if tr.Path(2) != "/other/work/api" {
 		t.Errorf("child path %s", tr.Path(2))
 	}
-	r = must[FolderMoved](t)(tr.MoveFolder(MvDest, "/other/work2", "/other/work"))
+	r = must[MoveResult](t)(tr.Move(MvDest, "/other/work2", "/other/work"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{1, "/other/work2"}}) {
 		t.Errorf("renamed: %+v", r)
 	}
 	// No parent is made.
-	_, err := tr.MoveFolder(MvRename, "/archive/work", "@1")
+	_, err := tr.Move(MvRename, "/archive/work", "@1")
 	wantErr(t, err, core.KindNotFound, "")
-	_, err = tr.MoveFolder(MvDest, "/archive/work", "@1")
+	_, err = tr.Move(MvDest, "/archive/work", "@1")
 	wantErr(t, err, core.KindNotFound, "")
 
-	_, err = tr.MoveFolder(MvRename, "/other/work2/api/x", "@1")
+	_, err = tr.Move(MvRename, "/other/work2/api/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
 	if e := err.(*core.Error); !reflect.DeepEqual(e.IDs, []int64{1}) || !reflect.DeepEqual(e.Paths, []string{"/other/work2/api/x"}) {
 		t.Errorf("into-itself names the folder and the destination: %v %v", e.IDs, e.Paths)
 	}
-	_, err = tr.MoveFolder(MvRename, "/other", "@2")
+	_, err = tr.Move(MvRename, "/other", "@2")
 	wantErr(t, err, core.KindConflict, core.RuleExists)
-	_, err = tr.MoveFolder(MvRename, "/OTHER", "@2")
+	_, err = tr.Move(MvRename, "/OTHER", "@2")
 	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
-	_, err = tr.MoveFolder(MvDest, "/x", "/")
+	_, err = tr.Move(MvDest, "/x", "/")
 	wantErr(t, err, core.KindInvalidInput, "")
-	_, err = tr.MoveFolder(MvRename, "/", "/other")
+	_, err = tr.Move(MvRename, "/", "/other")
 	wantErr(t, err, core.KindInvalidInput, "")
 
 	// An anchored path, whose last name is the new one.
-	r = must[FolderMoved](t)(tr.MoveFolder(MvRename, "@3/api2", "@2"))
+	r = must[MoveResult](t)(tr.Move(MvRename, "@3/api2", "@2"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{2, "/other/api2"}}) {
 		t.Errorf("anchored: %+v", r)
 	}
 	// A bare ID names no new path.
-	_, err = tr.MoveFolder(MvRename, "@99", "@2")
+	_, err = tr.Move(MvRename, "@99", "@2")
 	wantErr(t, err, core.KindNotFound, "")
 
 	// A case-only rename: the one input naming both spellings.
-	r = must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Other", "/other"))
+	r = must[MoveResult](t)(tr.Move(MvDest, "/Other", "/other"))
 	if len(r.Moved) != 1 || tr.Folders[3].Name != "Other" {
 		t.Errorf("case-only rename: %+v", r)
 	}
@@ -482,15 +482,15 @@ func TestMoveFolder(t *testing.T) {
 func TestMoveFolderOntoItself(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a/b", nil, nil)) // @1, @2
-	_, err := tr.MoveFolder(MvDest, "/a", "/a")
+	_, err := tr.Move(MvDest, "/a", "/a")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
-	_, err = tr.MoveFolder(MvInto, "/a/b", "/a")
+	_, err = tr.Move(MvInto, "/a/b", "/a")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
 	for _, c := range []struct {
 		mv          Mv
 		dest, which string
 	}{{MvRename, "/a", "/a"}, {MvRename, "@1", "/a"}, {MvDest, "/a", "/a/b"}, {MvInto, "/", "/a"}, {MvRename, "/a/b", "@2"}} {
-		if r := must[FolderMoved](t)(tr.MoveFolder(c.mv, c.dest, c.which)); len(r.Moved) != 0 {
+		if r := must[MoveResult](t)(tr.Move(c.mv, c.dest, c.which)); len(r.Moved) != 0 {
 			t.Errorf("%v %s %s: %+v", c.mv, c.dest, c.which, r)
 		}
 	}
@@ -506,31 +506,31 @@ func TestMoveFolders(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/d/X", nil, nil)) // @5, @6
 	must[[]FolderAt](t)(tr.CreateFolder("/c", nil, nil))   // @7
 
-	_, err := tr.MoveFolder(MvDest, "/c", "/a/x", "/b/x")
+	_, err := tr.Move(MvDest, "/c", "/a/x", "/b/x")
 	wantErr(t, err, core.KindConflict, core.RuleExists)
-	_, err = tr.MoveFolder(MvInto, "/c", "/a/x", "/d/X", "/b/x")
+	_, err = tr.Move(MvInto, "/c", "/a/x", "/d/X", "/b/x")
 	e := wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
 	if !reflect.DeepEqual(e.Paths, []string{"/c/X", "/c/x"}) {
 		t.Errorf("case-mismatch before exists: %v", e.Paths)
 	}
-	_, err = tr.MoveFolder(MvDest, "/z", "/a/x", "/d/X")
+	_, err = tr.Move(MvDest, "/z", "/a/x", "/d/X")
 	wantErr(t, err, core.KindNotFound, "")
-	_, err = tr.MoveFolder(MvDest, "/c", "/a", "/a/x")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	_, err = tr.Move(MvDest, "/c", "/a", "/a/x")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("nested: %v", e.Problems)
 	}
-	_, err = tr.MoveFolder(MvDest, "/c", "/a/x", "@2")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	_, err = tr.Move(MvDest, "/c", "/a/x", "@2")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("twice: %v", e.Problems)
 	}
-	_, err = tr.MoveFolder(MvRename, "/c/y", "/a/x", "/d/X")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	_, err = tr.Move(MvRename, "/c/y", "/a/x", "/d/X")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("rename of two: %v", e.Problems)
 	}
 	if tr.Path(2) != "/a/x" {
 		t.Fatalf("a refused move moved something")
 	}
-	r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/c", "/d/X", "/b"))
+	r := must[MoveResult](t)(tr.Move(MvDest, "/c", "/d/X", "/b"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{6, "/c/X"}, {3, "/c/b"}}) {
 		t.Errorf("several: %+v", r)
 	}
@@ -543,10 +543,10 @@ func TestDeleteTask(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", BlockedBy: []string{"1"}}))      // @2
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "c", BlockedBy: []string{"2"}}))      // @3
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "d", BlockedBy: []string{"2", "1"}})) // @4
-	must[Claim](t)(tr.ClaimTask("2", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil))
 	stamp := tr.Tasks[3].UpdatedAt
 
-	r := must[Removed](t)(tr.DeleteTask("2"))
+	r := must[Removed](t)(tr.Delete([]string{"2"}, nil, nil))
 	// @3 lost its last open blocker; @4 still waits on @1. No splice: @3
 	// doesn't come to wait on @1.
 	if !reflect.DeepEqual(r, Removed{Removed: []int64{2}, Released: []int64{3}}) {
@@ -555,7 +555,7 @@ func TestDeleteTask(t *testing.T) {
 	if len(tr.BlockedBy(3)) != 0 || tr.claimed(2) || tr.Tasks[3].UpdatedAt == stamp {
 		t.Error("edges, claim or updated_at")
 	}
-	_, err := tr.DeleteTask("2")
+	_, err := tr.Delete([]string{"2"}, nil, nil)
 	wantErr(t, err, core.KindNotFound, "")
 	checked(t, tr)
 }
@@ -569,23 +569,23 @@ func TestDeleteFolder(t *testing.T) {
 	tr.PutMaterial(1, "b")
 	tr.PutMaterial(1, "B")
 
-	_, err := tr.DeleteFolder([]string{"/f"}, false, false)
+	_, err := tr.Delete([]string{"/f"}, ptr(false), ptr(false))
 	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{2, 3}) {
 		t.Errorf("not-empty ids %v", e.IDs)
 	}
-	_, err = tr.DeleteFolder([]string{"/f"}, true, false)
+	_, err = tr.Delete([]string{"/f"}, ptr(true), ptr(false))
 	if e := wantErr(t, err, core.KindConflict, core.RuleHasMaterial); !reflect.DeepEqual(e.Paths, []string{"/f:B", "/f:b", "/f/sub:notes.txt"}) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
-	r := must[Removed](t)(tr.DeleteFolder([]string{"/f"}, true, true))
+	r := must[Removed](t)(tr.Delete([]string{"/f"}, ptr(true), ptr(true)))
 	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2, 3, 4}, Released: []int64{5}}) {
 		t.Errorf("delete: %+v", r)
 	}
 	// A folder holding only its gates is empty.
 	must[[]FolderAt](t)(tr.CreateFolder("/g", nil, nil))
 	must[EdgeResult](t)(tr.Block("5", []string{"/g.start"}, nil))
-	must[Removed](t)(tr.DeleteFolder([]string{"/g"}, false, false))
-	_, err = tr.DeleteFolder([]string{"/"}, true, true)
+	must[Removed](t)(tr.Delete([]string{"/g"}, ptr(false), ptr(false)))
+	_, err = tr.Delete([]string{"/"}, ptr(true), ptr(true))
 	wantErr(t, err, core.KindInvalidInput, "")
 	checked(t, tr)
 }
@@ -598,13 +598,13 @@ func TestDeleteSeveral(t *testing.T) {
 		must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: title})) // @1 to @3
 	}
 	must[EdgeResult](t)(tr.Block("2", []string{"1"}, []string{"3"}))
-	_, err := tr.DeleteTask("1", "@1")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+	_, err := tr.Delete([]string{"1", "@1"}, nil, nil)
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("duplicate %v", e.Problems)
 	}
-	_, err = tr.DeleteTask("1", "99")
+	_, err = tr.Delete([]string{"1", "99"}, nil, nil)
 	wantErr(t, err, core.KindNotFound, "")
-	r := must[Removed](t)(tr.DeleteTask("2", "1"))
+	r := must[Removed](t)(tr.Delete([]string{"2", "1"}, nil, nil))
 	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2}, Released: []int64{3}}) {
 		t.Errorf("tasks: %+v", r)
 	}
@@ -614,23 +614,23 @@ func TestDeleteSeveral(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Folder: "/g"}))
 	tr.PutMaterial(5, "x")
 	tr.PutMaterial(6, "y")
-	_, err = tr.DeleteFolder([]string{"/f/sub", "/g", "/f"}, true, true)
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/0"}) {
+	_, err = tr.Delete([]string{"/f/sub", "/g", "/f"}, ptr(true), ptr(true))
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/0"}) {
 		t.Errorf("inside %v", e.Problems)
 	}
-	_, err = tr.DeleteFolder([]string{"/g", "6"}, true, true)
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	_, err = tr.Delete([]string{"/g", "6"}, ptr(true), ptr(true))
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("twice %v", e.Problems)
 	}
-	_, err = tr.DeleteFolder([]string{"/f", "/g"}, false, false)
-	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{5}) {
+	_, err = tr.Delete([]string{"/f", "/g"}, ptr(false), ptr(false))
+	if e := wantErr(t, err, core.KindConflict, core.RuleNotEmpty); !reflect.DeepEqual(e.IDs, []int64{5, 7}) {
 		t.Errorf("not-empty ids %v", e.IDs)
 	}
-	_, err = tr.DeleteFolder([]string{"/g", "/f"}, true, false)
+	_, err = tr.Delete([]string{"/g", "/f"}, ptr(true), ptr(false))
 	if e := wantErr(t, err, core.KindConflict, core.RuleHasMaterial); !reflect.DeepEqual(e.Paths, []string{"/g:y", "/f/sub:x"}) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
-	r = must[Removed](t)(tr.DeleteFolder([]string{"/g", "/f"}, true, true))
+	r = must[Removed](t)(tr.Delete([]string{"/g", "/f"}, ptr(true), ptr(true)))
 	if !reflect.DeepEqual(r.Removed, []int64{4, 5, 6, 7}) || len(r.Released) != 0 {
 		t.Errorf("folders: %+v", r)
 	}
@@ -644,18 +644,18 @@ func TestArchive(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "w", BlockedBy: []string{"2"}}))             // @4
 	tr.PutMaterial(1, ".git")
 
-	_, err := tr.Archive("2")
+	_, _, err := tr.Archive("2")
 	wantErr(t, err, core.KindConflict, core.RuleNotFinished)
 	must[CompleteResult](t)(tr.Complete("2"))
-	_, err = tr.Archive("/f")
+	_, _, err = tr.Archive("/f")
 	if e := wantErr(t, err, core.KindConflict, core.RuleNotFinished); !reflect.DeepEqual(e.IDs, []int64{3}) {
 		t.Errorf("open ids %v", e.IDs)
 	}
 	must[CompleteResult](t)(tr.Complete("@1.done"))
 	ready := tr.readySet()
-	left := must[[]int64](t)(tr.Archive("/f"))
-	if !reflect.DeepEqual(left, []int64{1, 2, 3}) {
-		t.Errorf("left %v", left)
+	archived, left, err := tr.Archive("/f")
+	if err != nil || !reflect.DeepEqual(archived, []int64{1}) || !reflect.DeepEqual(left, []int64{1, 2, 3}) {
+		t.Errorf("archived %v, left %v, %v", archived, left, err)
 	}
 	// What stays keeps its readiness; the edge to what left is removed and
 	// kept in the archive.
@@ -668,7 +668,7 @@ func TestArchive(t *testing.T) {
 		t.Errorf("archive %+v", a)
 	}
 	// Retired IDs never resolve again, and are never issued again.
-	_, err = tr.Archive("2")
+	_, _, err = tr.Archive("2")
 	if e := wantErr(t, err, core.KindNotFound, ""); !reflect.DeepEqual(e.Archived, []int64{2}) {
 		t.Errorf("archived %v", e.Archived)
 	}
@@ -678,11 +678,49 @@ func TestArchive(t *testing.T) {
 	checked(t, tr)
 	// The root can't be archived, and material isn't taken.
 	for _, ref := range []string{"/", "@4:x"} {
-		_, err = tr.Archive(ref)
-		if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/ref"}) {
+		_, _, err = tr.Archive(ref)
+		if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/0"}) {
 			t.Errorf("%s: problems %v", ref, e.Problems)
 		}
 	}
+}
+
+func TestArchiveSeveral(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))                                 // @1
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"}))                           // @2
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", BlockedBy: []string{"2"}})) // @3
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "c", Folder: "/f"}))             // @4
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "d", BlockedBy: []string{"3"}})) // @5
+	must[CompleteResult](t)(tr.Complete("2", "3"))
+
+	// One refused among several archives none of them.
+	_, _, err := tr.Archive("3", "/f", "2")
+	if e := wantErr(t, err, core.KindConflict, core.RuleNotFinished); !reflect.DeepEqual(e.IDs, []int64{4}) || len(tr.Archives) != 0 {
+		t.Errorf("ids %v, archives %d", e.IDs, len(tr.Archives))
+	}
+	_, _, err = tr.Archive("3", "@3")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
+		t.Errorf("problems %v", e.Problems)
+	}
+	_, _, err = tr.Archive("4", "/f")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/0"}) {
+		t.Errorf("problems %v", e.Problems)
+	}
+	must[CompleteResult](t)(tr.Complete("4"))
+	archived, left, err := tr.Archive("3", "/f", "2")
+	if err != nil || !reflect.DeepEqual(archived, []int64{3, 1, 2}) || !reflect.DeepEqual(left, []int64{1, 2, 3, 4}) {
+		t.Fatalf("archived %v, left %v, %v", archived, left, err)
+	}
+	// Each keeps every edge it had, those to the others archived with it
+	// included.
+	if a := tr.Archives[0]; a.ID != 3 || !reflect.DeepEqual(a.Edges, []core.Edge{{From: 3, To: 2}, {From: 5, To: 3}}) {
+		t.Errorf("archive of @3 %+v", a)
+	}
+	if a := tr.Archives[2]; a.ID != 2 || !reflect.DeepEqual(a.Edges, []core.Edge{{From: 3, To: 2}}) {
+		t.Errorf("archive of @2 %+v", a)
+	}
+	checked(t, tr)
 }
 
 func TestClaims(t *testing.T) {
@@ -692,17 +730,26 @@ func TestClaims(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", Folder: "/f/sub", Tags: []string{"x"}}))                           // @4
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "c", Folder: "/f", Tags: []string{"x", "y"}, Priority: ptr[int64](0)})) // @5
 
-	cl := must[Claim](t)(tr.ClaimTask("3", map[string]any{"who": "me"}))
-	if cl.Task != 3 || cl.Extra["who"] != "me" || cl.ClaimedAt == "" {
-		t.Errorf("claim %+v", cl)
+	claimed := must[[]int64](t)(tr.ClaimTask([]string{"3"}, map[string]any{"who": "me"}))
+	if cl := tr.Claims[3]; !reflect.DeepEqual(claimed, []int64{3}) || cl.Extra["who"] != "me" || cl.ClaimedAt == "" {
+		t.Errorf("claimed %v, claim %+v", claimed, cl)
 	}
-	_, err := tr.ClaimTask("3", nil)
+	_, err := tr.ClaimTask([]string{"3"}, nil)
 	wantErr(t, err, core.KindConflict, core.RuleClaimed)
+	// One refused among several claims none of them.
+	_, err = tr.ClaimTask([]string{"4", "3"}, nil)
+	if e := wantErr(t, err, core.KindConflict, core.RuleClaimed); !reflect.DeepEqual(e.IDs, []int64{3}) || tr.claimed(4) {
+		t.Errorf("ids %v, @4 claimed %v", e.IDs, tr.claimed(4))
+	}
+	_, err = tr.ClaimTask([]string{"4", "@4"}, nil)
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+		t.Errorf("problems %v", e.Problems)
+	}
 	// A claim takes the task off the frontier, and nothing else.
 	if got := tr.Frontier(); !reflect.DeepEqual(got, []int64{5, 4}) {
 		t.Errorf("frontier %v", got)
 	}
-	must[bool](t)(tr.UpdateTask("3", Update{SetTitle: true, Title: ptr("a2")}))
+	must[[]int64](t)(tr.Update([]string{"3"}, Update{SetTitle: true, Title: ptr("a2")}))
 
 	next := func(s Scope) int64 {
 		c := must[*Claim](t)(tr.ClaimNext(s, nil))
@@ -711,21 +758,22 @@ func TestClaims(t *testing.T) {
 		}
 		return c.Task
 	}
-	if got := next(Scope{Folder: "/f", Recursive: false, TagsAll: []string{"x"}}); got != 5 {
+	if got := next(Scope{Folder: "/f", Direct: true, TagsAll: []string{"x"}}); got != 5 {
 		t.Errorf("claim-next direct in /f: %d", got)
 	}
-	if got := next(Scope{Folder: "/f", Recursive: true, TagsAny: []string{"x"}}); got != 4 {
+	if got := next(Scope{Folder: "/f", TagsAny: []string{"x"}}); got != 4 {
 		t.Errorf("claim-next under /f: %d", got)
 	}
-	if got := next(Scope{Recursive: true}); got != 0 {
+	if got := next(Scope{}); got != 0 {
 		t.Errorf("claim-next with nothing left: %d", got)
 	}
 
-	if !must[bool](t)(tr.Unclaim("4")) || tr.claimed(4) {
-		t.Error("unclaim")
+	must[[]int64](t)(tr.Unclaim("3"))
+	if got := must[[]int64](t)(tr.Unclaim("3", "5", "4")); !reflect.DeepEqual(got, []int64{5, 4}) || tr.claimed(4) {
+		t.Errorf("unclaimed %v", got)
 	}
 	must[CompleteResult](t)(tr.Complete("4"))
-	_, err = tr.ClaimTask("4", nil)
+	_, err = tr.ClaimTask([]string{"4"}, nil)
 	wantErr(t, err, core.KindConflict, core.RuleComplete)
 	checked(t, tr)
 }
@@ -752,7 +800,7 @@ func TestCase(t *testing.T) {
 		t.Errorf("tree order %v", tr.TreeOrder())
 	}
 	// Changing a folder's case is a rename.
-	must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Work", "/work"))
+	must[MoveResult](t)(tr.Move(MvDest, "/Work", "/work"))
 	if tr.Path(2) != "/Work/a" {
 		t.Errorf("path %s", tr.Path(2))
 	}
@@ -773,7 +821,7 @@ func TestBlockSubjectGate(t *testing.T) {
 	_, err = tr.Block("/f.start", []string{"/f.start"}, nil)
 	wantErr(t, err, core.KindInvalidInput, "")
 	_, err = tr.Block("@1", []string{"3"}, nil)
-	wantErr(t, err, core.KindNotFound, "")
+	wantErr(t, err, core.KindInvalidInput, "")
 	if tr.Issued != 3 {
 		t.Fatalf("a refused change issued IDs: %d", tr.Issued)
 	}
@@ -798,38 +846,38 @@ func TestMoveGateToItsFolder(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
-	_, err := tr.MoveTask("/a", "/a.done")
+	_, err := tr.Move(MvInto, "/a", "/a.done")
 	wantErr(t, err, core.KindConflict, core.RuleGate)
 }
 
-// folder mv checks into-itself, then case-mismatch, then exists. A path
+// mv checks into-itself, then case-mismatch, then exists. A path
 // names a folder only in its exact case, so into-itself follows exact
 // names.
 func TestMoveFolderOrder(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a/b", nil, nil)) // @1, @2
 	must[[]FolderAt](t)(tr.CreateFolder("/c/d", nil, nil)) // @3, @4
-	_, err := tr.MoveFolder(MvRename, "/a/b", "@1")
+	_, err := tr.Move(MvRename, "/a/b", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
-	_, err = tr.MoveFolder(MvRename, "/a/B/x", "@1")
+	_, err = tr.Move(MvRename, "/a/B/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
-	_, err = tr.MoveFolder(MvDest, "/a/B/x", "@1")
+	_, err = tr.Move(MvDest, "/a/B/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
 	// Into itself names the new path from the root, however it is written.
 	for dest, path := range map[string]string{"@2/x": "/a/b/x", "@1/x": "/a/x", "2": "/a/b"} {
-		_, err = tr.MoveFolder(MvRename, dest, "@1")
+		_, err = tr.Move(MvRename, dest, "@1")
 		wantErr(t, err, core.KindConflict, core.RuleIntoItself)
 		if e := err.(*core.Error); len(e.Paths) != 1 || e.Paths[0] != path {
 			t.Errorf("%s: into-itself at %v, want %s", dest, e.Paths, path)
 		}
 	}
-	_, err = tr.MoveFolder(MvRename, "/C/d", "@1")
+	_, err = tr.Move(MvRename, "/C/d", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
-	_, err = tr.MoveFolder(MvRename, "/A/x", "@1")
+	_, err = tr.Move(MvRename, "/A/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
-	_, err = tr.MoveFolder(MvRename, "/c/d", "@1")
+	_, err = tr.Move(MvRename, "/c/d", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleExists)
-	_, err = tr.MoveFolder(MvRename, "@4", "@1")
+	_, err = tr.Move(MvRename, "@4", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleExists)
 	checked(t, tr)
 }
@@ -840,6 +888,6 @@ func TestDeleteFolderDSStore(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/f/sub", nil, nil)) // @1, @2
 	tr.PutMaterial(2, ".DS_Store")
 	tr.PutMaterial(1, ".DS_Store")
-	must[Removed](t)(tr.DeleteFolder([]string{"/f"}, true, false))
+	must[Removed](t)(tr.Delete([]string{"/f"}, ptr(true), ptr(false)))
 	checked(t, tr)
 }

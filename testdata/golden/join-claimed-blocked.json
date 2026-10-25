@@ -10,7 +10,7 @@
           "id": 1,
           "path": "/b"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 4,
@@ -18,7 +18,7 @@
           "id": 1,
           "path": "/b"
         },
-        "end": "done"
+        "gate": "done"
       }
     ],
     "reblocked": [

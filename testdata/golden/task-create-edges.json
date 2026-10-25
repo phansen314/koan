@@ -11,7 +11,7 @@
           "id": 1,
           "path": "/work"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 5,
@@ -19,7 +19,7 @@
           "id": 1,
           "path": "/work"
         },
-        "end": "done"
+        "gate": "done"
       }
     ],
     "reblocked": []

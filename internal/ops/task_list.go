@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"github.com/phansen314/koan/internal/cli"
-	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
 )
@@ -23,7 +22,8 @@ func TaskList() *cli.Command {
 		Name:    "task list",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "recursive", Kind: cli.Bool},
+			{Field: "file", Kind: cli.Path},
+			{Field: "direct", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},
 			{Field: "tags_any", Kind: cli.List},
@@ -32,10 +32,11 @@ func TaskList() *cli.Command {
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},
 		},
+		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			ref := r.ref("folder", core.WantFolder, "/")
-			recursive := r.boolean("recursive", true)
+			q := r.foldering("folder")
+			direct := r.boolean("direct", false)
 			states := r.choices("state", []string{"open", "complete"}, []string{"open"})
 			readiness := r.choices("readiness", []string{"ready", "blocked"}, []string{"ready", "blocked"})
 			tagsAny := r.tags("tags_any")
@@ -52,17 +53,18 @@ func TaskList() *cli.Command {
 			}
 			defer s.Close()
 			res := TaskListResult{Tasks: []Cut[Task]{}}
+			var stale []cli.Warning
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
-				folder, err := resolveFolder(tx, ref, "folder")
-				if err != nil {
-					return nil, err
-				}
 				t, err := loadTasks(tx, s.Root)
 				if err != nil {
 					return nil, err
 				}
+				var folder int64
+				if folder, _, stale, err = subjectFolder(tx, t, q); err != nil {
+					return nil, err
+				}
 				keep := func(id int64) bool {
-					if !t.in(id, folder, recursive) || !slices.Contains(states, t.state(id)) {
+					if !t.in(id, folder, direct) || !slices.Contains(states, t.state(id)) {
 						return false
 					}
 					if ready := t.readiness(id); ready != nil && !slices.Contains(readiness, *ready) {
@@ -99,7 +101,7 @@ func TaskList() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			return res, warnings, nil
+			return res, append(warnings, stale...), nil
 		},
 	}
 }

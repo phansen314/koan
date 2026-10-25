@@ -1,8 +1,9 @@
 {
   "ok": true,
   "result": {
-    "id": 1,
-    "changed": true
+    "updated": [
+      1
+    ]
   },
   "warnings": []
 }

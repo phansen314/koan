@@ -53,22 +53,21 @@ var move = &Command{
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
-// rename is move with -T as well, which makes the subject one word and
-// can't go with -t.
+// rename is move with -T as well, which makes the subject one word for
+// completion only: the line still reads as a list before an object.
 var rename = &Command{
 	Name:    "folder mv",
 	Subject: &Option{Field: "folders", Kind: List, Arg: "folder", Required: true},
 	Object:  &Option{Field: "dest", Required: true},
 	Instead: "into",
 	Single:  "rename",
-	Apart:   []string{"into", "rename"},
 	Options: []Option{{Field: "into", Short: "t"}, {Field: "rename", Short: "T", Kind: Bool}},
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
 // bind takes a subject, then a directory it can do without.
 var bind = &Command{
-	Name:    "marker bind",
+	Name:    "bind",
 	Subject: &Option{Field: "folder", Required: true},
 	Object:  &Option{Field: "dir", Kind: Path},
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
@@ -78,7 +77,7 @@ var bind = &Command{
 var scope = &Command{
 	Name:    "task list",
 	Subject: &Option{Field: "folder"},
-	Options: []Option{{Field: "recursive", Kind: Bool}},
+	Options: []Option{{Field: "direct", Kind: Bool}},
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
@@ -166,13 +165,14 @@ func TestParseLines(t *testing.T) {
 		{rename, []string{"-T", "/a", "/b"}, `{"folders":["/a"],"dest":"/b","rename":true}`},
 		{rename, []string{"/a", "--rename", "/b,c"}, `{"folders":["/a"],"dest":"/b,c","rename":true}`},
 		{rename, []string{"-T", "/a,/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":true}`},
+		{rename, []string{"-T", "/a", "/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":true}`},
 		{rename, []string{"--rename=false", "/a", "/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":false}`},
 		{bind, []string{"@41"}, `{"folder":"@41"}`},
 		{bind, []string{"@41", "/d"}, `{"folder":"@41","dir":"/d"}`},
 		{bind, []string{"@41", "/d,e"}, `{"folder":"@41","dir":"/d,e"}`},
 		{scope, nil, `{}`},
 		{scope, []string{"/w"}, `{"folder":"/w"}`},
-		{scope, []string{"/w,x", "--recursive=false"}, `{"folder":"/w,x","recursive":false}`},
+		{scope, []string{"/w,x", "--direct"}, `{"folder":"/w,x","direct":true}`},
 	}
 	for _, c := range cases {
 		l, e := c.cmd.parse(c.args)
@@ -212,8 +212,6 @@ func TestParseUsage(t *testing.T) {
 		args  []string
 		field string
 	}{
-		{fake, nil, ""},
-		{fake, []string{"--priority", "2"}, ""},
 		{fake, []string{"a", "b"}, "b"},
 		{fake, []string{"a", "--", "b"}, "b"},
 		{fake, []string{"t", "--frob"}, "--frob"},
@@ -257,23 +255,12 @@ func TestParseUsage(t *testing.T) {
 		{optional, []string{"a", "b"}, "b"},
 		{bare, []string{"x"}, "x"},
 		{bare, []string{"--", "x"}, "x"},
-		{join, nil, ""},
-		{join, []string{"42"}, ""},
 		{join, []string{"-i", "f", "42"}, "42"},
 		{join, []string{"42", "/a", "--join", "/b"}, "--join"},
-		{move, nil, ""},
-		{move, []string{"42"}, ""},
-		{move, []string{"-t", "/w"}, ""},
 		{move, []string{"-t", "/w", "-t", "/x", "42"}, "--into"},
 		{move, []string{"-i", "f", "42", "/w"}, "42"},
 		{move, []string{"-i", "f", "-t", "/w"}, "--into"},
-		{rename, []string{"/a"}, ""},
-		{rename, []string{"-T", "/a"}, ""},
-		{rename, []string{"-T", "/a", "/b", "/c"}, "/c"},
-		{rename, []string{"-T", "-t", "/c", "/a"}, ""},
-		{rename, []string{"-t", "/c", "/a", "-T"}, ""},
 		{rename, []string{"/a", "/b", "--to", "/c"}, "--to"},
-		{bind, nil, ""},
 		{bind, []string{"@41", "/d", "/e"}, "/e"},
 		{bind, []string{"@41", "--dir", "/d"}, "--dir"},
 		{scope, []string{"/a", "/b"}, "/b"},
@@ -288,6 +275,39 @@ func TestParseUsage(t *testing.T) {
 		}
 		if e.Kind != KindUsage || len(e.Problems) != 1 || e.Problems[0].Field != c.field {
 			t.Errorf("%s %q: got %s %+v, want usage at %q", c.cmd.Name, c.args, e.Kind, e.Problems, c.field)
+		}
+	}
+}
+
+// A missing subject or object, and options that can't both be given, can
+// be turned into an input, so they parse: the input refuses them.
+func TestParseMissing(t *testing.T) {
+	cases := []struct {
+		cmd  *Command
+		args []string
+		in   Input
+	}{
+		{fake, nil, Input{}},
+		{fake, []string{"--priority", "2"}, Input{"priority": json.Number("2")}},
+		{join, nil, Input{}},
+		{join, []string{"42"}, Input{"ref": "42"}},
+		{move, nil, Input{}},
+		{move, []string{"42"}, Input{"tasks": []any{"42"}}},
+		{move, []string{"-t", "/w"}, Input{"into": "/w"}},
+		{rename, []string{"/a"}, Input{"folders": []any{"/a"}}},
+		{rename, []string{"-T", "/a"}, Input{"folders": []any{"/a"}, "rename": true}},
+		{rename, []string{"-T", "-t", "/c", "/a"}, Input{"folders": []any{"/a"}, "rename": true, "into": "/c"}},
+		{rename, []string{"-t", "/c", "/a", "-T"}, Input{"folders": []any{"/a"}, "rename": true, "into": "/c"}},
+		{bind, nil, Input{}},
+	}
+	for _, c := range cases {
+		l, e := c.cmd.parse(c.args)
+		if e != nil {
+			t.Errorf("%s %q: %s %+v, want it to parse", c.cmd.Name, c.args, e.Kind, e.Problems)
+			continue
+		}
+		if !reflect.DeepEqual(l.in, c.in) {
+			t.Errorf("%s %q: input %#v, want %#v", c.cmd.Name, c.args, l.in, c.in)
 		}
 	}
 }

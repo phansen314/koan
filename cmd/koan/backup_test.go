@@ -194,7 +194,7 @@ func TestBackupRefused(t *testing.T) {
 	}
 
 	// On the command line a relative dir is made absolute from the
-	// working directory, as --dir is for marker bind; through --input it
+	// working directory, as --dir is for bind; through --input it
 	// must be absolute.
 	fails(t, home, "invalid-input", "", "backup", filepath.Join("koan-root", "rel"))
 	r := ok(t, home, "backup", "rel")
@@ -207,7 +207,7 @@ func TestBackupRefused(t *testing.T) {
 		t.Errorf("a relative dir: %s", r.Line())
 	}
 	r = koan(t, home, "backup")
-	if r.Exit != 2 || r.Kind() != "usage" {
+	if r.Kind() != "invalid-input" {
 		t.Errorf("no dir: %s", r.Line())
 	}
 	fails(t, t.TempDir(), "not-initialized", "", "backup", filepath.Join(home, "new"))

@@ -71,7 +71,7 @@ func TestCaseTable(t *testing.T) {
 			{args: []string{"folder", "create", "/Work"}, kind: "conflict", rule: "case-mismatch", paths: "[/Work /work]"},
 			{args: []string{"folder", "create", "/work/API"}, kind: "conflict", rule: "case-mismatch", paths: "[/work/API /work/api]"},
 			{args: []string{"folder", "create", "/web"}},
-			{args: []string{"folder", "mv", "/web", "/WORK"}, kind: "conflict", rule: "case-mismatch"},
+			{args: []string{"mv", "/web", "/WORK"}, kind: "conflict", rule: "case-mismatch"},
 			{args: []string{"batch", "-i", "-"}, stdin: `{"folders":[{"path":"/web/Api"},{"path":"/work/Api"}]}`, kind: "conflict", rule: "case-mismatch"},
 			{args: []string{"folder", "list", "--fields", "path"}, check: listed("", "@web", "@work")},
 		}},
@@ -81,20 +81,20 @@ func TestCaseTable(t *testing.T) {
 			{args: []string{"show", "/WORK"}, kind: "conflict", rule: "case-mismatch"},
 			{args: []string{"show", "/Work.start"}, kind: "conflict", rule: "case-mismatch"},
 			{args: []string{"where", "/Work/api"}, kind: "conflict", rule: "case-mismatch"},
-			{args: []string{"folder", "delete", "/work/Api"}, kind: "conflict", rule: "case-mismatch"},
+			{args: []string{"delete", "/work/Api"}, kind: "conflict", rule: "case-mismatch"},
 			{args: []string{"show", "/work/api"}},
 		}},
 		{"One input never names two paths that differ only in case", []caseRow{
 			{args: []string{"folder", "create", "/proj/a"}},
 			{args: []string{"task", "create", "t", "--folder", "/proj/a", "--blocks", "/Proj/a.done"}, kind: "invalid-input", prob: "/folder /blocks/0"},
-			{args: []string{"folder", "mv", "/proj/a", "/Proj/b"}, kind: "invalid-input"},
+			{args: []string{"mv", "/proj/a", "/Proj/b"}, kind: "invalid-input"},
 			{args: []string{"batch", "-i", "-"}, stdin: `{"folders":[{"path":"/Proj/a"},{"path":"/proj/b"}]}`, kind: "invalid-input"},
 			// From different starts, they are compared as they resolve.
 			{args: []string{"task", "create", "t", "--folder", "/proj/a", "--blocks", "@3/A.done"}, kind: "conflict", rule: "case-mismatch"},
 		}},
 		{"Changing a folder's case is a rename", []caseRow{
 			{args: []string{"task", "create", "t", "--folder", "/work/api", "--notes", "kept"}},
-			{args: []string{"folder", "mv", "/work/api", "/work/API"}, check: listed("@work", "@API", "@notes.md")},
+			{args: []string{"mv", "/work/api", "/work/API"}, check: listed("@work", "@API", "@notes.md")},
 			{args: []string{"show", "/work/API"}},
 			{args: []string{"show", "3"}, check: func(t *testing.T, home string, r *testrun.Result) {
 				b, err := os.ReadFile(treePath(home, "@work/@API/@3.md"))
@@ -102,9 +102,9 @@ func TestCaseTable(t *testing.T) {
 					t.Errorf("notes after the respell: %q, %v", b, err)
 				}
 			}},
-			{args: []string{"folder", "mv", "/work", "/Work"}, check: listed("", "@Work")},
-			{args: []string{"folder", "mv", "/Work/API", "/work/b"}, kind: "invalid-input"},
-			{args: []string{"folder", "mv", "/Work/API", "/WORK/API"}, kind: "invalid-input"},
+			{args: []string{"mv", "/work", "/Work"}, check: listed("", "@Work")},
+			{args: []string{"mv", "/Work/API", "/work/b"}, kind: "invalid-input"},
+			{args: []string{"mv", "/Work/API", "/WORK/API"}, kind: "invalid-input"},
 			{args: []string{"doctor"}, check: func(t *testing.T, home string, r *testrun.Result) {
 				if len(r.Result()["findings"].([]any)) != 0 {
 					t.Errorf("doctor: %s", r.Line())
@@ -170,7 +170,7 @@ func TestCaseTable(t *testing.T) {
 			{args: []string{"show", "/work/api"}, check: func(t *testing.T, home string, r *testrun.Result) {
 				writeTree(t, home, "@work/@api/Docs/Plan.MD", "material")
 			}},
-			{args: []string{"folder", "delete", "/work/api"}, kind: "conflict", rule: "has-material", paths: "[/work/api:Docs]"},
+			{args: []string{"delete", "/work/api"}, kind: "conflict", rule: "has-material", paths: "[/work/api:Docs]"},
 		}},
 	} {
 		t.Run(c.rule, func(t *testing.T) {

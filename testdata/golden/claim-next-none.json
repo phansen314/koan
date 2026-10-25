@@ -1,8 +1,7 @@
 {
   "ok": true,
   "result": {
-    "task": null,
-    "claim": null
+    "task": null
   },
   "warnings": []
 }

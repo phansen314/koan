@@ -199,18 +199,18 @@ func TestExportMarkers(t *testing.T) {
 	ok(t, home, "task", "create", "a", "--folder", "/work/api")
 	byRef := ok(t, home, "export", "/work/api").Stdout
 	wt := mkdir(t, home, "wt")
-	ok(t, home, "marker", "bind", "/work/api", wt)
+	ok(t, home, "bind", "/work/api", wt)
 	if r := ok(t, home, "export", "--file", wt+"/src/x.go"); r.Stdout != byRef {
 		t.Errorf("--file: %s", r.Line())
 	}
-	if r := koanIn(t, home, mkdir(t, wt, "src"), "export"); r.Exit != 0 || r.Stdout != byRef {
+	if r := koanIn(t, home, mkdir(t, wt, "src"), "export", "--here"); r.Exit != 0 || r.Stdout != byRef {
 		t.Errorf("working directory: %s", r.Line())
 	}
-	if id := koanIn(t, home, treeAt(home, "@work"), "export").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
+	if id := koanIn(t, home, treeAt(home, "@work"), "export", "--here").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
 		t.Errorf("working directory in the tree: %v", id)
 	}
 
-	ok(t, home, "folder", "mv", "-T", "/work/api", "/work/web")
+	ok(t, home, "mv", "-T", "/work/api", "/work/web")
 	r := koan(t, home, "export", "--file", wt)
 	ws := r.Envelope["warnings"].([]any)
 	if r.Exit != 0 || len(ws) != 1 || ws[0].(map[string]any)["kind"] != "stale-marker" || r.Stderr != "koan: 1 warning\n" {
@@ -218,7 +218,7 @@ func TestExportMarkers(t *testing.T) {
 	}
 	goldenNow(t, r, "export-stale-marker")
 
-	// A copied marker binds nothing.
+	// A copied binds nothing.
 	copied := mkdir(t, home, "copy", ".koan")
 	for _, f := range []string{"marker.json", ".gitignore"} {
 		b, err := os.ReadFile(filepath.Join(wt, ".koan", f))
@@ -235,14 +235,14 @@ func TestExportMarkers(t *testing.T) {
 	// Its folder deleted, or archived.
 	dir := mkdir(t, home, "gone")
 	ok(t, home, "folder", "create", "/gone") // 4
-	ok(t, home, "marker", "bind", "/gone", dir)
-	ok(t, home, "folder", "delete", "/gone")
+	ok(t, home, "bind", "/gone", dir)
+	ok(t, home, "delete", "/gone")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[4]" || len(r.Error()["archived"].([]any)) != 0 {
 		t.Errorf("deleted: %s", r.Line())
 	}
 	ok(t, home, "folder", "create", "/done") // 5
-	ok(t, home, "marker", "bind", "/done", dir)
+	ok(t, home, "bind", "/done", dir)
 	ok(t, home, "archive", "/done")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[5]" || len(r.Error()["archived"].([]any)) != 1 {
@@ -260,7 +260,7 @@ func TestExportRefusals(t *testing.T) {
 	if a := r.Error()["archived"].([]any); len(a) != 1 {
 		t.Errorf("archived: %s", r.Line())
 	}
-	fails(t, home, "not-found", "", "export", "5")
+	fails(t, home, "invalid-input", "", "export", "5")
 	fails(t, home, "not-found", "", "export", "/nope")
 	fails(t, home, "invalid-input", "", "export", "/work/api.done")
 	fails(t, home, "invalid-input", "", "export", "/work/api:docs")
@@ -273,7 +273,7 @@ func TestExportRefusals(t *testing.T) {
 		r.Check(t, "export")
 		return r
 	}
-	if r := in(`{}`); r.Kind() != "invalid-input" {
+	if r := in(`{}`); !r.OK() || r.Stdout != ok(t, home, "export", "/").Stdout {
 		t.Errorf("{}: %s", r.Line())
 	}
 	if r := in(`{"folder":"/work","file":"/x"}`); r.Kind() != "invalid-input" {

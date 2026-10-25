@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"github.com/phansen314/koan/internal/cli"
-	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
 )
@@ -27,10 +26,10 @@ func Export() *cli.Command {
 		Name:    "export",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
-		Here:    &cli.Here{Field: "file", Unless: []string{"folder"}},
+		Here:    &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			q := r.locating("folder", core.WantFolder)
+			q := r.foldering("folder")
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}
@@ -52,14 +51,14 @@ func Export() *cli.Command {
 				}
 				res.Folder = t.folders.record(id)
 				paths := recordPaths(Cut[Folder]{Record: res.Folder})
-				for _, f := range t.folders.under(id, true) {
+				for _, f := range t.folders.under(id, false) {
 					rec := t.folders.record(f)
 					res.Folders = append(res.Folders, rec)
 					paths = append(paths, recordPaths(Cut[Folder]{Record: rec})...)
 				}
 				under := map[int64]bool{}
 				for _, tid := range t.order {
-					if t.in(tid, id, true) {
+					if t.in(tid, id, false) {
 						under[tid] = true
 						rec := t.record(tid)
 						res.Tasks = append(res.Tasks, rec)

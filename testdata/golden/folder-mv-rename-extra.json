@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "kind": "usage",
+    "kind": "invalid-input",
     "rule": null,
-    "message": "a word past the object: folder mv takes one dest",
+    "message": "a rename takes one folder",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "/c",
-        "reason": "a word past the object: folder mv takes one dest"
+        "field": "/refs/1",
+        "reason": "a rename takes one folder"
       }
     ],
     "archived": []

@@ -18,10 +18,15 @@ import (
 
 // ArchiveResult is archive's result, in its schema's order.
 type ArchiveResult struct {
+	Archived []ArchivedItem `json:"archived"`
+	Removed  []int64        `json:"removed"`
+}
+
+// ArchivedItem is where one subject of archive went.
+type ArchivedItem struct {
 	ID      int64   `json:"id"`
 	Archive *string `json:"archive"`
 	JSON    string  `json:"json"`
-	Removed []int64 `json:"removed"`
 }
 
 // archiveFile is the JSON beside an archived item, in the archive-file
@@ -101,18 +106,17 @@ type leaving struct {
 	missing bool
 }
 
-// Archive moves a complete task, a gate included, or a finished folder
-// with everything under it, to the archive, with its JSON beside it.
+// Archive moves complete tasks, gates included, and finished folders
+// with everything under them, mixed, to the archive, each with its JSON
+// beside it, as one change: if any is refused, none goes.
 func Archive() *cli.Command {
 	return &cli.Command{
 		Name:    "archive",
-		Subject: &cli.Option{Field: "ref", Required: true, Complete: archivable.complete()},
+		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Required: true, Complete: archivable.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			ref := r.ref("ref", core.WantRef, "")
-			if ref.IsRoot() {
-				r.fault("/ref", "the root can't be archived")
-			}
+			refs, at := r.subjectRefs("archived")
+			r.sameCase(refs, at)
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}
@@ -122,18 +126,60 @@ func Archive() *cli.Command {
 			}
 			defer s.Close()
 			return s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
-				got, err := resolve(tx, ref, core.WantRef, "ref")
+				subs, err := resolveSubjects(tx, refs, at, "archived")
 				if err != nil {
+					return nil, nil, err
+				}
+				if err := within(tx, subs, at); err != nil {
 					return nil, nil, err
 				}
 				t, err := loadTasks(tx, s.Root)
 				if err != nil {
 					return nil, nil, err
 				}
-				if got.Kind == core.ResolvedTask {
-					return t.archiveTask(tx, s.Root, got.ID)
+				// Each archive is made from the tree as it was, so it keeps
+				// the edges to the others archived with it.
+				var open []int64
+				for _, sub := range subs {
+					if !sub.folder {
+						if t.Open(sub.id) {
+							open = append(open, sub.id)
+						}
+						continue
+					}
+					for _, tid := range t.order {
+						if t.in(tid, sub.id, false) && t.Open(tid) {
+							open = append(open, tid)
+						}
+					}
 				}
-				return t.archiveFolder(tx, s.Root, got.ID)
+				// One subject keeps its own message, from its own check.
+				if len(open) > 0 && len(subs) > 1 {
+					slices.Sort(open)
+					open = slices.Compact(open)
+					return nil, nil, core.Conflict(core.RuleNotFinished, open, nil,
+						"%s %s open; complete them before archiving", core.FormatIDs(open), isAre(len(open)))
+				}
+				res := ArchiveResult{Archived: []ArchivedItem{}, Removed: []int64{}}
+				for _, sub := range subs {
+					var l leaving
+					if sub.folder {
+						l, err = t.archiveFolder(tx, s.Root, sub.id)
+					} else {
+						l, err = t.archiveTask(tx, s.Root, sub.id)
+					}
+					if err != nil {
+						return nil, nil, err
+					}
+					item, err := t.archive(tx, l)
+					if err != nil {
+						return nil, nil, err
+					}
+					res.Archived = append(res.Archived, item)
+					res.Removed = append(res.Removed, slices.Concat(l.tasks, l.folders)...)
+				}
+				slices.Sort(res.Removed)
+				return res, nil, nil
 			})
 		},
 	}
@@ -142,14 +188,14 @@ func Archive() *cli.Command {
 // archiveTask moves a complete task to the archive, its notes as
 // @<id>.md, or a gate's as @<id>_start.md or @<id>_done.md, with its JSON
 // beside them, under directories named after the folders it was in.
-func (t *tasks) archiveTask(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error) {
+func (t *tasks) archiveTask(tx *store.Tx, root store.Root, id int64) (leaving, error) {
 	if t.Open(id) {
-		return nil, nil, core.Conflict(core.RuleNotFinished, []int64{id}, nil, "@%d is open; complete it before archiving it", id)
+		return leaving{}, core.Conflict(core.RuleNotFinished, []int64{id}, nil, "@%d is open; complete it before archiving it", id)
 	}
 	row := t.rows[id]
 	above, err := archiveAbove(tx, root, t.paths[row.Folder])
 	if err != nil {
-		return nil, nil, err
+		return leaving{}, err
 	}
 	name := "@" + strconv.FormatInt(id, 10)
 	if row.Gate != core.EndNone {
@@ -159,25 +205,25 @@ func (t *tasks) archiveTask(tx *store.Tx, root store.Root, id int64) (any, []cli
 		from: t.notesRel(id), to: path.Join(above, name+".md"), file: path.Join(above, name+".json")}
 	there, err := fsstep.There(root, l.from)
 	if err != nil {
-		return nil, nil, lookErr(root, path.Dir(l.from), err)
+		return leaving{}, lookErr(root, path.Dir(l.from), err)
 	}
 	l.missing = !there
 	l.index = map[int64]string{id: l.to}
 	if l.missing {
 		l.index[id] = l.file
 	}
-	return t.archive(tx, l)
+	return l, nil
 }
 
 // archiveFolder moves a finished folder to the archive with everything
 // under it, gates, notes and material included: its directory, renamed
 // @<id>_<name>, with its JSON beside it, under directories named after
 // the folders it was in.
-func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error) {
-	l := leaving{id: id, kind: "folder", path: t.paths[id], folders: append([]int64{id}, t.under(id, true)...), dir: true}
+func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (leaving, error) {
+	l := leaving{id: id, kind: "folder", path: t.paths[id], folders: append([]int64{id}, t.under(id, false)...), dir: true}
 	var open []int64
 	for _, tid := range t.order {
-		if t.in(tid, id, true) {
+		if t.in(tid, id, false) {
 			l.tasks = append(l.tasks, tid)
 			if t.Open(tid) {
 				open = append(open, tid)
@@ -186,13 +232,13 @@ func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (any, []c
 	}
 	if len(open) > 0 {
 		slices.Sort(open)
-		return nil, nil, core.Conflict(core.RuleNotFinished, open, nil,
+		return leaving{}, core.Conflict(core.RuleNotFinished, open, nil,
 			"%s under @%d %s open; complete them before archiving it", core.FormatIDs(open), id, isAre(len(open)))
 	}
 	row := t.folders.rows[id]
 	above, err := archiveAbove(tx, root, t.paths[row.Parent])
 	if err != nil {
-		return nil, nil, err
+		return leaving{}, err
 	}
 	name := "@" + strconv.FormatInt(id, 10) + "_" + row.Name
 	l.from = fsstep.FolderDir(l.path)
@@ -206,7 +252,7 @@ func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (any, []c
 	for _, tid := range l.tasks {
 		l.index[tid] = l.to + strings.TrimPrefix(t.notesRel(tid), l.from)
 	}
-	return t.archive(tx, l)
+	return l, nil
 }
 
 func isAre(n int) string {
@@ -239,33 +285,34 @@ func lookErr(root store.Root, rel string, err error) error {
 // archive removes the rows of what leaves, every edge between it and what
 // stays, and adds the step that moves it to the archive with its JSON,
 // which carries the rows. Removing them gives what waited on it a new
-// updated_at; none is released, since a complete task never blocks.
-func (t *tasks) archive(tx *store.Tx, l leaving) (any, []cli.Warning, error) {
+// updated_at; none is released, since a complete task never blocks. The
+// JSON is made from t, which removing leaves as it was.
+func (t *tasks) archive(tx *store.Tx, l leaving) (ArchivedItem, error) {
 	rows, err := json.Marshal(t.archiveFile(tx.Now, l))
 	if err != nil {
-		return nil, nil, err
+		return ArchivedItem{}, err
 	}
 	if _, err := tx.RemoveTasks(l.tasks, l.index); err != nil {
-		return nil, nil, err
+		return ArchivedItem{}, err
 	}
 	if len(l.folders) > 0 {
 		// Each folder goes before its parent.
 		gone := slices.Clone(l.folders)
 		slices.Reverse(gone)
 		if err := tx.RemoveFolders(gone, l.index); err != nil {
-			return nil, nil, err
+			return ArchivedItem{}, err
 		}
 	}
 	step := fsstep.Step{Op: fsstep.OpArchive, From: l.from, To: l.to, File: l.file, Dir: l.dir, Rows: rows}
 	if _, err := fsstep.Add(tx, step); err != nil {
-		return nil, nil, err
+		return ArchivedItem{}, err
 	}
-	res := ArchiveResult{ID: l.id, JSON: fsstep.Abs(t.root, l.file), Removed: slices.Sorted(slices.Values(slices.Concat(l.tasks, l.folders)))}
+	item := ArchivedItem{ID: l.id, JSON: fsstep.Abs(t.root, l.file)}
 	if !l.missing {
 		at := fsstep.Abs(t.root, l.to)
-		res.Archive = &at
+		item.Archive = &at
 	}
-	return res, nil, nil
+	return item, nil
 }
 
 // archiveFile is the JSON of what leaves: its folders and tasks, and

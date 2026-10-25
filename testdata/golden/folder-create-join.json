@@ -5,7 +5,7 @@
     "ref": "@2 (/f/g)",
     "notes_path": "$HOME/koan-root/tree/@f/@g/@notes.md",
     "dir": "$HOME/koan-root/tree/@f/@g",
-    "created": [
+    "folders_made": [
       {
         "id": 2,
         "path": "/f/g"
@@ -18,7 +18,7 @@
           "id": 2,
           "path": "/f/g"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 4,
@@ -26,7 +26,7 @@
           "id": 2,
           "path": "/f/g"
         },
-        "end": "done"
+        "gate": "done"
       },
       {
         "id": 5,
@@ -34,7 +34,7 @@
           "id": 1,
           "path": "/f"
         },
-        "end": "start"
+        "gate": "start"
       },
       {
         "id": 6,
@@ -42,7 +42,7 @@
           "id": 1,
           "path": "/f"
         },
-        "end": "done"
+        "gate": "done"
       }
     ],
     "reblocked": []

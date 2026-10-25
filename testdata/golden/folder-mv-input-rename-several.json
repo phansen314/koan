@@ -8,7 +8,7 @@
     "paths": [],
     "problems": [
       {
-        "field": "/folders/1",
+        "field": "/refs/1",
         "reason": "a rename takes one folder"
       }
     ],

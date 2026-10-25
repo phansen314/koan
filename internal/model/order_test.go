@@ -29,7 +29,7 @@ func TestShapeBeforeReferences(t *testing.T) {
 			return err
 		}, []string{"/title", "/priority", "/tags/0", "/tags/2", "/blocked_by/1", "/blocks/0"}},
 		{"an empty title on a task that names nothing", func() error {
-			_, err := tr.UpdateTask("@999", Update{SetTitle: true, Title: ptr("")})
+			_, err := tr.Update([]string{"@999"}, Update{SetTitle: true, Title: ptr("")})
 			return err
 		}, []string{"/title"}},
 		{"a value fault in a later batch part", func() error {
@@ -52,11 +52,11 @@ func TestShapeBeforeReferences(t *testing.T) {
 			return err
 		}, []string{"/folder", "/blocked_by/0"}},
 		{"a combination points at the object", func() error {
-			_, err := tr.UpdateTask("3", Update{TagsReplaceAll: []string{"a"}, TagsAdd: []string{"b"}})
+			_, err := tr.Update([]string{"3"}, Update{TagsReplaceAll: []string{"a"}, TagsAdd: []string{"b"}})
 			return err
 		}, []string{""}},
 		{"nothing to change", func() error {
-			_, err := tr.UpdateTask("3", Update{})
+			_, err := tr.Update([]string{"3"}, Update{})
 			return err
 		}, []string{""}},
 		{"no edge given", func() error {
@@ -64,7 +64,7 @@ func TestShapeBeforeReferences(t *testing.T) {
 			return err
 		}, []string{""}},
 		{"a priority or tags on a folder", func() error {
-			_, err := tr.UpdateFolder("/work", Update{SetPriority: true, TagsAdd: []string{"a"}})
+			_, err := tr.Update([]string{"/work"}, Update{SetPriority: true, TagsAdd: []string{"a"}})
 			return err
 		}, []string{"/priority", "/tags_add"}},
 		{"material in a batch edge", func() error {
@@ -88,37 +88,37 @@ func TestMoveTaskResolvesFirst(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
-	_, err := tr.MoveTask("/nope", "/a.done")
+	_, err := tr.Move(MvInto, "/nope", "/a.done")
 	wantErr(t, err, core.KindNotFound, "")
-	_, err = tr.MoveTask("/", "/a.done")
+	_, err = tr.Move(MvInto, "/", "/a.done")
 	wantErr(t, err, core.KindConflict, core.RuleGate)
 }
 
-// A folder mv may name both spellings only to respell the folder's own
+// An mv may name both spellings only to respell the folder's own
 // name.
 func TestMoveFolderSpellings(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/work/a", nil, nil))
-	_, err := tr.MoveFolder(MvDest, "/Work/b", "/work/a")
+	_, err := tr.Move(MvDest, "/Work/b", "/work/a")
 	e := wantErr(t, err, core.KindInvalidInput, "")
-	if !reflect.DeepEqual(e.Problems, []string{"/folders/0", "/dest"}) {
+	if !reflect.DeepEqual(e.Problems, []string{"/refs/0", "/dest"}) {
 		t.Errorf("problems %q", e.Problems)
 	}
-	_, err = tr.MoveFolder(MvRename, "/Work/A", "/work/a")
+	_, err = tr.Move(MvRename, "/Work/A", "/work/a")
 	wantErr(t, err, core.KindInvalidInput, "")
 	// Of several, or into a folder, no pair is its own name respelled.
 	must[[]FolderAt](t)(tr.CreateFolder("/work/b", nil, nil))
-	_, err = tr.MoveFolder(MvDest, "/work/A", "/work/a", "/work/b")
+	_, err = tr.Move(MvDest, "/work/A", "/work/a", "/work/b")
 	wantErr(t, err, core.KindInvalidInput, "")
-	_, err = tr.MoveFolder(MvInto, "/work/A", "/work/a")
+	_, err = tr.Move(MvInto, "/work/A", "/work/a")
 	wantErr(t, err, core.KindInvalidInput, "")
-	if r := must[FolderMoved](t)(tr.MoveFolder(MvRename, "/work/A", "/work/a")); r.Moved[0].Path != "/work/A" {
+	if r := must[MoveResult](t)(tr.Move(MvRename, "/work/A", "/work/a")); r.Moved[0].Path != "/work/A" {
 		t.Errorf("respelled: %+v", r)
 	}
-	if r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "@1/B", "@1/b")); r.Moved[0].Path != "/work/B" {
+	if r := must[MoveResult](t)(tr.Move(MvDest, "@1/B", "@1/b")); r.Moved[0].Path != "/work/B" {
 		t.Errorf("respelled, anchored: %+v", r)
 	}
-	if r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Work", "/work")); r.Moved[0].Path != "/Work" {
+	if r := must[MoveResult](t)(tr.Move(MvDest, "/Work", "/work")); r.Moved[0].Path != "/Work" {
 		t.Errorf("respelled: %+v", r)
 	}
 	checked(t, tr)

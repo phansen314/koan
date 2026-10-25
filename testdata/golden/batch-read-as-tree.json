@@ -1,7 +1,7 @@
 {
   "ok": true,
   "result": {
-    "folders": [
+    "folders_made": [
       {
         "id": 2,
         "path": "/m"
@@ -15,7 +15,7 @@
         "path": "/x/y"
       }
     ],
-    "tasks": [
+    "tasks_made": [
       5,
       6,
       7
@@ -31,7 +31,7 @@
           "id": 4,
           "path": "/x/y"
         },
-        "end": "start"
+        "gate": "start"
       }
     ],
     "reblocked": []

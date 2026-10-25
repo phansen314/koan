@@ -115,11 +115,11 @@ func getPerfRoot(tb testing.TB, n int) *perfRoot {
 		b, _ := json.Marshal(map[string]any{"folders": []any{map[string]any{"path": path}}, "folder": path, "tasks": tasks})
 		res := r.input("batch", string(b))
 		var ids []int64
-		for _, id := range res["tasks"].([]any) {
+		for _, id := range res["tasks_made"].([]any) {
 			ids = append(ids, num(id))
 		}
 		r.tasks = append(r.tasks, ids)
-		r.folders = append(r.folders, num(res["folders"].([]any)[0].(map[string]any)["id"]))
+		r.folders = append(r.folders, num(res["folders_made"].([]any)[0].(map[string]any)["id"]))
 	}
 	// A third of each chain complete, the start gate with it; a claim on
 	// every tenth folder's first open task.
@@ -132,11 +132,11 @@ func getPerfRoot(tb testing.TB, n int) *perfRoot {
 		}
 	}
 	r.db(stmts...)
-	r.moving = num(r.must("folder", "create", "/mv/f")["created"].([]any)[1].(map[string]any)["id"])
+	r.moving = num(r.must("folder", "create", "/mv/f")["folders_made"].([]any)[1].(map[string]any)["id"])
 	r.mover = num(r.must("task", "create", "mover", "--folder", "/mv/f")["id"])
 	r.must("folder", "create", "/moved")
 	info := r.must("info")
-	tb.Logf("a root of %v live tasks and %v folders, built in %v, in %s", info["tasks"], info["folders"], time.Since(start).Round(time.Millisecond), home)
+	tb.Logf("a root of %v live tasks and %v folders, built in %v, in %s", info["counts"].(map[string]any)["tasks"], info["counts"].(map[string]any)["folders"], time.Since(start).Round(time.Millisecond), home)
 	perfRoots[n] = r
 	return r
 }
@@ -225,10 +225,10 @@ var perfOps = []perfOp{
 	{name: "task list", budget: 100 * ms, args: always("task", "list")},
 	{name: "task list all", budget: 100 * ms, args: always("task", "list", "--state", "open,complete", "--limit", "null")},
 	{name: "frontier", budget: 100 * ms, args: always("frontier")},
-	{name: "frontier all", budget: 100 * ms, args: always("frontier", "--limit", "null", "--recursive")},
+	{name: "frontier all", budget: 100 * ms, args: always("frontier", "--limit", "null")},
 	{name: "why", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"why", r.task(i, 97)} }},
 	{name: "show folder", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.folder(i)} }},
-	{name: "folder list", budget: 100 * ms, args: always("folder", "list", "--limit", "null", "--recursive")},
+	{name: "folder list", budget: 100 * ms, args: always("folder", "list", "--limit", "null")},
 	{name: "where", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"where", "@" + r.task(i, 50)} }},
 	{name: "where --file", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		return []string{"where", "--file", filepath.Join(r.home, "koan-root", "tree", "@p3", "@f3", "@"+r.task(3, 50)+".md")}
@@ -249,7 +249,7 @@ var perfOps = []perfOp{
 		return []string{"task", "create", fmt.Sprint("new ", i), "--folder", r.folder(i), "--blocked-by", r.task(i, 97), "--notes", "notes"}
 	}},
 	{name: "task update", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
-		return []string{"task", "update", r.task(i, 50), "--title", fmt.Sprint("updated ", i), "--tags-add", "x"}
+		return []string{"update", r.task(i, 50), "--title", fmt.Sprint("updated ", i), "--tags-add", "x"}
 	}},
 	{name: "complete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.must("reopen", r.task(i, 96)) },
@@ -272,13 +272,13 @@ var perfOps = []perfOp{
 		if r.away[r.mover] = !r.away[r.mover]; r.away[r.mover] {
 			to = "/"
 		}
-		return []string{"task", "mv", fmt.Sprint(r.mover), to}
+		return []string{"mv", fmt.Sprint(r.mover), to}
 	}},
 	{name: "task delete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			r.seq = int(num(r.must("task", "create", "doomed", "--folder", r.folder(i), "--blocks", r.task(i, 97))["id"]))
 		},
-		args: func(r *perfRoot, i int) []string { return []string{"task", "delete", fmt.Sprint(r.seq)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"delete", fmt.Sprint(r.seq)} }},
 	{name: "archive task", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			r.seq = int(num(r.must("task", "create", "done", "--folder", r.folder(i), "--notes", "notes")["id"]))
@@ -303,19 +303,19 @@ var perfOps = []perfOp{
 		return []string{"folder", "create", fmt.Sprintf("/new/n%d/x", r.seq), "--notes", "notes"}
 	}},
 	{name: "folder update", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
-		return []string{"folder", "update", r.folder(i), "--title", fmt.Sprint("folder ", i)}
+		return []string{"update", r.folder(i), "--title", fmt.Sprint("folder ", i)}
 	}},
 	{name: "folder mv", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		to := "/mv/f"
 		if r.away[r.moving] = !r.away[r.moving]; r.away[r.moving] {
 			to = "/moved/f"
 		}
-		return []string{"folder", "mv", "-T", fmt.Sprint(r.moving), to}
+		return []string{"mv", "-T", fmt.Sprint(r.moving), to}
 	}},
 	{name: "folder delete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.seq = r.smallFolder("/del", false) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"folder", "delete", fmt.Sprint(r.seq), "--contents"}
+			return []string{"delete", fmt.Sprint(r.seq), "--contents"}
 		}},
 	{name: "archive folder", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.seq = r.smallFolder("/arc", true) },
@@ -334,14 +334,14 @@ var perfOps = []perfOp{
 		b, _ := json.Marshal(map[string]any{"folders": []any{map[string]any{"path": path}}, "folder": path, "tasks": tasks})
 		return string(b)
 	}},
-	{name: "marker bind", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("marker", "unbind", r.dir) },
+	{name: "bind", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("unbind", r.dir) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"marker", "bind", r.folder(i), r.dir, "--force"}
+			return []string{"bind", r.folder(i), r.dir, "--force"}
 		}},
-	{name: "marker unbind", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("marker", "bind", r.folder(i), r.dir, "--force") },
-		args: func(r *perfRoot, i int) []string { return []string{"marker", "unbind", r.dir} }},
+	{name: "unbind", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("bind", r.folder(i), r.dir, "--force") },
+		args: func(r *perfRoot, i int) []string { return []string{"unbind", r.dir} }},
 	{name: "doctor", budget: time.Second, args: always("doctor")},
 	{name: "repair", budget: time.Second, args: always("repair")},
 	{name: "backup", once: true, args: func(r *perfRoot, i int) []string {
@@ -361,7 +361,7 @@ func (r *perfRoot) smallFolder(top string, done bool) int {
 	}
 	b, _ := json.Marshal(map[string]any{"folders": []any{map[string]any{"path": path}}, "folder": path, "tasks": tasks})
 	res := r.input("batch", string(b))
-	id := num(res["folders"].([]any)[len(res["folders"].([]any))-1].(map[string]any)["id"])
+	id := num(res["folders_made"].([]any)[len(res["folders_made"].([]any))-1].(map[string]any)["id"])
 	if done {
 		r.db(fmt.Sprintf("UPDATE task SET completed_at = updated_at WHERE folder = %d", id))
 	}

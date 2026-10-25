@@ -249,8 +249,8 @@ func TestWhereMarker(t *testing.T) {
 	ok(t, home, "folder", "create", "/home")
 	wt := mkdir(t, home, "code", "wt")
 	inner := mkdir(t, wt, "sub", "inner")
-	ok(t, home, "marker", "bind", "/work/api", wt)
-	ok(t, home, "marker", "bind", "/home", inner)
+	ok(t, home, "bind", "/work/api", wt)
+	ok(t, home, "bind", "/home", inner)
 
 	file := wt + "/src/main.go"
 	r := ok(t, home, "where", "--file", file)
@@ -306,9 +306,9 @@ func TestWhereMarkerBindsNothing(t *testing.T) {
 	ok(t, home, "folder", "create", "/archive") // 4
 	ok(t, home, "task", "create", "a")          // 5
 	outer := mkdir(t, home, "code")
-	ok(t, home, "marker", "bind", "/work", outer)
+	ok(t, home, "bind", "/work", outer)
 	wt := mkdir(t, outer, "wt")
-	ok(t, home, "marker", "bind", "/work/api", wt)
+	ok(t, home, "bind", "/work/api", wt)
 	good, err := os.ReadFile(markerFile(wt))
 	if err != nil {
 		t.Fatal(err)
@@ -373,14 +373,14 @@ func TestWhereMarkerBindsNothing(t *testing.T) {
 
 	// Deleted and archived folders: where says which, and where an
 	// archived one went, from the index.
-	ok(t, home, "marker", "bind", "/gone", dir, "--force")
-	ok(t, home, "folder", "delete", "/gone")
+	ok(t, home, "bind", "/gone", dir, "--force")
+	ok(t, home, "delete", "/gone")
 	r = fails(t, home, "not-found", "", "where", "--file", dir+"/x")
 	golden(t, r, "where-marker-deleted")
 	if fmt.Sprint(r.Error()["ids"]) != "[3]" || len(r.Error()["archived"].([]any)) != 0 {
 		t.Errorf("deleted: %s", r.Line())
 	}
-	ok(t, home, "marker", "bind", "/archive", dir)
+	ok(t, home, "bind", "/archive", dir)
 	ok(t, home, "archive", "/archive")
 	r = fails(t, home, "not-found", "", "where", "--file", dir+"/x")
 	golden(t, r, "where-marker-archived")
@@ -400,8 +400,8 @@ func TestStaleMarker(t *testing.T) {
 	home := realRoot(t)
 	ok(t, home, "folder", "create", "/work/api")
 	wt := mkdir(t, home, "wt")
-	ok(t, home, "marker", "bind", "/work/api", wt)
-	ok(t, home, "folder", "mv", "-T", "/work/api", "/work/web")
+	ok(t, home, "bind", "/work/api", wt)
+	ok(t, home, "mv", "-T", "/work/api", "/work/web")
 	r := koan(t, home, "where", "--file", wt)
 	if r.Exit != 0 || r.Stderr != "koan: 1 warning\n" || r.Result()["ref"] != "@2 (/work/web)" {
 		t.Fatalf("exit %d, stderr %q: %s", r.Exit, r.Stderr, r.Line())
@@ -412,7 +412,7 @@ func TestStaleMarker(t *testing.T) {
 	if r.Exit != 0 || len(ws) != 1 || ws[0].(map[string]any)["kind"] != "stale-marker" {
 		t.Errorf("context: %s", r.Line())
 	}
-	ok(t, home, "marker", "bind", "/work/web", wt)
+	ok(t, home, "bind", "/work/web", wt)
 	ok(t, home, "where", "--file", wt)
 }
 
@@ -448,12 +448,12 @@ func TestWhereRealPath(t *testing.T) {
 		t.Errorf("elsewhere in the root: %s", r.Line())
 	}
 	// A path through a symlinked directory outside the root, as macOS's
-	// /tmp is, is printed as given, and its marker binds.
+	// /tmp is, is printed as given, and its binds.
 	os.Remove(markerFile(home))
 	wt := mkdir(t, home, "wt")
 	via := filepath.Join(home, "via")
 	os.Symlink(wt, via)
-	ok(t, home, "marker", "bind", "/work", wt)
+	ok(t, home, "bind", "/work", wt)
 	if got, want := location(ok(t, home, "where", "--file", via+"/x")), "folder 1 @1 (/work) 1:/work <nil> <nil> "+via+"/x "+via+"/.koan/marker.json"; got != want {
 		t.Errorf("via:\n got %s\nwant %s", got, want)
 	}
@@ -506,22 +506,22 @@ func TestContext(t *testing.T) {
 		t.Errorf("root material: %v", id)
 	}
 	wt := mkdir(t, home, "wt")
-	ok(t, home, "marker", "bind", "/work/api", wt)
+	ok(t, home, "bind", "/work/api", wt)
 	r = ok(t, home, "context", "--file", wt+"/src")
 	if r.Result()["marker"] != markerFile(wt) {
 		t.Errorf("marker: %s", r.Line())
 	}
 	goldenNow(t, r, "context-marker")
-	// With no subject, the working directory.
-	r = koanIn(t, home, mkdir(t, wt, "src"), "context")
+	// With --here, the working directory; with nothing, the root.
+	r = koanIn(t, home, mkdir(t, wt, "src"), "context", "--here")
 	if r.Exit != 0 || r.Result()["marker"] != markerFile(wt) {
 		t.Errorf("cwd: %s", r.Line())
 	}
-	if id := koanIn(t, home, treeAt(home, "@work"), "context").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
+	if id := koanIn(t, home, treeAt(home, "@work"), "context", "--here").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
 		t.Errorf("cwd in the tree: %v", id)
 	}
 
-	fails(t, home, "not-found", "", "context", "@3")
+	fails(t, home, "invalid-input", "", "context", "@3")
 	fails(t, home, "not-found", "", "context", "--file", mkdir(t, home, "none"))
 	fails(t, home, "invalid-input", "", "context", "/work.start")
 	fails(t, home, "conflict", "case-mismatch", "context", "/WORK")
@@ -607,7 +607,7 @@ func TestLocateConveniences(t *testing.T) {
 	if r := where(`{"file":"` + w + `"}`); !r.OK() {
 		t.Errorf("--input file: %s", r.Line())
 	}
-	if r := context(`{}`); r.Kind() != "invalid-input" {
+	if r := context(`{}`); !r.OK() || r.Result()["folder"].(map[string]any)["id"] != nil {
 		t.Errorf("context {}: %s", r.Line())
 	}
 	if r := context(`{"file":"` + w + `"}`); !r.OK() {
@@ -650,12 +650,14 @@ func TestUnresolvableWorkingDirectory(t *testing.T) {
 		t.Skipf("this system resolves a removed working directory: %s", r.Stdout)
 	}
 	for _, args := range [][]string{
-		{"context"},
+		{"context", "--here"},
+		{"frontier", "--here"},
+		{"where", "--here"},
 		{"where", "--file", "x"},
 		{"where", "@1.start:x", "--file", "x"},
-		{"marker", "bind", "/x:y"},
-		{"marker", "unbind"},
-		{"marker", "unbind", "x"},
+		{"bind", "/x:y"},
+		{"unbind"},
+		{"unbind", "x"},
 	} {
 		r := run(args...)
 		if !strings.Contains(r.Stdout, `"kind":"io"`) || !strings.Contains(r.Stdout, `"paths":[]`) {
@@ -689,7 +691,7 @@ func TestCaseOutsideTheTree(t *testing.T) {
 	ok(t, home, "folder", "create", "/work")
 	ok(t, home, "folder", "create", "/home")
 	wt := mkdir(t, home, "code", "wt")
-	ok(t, home, "marker", "bind", "/work", wt)
+	ok(t, home, "bind", "/work", wt)
 	upper := filepath.Join(home, "Code", "wt")
 	notes := treeAt(home, "@work", "@notes.md")
 	wrongRoot := filepath.Join(home, "KOAN-ROOT", "tree")
@@ -702,12 +704,12 @@ func TestCaseOutsideTheTree(t *testing.T) {
 		if id := ok(t, home, "context", "--file", file).Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
 			t.Errorf("context: folder %v", id)
 		}
-		r := ok(t, home, "marker", "bind", "/work", upper)
+		r := ok(t, home, "bind", "/work", upper)
 		if r.Result()["marker"] != upper+"/.koan/marker.json" || r.Result()["binding"].(map[string]any)["dir"] != wt {
 			t.Errorf("bind: %s", r.Line())
 		}
 		// A wrongly-cased route to the root is under it.
-		fails(t, home, "invalid-input", "", "marker", "bind", "/work", wrongRoot)
+		fails(t, home, "invalid-input", "", "bind", "/work", wrongRoot)
 		if got, want := location(ok(t, home, "where", "--file", wrongRoot+"/@work/@notes.md")), "folder 1 @1 (/work) 1:/work <nil> <nil> "+notes+" <nil>"; got != want {
 			t.Errorf("where through the root:\n got %s\nwant %s", got, want)
 		}
@@ -715,7 +717,7 @@ func TestCaseOutsideTheTree(t *testing.T) {
 	}
 
 	other := mkdir(t, upper)
-	ok(t, home, "marker", "bind", "/home", other)
+	ok(t, home, "bind", "/home", other)
 	for dir, want := range map[string]string{wt: "folder 1 ", other: "folder 2 "} {
 		if got := location(ok(t, home, "where", "--file", dir+"/x")); !strings.HasPrefix(got, want) {
 			t.Errorf("where --file %s/x: %s", dir, got)
@@ -726,7 +728,7 @@ func TestCaseOutsideTheTree(t *testing.T) {
 			t.Errorf("%s's marker has dir %v", dir, d)
 		}
 	}
-	fails(t, home, "io", "", "marker", "bind", "/work", filepath.Join(home, "CODE", "wt"))
-	fails(t, home, "io", "", "marker", "bind", "/work", wrongRoot)
+	fails(t, home, "io", "", "bind", "/work", filepath.Join(home, "CODE", "wt"))
+	fails(t, home, "io", "", "bind", "/work", wrongRoot)
 	fails(t, home, "not-found", "", "where", "--file", wrongRoot+"/@work/@notes.md")
 }
