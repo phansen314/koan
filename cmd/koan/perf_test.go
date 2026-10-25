@@ -221,13 +221,13 @@ const batchParts = 100
 // repair 1 s, export 200 ms, a batch 100 ms and 1 ms a part, and backup
 // none.
 var perfOps = []perfOp{
-	{name: "task show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"task", "show", r.task(i, 50)} }},
+	{name: "show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.task(i, 50)} }},
 	{name: "task list", budget: 100 * ms, args: always("task", "list")},
 	{name: "task list all", budget: 100 * ms, args: always("task", "list", "--state", "open,complete", "--limit", "null")},
 	{name: "frontier", budget: 100 * ms, args: always("frontier")},
 	{name: "frontier all", budget: 100 * ms, args: always("frontier", "--limit", "null", "--recursive")},
 	{name: "why", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"why", r.task(i, 97)} }},
-	{name: "folder show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"folder", "show", r.folder(i)} }},
+	{name: "show folder", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.folder(i)} }},
 	{name: "folder list", budget: 100 * ms, args: always("folder", "list", "--limit", "null", "--recursive")},
 	{name: "where", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"where", "@" + r.task(i, 50)} }},
 	{name: "where --file", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
@@ -240,9 +240,9 @@ var perfOps = []perfOp{
 	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "block", "1", "@")},
 	{name: "complete id", budget: 100 * ms, plain: true, args: func(r *perfRoot, i int) []string {
 		id := r.task(i, 50)
-		return []string{"__complete", "task", "show", "@" + id[:max(1, len(id)-1)]}
+		return []string{"__complete", "show", "@" + id[:max(1, len(id)-1)]}
 	}},
-	{name: "complete path", budget: 100 * ms, plain: true, args: always("__complete", "folder", "show", "/")},
+	{name: "complete path", budget: 100 * ms, plain: true, args: always("__complete", "show", "/")},
 	{name: "version", budget: 100 * ms, args: always("version")},
 	{name: "init", budget: 100 * ms, args: always("init")},
 	{name: "task create", budget: 100 * ms, args: func(r *perfRoot, i int) []string {

@@ -7,7 +7,7 @@ import "github.com/phansen314/koan/internal/cli"
 func Commands() []*cli.Command {
 	return describe([]*cli.Command{
 		TaskCreate(),
-		TaskShow(),
+		Show(),
 		TaskList(),
 		TaskFrontier(),
 		TaskWhy(),
@@ -25,7 +25,6 @@ func Commands() []*cli.Command {
 		TaskClaimNext(),
 		TaskRelease(),
 		FolderCreate(),
-		FolderShow(),
 		FolderList(),
 		FolderUpdate(),
 		FolderMv(),

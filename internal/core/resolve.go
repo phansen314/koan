@@ -78,6 +78,9 @@ const (
 	WantEdge
 	// WantAny takes a folder, a task, the root or material.
 	WantAny
+	// WantRef is a task-ref or a folder-ref: a task, a folder's gate by
+	// its end, a folder or the root, never material.
+	WantRef
 )
 
 // ResolvedKind is what a reference resolved to.

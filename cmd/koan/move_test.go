@@ -42,7 +42,7 @@ func TestTaskMove(t *testing.T) {
 		t.Errorf("mv: %s", r.Line())
 	}
 	checkTree(t, home, "@a/", "@a/@notes.md=", "@a/@4.md=", "@b/", "@b/@notes.md=", "@b/@3.md=mine")
-	rec := ok(t, home, "task", "show", "3").Result()["task"].(map[string]any)
+	rec := ok(t, home, "show", "3").Result()["task"].(map[string]any)
 	if rec["updated_at"] != fixed || fmt.Sprint(rec["folder"]) != "map[id:2 path:/b]" || rec["notes_path"] != treePath(home, "@b/@3.md") {
 		t.Errorf("moved: %v", rec)
 	}
@@ -65,7 +65,7 @@ func TestTaskMove(t *testing.T) {
 	os.Remove(treePath(home, "@a/@4.md"))
 	ok(t, home, "task", "mv", "4", "/b")
 	checkTree(t, home, "@a/", "@a/@notes.md=", "@b/", "@b/@notes.md=", "@3.md=mine")
-	if koan(t, home, "task", "show", "4").Result()["task"].(map[string]any)["folder"].(map[string]any)["path"] != "/b" {
+	if koan(t, home, "show", "4").Result()["task"].(map[string]any)["folder"].(map[string]any)["path"] != "/b" {
 		t.Errorf("moved without notes")
 	}
 

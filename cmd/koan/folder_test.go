@@ -150,9 +150,9 @@ func TestFolderCreate(t *testing.T) {
 	golden(t, r, "folder-create")
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=# API\n")
 
-	r = ok(t, home, "folder", "show", "/work/api")
-	golden(t, r, "folder-show")
-	r = ok(t, home, "folder", "show", "/work")
+	r = ok(t, home, "show", "/work/api")
+	golden(t, r, "show-folder")
+	r = ok(t, home, "show", "/work")
 	f := r.Result()["folder"].(map[string]any)
 	if f["title"] != nil || fmt.Sprint(f["extra"]) != "map[]" {
 		t.Errorf("a parent has no title and an empty extra: %s", r.Line())
@@ -284,8 +284,8 @@ func TestFolderCreateCaseMismatch(t *testing.T) {
 	checkTree(t, home, "@Work/", "@Work/@notes.md=", "@Work/@api/", "@Work/@api/@notes.md=")
 }
 
-// folder show reads a folder by path, ID or anchored path, or the root:
-// its gates, and its tasks counted at any depth, gates included.
+// show reads a folder by path, ID or anchored path, or the root: its
+// gates, and its tasks counted at any depth, gates included.
 func TestFolderShow(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/work/api") // 1, 2
@@ -300,10 +300,10 @@ func TestFolderShow(t *testing.T) {
 	stmts = append(stmts, "INSERT INTO edge (task, blocker) VALUES (5, 6)")
 	db(t, home, stmts...)
 
-	r := ok(t, home, "folder", "show", "/work")
-	golden(t, r, "folder-show-gates")
+	r := ok(t, home, "show", "/work")
+	golden(t, r, "show-folder-gates")
 	for _, ref := range []string{"1", "@1", "@2/..", "@1/api"} {
-		r := koan(t, home, "folder", "show", ref)
+		r := koan(t, home, "show", ref)
 		if ref == "@2/.." {
 			if r.Kind() != "invalid-input" {
 				t.Errorf("%s: %s", ref, r.Line())
@@ -314,24 +314,32 @@ func TestFolderShow(t *testing.T) {
 			t.Errorf("%s: %s", ref, r.Line())
 		}
 	}
-	r = testrun.Run{Home: home, Stdin: strings.NewReader(`{"folder":2}`)}.Koan(t, "folder", "show", "-i", "-")
-	r.Check(t, "folder show")
+	r = testrun.Run{Home: home, Stdin: strings.NewReader(`{"ref":2}`)}.Koan(t, "show", "-i", "-")
+	r.Check(t, "show")
 	if r.Result()["folder"].(map[string]any)["path"] != "/work/api" {
 		t.Errorf("-i with an integer: %s", r.Line())
 	}
-	r = ok(t, home, "folder", "show", "/")
-	golden(t, r, "folder-show-root")
-	r = ok(t, home, "folder", "show", "/work/web")
+	r = ok(t, home, "show", "/")
+	golden(t, r, "show-root")
+	r = ok(t, home, "show", "/work/web")
 	if g := r.Result()["folder"].(map[string]any)["gates"].(map[string]any); fmt.Sprint(g) != "map[done:<nil> start:map[id:9 readiness:ready state:open]]" {
 		t.Errorf("gates: %v", g)
 	}
 
-	fails(t, home, "not-found", "", "folder", "show", "@99")
-	fails(t, home, "not-found", "", "folder", "show", "@6")
-	fails(t, home, "not-found", "", "folder", "show", "/work/nope")
-	golden(t, fails(t, home, "conflict", "case-mismatch", "folder", "show", "/WORK/api"), "folder-show-case-mismatch")
-	fails(t, home, "invalid-input", "", "folder", "show", "/work.start")
-	fails(t, home, "invalid-input", "", "folder", "show", "/work:docs")
+	fails(t, home, "not-found", "", "show", "@99")
+	fails(t, home, "not-found", "", "show", "/work/nope")
+	golden(t, fails(t, home, "conflict", "case-mismatch", "show", "/WORK/api"), "show-folder-case-mismatch")
+	r = fails(t, home, "invalid-input", "", "show", "/work:docs")
+	if problemFields(r) != "/ref" {
+		t.Errorf("material: %s", r.Line())
+	}
+	// A task's ID, and a folder's end, name tasks.
+	for ref, id := range map[string]string{"@6": "6", "/work.start": "4"} {
+		r := koan(t, home, "show", ref)
+		if task, _ := r.Result()["task"].(map[string]any); task == nil || fmt.Sprint(task["id"]) != id {
+			t.Errorf("%s: %s", ref, r.Line())
+		}
+	}
 }
 
 // A folder whose @notes.md is missing reads as empty notes, and warns;
@@ -343,12 +351,12 @@ func TestFolderShowMissingNotes(t *testing.T) {
 	dir := filepath.Join(home, "koan-root", "tree", "@work")
 	os.Remove(filepath.Join(dir, "@notes.md"))
 	os.WriteFile(filepath.Join(dir, "@Notes.md"), []byte("by hand"), 0o644)
-	r := koan(t, home, "folder", "show", "/work")
+	r := koan(t, home, "show", "/work")
 	if r.Exit != 0 || r.Stderr != "koan: 1 warning\n" {
 		t.Errorf("exit %d, stderr %q", r.Exit, r.Stderr)
 	}
-	golden(t, r, "folder-show-missing-notes")
-	ok(t, home, "folder", "show", "/")
+	golden(t, r, "show-folder-missing-notes")
+	ok(t, home, "show", "/")
 	// folder list never looks at notes.
 	ok(t, home, "folder", "list")
 }
@@ -437,14 +445,14 @@ func TestFolderReadsPending(t *testing.T) {
 		"INSERT INTO issued (id, kind, state) VALUES (2, 'folder', 'live')",
 		"INSERT INTO folder (id, parent, name, extra) VALUES (2, 1, 'api', '{}')",
 		`INSERT INTO pending (seq, change, step) VALUES (1, 1, '{"op":"mkdir","to":"tree/@work/@api"}')`)
-	golden(t, koan(t, home, "folder", "show", "/work/api"), "folder-show-pending-step")
+	golden(t, koan(t, home, "show", "/work/api"), "show-folder-pending-step")
 
 	lock, e := store.TakeLock(filepath.Join(home, "koan-root"), filepath.Join(home, "koan-root"))
 	if e != nil {
 		t.Fatal(e.Message)
 	}
-	r := koan(t, home, "folder", "show", "/work/api")
-	golden(t, r, "folder-show-pending-filesystem")
+	r := koan(t, home, "show", "/work/api")
+	golden(t, r, "show-folder-pending-filesystem")
 	r = koan(t, home, "folder", "list", "--fields", "path,dir")
 	ws := r.Envelope["warnings"].([]any)
 	if len(ws) != 1 || fmt.Sprint(ws[0].(map[string]any)["ids"]) != "[2]" {
@@ -461,10 +469,10 @@ func TestFolderReadsPending(t *testing.T) {
 	// The next write finishes the steps.
 	ok(t, home, "folder", "create", "/home")
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=", "@home/", "@home/@notes.md=")
-	ok(t, home, "folder", "show", "/work/api")
+	ok(t, home, "show", "/work/api")
 
 	db(t, home, `INSERT INTO pending (seq, change, step, stuck) VALUES (9, 9, '{"op":"move","from":"tree/@1.md","to":"tree/@work/@1.md","stuck":"both"}', 1)`)
-	golden(t, koan(t, home, "folder", "show", "/"), "folder-show-stuck-step")
+	golden(t, koan(t, home, "show", "/"), "show-folder-stuck-step")
 	r = koan(t, home, "folder", "create", "/next")
 	if !r.OK() || len(r.Envelope["warnings"].([]any)) != 1 {
 		t.Errorf("create beside a stuck step: %s", r.Line())
@@ -488,7 +496,7 @@ func TestFolderCreateStepRefused(t *testing.T) {
 		t.Fatalf("exit %d: %s", r.Exit, r.Line())
 	}
 	golden(t, r, "folder-create-pending-step")
-	golden(t, koan(t, home, "folder", "show", "/work/api"), "folder-show-pending-step-refused")
+	golden(t, koan(t, home, "show", "/work/api"), "show-folder-pending-step-refused")
 	os.Chmod(dir, 0o755)
 	ok(t, home, "folder", "create", "/b")
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=", "@b/", "@b/@notes.md=")

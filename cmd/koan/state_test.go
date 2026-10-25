@@ -40,7 +40,7 @@ func TestTaskComplete(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[completed:[2] released:[3]]" {
 		t.Errorf("complete: %s", r.Line())
 	}
-	rec := ok(t, home, "task", "show", "2").Result()["task"].(map[string]any)
+	rec := ok(t, home, "show", "2").Result()["task"].(map[string]any)
 	if rec["state"] != "complete" || rec["readiness"] != nil || rec["claim"] != nil || rec["completed_at"] == nil ||
 		rec["completed_at"] != rec["updated_at"] || rec["updated_at"] == fixed {
 		t.Errorf("completed: %v", rec)
@@ -93,7 +93,7 @@ func TestTaskReopen(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[reblocked:[2 3] reopened:[1]]" {
 		t.Errorf("reopen: %s", r.Line())
 	}
-	rec := ok(t, home, "task", "show", "1").Result()["task"].(map[string]any)
+	rec := ok(t, home, "show", "1").Result()["task"].(map[string]any)
 	if rec["state"] != "open" || rec["completed_at"] != nil || rec["claim"] != nil || rec["updated_at"] == fixed {
 		t.Errorf("reopened: %v", rec)
 	}
@@ -205,7 +205,7 @@ func TestTaskUpdate(t *testing.T) {
 	r := ok(t, home, "task", "update", "1", "--title", "  New ", "--priority", "3", "--tags-add", "c,0", "--tags-remove", "a",
 		"--extra-merge", `{"w":true,"x":{"q":1}}`, "--extra-remove", "y")
 	golden(t, r, "task-update")
-	rec := ok(t, home, "task", "show", "1").Result()["task"].(map[string]any)
+	rec := ok(t, home, "show", "1").Result()["task"].(map[string]any)
 	extra, _ := json.Marshal(rec["extra"])
 	if rec["title"] != "New" || rec["priority"] != json.Number("3") || fmt.Sprint(rec["tags"]) != "[0 b c]" ||
 		string(extra) != `{"w":true,"x":{"q":1}}` || rec["updated_at"] == fixed {
@@ -251,7 +251,7 @@ func TestTaskUpdate(t *testing.T) {
 		}
 	}
 	ok(t, home, "task", "update", "1", "--extra-merge", `{"n":1.0}`)
-	if r := ok(t, home, "task", "show", "1"); !strings.Contains(r.Line(), `"extra":{"n":1.0}`) {
+	if r := ok(t, home, "show", "1"); !strings.Contains(r.Line(), `"extra":{"n":1.0}`) {
 		t.Errorf("extra as spelled: %s", r.Line())
 	}
 	// A gate's fields change like any task's.
@@ -320,7 +320,7 @@ func TestFolderUpdate(t *testing.T) {
 	ok(t, home, "folder", "create", "/w", "--title", "T", "--extra", `{"a":1,"b":[1]}`) // 1
 	r := ok(t, home, "folder", "update", "/w", "--title", "null", "--extra-merge", `{"c":"x"}`, "--extra-remove", "a")
 	golden(t, r, "folder-update")
-	rec := ok(t, home, "folder", "show", "1").Result()["folder"].(map[string]any)
+	rec := ok(t, home, "show", "1").Result()["folder"].(map[string]any)
 	extra, _ := json.Marshal(rec["extra"])
 	if rec["title"] != nil || string(extra) != `{"b":[1],"c":"x"}` {
 		t.Errorf("updated: %v", rec)
@@ -331,7 +331,7 @@ func TestFolderUpdate(t *testing.T) {
 		}
 	}
 	if r := ok(t, home, "folder", "update", "1", "--title", " New "); r.Result()["changed"] != true ||
-		ok(t, home, "folder", "show", "1").Result()["folder"].(map[string]any)["title"] != "New" {
+		ok(t, home, "show", "1").Result()["folder"].(map[string]any)["title"] != "New" {
 		t.Errorf("title: %s", r.Line())
 	}
 	golden(t, fails(t, home, "invalid-input", "", "folder", "update", "/", "--title", "x"), "folder-update-root")

@@ -5,7 +5,7 @@ import "github.com/phansen314/koan/internal/cli"
 // shorts are each command's line in help.
 var shorts = map[string]string{
 	"task create":    "Make a task, with its notes file",
-	"task show":      "Show one task",
+	"show":           "Show one task, a gate included, or one folder",
 	"task list":      "List tasks in tree order",
 	"frontier":       "List ready, unclaimed tasks in work order",
 	"why":            "Show what a task waits on, and what to finish to move it",
@@ -23,7 +23,6 @@ var shorts = map[string]string{
 	"claim-next":     "Claim the first task of the frontier",
 	"release":        "Give up a claim",
 	"folder create":  "Make a folder, and any missing parents",
-	"folder show":    "Show one folder",
 	"folder list":    "List folders in tree order",
 	"folder update":  "Change a folder's title or extra",
 	"folder mv":      "Move folders into a folder, or rename one",

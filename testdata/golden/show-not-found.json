@@ -3,9 +3,9 @@
   "error": {
     "kind": "not-found",
     "rule": null,
-    "message": "@1 is a folder, not a task",
+    "message": "@99 was never issued",
     "ids": [
-      1
+      99
     ],
     "paths": [],
     "problems": [],

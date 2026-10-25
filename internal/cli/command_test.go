@@ -362,4 +362,10 @@ func TestUnknownFields(t *testing.T) {
 	if !reflect.DeepEqual(e.Problems, want) {
 		t.Errorf("problems %+v, want %+v", e.Problems, want)
 	}
+	// An old field name in the subject's place: both faults are found.
+	e = fake.unknownFields(Input{"task": 1})
+	want = []Problem{{"/task", "unknown field"}, {"/title", "title is required"}}
+	if e == nil || !reflect.DeepEqual(e.Problems, want) || e.Message != "thing make takes no field task" {
+		t.Errorf("got %+v, want problems %+v", e, want)
+	}
 }

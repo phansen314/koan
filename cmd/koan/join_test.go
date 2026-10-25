@@ -8,7 +8,7 @@ import (
 	"github.com/phansen314/koan/internal/testrun"
 )
 
-// waitsOn is the IDs a task waits on, as task show gives them, sorted.
+// waitsOn is the IDs a task waits on, as show gives them, sorted.
 func waitsOn(t *testing.T, home, ref string) []int64 {
 	t.Helper()
 	var out []int64

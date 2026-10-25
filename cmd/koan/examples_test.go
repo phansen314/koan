@@ -48,7 +48,7 @@ EOF`, want: []string{`{"ok":true,"result":{"folders":[{"id":40,"path":"/work"},{
 	{cmd: "koan why 43", want: []string{`{"ok":true,"result":{"id":43,"readiness":"blocked","ready":[45]}}`}},
 	{cmd: "koan complete 45", want: []string{`{"ok":true,"result":{"completed":[45],"released":[42]}}`}},
 	{cmd: `koan claim-next /work --extra '{"by":"agent-1"}'`, want: []string{`{"ok":true,"result":{"task":{"id":42,"claim":{"task":42,"extra":{"by":"agent-1"}}},"claim":{"task":42}}}`}},
-	{cmd: "koan task show 42", want: []string{`{"ok":true,"result":{"task":{"id":42,"title":"Design the endpoints","notes_path":"~/koan-root/tree/@work/@api/@42.md"}},"warnings":[]}`}},
+	{cmd: "koan show 42", want: []string{`{"ok":true,"result":{"task":{"id":42,"title":"Design the endpoints","notes_path":"~/koan-root/tree/@work/@api/@42.md"}},"warnings":[]}`}},
 	{cmd: "koan complete 42", want: []string{`{"ok":true,"result":{"completed":[42],"released":[43]}}`}},
 
 	// Claims
@@ -71,7 +71,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	// Folders
 	{cmd: "koan folder create /work/web/client --title 'Web client'", want: []string{`{"ok":true,"result":{"id":50,"created":[{"id":49,"path":"/work/web"},{"id":50,"path":"/work/web/client"}]}}`}},
 	{cmd: `koan folder update /work/web/client --extra-merge '{"jira":"WEB-12"}'`, want: []string{`{"ok":true,"result":{"id":50,"changed":true}}`}},
-	{cmd: "koan folder show /work/api", want: []string{`{"ok":true,"result":{"folder":{"id":41,"gates":{"start":{"id":45,"state":"complete"},"done":{"id":46,"state":"open"}},
+	{cmd: "koan show /work/api", want: []string{`{"ok":true,"result":{"folder":{"id":41,"gates":{"start":{"id":45,"state":"complete"},"done":{"id":46,"state":"open"}},
 		"finished":false,"notes_path":"~/koan-root/tree/@work/@api/@notes.md"}}}`}},
 	{cmd: "koan task create 'Port the client' --folder /work/web/client --blocked-by /work/web/client.start --blocks /work/web/client",
 		want: []string{`{"ok":true,"result":{"id":51,"gates_made":[{"id":52,"end":"start"},{"id":53,"end":"done"}]}}`}},
@@ -111,7 +111,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 		`{"ok":true,"result":{"id":48,"changed":true}}`,
 		`{"ok":true,"result":{"completed":[48],"released":[]}}`,
 		`{"ok":true,"result":{"id":48,"archive":"~/koan-root/archived/work/api/@48.md","left":[48]}}`}},
-	{cmd: "koan task show 48", exit: 1, want: []string{`{"ok":false,"error":{"kind":"not-found","ids":[48],"archived":[{"id":48,"archive":"~/koan-root/archived/work/api/@48.md"}]}}`}},
+	{cmd: "koan show 48", exit: 1, want: []string{`{"ok":false,"error":{"kind":"not-found","ids":[48],"archived":[{"id":48,"archive":"~/koan-root/archived/work/api/@48.md"}]}}`}},
 
 	// When the tree is damaged
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
@@ -145,7 +145,7 @@ var readmeSteps = []docStep{
 	{cmd: "koan frontier --limit 10 --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1}}`}},
 	{cmd: `koan claim-next --extra '{"by":"me"}'`, want: []string{`{"ok":true,"result":{"task":{"id":3},"claim":{"task":3,"extra":{"by":"me"}}}}`}},
 	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"released":[4]}}`}},
-	{cmd: "koan task show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
+	{cmd: "koan show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
 
 	// Ordering folders
 	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":5,"gates_made":[{"id":6,"folder":{"id":2},"end":"done"}]}}`}},

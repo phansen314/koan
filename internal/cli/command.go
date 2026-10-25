@@ -682,7 +682,8 @@ func readInput(env *Env, name string) (Input, *Error) {
 }
 
 // unknownFields refuses fields the command doesn't take, since every
-// input is closed.
+// input is closed. A required subject that isn't given is a fault found
+// too, as when an old field name stands in its place.
 func (c *Command) unknownFields(in Input) *Error {
 	known := c.fields()
 	var problems []Problem
@@ -694,8 +695,16 @@ func (c *Command) unknownFields(in Input) *Error {
 	if len(problems) == 0 {
 		return nil
 	}
-	sort.Slice(problems, func(i, j int) bool { return problems[i].Field < problems[j].Field })
-	return InvalidInput(c.Name+" takes no field "+strings.TrimPrefix(problems[0].Field, "/"), problems...)
+	byField := func(i, j int) bool { return problems[i].Field < problems[j].Field }
+	sort.Slice(problems, byField)
+	message := c.Name + " takes no field " + strings.TrimPrefix(problems[0].Field, "/")
+	if c.Subject != nil && c.Subject.Required {
+		if _, ok := in[c.Subject.Field]; !ok {
+			problems = append(problems, Problem{Field: Pointer(c.Subject.Field), Reason: c.Subject.Field + " is required"})
+			sort.Slice(problems, byField)
+		}
+	}
+	return InvalidInput(message, problems...)
 }
 
 // Pointer is the JSON Pointer to a top-level field.

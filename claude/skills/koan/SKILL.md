@@ -114,7 +114,7 @@ koan frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work 
 koan why 43                                    # .result.ready: [45], what to finish to move @43
 koan complete 45                               # .result.released: [42], the tasks it made ready
 koan claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
-koan task show 42                                   # the whole task: .result.task, with its notes_path
+koan show 42                                   # the whole task: .result.task, with its notes_path
 koan complete 42                               # ends the claim; .result.released: [43]
 ```
 
@@ -170,7 +170,7 @@ koan block 42 43                           # refused: conflict, rule cycle, sinc
 ```sh
 koan folder create /work/web/client --title 'Web client'    # makes /work/web too: .result.created lists both
 koan folder update /work/web/client --extra-merge '{"jira":"WEB-12"}'
-koan folder show /work/api                                   # .result.folder: gates, open, complete, finished, notes_path
+koan show /work/api                                         # .result.folder: gates, open, complete, finished, notes_path
 koan task create 'Port the client' --folder /work/web/client --blocked-by /work/web/client.start --blocks /work/web/client
 koan block /work/web/client.start /work/api                # the client's work starts once the API is done
 ```
@@ -264,7 +264,7 @@ Archiving moves complete work out of the tree into `~/koan-root/archived/`, kept
 ```sh
 koan folder archive /work/api                       # refused while anything under it is open: conflict, rule not-finished
 koan task update 48 --tags-add cancelled && koan complete 48 && koan task archive 48   # one task: .result.archive
-koan task show 48                                   # not-found: .error.archived says where it went
+koan show 48                                        # not-found: .error.archived says where it went
 ```
 
 - **When the last open task in a folder is complete**, or the user says its work has shipped, offer to archive it. Never archive on your own initiative. A folder archives when every task under it is complete, gates included; otherwise `not-finished` lists the open tasks in `.error.ids`: ask the user, don't complete them to get past it.

@@ -37,7 +37,7 @@ func TestTaskDelete(t *testing.T) {
 		fmt.Sprint(field(t, home, "1", "blocks")) != "[map[id:4 ref:@4 (/) state:open]]" {
 		t.Errorf("never splices")
 	}
-	r = fails(t, home, "not-found", "", "task", "show", "2")
+	r = fails(t, home, "not-found", "", "show", "2")
 	if fmt.Sprint(r.Error()["ids"]) != "[2]" {
 		t.Errorf("deleted: %s", r.Line())
 	}
@@ -68,7 +68,7 @@ func TestTaskDeleteGate(t *testing.T) {
 		t.Errorf("gate: %s", r.Line())
 	}
 	checkTree(t, home, "@w/", "@w/@notes.md=", "@2.md=")
-	if g := ok(t, home, "folder", "show", "/w").Result()["folder"].(map[string]any)["gates"]; fmt.Sprint(g) != "map[done:<nil> start:<nil>]" {
+	if g := ok(t, home, "show", "/w").Result()["folder"].(map[string]any)["gates"]; fmt.Sprint(g) != "map[done:<nil> start:<nil>]" {
 		t.Errorf("gates: %v", g)
 	}
 	fails(t, home, "not-found", "", "task", "delete", "/w.start")
@@ -105,7 +105,7 @@ func TestFolderDelete(t *testing.T) {
 		t.Errorf("6 waited on the gate alone")
 	}
 	for _, id := range []string{"1", "2", "3", "5"} {
-		fails(t, home, "not-found", "", "task", "show", id)
+		fails(t, home, "not-found", "", "show", id)
 	}
 	if r := ok(t, home, "folder", "list"); fmt.Sprint(r.Result()["total"]) != "1" {
 		t.Errorf("folders left: %s", r.Line())
@@ -270,7 +270,7 @@ func TestTaskDeleteSeveral(t *testing.T) {
 	}
 	checkTree(t, home, "@3.md=", "@5.md=")
 	for _, id := range []string{"1", "2", "4"} {
-		fails(t, home, "not-found", "", "task", "show", id)
+		fails(t, home, "not-found", "", "show", id)
 	}
 	// Through --input.
 	if r := input(t, home, "task delete", `{"tasks":[3,"@5"]}`); !r.OK() || fmt.Sprint(r.Result()) != "map[released:[] removed:[3 5]]" {
@@ -391,10 +391,10 @@ func TestDeleteSeveralPending(t *testing.T) {
 	checkTree(t, home, "@w/", "@k/", "@k/@notes.md=", "@3.md=", "@4.md=")
 	os.Chmod(dir, 0o755)
 	for _, id := range []string{"1", "2"} {
-		fails(t, home, "not-found", "", "folder", "show", id)
+		fails(t, home, "not-found", "", "show", id)
 	}
 	for _, id := range []string{"3", "4"} {
-		fails(t, home, "not-found", "", "task", "show", id)
+		fails(t, home, "not-found", "", "show", id)
 	}
 	ok(t, home, "folder", "create", "/m") // 5
 	checkTree(t, home, "@m/", "@m/@notes.md=")

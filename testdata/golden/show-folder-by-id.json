@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": 1,
+      "ref": "@1 (/work)",
+      "name": "work",
+      "path": "/work",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": {
+          "id": 3,
+          "state": "open",
+          "readiness": "ready"
+        },
+        "done": {
+          "id": 4,
+          "state": "open",
+          "readiness": "blocked"
+        }
+      },
+      "open": 4,
+      "complete": 0,
+      "finished": false,
+      "notes_path": "$HOME/koan-root/tree/@work/@notes.md",
+      "dir": "$HOME/koan-root/tree/@work"
+    }
+  },
+  "warnings": []
+}

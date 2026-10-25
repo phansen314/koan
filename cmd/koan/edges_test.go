@@ -165,7 +165,7 @@ func TestTaskBlockGates(t *testing.T) {
 	ok(t, home, "task", "create", "a")           // 3
 	r := ok(t, home, "block", "/work/api.start", "/work.start,@1.start", "--blocks", "3")
 	golden(t, r, "block-gates")
-	rec := ok(t, home, "task", "show", "4").Result()["task"].(map[string]any)
+	rec := ok(t, home, "show", "4").Result()["task"].(map[string]any)
 	if rec["gate"] != "start" || rec["title"] != "Start" || rec["priority"] != nil || fmt.Sprint(rec["tags"]) != "[]" ||
 		fmt.Sprint(rec["extra"]) != "map[]" || rec["readiness"] != "blocked" || rec["ref"] != "@4 (/work/api.start)" {
 		t.Errorf("made gate: %v", rec)

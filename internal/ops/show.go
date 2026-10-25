@@ -9,19 +9,21 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// FolderShowResult is folder show's result, in its schema's order.
-type FolderShowResult struct {
-	Folder Folder `json:"folder"`
+// ShowResult is show's result, in its schema's order: the task's
+// record or the folder's, by what the reference names.
+type ShowResult struct {
+	Task   *Task   `json:"task,omitempty"`
+	Folder *Folder `json:"folder,omitempty"`
 }
 
-// FolderShow reads one folder, or the root.
-func FolderShow() *cli.Command {
+// Show reads one task, a gate included, or one folder, or the root.
+func Show() *cli.Command {
 	return &cli.Command{
-		Name:    "folder show",
-		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
+		Name:    "show",
+		Subject: &cli.Option{Field: "ref", Required: true, Complete: anyRef.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			ref := r.ref("folder", core.WantFolder, "")
+			ref := r.ref("ref", core.WantRef, "")
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}
@@ -30,30 +32,50 @@ func FolderShow() *cli.Command {
 				return nil, nil, e
 			}
 			defer s.Close()
-			var res FolderShowResult
+			var res ShowResult
+			var id *int64
+			var notes string
 			var making bool
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
-				id, err := resolveFolder(tx, ref, "folder")
+				got, err := resolve(tx, ref, core.WantRef, "ref")
 				if err != nil {
 					return nil, err
+				}
+				if got.Kind == core.ResolvedTask {
+					t, err := loadTasks(tx, s.Root)
+					if err != nil {
+						return nil, err
+					}
+					rec := t.record(got.ID)
+					res.Task, id, notes = &rec, &rec.ID, t.notesRel(got.ID)
+					if making, err = fsstep.Makes(tx, notes); err != nil {
+						return nil, err
+					}
+					return taskPaths(Cut[Task]{Record: rec}), nil
+				}
+				folder := got.ID
+				if got.Kind == core.ResolvedRoot {
+					folder = core.RootID
 				}
 				f, err := loadFolders(tx, s.Root)
 				if err != nil {
 					return nil, err
 				}
-				res.Folder = f.record(id)
-				if id != core.RootID {
-					if making, err = fsstep.Makes(tx, fsstep.FolderNotesPath(res.Folder.Path)); err != nil {
+				rec := f.record(folder)
+				res.Folder, id = &rec, rec.ID
+				if id != nil {
+					notes = fsstep.FolderNotesPath(rec.Path)
+					if making, err = fsstep.Makes(tx, notes); err != nil {
 						return nil, err
 					}
 				}
-				return recordPaths(Cut[Folder]{Record: res.Folder}), nil
+				return recordPaths(Cut[Folder]{Record: rec}), nil
 			})
 			if e != nil {
 				return nil, nil, e
 			}
-			if res.Folder.ID != nil && !making {
-				w, e := missingNotes(s.Root, *res.Folder.ID, fsstep.FolderNotesPath(res.Folder.Path))
+			if id != nil && !making {
+				w, e := missingNotes(s.Root, *id, notes)
 				if e != nil {
 					return nil, nil, e
 				}

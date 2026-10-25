@@ -6,15 +6,18 @@ import (
 	"testing"
 )
 
-// A command sits under task only where the kind changes what it does,
-// so each moved command's old spelling is usage, an unknown command
-// after task, with its problem at the verb; it changes nothing.
+// A command sits under task or folder only where the kind changes what
+// it does, so each old spelling is usage, an unknown command after task
+// or folder, with its problem at the verb; it changes nothing.
 func TestOldSpellings(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/w")                // 1
 	ok(t, home, "task", "create", "a", "--folder", "/w") // 2
 	ok(t, home, "task", "create", "b", "--folder", "/w") // 3
+	golden(t, usageAt(t, home, "show", "task", "show", "2"), "task-show-old")
 	for _, args := range [][]string{
+		{"task", "show", "2"},
+		{"folder", "show", "/w"},
 		{"task", "why", "2"},
 		{"task", "complete", "2"},
 		{"task", "reopen", "2"},

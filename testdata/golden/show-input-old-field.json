@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "show takes no field task",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "ref is required"
+      },
+      {
+        "field": "/task",
+        "reason": "unknown field"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -31,10 +31,10 @@ func goldenNow(t *testing.T, r *testrun.Result, name string) {
 	r.Golden(t, name, *update, replace)
 }
 
-// field is one field of a task's record, as task show gives it.
+// field is one field of a task's record, as show gives it.
 func field(t *testing.T, home, ref, name string) any {
 	t.Helper()
-	return ok(t, home, "task", "show", ref).Result()["task"].(map[string]any)[name]
+	return ok(t, home, "show", ref).Result()["task"].(map[string]any)[name]
 }
 
 // task create makes the task in a folder or the root, its fields as
@@ -47,8 +47,8 @@ func TestTaskCreate(t *testing.T) {
 	r := ok(t, home, "task", "create", "  Book flights  ", "--folder", "/work", "--priority", "-3",
 		"--tags", "urgent,a-1", "--tags", "home", "--extra", `{"z":"<x>","a":[1,2.50]}`, "--notes", "# Plan\n")
 	golden(t, r, "task-create")
-	r = ok(t, home, "task", "show", "2")
-	goldenNow(t, r, "task-show")
+	r = ok(t, home, "show", "2")
+	goldenNow(t, r, "show")
 	rec := r.Result()["task"].(map[string]any)
 	if rec["created_at"] != rec["updated_at"] {
 		t.Errorf("created and updated differ: %s", r.Line())
@@ -59,7 +59,7 @@ func TestTaskCreate(t *testing.T) {
 	if r.Result()["ref"] != "@3 (/)" || r.Result()["notes_path"] != filepath.Join(home, "koan-root", "tree", "@3.md") {
 		t.Errorf("root: %s", r.Line())
 	}
-	rec = ok(t, home, "task", "show", "@3").Result()["task"].(map[string]any)
+	rec = ok(t, home, "show", "@3").Result()["task"].(map[string]any)
 	if rec["title"] != "-dash" || rec["priority"] != nil || fmt.Sprint(rec["tags"]) != "[]" || fmt.Sprint(rec["extra"]) != "map[]" ||
 		fmt.Sprint(rec["folder"]) != "map[id:<nil> path:/]" {
 		t.Errorf("defaults: %v", rec)
@@ -209,14 +209,14 @@ func TestTaskCreateStepRefused(t *testing.T) {
 	}
 	golden(t, r, "task-create-pending-step")
 	// The step's own warning says why the notes aren't there.
-	goldenNow(t, koan(t, home, "task", "show", "2"), "task-show-pending-step")
+	goldenNow(t, koan(t, home, "show", "2"), "show-pending-step")
 	os.Chmod(dir, 0o755)
 	ok(t, home, "task", "create", "u")
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@2.md=n", "@3.md=")
-	ok(t, home, "task", "show", "2")
+	ok(t, home, "show", "2")
 }
 
-// task show reads a task by ID, or a gate by its folder and end: its
+// show reads a task by ID, or a gate by its folder and end: its
 // readiness and edges as they stand, each edge's other end with its
 // state, ascending by ID, and its claim.
 func TestTaskShow(t *testing.T) {
@@ -239,12 +239,12 @@ func TestTaskShow(t *testing.T) {
 		touch(rel)
 	}
 
-	r := ok(t, home, "task", "show", "5")
-	golden(t, r, "task-show-edges")
-	r = ok(t, home, "task", "show", "/work.done")
-	golden(t, r, "task-show-gate")
+	r := ok(t, home, "show", "5")
+	golden(t, r, "show-edges")
+	r = ok(t, home, "show", "/work.done")
+	golden(t, r, "show-gate")
 	for ref, id := range map[string]string{"@3": "3", "/work.start": "3", "@1.start": "3", "@1/api/..": "", "4": "4", "@6": "6"} {
-		r := koan(t, home, "task", "show", ref)
+		r := koan(t, home, "show", ref)
 		if id == "" {
 			if r.Kind() != "invalid-input" {
 				t.Errorf("%s: %s", ref, r.Line())
@@ -255,26 +255,31 @@ func TestTaskShow(t *testing.T) {
 			t.Errorf("%s: %s", ref, r.Line())
 		}
 	}
-	rec := ok(t, home, "task", "show", "6").Result()["task"].(map[string]any)
+	rec := ok(t, home, "show", "6").Result()["task"].(map[string]any)
 	if rec["state"] != "complete" || rec["readiness"] != nil || fmt.Sprint(rec["blocks"]) != "[map[id:5 ref:@5 (/work/api) state:open]]" {
 		t.Errorf("complete: %v", rec)
 	}
 	if field(t, home, "7", "readiness") != "blocked" || field(t, home, "3", "readiness") != "ready" {
 		t.Errorf("readiness")
 	}
-	r = testrun.Run{Home: home, Stdin: strings.NewReader(`{"task":4}`)}.Koan(t, "task", "show", "-i", "-")
-	r.Check(t, "task show")
+	r = testrun.Run{Home: home, Stdin: strings.NewReader(`{"ref":4}`)}.Koan(t, "show", "-i", "-")
+	r.Check(t, "show")
 	if !r.OK() {
 		t.Errorf("-i with an integer: %s", r.Line())
 	}
 
-	golden(t, fails(t, home, "not-found", "", "task", "show", "@1"), "task-show-folder")
-	golden(t, fails(t, home, "not-found", "", "task", "show", "/work/api.start"), "task-show-no-gate")
-	fails(t, home, "not-found", "", "task", "show", "99")
-	golden(t, fails(t, home, "conflict", "case-mismatch", "task", "show", "/WORK.start"), "task-show-case-mismatch")
-	for _, ref := range []string{"/work", "@5.start", "/work:docs", "/"} {
-		r := fails(t, home, "invalid-input", "", "task", "show", ref)
-		if fmt.Sprint(r.Error()["problems"].([]any)[0].(map[string]any)["field"]) != "/task" {
+	// A folder's ID names the folder.
+	r = koan(t, home, "show", "@1")
+	golden(t, r, "show-folder-by-id")
+	if r.Result()["task"] != nil || r.Result()["folder"].(map[string]any)["path"] != "/work" {
+		t.Errorf("@1: %s", r.Line())
+	}
+	golden(t, fails(t, home, "not-found", "", "show", "/work/api.start"), "show-no-gate")
+	fails(t, home, "not-found", "", "show", "99")
+	golden(t, fails(t, home, "conflict", "case-mismatch", "show", "/WORK.start"), "show-case-mismatch")
+	for _, ref := range []string{"@5.start", "/work:docs", "@1:docs"} {
+		r := fails(t, home, "invalid-input", "", "show", ref)
+		if problemFields(r) != "/ref" {
 			t.Errorf("%s: %s", ref, r.Line())
 		}
 	}
@@ -290,14 +295,14 @@ func TestTaskShowMissingNotes(t *testing.T) {
 	dir := filepath.Join(home, "koan-root", "tree", "@work")
 	os.Remove(filepath.Join(dir, "@2.md"))
 	os.WriteFile(filepath.Join(dir, "@2.MD"), []byte("by hand"), 0o644)
-	r := koan(t, home, "task", "show", "2")
+	r := koan(t, home, "show", "2")
 	if r.Exit != 0 || r.Stderr != "koan: 1 warning\n" {
 		t.Errorf("exit %d, stderr %q", r.Exit, r.Stderr)
 	}
-	goldenNow(t, r, "task-show-missing-notes")
+	goldenNow(t, r, "show-missing-notes")
 
 	db(t, home, task(3, 1, "done", false)...)
-	r = koan(t, home, "task", "show", "/work.done")
+	r = koan(t, home, "show", "/work.done")
 	ws := r.Envelope["warnings"].([]any)
 	if len(ws) != 1 || fmt.Sprint(ws[0].(map[string]any)["paths"]) != "["+filepath.Join(dir, "@done.md")+"]" {
 		t.Errorf("gate: %s", r.Line())
@@ -450,7 +455,7 @@ func TestTaskListLimit(t *testing.T) {
 }
 
 // With a write holding the lock, a notes path a pending step is making is
-// pending-filesystem on task show and task list; one a list doesn't
+// pending-filesystem on show and task list; one a list doesn't
 // return says nothing; a stuck step's own warning holds back
 // missing-notes.
 func TestTaskReadsPending(t *testing.T) {
@@ -462,8 +467,8 @@ func TestTaskReadsPending(t *testing.T) {
 	if e != nil {
 		t.Fatal(e.Message)
 	}
-	r := koan(t, home, "task", "show", "2")
-	golden(t, r, "task-show-pending-filesystem")
+	r := koan(t, home, "show", "2")
+	golden(t, r, "show-pending-filesystem")
 	r = koan(t, home, "task", "list", "--fields", "notes_path")
 	ws := r.Envelope["warnings"].([]any)
 	if len(ws) != 1 || fmt.Sprint(ws[0].(map[string]any)["ids"]) != "[2]" {
@@ -475,12 +480,12 @@ func TestTaskReadsPending(t *testing.T) {
 		t.Errorf("no paths: %s", r.Line())
 	}
 	ok(t, home, "task", "create", "b")
-	ok(t, home, "task", "show", "2")
+	ok(t, home, "show", "2")
 
 	db(t, home, task(4, 0, "", false)...)
 	db(t, home, `INSERT INTO pending (seq, change, step, stuck) VALUES (9, 9, '{"op":"move","from":"tree/@x.md","to":"tree/@4.md","stuck":"both"}', 1)`)
-	r = koan(t, home, "task", "show", "4")
-	golden(t, r, "task-show-stuck-step")
+	r = koan(t, home, "show", "4")
+	golden(t, r, "show-stuck-step")
 	ws = r.Envelope["warnings"].([]any)
 	if len(ws) != 1 || ws[0].(map[string]any)["kind"] != "stuck-step" {
 		t.Errorf("stuck: %s", r.Line())
@@ -533,7 +538,7 @@ func TestTaskCreateModel(t *testing.T) {
 		if r.Result()["id"] != json.Number(fmt.Sprint(created.ID)) {
 			t.Errorf("%v: model %d, koan %s", c, created.ID, r.Line())
 		}
-		rec := ok(t, home, "task", "show", fmt.Sprint(created.ID)).Result()["task"].(map[string]any)
+		rec := ok(t, home, "show", fmt.Sprint(created.ID)).Result()["task"].(map[string]any)
 		x := m.Tasks[created.ID]
 		var tags []string
 		for tag := range x.Tags {
@@ -568,7 +573,7 @@ func TestTaskShowPendingSteps(t *testing.T) {
 	db(t, home,
 		`INSERT INTO pending (seq, change, step) VALUES (1, 1, '{"op":"write","to":"tree/@1.md"}')`,
 		`INSERT INTO pending (seq, change, step) VALUES (2, 1, '{"op":"write","to":"tree/@2.md"}')`)
-	golden(t, koan(t, home, "task", "show", "1"), "task-show-pending-steps")
+	golden(t, koan(t, home, "show", "1"), "show-pending-steps")
 }
 
 // An ID that names nothing is not-found, whatever command resolves it,
@@ -587,11 +592,11 @@ func TestNotFoundID(t *testing.T) {
 		args    []string
 		message string
 	}{
-		{[]string{"task", "show", "102"}, "@102 was deleted"},
-		{[]string{"task", "show", "103"}, "@103 was never issued"},
-		{[]string{"task", "show", "99"}, "@99 is below this root's first ID, 100, so came from an earlier root"},
-		{[]string{"folder", "show", "@5"}, "@5 is below this root's first ID, 100, so came from an earlier root"},
-		{[]string{"folder", "show", "@200"}, "@200 was never issued"},
+		{[]string{"show", "102"}, "@102 was deleted"},
+		{[]string{"show", "103"}, "@103 was never issued"},
+		{[]string{"show", "99"}, "@99 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"show", "@5"}, "@5 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"show", "@200"}, "@200 was never issued"},
 		{[]string{"task", "create", "x", "--folder", "@102"}, "@102 was deleted"},
 		{[]string{"block", "101", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
 		{[]string{"task", "update", "150", "--title", "x"}, "@150 was never issued"},
@@ -601,5 +606,5 @@ func TestNotFoundID(t *testing.T) {
 			t.Errorf("koan %q: %s, want %q", c.args, r.Line(), c.message)
 		}
 	}
-	golden(t, fails(t, home, "not-found", "", "task", "show", "99"), "task-show-earlier-root")
+	golden(t, fails(t, home, "not-found", "", "show", "99"), "show-earlier-root")
 }

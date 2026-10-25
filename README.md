@@ -95,7 +95,7 @@ koan task create 'Build them' --folder /work/api --blocked-by 3          # @4, w
 koan frontier --limit 10 --fields ref,title                         # what can be taken now: only @3
 koan claim-next --extra '{"by":"me"}'                               # claims @3 and returns it, so no one else takes it
 koan complete 3                                                     # .result.released: [4], now ready
-koan task show 4                                                         # the whole task, with its notes_path
+koan show 4                                                         # the whole task, with its notes_path
 ```
 
 A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`.

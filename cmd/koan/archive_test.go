@@ -145,7 +145,7 @@ func TestTaskArchive(t *testing.T) {
 	}
 
 	// Named later, it is not-found, saying where it went.
-	r = fails(t, home, "not-found", "", "task", "show", "3")
+	r = fails(t, home, "not-found", "", "show", "3")
 	golden(t, r, "task-archive-not-found")
 	if !strings.Contains(r.Error()["message"].(string), archivePath(home, "work/HOME-777/@3.md")) {
 		t.Errorf("message: %s", r.Line())
@@ -192,7 +192,7 @@ func TestTaskArchiveNoNotes(t *testing.T) {
 		t.Errorf("no notes: %s", r.Line())
 	}
 	checkArchive(t, home, "@1.json=task")
-	if got := archivedTo(t, home, "task", "show", "1"); got != archivePath(home, "@1.json") {
+	if got := archivedTo(t, home, "show", "1"); got != archivePath(home, "@1.json") {
 		t.Errorf("index: %s", got)
 	}
 
@@ -232,12 +232,12 @@ func TestTaskArchiveGate(t *testing.T) {
 	if field(t, home, "3", "updated_at") == fixed || fmt.Sprint(field(t, home, "3", "blocked_by")) != "[]" {
 		t.Errorf("what waited on it")
 	}
-	if got := archivedTo(t, home, "task", "show", "4"); got != archivePath(home, "work/api/@4_start.md") {
+	if got := archivedTo(t, home, "show", "4"); got != archivePath(home, "work/api/@4_start.md") {
 		t.Errorf("index: %s", got)
 	}
 	// The folder lacks it now; the next start gate is made afresh, with
 	// notes of its own in the tree.
-	fails(t, home, "not-found", "", "task", "show", "/work/api.start")
+	fails(t, home, "not-found", "", "show", "/work/api.start")
 	ok(t, home, "block", "3", "/work/api.start") // 5
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=", "@work/@api/@start.md=", "@3.md=")
 	ok(t, home, "complete", "5")
@@ -305,13 +305,13 @@ func TestFolderArchive(t *testing.T) {
 
 	// Each ID is indexed where it itself sits.
 	for args, want := range map[string]string{
-		"folder show 2":    dir,
-		"folder show 3":    dir + "/@api",
-		"task show 4":      dir + "/@4.md",
-		"task show 5":      dir + "/@api/@5.md",
-		"task show 6":      dir + "/@start.md",
-		"task show 8":      dir + "/@done.md",
-		"folder show @3/x": dir + "/@api",
+		"show 2":           dir,
+		"show 3":           dir + "/@api",
+		"show 4":           dir + "/@4.md",
+		"show 5":           dir + "/@api/@5.md",
+		"show 6":           dir + "/@start.md",
+		"show 8":           dir + "/@done.md",
+		"show @3/x":        dir + "/@api",
 		"task archive 6":   dir + "/@start.md",
 		"folder archive 3": dir + "/@api",
 	} {
@@ -319,7 +319,7 @@ func TestFolderArchive(t *testing.T) {
 			t.Errorf("%s: %s, want %s", args, got, want)
 		}
 	}
-	golden(t, fails(t, home, "not-found", "", "folder", "show", "2"), "folder-archive-not-found")
+	golden(t, fails(t, home, "not-found", "", "show", "2"), "folder-archive-not-found")
 	// What waited on it lost the edge and is ready; what it waited on
 	// keeps its updated_at.
 	if field(t, home, "7", "updated_at") == fixed || field(t, home, "7", "readiness") != "ready" ||
@@ -360,7 +360,7 @@ func TestFolderArchiveEmpty(t *testing.T) {
 		t.Errorf("archive: %s", r.Line())
 	}
 	checkArchive(t, home, "@1_f/", "@1_f.json=folder", "@1_f/@notes.md=", "@1_f/@g/", "@1_f/@g/@notes.md=")
-	if got := archivedTo(t, home, "task", "show", "3"); got != archivePath(home, "@1_f/@g/@3.md") {
+	if got := archivedTo(t, home, "show", "3"); got != archivePath(home, "@1_f/@g/@3.md") {
 		t.Errorf("index: %s", got)
 	}
 	checkTree(t, home)
@@ -383,7 +383,7 @@ func TestArchiveCase(t *testing.T) {
 	if r.Result()["archive"] != archivePath(home, "Work/@3.md") {
 		t.Errorf("on disk: %s", r.Line())
 	}
-	if got := archivedTo(t, home, "task", "show", "3"); got != archivePath(home, "Work/@3.md") {
+	if got := archivedTo(t, home, "show", "3"); got != archivePath(home, "Work/@3.md") {
 		t.Errorf("index: %s", got)
 	}
 	checkArchive(t, home, "Work/", "Work/@2.md=", "Work/@2.json=task", "Work/@3.md=", "Work/@3.json=task")
@@ -424,7 +424,7 @@ func TestArchiveCasePending(t *testing.T) {
 	}
 	os.Chmod(dir, 0o755)
 	ok(t, home, "task", "create", "v") // 4
-	if got := archivedTo(t, home, "task", "show", "3"); got != archivePath(home, "Work/@3.json") {
+	if got := archivedTo(t, home, "show", "3"); got != archivePath(home, "Work/@3.json") {
 		t.Errorf("index: %s", got)
 	}
 	checkArchive(t, home, "Work/", "Work/@2.md=", "Work/@2.json=task", "Work/@3.md=", "Work/@3.json=task")
@@ -443,5 +443,5 @@ func TestFolderArchiveStuck(t *testing.T) {
 	if fmt.Sprint(r.Result()["left"]) != "[1]" {
 		t.Errorf("archive: %s", r.Line())
 	}
-	fails(t, home, "not-found", "", "folder", "show", "1")
+	fails(t, home, "not-found", "", "show", "1")
 }

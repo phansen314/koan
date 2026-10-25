@@ -74,8 +74,8 @@ func TestBatch(t *testing.T) {
 		fmt.Sprint(field(t, home, "5", "blocked_by")) != "[map[id:7 ref:@7 (/work/api.done) state:open]]" {
 		t.Errorf("edges")
 	}
-	f := ok(t, home, "folder", "show", "/work/api").Result()["folder"].(map[string]any)
-	if f["title"] != "API rework" || ok(t, home, "folder", "show", "/work").Result()["folder"].(map[string]any)["title"] != nil {
+	f := ok(t, home, "show", "/work/api").Result()["folder"].(map[string]any)
+	if f["title"] != "API rework" || ok(t, home, "show", "/work").Result()["folder"].(map[string]any)["title"] != nil {
 		t.Errorf("titles: %v", f)
 	}
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@5.md=", "@work/@api/", "@work/@api/@notes.md=",
@@ -110,11 +110,11 @@ func TestBatchReadAsTree(t *testing.T) {
 		fmt.Sprint(field(t, home, "7", "blocked_by")) != "[map[id:1 ref:@1 (/) state:open] map[id:6 ref:@6 (/x/y) state:open]]" {
 		t.Errorf("edges")
 	}
-	b := ok(t, home, "task", "show", "6").Result()["task"].(map[string]any)
+	b := ok(t, home, "show", "6").Result()["task"].(map[string]any)
 	if b["priority"] != json.Number("3") || fmt.Sprint(b["tags"]) != "[p q]" || fmt.Sprint(b["extra"]) != "map[a:[true] z:1]" {
 		t.Errorf("fields: %v", b)
 	}
-	f := ok(t, home, "folder", "show", "/x/y").Result()["folder"].(map[string]any)
+	f := ok(t, home, "show", "/x/y").Result()["folder"].(map[string]any)
 	if f["title"] != "Y" || fmt.Sprint(f["extra"]) != "map[k:v]" {
 		t.Errorf("folder: %v", f)
 	}
@@ -128,7 +128,7 @@ func TestBatchReadAsTree(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[folders:[map[id:9 path:/p] map[id:10 path:/p/q]] gates_made:[] labels:map[] reblocked:[] tasks:[]]" {
 		t.Errorf("folders alone: %s", r.Line())
 	}
-	if ok(t, home, "folder", "show", "/p").Result()["folder"].(map[string]any)["title"] != "P" {
+	if ok(t, home, "show", "/p").Result()["folder"].(map[string]any)["title"] != "P" {
 		t.Errorf("/p's title")
 	}
 	r = batchOK(t, home, `{"tasks": [{"title": "t"}], "folders": []}`)

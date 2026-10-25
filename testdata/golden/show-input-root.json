@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "result": {
+    "folder": {
+      "id": null,
+      "ref": "/",
+      "name": null,
+      "path": "/",
+      "title": null,
+      "extra": {},
+      "gates": {
+        "start": null,
+        "done": null
+      },
+      "open": 1,
+      "complete": 0,
+      "finished": false,
+      "notes_path": null,
+      "dir": "$HOME/koan-root/tree"
+    }
+  },
+  "warnings": []
+}

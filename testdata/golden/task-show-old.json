@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command task show",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "show",
+        "reason": "unknown command task show"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}
