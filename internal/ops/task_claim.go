@@ -71,7 +71,7 @@ func TaskClaimNext() *cli.Command {
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
 			{Field: "file", Kind: cli.Path},
-			{Field: "recursive", Kind: cli.Bool},
+			{Field: "direct", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
 			{Field: "extra", Kind: cli.JSON},

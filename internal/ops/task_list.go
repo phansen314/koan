@@ -23,7 +23,7 @@ func TaskList() *cli.Command {
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
 			{Field: "file", Kind: cli.Path},
-			{Field: "recursive", Kind: cli.Bool},
+			{Field: "direct", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},
 			{Field: "tags_any", Kind: cli.List},
@@ -36,7 +36,7 @@ func TaskList() *cli.Command {
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			q := r.foldering("folder")
-			recursive := r.boolean("recursive", true)
+			direct := r.boolean("direct", false)
 			states := r.choices("state", []string{"open", "complete"}, []string{"open"})
 			readiness := r.choices("readiness", []string{"ready", "blocked"}, []string{"ready", "blocked"})
 			tagsAny := r.tags("tags_any")
@@ -64,7 +64,7 @@ func TaskList() *cli.Command {
 					return nil, err
 				}
 				keep := func(id int64) bool {
-					if !t.in(id, folder, recursive) || !slices.Contains(states, t.state(id)) {
+					if !t.in(id, folder, direct) || !slices.Contains(states, t.state(id)) {
 						return false
 					}
 					if ready := t.readiness(id); ready != nil && !slices.Contains(readiness, *ready) {

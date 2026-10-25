@@ -188,7 +188,7 @@ func TestMalformed(t *testing.T) {
 		{[]string{"folder"}, ""},
 		{[]string{"Bind"}, "Bind"},
 		{[]string{"task", "list", "--limit", "ten"}, "--limit"},
-		{[]string{"task", "list", "--recursive=maybe"}, "--recursive"},
+		{[]string{"task", "list", "--direct=maybe"}, "--direct"},
 		{[]string{"task", "list", "--claimed", "--claimed=false"}, "--claimed"},
 		{[]string{"task", "create", "t", "--notes", "n", "--notes-file", "f"}, ""},
 		{[]string{"task", "create", "t", "-i", "in.json"}, "t"},

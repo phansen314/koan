@@ -51,14 +51,14 @@ func Export() *cli.Command {
 				}
 				res.Folder = t.folders.record(id)
 				paths := recordPaths(Cut[Folder]{Record: res.Folder})
-				for _, f := range t.folders.under(id, true) {
+				for _, f := range t.folders.under(id, false) {
 					rec := t.folders.record(f)
 					res.Folders = append(res.Folders, rec)
 					paths = append(paths, recordPaths(Cut[Folder]{Record: rec})...)
 				}
 				under := map[int64]bool{}
 				for _, tid := range t.order {
-					if t.in(tid, id, true) {
+					if t.in(tid, id, false) {
 						under[tid] = true
 						rec := t.record(tid)
 						res.Tasks = append(res.Tasks, rec)

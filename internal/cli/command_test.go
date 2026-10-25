@@ -77,7 +77,7 @@ var bind = &Command{
 var scope = &Command{
 	Name:    "task list",
 	Subject: &Option{Field: "folder"},
-	Options: []Option{{Field: "recursive", Kind: Bool}},
+	Options: []Option{{Field: "direct", Kind: Bool}},
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
@@ -172,7 +172,7 @@ func TestParseLines(t *testing.T) {
 		{bind, []string{"@41", "/d,e"}, `{"folder":"@41","dir":"/d,e"}`},
 		{scope, nil, `{}`},
 		{scope, []string{"/w"}, `{"folder":"/w"}`},
-		{scope, []string{"/w,x", "--recursive=false"}, `{"folder":"/w,x","recursive":false}`},
+		{scope, []string{"/w,x", "--direct"}, `{"folder":"/w,x","direct":true}`},
 	}
 	for _, c := range cases {
 		l, e := c.cmd.parse(c.args)

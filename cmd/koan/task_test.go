@@ -358,8 +358,8 @@ func TestTaskList(t *testing.T) {
 		{[]string{"--readiness", "ready"}, "5 8 7 6 9 4"},
 		{[]string{"--readiness", "blocked", "--state", "complete,open"}, "11 10"},
 		{[]string{"/alpha"}, "6 9 10 4"},
-		{[]string{"@1", "--recursive=false"}, "6 9 10"},
-		{[]string{"/", "--recursive=false"}, "5 8"},
+		{[]string{"@1", "--direct"}, "6 9 10"},
+		{[]string{"/", "--direct"}, "5 8"},
 		{[]string{"/alpha/b"}, "4"},
 		{[]string{"--tags-any", "x,z"}, "8 7 4"},
 		{[]string{"--tags-all", "x,y"}, "4"},
@@ -607,4 +607,60 @@ func TestNotFoundID(t *testing.T) {
 		}
 	}
 	golden(t, fails(t, home, "not-found", "", "show", "99"), "show-earlier-root")
+}
+
+// --direct narrows list, frontier, claim-next and folder list to what is
+// directly in the folder, as an option or as direct through -i, and
+// --recursive no longer exists.
+func TestDirectOption(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/a/b")
+	ok(t, home, "task", "create", "top")
+	ok(t, home, "task", "create", "mid", "--folder", "/a")
+	ok(t, home, "task", "create", "deep", "--folder", "/a/b")
+	usage := func(args ...string) {
+		t.Helper()
+		if r := koan(t, home, args...); r.Exit != 2 || r.Kind() != "usage" {
+			t.Errorf("koan %q: exit %d: %s", args, r.Exit, r.Line())
+		}
+	}
+	count := func(r *testrun.Result, key string) int { return len(r.Result()[key].([]any)) }
+	input := func(cmd []string, in string) *testrun.Result {
+		t.Helper()
+		return ok(t, home, append(cmd, "-i", writeInput(t, in))...)
+	}
+	for _, c := range []struct {
+		cmd         []string
+		key         string
+		all, direct int
+	}{
+		{[]string{"task", "list"}, "tasks", 3, 1},
+		{[]string{"frontier"}, "tasks", 3, 1},
+		{[]string{"folder", "list"}, "folders", 2, 1},
+	} {
+		if n := count(ok(t, home, c.cmd...), c.key); n != c.all {
+			t.Errorf("%q: %d, want %d", c.cmd, n, c.all)
+		}
+		if n := count(ok(t, home, append(c.cmd, "--direct")...), c.key); n != c.direct {
+			t.Errorf("%q --direct: %d, want %d", c.cmd, n, c.direct)
+		}
+		if n := count(input(c.cmd, `{"direct": true}`), c.key); n != c.direct {
+			t.Errorf("%q direct through -i: %d, want %d", c.cmd, n, c.direct)
+		}
+		if n := count(input(c.cmd, `{"direct": false}`), c.key); n != c.all {
+			t.Errorf("%q direct false through -i: %d, want %d", c.cmd, n, c.all)
+		}
+		usage(append(c.cmd, "--recursive")...)
+		usage(append(c.cmd, "--recursive=false")...)
+	}
+	usage("claim-next", "--recursive=false")
+	// claim-next --direct skips the tasks deeper in.
+	ok(t, home, "claim", "3")
+	r := ok(t, home, "claim-next", "/a", "--direct")
+	if id := r.Result()["task"].(map[string]any)["id"]; fmt.Sprint(id) != "4" {
+		t.Errorf("claim-next /a --direct: %s", r.Line())
+	}
+	if r := ok(t, home, "claim-next", "/a", "--direct"); r.Result()["task"] != nil {
+		t.Errorf("claim-next /a --direct again: %s", r.Line())
+	}
 }

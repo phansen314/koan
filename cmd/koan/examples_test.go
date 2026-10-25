@@ -84,7 +84,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	// Keep output small
 	{cmd: "koan task list --limit 20 --fields ref,title,readiness", want: []string{`{"ok":true,"result":{"tasks":[{"id":48},{"id":44},{"id":43},{"id":46},{"id":47},{"id":51},{"id":52},{"id":53}],"total":8,"truncated":false}}`}},
 	{cmd: "koan task list --state complete --limit 1 --fields id", want: []string{`{"ok":true,"result":{"tasks":[{"id":42}],"total":2,"truncated":true}}`}},
-	{cmd: "koan folder list /work --recursive=false --fields path,title,open,finished", want: []string{`{"ok":true,"result":{"folders":[{"id":41,"path":"/work/api"},{"id":49,"path":"/work/web"}],"total":2}}`}},
+	{cmd: "koan folder list /work --direct --fields path,title,open,finished", want: []string{`{"ok":true,"result":{"folders":[{"id":41,"path":"/work/api"},{"id":49,"path":"/work/web"}],"total":2}}`}},
 	{cmd: `koan task list --fields title,extra --limit 200 | jq -c 'if .ok then .result |= {tasks: (.tasks | map(select(.extra.status == "waiting"))), unscanned: (.total - (.tasks | length))} else . end'`,
 		want: []string{`{"ok":true,"result":{"tasks":[{"id":48,"title":"Investigate the flaky test","extra":{"status":"waiting"}}],"unscanned":0},"warnings":[]}`}},
 	{cmd: "koan export /work/api > api.json"},

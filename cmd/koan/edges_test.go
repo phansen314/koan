@@ -529,9 +529,9 @@ func TestTaskFrontier(t *testing.T) {
 	}{
 		{nil, "6 5 8 4 12"},
 		{[]string{"/a"}, "6 5"},
-		{[]string{"@1", "--recursive=false"}, "5"},
+		{[]string{"@1", "--direct"}, "5"},
 		{[]string{"/c"}, "12"},
-		{[]string{"/", "--recursive=false"}, "8 4"},
+		{[]string{"/", "--direct"}, "8 4"},
 		{[]string{"--tags-any", "x,q"}, "6 8"},
 		{[]string{"--tags-all", "x,y"}, "8"},
 		{[]string{"--tags-any", "x", "--tags-all", "y"}, "8"},

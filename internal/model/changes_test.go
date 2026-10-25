@@ -758,13 +758,13 @@ func TestClaims(t *testing.T) {
 		}
 		return c.Task
 	}
-	if got := next(Scope{Folder: "/f", Recursive: false, TagsAll: []string{"x"}}); got != 5 {
+	if got := next(Scope{Folder: "/f", Direct: true, TagsAll: []string{"x"}}); got != 5 {
 		t.Errorf("claim-next direct in /f: %d", got)
 	}
-	if got := next(Scope{Folder: "/f", Recursive: true, TagsAny: []string{"x"}}); got != 4 {
+	if got := next(Scope{Folder: "/f", TagsAny: []string{"x"}}); got != 4 {
 		t.Errorf("claim-next under /f: %d", got)
 	}
-	if got := next(Scope{Recursive: true}); got != 0 {
+	if got := next(Scope{}); got != 0 {
 		t.Errorf("claim-next with nothing left: %d", got)
 	}
 

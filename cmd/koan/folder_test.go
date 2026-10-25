@@ -378,15 +378,15 @@ func TestFolderList(t *testing.T) {
 	}
 	r := ok(t, home, "folder", "list")
 	golden(t, r, "folder-list")
-	golden(t, ok(t, home, "folder", "list", "/alpha", "--recursive=false"), "folder-list-subject")
+	golden(t, ok(t, home, "folder", "list", "/alpha", "--direct"), "folder-list-subject")
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		{nil, "/Zeta /alpha /alpha/C /alpha/a /alpha/a/x /alpha/b /beta"},
-		{[]string{"--recursive=false"}, "/Zeta /alpha /beta"},
+		{[]string{"--direct"}, "/Zeta /alpha /beta"},
 		{[]string{"/alpha"}, "/alpha/C /alpha/a /alpha/a/x /alpha/b"},
-		{[]string{"@1", "--recursive=false"}, "/alpha/C /alpha/a /alpha/b"},
+		{[]string{"@1", "--direct"}, "/alpha/C /alpha/a /alpha/b"},
 		{[]string{"/alpha/a/x"}, ""},
 	} {
 		r := ok(t, home, append([]string{"folder", "list"}, c.args...)...)

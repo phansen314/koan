@@ -130,14 +130,14 @@ func (t *tasks) readiness(id int64) *string {
 }
 
 // in reports whether a task sits in a folder, or the root: directly, or
-// at any depth when recursive.
-func (t *tasks) in(id, folder int64, recursive bool) bool {
+// at any depth unless direct.
+func (t *tasks) in(id, folder int64, direct bool) bool {
 	at := t.rows[id].Folder
 	for {
 		if at == folder {
 			return true
 		}
-		if at == core.RootID || !recursive {
+		if at == core.RootID || direct {
 			return false
 		}
 		at = t.folders.rows[at].Parent

@@ -225,10 +225,10 @@ var perfOps = []perfOp{
 	{name: "task list", budget: 100 * ms, args: always("task", "list")},
 	{name: "task list all", budget: 100 * ms, args: always("task", "list", "--state", "open,complete", "--limit", "null")},
 	{name: "frontier", budget: 100 * ms, args: always("frontier")},
-	{name: "frontier all", budget: 100 * ms, args: always("frontier", "--limit", "null", "--recursive")},
+	{name: "frontier all", budget: 100 * ms, args: always("frontier", "--limit", "null")},
 	{name: "why", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"why", r.task(i, 97)} }},
 	{name: "show folder", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.folder(i)} }},
-	{name: "folder list", budget: 100 * ms, args: always("folder", "list", "--limit", "null", "--recursive")},
+	{name: "folder list", budget: 100 * ms, args: always("folder", "list", "--limit", "null")},
 	{name: "where", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"where", "@" + r.task(i, 50)} }},
 	{name: "where --file", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		return []string{"where", "--file", filepath.Join(r.home, "koan-root", "tree", "@p3", "@f3", "@"+r.task(3, 50)+".md")}

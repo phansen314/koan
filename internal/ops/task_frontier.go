@@ -18,7 +18,7 @@ func TaskFrontier() *cli.Command {
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
 			{Field: "file", Kind: cli.Path},
-			{Field: "recursive", Kind: cli.Bool},
+			{Field: "direct", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
@@ -70,18 +70,18 @@ func TaskFrontier() *cli.Command {
 }
 
 // scope is where the frontier is looked for, as task list's filter gives
-// it: a folder or the root, at any depth unless recursive is false, cut to
+// it: a folder or the root, at any depth unless direct, cut to
 // the tasks holding any of tagsAny and all of tagsAll.
 type scope struct {
 	folder           int64
-	recursive        bool
+	direct           bool
 	tagsAny, tagsAll []string
 }
 
 // scope reads task list's filter, but for its folder, which resolves
 // in the store.
 func (r *input) scope() (*query, scope) {
-	return r.foldering("folder"), scope{recursive: r.boolean("recursive", true), tagsAny: r.tags("tags_any"), tagsAll: r.tags("tags_all")}
+	return r.foldering("folder"), scope{direct: r.boolean("direct", false), tagsAny: r.tags("tags_any"), tagsAll: r.tags("tags_all")}
 }
 
 // frontier is the ready tasks with no claim within a scope, in work
@@ -90,7 +90,7 @@ func (t *tasks) frontier(s scope) []core.Ranked {
 	var candidates []core.Ranked
 	for _, id := range t.order {
 		has := t.tags[id]
-		if !t.in(id, s.folder, s.recursive) ||
+		if !t.in(id, s.folder, s.direct) ||
 			len(s.tagsAny) > 0 && !slices.ContainsFunc(s.tagsAny, func(tag string) bool { return slices.Contains(has, tag) }) ||
 			slices.ContainsFunc(s.tagsAll, func(tag string) bool { return !slices.Contains(has, tag) }) {
 			continue

@@ -148,7 +148,7 @@ func Archive() *cli.Command {
 						continue
 					}
 					for _, tid := range t.order {
-						if t.in(tid, sub.id, true) && t.Open(tid) {
+						if t.in(tid, sub.id, false) && t.Open(tid) {
 							open = append(open, tid)
 						}
 					}
@@ -220,10 +220,10 @@ func (t *tasks) archiveTask(tx *store.Tx, root store.Root, id int64) (leaving, e
 // @<id>_<name>, with its JSON beside it, under directories named after
 // the folders it was in.
 func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (leaving, error) {
-	l := leaving{id: id, kind: "folder", path: t.paths[id], folders: append([]int64{id}, t.under(id, true)...), dir: true}
+	l := leaving{id: id, kind: "folder", path: t.paths[id], folders: append([]int64{id}, t.under(id, false)...), dir: true}
 	var open []int64
 	for _, tid := range t.order {
-		if t.in(tid, id, true) {
+		if t.in(tid, id, false) {
 			l.tasks = append(l.tasks, tid)
 			if t.Open(tid) {
 				open = append(open, tid)

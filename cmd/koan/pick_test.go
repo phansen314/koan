@@ -284,9 +284,9 @@ func TestPickFilters(t *testing.T) {
 		{[]string{"--state", "complete"}, []string{"@1", "@1.start", "@1.done", "@6", "@2"}},
 		{[]string{"--state", "open,complete", "--kinds", "task"}, []string{"@7", "@5", "@6", "@3", "@4"}},
 		{[]string{"/work/api"}, []string{"@2", "@3", "@4", "@2.start", "@2.done"}},
-		{[]string{"@1", "--recursive=false"}, []string{"@1", "@1.start", "@1.done", "@5", "@2"}},
-		// The match is deeper than --recursive=false looks: nothing to offer.
-		{[]string{"/work", "--recursive=false", "--tags-any", "api"}, nil},
+		{[]string{"@1", "--direct"}, []string{"@1", "@1.start", "@1.done", "@5", "@2"}},
+		// The match is deeper than --direct looks: nothing to offer.
+		{[]string{"/work", "--direct", "--tags-any", "api"}, nil},
 	} {
 		r := p.run(c.args...)
 		if r.exit != 1 || r.out != "" || r.err != "" {
@@ -295,6 +295,9 @@ func TestPickFilters(t *testing.T) {
 		if got := p.keys(); !slices.Equal(got, c.want) {
 			t.Errorf("%q: keys %v, want %v", c.args, got, c.want)
 		}
+	}
+	if r := p.run("--recursive=false"); r.exit != 2 {
+		t.Errorf("--recursive=false: exit %d, stderr %q", r.exit, r.err)
 	}
 }
 

@@ -21,7 +21,7 @@ func FolderList() *cli.Command {
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
 			{Field: "file", Kind: cli.Path},
-			{Field: "recursive", Kind: cli.Bool},
+			{Field: "direct", Kind: cli.Bool},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},
 		},
@@ -29,7 +29,7 @@ func FolderList() *cli.Command {
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			q := r.foldering("folder")
-			recursive := r.boolean("recursive", true)
+			direct := r.boolean("direct", false)
 			limit := r.limit("limit", 100)
 			fields := r.fields("fields", folderFields)
 			if e := r.err(); e != nil {
@@ -55,7 +55,7 @@ func FolderList() *cli.Command {
 				if err != nil {
 					return nil, err
 				}
-				matches := f.under(id, recursive)
+				matches := f.under(id, direct)
 				res.Total = len(matches)
 				if limit != nil && int64(len(matches)) > *limit {
 					matches, res.Truncated = matches[:*limit], true

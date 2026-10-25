@@ -559,9 +559,9 @@ func TestTaskClaimNext(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"/a", "--recursive=false", "--tags-any", "x"}, "none"},
+		{[]string{"/a", "--direct", "--tags-any", "x"}, "none"},
 		{[]string{"--tags-all", "x,y"}, "6"},
-		{[]string{"@1", "--recursive=false"}, "4"},
+		{[]string{"@1", "--direct"}, "4"},
 		{[]string{"/a"}, "none"},
 		{nil, "3"},
 		{nil, "none"},

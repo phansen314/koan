@@ -86,7 +86,7 @@ func Delete() *cli.Command {
 				// first.
 				under := make([][]int64, len(ids))
 				for i, id := range ids {
-					under[i] = append([]int64{id}, t.under(id, true)...)
+					under[i] = append([]int64{id}, t.under(id, false)...)
 				}
 				if !contents {
 					var all []int64
@@ -97,7 +97,7 @@ func Delete() *cli.Command {
 								direct = append(direct, tid)
 							}
 						}
-						direct = append(direct, t.under(id, false)...)
+						direct = append(direct, t.under(id, true)...)
 						all = append(all, direct...)
 					}
 					if len(all) > 0 {
@@ -125,7 +125,7 @@ func Delete() *cli.Command {
 				for i, id := range ids {
 					var mine []int64
 					for _, tid := range t.order {
-						if t.in(tid, id, true) {
+						if t.in(tid, id, false) {
 							mine = append(mine, tid)
 						}
 					}

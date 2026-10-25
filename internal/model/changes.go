@@ -1299,13 +1299,12 @@ func (c *Tree) claim(id int64, extra map[string]any) Claim {
 	return *cl
 }
 
-// Scope is where claim-next looks, as task-list's filter says. The spec's
-// default for Recursive is true; Go's zero value is false, so set it.
+// Scope is where claim-next looks, as task-list's filter says.
 type Scope struct {
-	Folder    string // a folder-ref; empty means the root
-	Recursive bool
-	TagsAny   []string
-	TagsAll   []string
+	Folder  string // a folder-ref; empty means the root
+	Direct  bool
+	TagsAny []string
+	TagsAll []string
 }
 
 // ClaimNext claims the first task of the frontier within scope. It returns
@@ -1346,7 +1345,7 @@ func (t *Tree) ScopedFrontier(s Scope) ([]int64, error) {
 	var out []int64
 	for _, id := range t.Frontier() {
 		x := t.Tasks[id]
-		if s.Recursive && !t.Under(id, folder) || !s.Recursive && x.Folder != folder {
+		if !s.Direct && !t.Under(id, folder) || s.Direct && x.Folder != folder {
 			continue
 		}
 		if len(anyTags) > 0 && !hasAny(x.Tags, anyTags) || !hasAll(x.Tags, allTags) {

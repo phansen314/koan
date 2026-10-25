@@ -279,7 +279,7 @@ func Mv() *cli.Command {
 					}
 					for tid := range t.claims {
 						for _, m := range moves {
-							if t.in(tid, m.id, true) {
+							if t.in(tid, m.id, false) {
 								claimed[tid] = fsstep.Abs(s.Root, t.notesRel(tid))
 								break
 							}

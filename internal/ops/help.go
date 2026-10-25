@@ -43,7 +43,7 @@ var shorts = map[string]string{
 // field where one command means something of its own by it.
 var usages = map[string]string{
 	"task create/folder":  "the folder to make it in; the root when left out",
-	"recursive":           "include subfolders; --recursive=false for the folder's own only",
+	"direct":              "only what is directly in the folder",
 	"priority":            "an integer, higher first, or null",
 	"tags":                "its tags",
 	"blocked_by":          "what it waits on: tasks, gates or folders",
@@ -80,7 +80,7 @@ var usages = map[string]string{
 	"file":                "look under the folder this file is in",
 	"kinds":               "fix only these kinds of finding",
 	"ids_from":            "the first ID the new root issues",
-	"pick/recursive":      "include subfolders; --recursive=false for the folder's own tasks and the folders directly in it",
+	"pick/direct":         "only the folder's own tasks and the folders directly in it",
 	"pick/kinds":          "offer only these kinds: task, gate, folder",
 	"frontier":            "offer the frontier's tasks, in work order",
 	"query":               "fzf's starting query",

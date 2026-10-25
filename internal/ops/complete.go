@@ -94,7 +94,7 @@ func (o offers) choices(t *tasks) []choice {
 	if states == nil {
 		states = []string{"open", "complete"}
 	}
-	p := &pickIn{recursive: true, states: states, readiness: []string{"ready", "blocked"}, claimed: o.claimed,
+	p := &pickIn{states: states, readiness: []string{"ready", "blocked"}, claimed: o.claimed,
 		kinds: o.kinds, made: !o.unmade}
 	var out []choice
 	for _, c := range choices(t, p, core.RootID) {
