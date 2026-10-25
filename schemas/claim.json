@@ -5,16 +5,21 @@
     "input": {
       "type": "object",
       "required": [
-        "task"
+        "tasks"
       ],
       "properties": {
-        "task": {
-          "$ref": "types#/$defs/task-ref",
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/task-ref"
+          },
+          "minItems": 1,
           "description": "Subject."
         },
         "extra": {
           "$ref": "types#/$defs/extra",
-          "default": {}
+          "default": {},
+          "description": "Kept with every claim it makes."
         }
       },
       "unevaluatedProperties": false
@@ -22,11 +27,16 @@
     "result": {
       "type": "object",
       "required": [
-        "claim"
+        "claimed"
       ],
       "properties": {
-        "claim": {
-          "$ref": "claim-record"
+        "claimed": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The tasks it claimed. Input order."
         }
       },
       "unevaluatedProperties": false

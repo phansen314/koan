@@ -7,24 +7,18 @@
       "properties": {
         "folder": {
           "$ref": "types#/$defs/folder-ref",
-          "description": "Subject."
+          "description": "Subject; the root when neither it nor file is given."
         },
         "file": {
-          "$ref": "types#/$defs/abs-path"
+          "$ref": "task-list#/$defs/filter/properties/file"
         }
       },
-      "oneOf": [
-        {
-          "required": [
-            "folder"
-          ]
-        },
-        {
-          "required": [
-            "file"
-          ]
-        }
-      ],
+      "not": {
+        "required": [
+          "folder",
+          "file"
+        ]
+      },
       "unevaluatedProperties": false
     },
     "result": {

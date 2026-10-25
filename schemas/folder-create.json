@@ -55,7 +55,7 @@
         "ref",
         "notes_path",
         "dir",
-        "created",
+        "folders_made",
         "gates_made",
         "reblocked"
       ],
@@ -72,7 +72,7 @@
         "dir": {
           "$ref": "types#/$defs/abs-path"
         },
-        "created": {
+        "folders_made": {
           "type": "array",
           "items": {
             "$ref": "types#/$defs/folder-at"

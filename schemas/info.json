@@ -16,11 +16,7 @@
         "state",
         "format",
         "next_id",
-        "tasks",
-        "folders",
-        "claims",
-        "pending",
-        "stuck",
+        "counts",
         "error"
       ],
       "properties": {
@@ -62,36 +58,47 @@
           ],
           "description": "Null unless usable, and once the last ID is issued."
         },
-        "tasks": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "description": "Live tasks. This and the counts below are null unless usable."
-        },
-        "folders": {
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "claims": {
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "pending": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "description": "Pending filesystem steps, stuck ones included."
-        },
-        "stuck": {
-          "type": [
-            "integer",
-            "null"
+        "counts": {
+          "anyOf": [
+            {
+              "type": "null",
+              "description": "Unless usable."
+            },
+            {
+              "type": "object",
+              "required": [
+                "tasks",
+                "folders",
+                "claims",
+                "pending",
+                "stuck"
+              ],
+              "properties": {
+                "tasks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Live tasks."
+                },
+                "folders": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "claims": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "pending": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Pending filesystem steps, stuck ones included."
+                },
+                "stuck": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "unevaluatedProperties": false
+            }
           ]
         },
         "error": {

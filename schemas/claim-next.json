@@ -20,8 +20,7 @@
     "result": {
       "type": "object",
       "required": [
-        "task",
-        "claim"
+        "task"
       ],
       "properties": {
         "task": {
@@ -32,17 +31,8 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "claim": {
-          "anyOf": [
-            {
-              "$ref": "claim-record"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          ],
+          "description": "The task it claimed, its claim included; null when the frontier was empty."
         }
       },
       "unevaluatedProperties": false

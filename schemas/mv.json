@@ -1,20 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "folder-mv",
+  "$id": "mv",
   "$defs": {
     "input": {
       "type": "object",
       "required": [
-        "folders"
+        "refs"
       ],
       "properties": {
-        "folders": {
+        "refs": {
           "type": "array",
           "items": {
-            "$ref": "types#/$defs/folder-ref"
+            "$ref": "show#/$defs/input/properties/ref"
           },
           "minItems": 1,
-          "description": "Subject."
+          "description": "Subject: tasks and folders, mixed."
         },
         "dest": {
           "$ref": "types#/$defs/folder-ref",
@@ -27,7 +27,7 @@
         "rename": {
           "type": "boolean",
           "default": false,
-          "description": "dest is the new path, never a folder to move into: -T, --rename."
+          "description": "dest is the one folder's new path, never a folder to move into: -T, --rename."
         }
       },
       "oneOf": [
@@ -57,7 +57,7 @@
           "dest"
         ],
         "properties": {
-          "folders": {
+          "refs": {
             "maxItems": 1
           }
         }
@@ -72,23 +72,36 @@
       "properties": {
         "moved": {
           "type": "array",
-          "description": "The folders that moved. Input order.",
+          "description": "The tasks and folders that moved. Input order.",
           "items": {
             "type": "object",
             "required": [
               "id",
-              "path",
+              "ref",
+              "notes_path",
               "dir"
             ],
             "properties": {
               "id": {
                 "$ref": "types#/$defs/id"
               },
-              "path": {
-                "$ref": "types#/$defs/path"
+              "ref": {
+                "$ref": "types#/$defs/kept",
+                "description": "Its kept text, with its new path."
+              },
+              "notes_path": {
+                "$ref": "types#/$defs/abs-path"
               },
               "dir": {
-                "$ref": "types#/$defs/abs-path"
+                "anyOf": [
+                  {
+                    "$ref": "types#/$defs/abs-path"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "A folder's directory; null for a task."
               }
             },
             "unevaluatedProperties": false
