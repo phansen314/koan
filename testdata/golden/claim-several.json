@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "result": {
+    "claimed": [
+      4,
+      1,
+      2
+    ]
+  },
+  "warnings": []
+}

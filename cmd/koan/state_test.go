@@ -414,9 +414,9 @@ func TestUpdateMixed(t *testing.T) {
 	}
 }
 
-// claim claims an open task, blocked or not, with the caller's
-// extra; a second claim is claimed, a complete task complete. unclaim
-// ends a claim whoever made it, and a task with none changes nothing.
+// claim claims open tasks, blocked or not, with the caller's extra on
+// each; a second claim is claimed, a complete task complete. unclaim ends
+// claims whoever made them, and a task with none changes nothing.
 // Neither moves updated_at.
 func TestTaskClaim(t *testing.T) {
 	home := root(t)
@@ -424,31 +424,97 @@ func TestTaskClaim(t *testing.T) {
 	ok(t, home, "task", "create", "b", "--blocked-by", "1") // 2
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r := ok(t, home, "claim", "2", "--extra", `{"who":"w1"}`)
-	goldenNow(t, r, "claim")
-	claim := r.Result()["claim"]
-	if got := field(t, home, "2", "claim"); fmt.Sprint(got) != fmt.Sprint(claim) || field(t, home, "2", "updated_at") != fixed {
-		t.Errorf("claim: %v, record %v", claim, got)
+	golden(t, r, "claim")
+	claim := field(t, home, "2", "claim").(map[string]any)
+	if fmt.Sprint(r.Result()) != "map[claimed:[2]]" || fmt.Sprint(claim["extra"]) != "map[who:w1]" ||
+		field(t, home, "2", "updated_at") != fixed {
+		t.Errorf("claim: %s, record %v", r.Line(), claim)
 	}
 	golden(t, fails(t, home, "conflict", "claimed", "claim", "@2"), "claim-claimed")
 	ok(t, home, "complete", "1")
 	golden(t, fails(t, home, "conflict", "complete", "claim", "1"), "claim-complete")
 	fails(t, home, "not-found", "", "claim", "99")
-	if r := input(t, home, "claim", `{"task":1,"extra":[]}`); r.Kind() != "invalid-input" || problemFields(r) != "/extra" {
+	if r := input(t, home, "claim", `{"tasks":[1],"extra":[]}`); r.Kind() != "invalid-input" || problemFields(r) != "/extra" {
 		t.Errorf("extra: %s", r.Line())
 	}
 	r = ok(t, home, "unclaim", "2")
 	golden(t, r, "unclaim")
-	if field(t, home, "2", "claim") != nil || field(t, home, "2", "updated_at") != fixed {
-		t.Errorf("unclaimed")
+	if fmt.Sprint(r.Result()) != "map[unclaimed:[2]]" || field(t, home, "2", "claim") != nil || field(t, home, "2", "updated_at") != fixed {
+		t.Errorf("unclaimed: %s", r.Line())
 	}
-	if r := ok(t, home, "unclaim", "2"); fmt.Sprint(r.Result()) != "map[changed:false id:2]" {
+	if r := ok(t, home, "unclaim", "2"); fmt.Sprint(r.Result()) != "map[unclaimed:[]]" {
 		t.Errorf("again: %s", r.Line())
 	}
-	r = ok(t, home, "claim", "2")
-	if fmt.Sprint(r.Result()["claim"].(map[string]any)["extra"]) != "map[]" {
-		t.Errorf("default extra: %s", r.Line())
+	ok(t, home, "claim", "2")
+	if fmt.Sprint(field(t, home, "2", "claim").(map[string]any)["extra"]) != "map[]" {
+		t.Errorf("default extra")
 	}
 	fails(t, home, "not-found", "", "unclaim", "99")
+}
+
+// claim and unclaim take several tasks, comma-separated or as more
+// words, as one change: one refused among them claims none, and a task
+// given twice is invalid-input at its later occurrence. --extra is kept
+// with every claim. Each result lists what changed, in input order.
+func TestClaimSeveral(t *testing.T) {
+	home := root(t)
+	for range 5 {
+		ok(t, home, "task", "create", "t") // 1 to 5
+	}
+	ok(t, home, "block", "4", "5")
+	ok(t, home, "claim", "3")
+	ok(t, home, "complete", "5")
+
+	before := dump(t, home)
+	for _, c := range []struct {
+		args      []string
+		rule, ids string
+	}{
+		{[]string{"4", "1", "3"}, "claimed", "[3]"},
+		{[]string{"4,5", "3"}, "complete", "[5]"},
+	} {
+		r := fails(t, home, "conflict", c.rule, append([]string{"claim"}, c.args...)...)
+		if fmt.Sprint(r.Error()["ids"]) != c.ids {
+			t.Errorf("%v: %s", c.args, r.Line())
+		}
+	}
+	for _, args := range [][]string{{"claim", "1", "@1"}, {"unclaim", "3", "@3"}} {
+		if r := fails(t, home, "invalid-input", "", args...); !strings.HasPrefix(problemFields(r), "/tasks/") ||
+			r.Error()["message"] == "" {
+			t.Errorf("%v: %s", args, r.Line())
+		}
+	}
+	if r := fails(t, home, "invalid-input", "", "claim", "2,1,2"); problemFields(r) != "/tasks/2" {
+		t.Errorf("duplicate: %s", r.Line())
+	}
+	fails(t, home, "not-found", "", "unclaim", "3", "99")
+	if dump(t, home) != before {
+		t.Error("a refused claim or unclaim changed the tree")
+	}
+
+	r := ok(t, home, "claim", "4,1", "2", "--extra", `{"by":"w"}`)
+	golden(t, r, "claim-several")
+	if fmt.Sprint(r.Result()) != "map[claimed:[4 1 2]]" {
+		t.Errorf("several: %s", r.Line())
+	}
+	for _, id := range []string{"4", "1", "2"} {
+		if c, _ := field(t, home, id, "claim").(map[string]any); c == nil || fmt.Sprint(c["extra"]) != "map[by:w]" {
+			t.Errorf("claim of %s: %v", id, c)
+		}
+	}
+	// Only the tasks that had a claim are listed.
+	ok(t, home, "unclaim", "1")
+	r = ok(t, home, "unclaim", "2", "1,3", "5")
+	golden(t, r, "unclaim-several")
+	if fmt.Sprint(r.Result()) != "map[unclaimed:[2 3]]" {
+		t.Errorf("unclaim: %s", r.Line())
+	}
+	if c := field(t, home, "4", "claim"); c == nil {
+		t.Error("an unclaim of others ended @4's claim")
+	}
+	if r := input(t, home, "claim", `{"tasks":[1,"@2"]}`); !r.OK() || fmt.Sprint(r.Result()) != "map[claimed:[1 2]]" {
+		t.Errorf("input: %s", r.Line())
+	}
 }
 
 // claim-next takes the folder it looks under as its subject.

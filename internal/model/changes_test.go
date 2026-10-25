@@ -174,7 +174,7 @@ func TestBlockUnblock(t *testing.T) {
 	tr := newTree()
 	a := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"})).ID // @1
 	b := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b"})).ID // @2
-	must[Claim](t)(tr.ClaimTask("2", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil))
 
 	// An added edge can block a claimed task; the claim stays.
 	r := must[EdgeResult](t)(tr.Block("2", []string{"1"}, nil))
@@ -224,8 +224,8 @@ func TestCompleteReopen(t *testing.T) {
 	tr := newTree()
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"}))                           // @1
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", BlockedBy: []string{"1"}})) // @2
-	must[Claim](t)(tr.ClaimTask("1", nil))
-	must[Claim](t)(tr.ClaimTask("2", nil)) // a blocked task can be claimed
+	must[[]int64](t)(tr.ClaimTask([]string{"1"}, nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil)) // a blocked task can be claimed
 
 	r := must[CompleteResult](t)(tr.Complete("1"))
 	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
@@ -375,7 +375,7 @@ func TestMoveTask(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Folder: "/a", Blocks: []string{"/a"}})) // @3, gate @4
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "y", Folder: "/b"}))                         // @5
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "z", Folder: "/a"}))                         // @6
-	must[Claim](t)(tr.ClaimTask("3", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"3"}, nil))
 	ready := tr.readySet()
 
 	out, err := tr.MoveTask("/b", "3")
@@ -425,7 +425,7 @@ func TestMoveFolder(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/work/api", nil, nil))                     // @1, @2
 	must[[]FolderAt](t)(tr.CreateFolder("/other", nil, nil))                        // @3
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Folder: "/work/api"})) // @4
-	must[Claim](t)(tr.ClaimTask("4", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"4"}, nil))
 
 	// Into a folder that exists; otherwise renamed.
 	r := must[MoveResult](t)(tr.MoveFolder(MvDest, "/other", "/work"))
@@ -543,7 +543,7 @@ func TestDeleteTask(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", BlockedBy: []string{"1"}}))      // @2
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "c", BlockedBy: []string{"2"}}))      // @3
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "d", BlockedBy: []string{"2", "1"}})) // @4
-	must[Claim](t)(tr.ClaimTask("2", nil))
+	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil))
 	stamp := tr.Tasks[3].UpdatedAt
 
 	r := must[Removed](t)(tr.DeleteTask("2"))
@@ -644,18 +644,18 @@ func TestArchive(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "w", BlockedBy: []string{"2"}}))             // @4
 	tr.PutMaterial(1, ".git")
 
-	_, err := tr.Archive("2")
+	_, _, err := tr.Archive("2")
 	wantErr(t, err, core.KindConflict, core.RuleNotFinished)
 	must[CompleteResult](t)(tr.Complete("2"))
-	_, err = tr.Archive("/f")
+	_, _, err = tr.Archive("/f")
 	if e := wantErr(t, err, core.KindConflict, core.RuleNotFinished); !reflect.DeepEqual(e.IDs, []int64{3}) {
 		t.Errorf("open ids %v", e.IDs)
 	}
 	must[CompleteResult](t)(tr.Complete("@1.done"))
 	ready := tr.readySet()
-	left := must[[]int64](t)(tr.Archive("/f"))
-	if !reflect.DeepEqual(left, []int64{1, 2, 3}) {
-		t.Errorf("left %v", left)
+	archived, left, err := tr.Archive("/f")
+	if err != nil || !reflect.DeepEqual(archived, []int64{1}) || !reflect.DeepEqual(left, []int64{1, 2, 3}) {
+		t.Errorf("archived %v, left %v, %v", archived, left, err)
 	}
 	// What stays keeps its readiness; the edge to what left is removed and
 	// kept in the archive.
@@ -668,7 +668,7 @@ func TestArchive(t *testing.T) {
 		t.Errorf("archive %+v", a)
 	}
 	// Retired IDs never resolve again, and are never issued again.
-	_, err = tr.Archive("2")
+	_, _, err = tr.Archive("2")
 	if e := wantErr(t, err, core.KindNotFound, ""); !reflect.DeepEqual(e.Archived, []int64{2}) {
 		t.Errorf("archived %v", e.Archived)
 	}
@@ -678,11 +678,49 @@ func TestArchive(t *testing.T) {
 	checked(t, tr)
 	// The root can't be archived, and material isn't taken.
 	for _, ref := range []string{"/", "@4:x"} {
-		_, err = tr.Archive(ref)
-		if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/ref"}) {
+		_, _, err = tr.Archive(ref)
+		if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/0"}) {
 			t.Errorf("%s: problems %v", ref, e.Problems)
 		}
 	}
+}
+
+func TestArchiveSeveral(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))                                 // @1
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"}))                           // @2
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", BlockedBy: []string{"2"}})) // @3
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "c", Folder: "/f"}))             // @4
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "d", BlockedBy: []string{"3"}})) // @5
+	must[CompleteResult](t)(tr.Complete("2", "3"))
+
+	// One refused among several archives none of them.
+	_, _, err := tr.Archive("3", "/f", "2")
+	if e := wantErr(t, err, core.KindConflict, core.RuleNotFinished); !reflect.DeepEqual(e.IDs, []int64{4}) || len(tr.Archives) != 0 {
+		t.Errorf("ids %v, archives %d", e.IDs, len(tr.Archives))
+	}
+	_, _, err = tr.Archive("3", "@3")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
+		t.Errorf("problems %v", e.Problems)
+	}
+	_, _, err = tr.Archive("4", "/f")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/0"}) {
+		t.Errorf("problems %v", e.Problems)
+	}
+	must[CompleteResult](t)(tr.Complete("4"))
+	archived, left, err := tr.Archive("3", "/f", "2")
+	if err != nil || !reflect.DeepEqual(archived, []int64{3, 1, 2}) || !reflect.DeepEqual(left, []int64{1, 2, 3, 4}) {
+		t.Fatalf("archived %v, left %v, %v", archived, left, err)
+	}
+	// Each keeps every edge it had, those to the others archived with it
+	// included.
+	if a := tr.Archives[0]; a.ID != 3 || !reflect.DeepEqual(a.Edges, []core.Edge{{From: 3, To: 2}, {From: 5, To: 3}}) {
+		t.Errorf("archive of @3 %+v", a)
+	}
+	if a := tr.Archives[2]; a.ID != 2 || !reflect.DeepEqual(a.Edges, []core.Edge{{From: 3, To: 2}}) {
+		t.Errorf("archive of @2 %+v", a)
+	}
+	checked(t, tr)
 }
 
 func TestClaims(t *testing.T) {
@@ -692,12 +730,21 @@ func TestClaims(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "b", Folder: "/f/sub", Tags: []string{"x"}}))                           // @4
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "c", Folder: "/f", Tags: []string{"x", "y"}, Priority: ptr[int64](0)})) // @5
 
-	cl := must[Claim](t)(tr.ClaimTask("3", map[string]any{"who": "me"}))
-	if cl.Task != 3 || cl.Extra["who"] != "me" || cl.ClaimedAt == "" {
-		t.Errorf("claim %+v", cl)
+	claimed := must[[]int64](t)(tr.ClaimTask([]string{"3"}, map[string]any{"who": "me"}))
+	if cl := tr.Claims[3]; !reflect.DeepEqual(claimed, []int64{3}) || cl.Extra["who"] != "me" || cl.ClaimedAt == "" {
+		t.Errorf("claimed %v, claim %+v", claimed, cl)
 	}
-	_, err := tr.ClaimTask("3", nil)
+	_, err := tr.ClaimTask([]string{"3"}, nil)
 	wantErr(t, err, core.KindConflict, core.RuleClaimed)
+	// One refused among several claims none of them.
+	_, err = tr.ClaimTask([]string{"4", "3"}, nil)
+	if e := wantErr(t, err, core.KindConflict, core.RuleClaimed); !reflect.DeepEqual(e.IDs, []int64{3}) || tr.claimed(4) {
+		t.Errorf("ids %v, @4 claimed %v", e.IDs, tr.claimed(4))
+	}
+	_, err = tr.ClaimTask([]string{"4", "@4"}, nil)
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+		t.Errorf("problems %v", e.Problems)
+	}
 	// A claim takes the task off the frontier, and nothing else.
 	if got := tr.Frontier(); !reflect.DeepEqual(got, []int64{5, 4}) {
 		t.Errorf("frontier %v", got)
@@ -721,11 +768,12 @@ func TestClaims(t *testing.T) {
 		t.Errorf("claim-next with nothing left: %d", got)
 	}
 
-	if !must[bool](t)(tr.Unclaim("4")) || tr.claimed(4) {
-		t.Error("unclaim")
+	must[[]int64](t)(tr.Unclaim("3"))
+	if got := must[[]int64](t)(tr.Unclaim("3", "5", "4")); !reflect.DeepEqual(got, []int64{5, 4}) || tr.claimed(4) {
+		t.Errorf("unclaimed %v", got)
 	}
 	must[CompleteResult](t)(tr.Complete("4"))
-	_, err = tr.ClaimTask("4", nil)
+	_, err = tr.ClaimTask([]string{"4"}, nil)
 	wantErr(t, err, core.KindConflict, core.RuleComplete)
 	checked(t, tr)
 }

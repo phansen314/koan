@@ -8,7 +8,7 @@
     "paths": [],
     "problems": [
       {
-        "field": "/ref",
+        "field": "/refs/0",
         "reason": "the root can't be archived"
       }
     ],

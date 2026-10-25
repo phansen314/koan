@@ -1,9 +1,13 @@
 {
   "ok": true,
   "result": {
-    "id": 4,
-    "archive": "$HOME/koan-root/archived/work/api/@4_start.md",
-    "json": "$HOME/koan-root/archived/work/api/@4_start.json",
+    "archived": [
+      {
+        "id": 4,
+        "archive": "$HOME/koan-root/archived/work/api/@4_start.md",
+        "json": "$HOME/koan-root/archived/work/api/@4_start.json"
+      }
+    ],
     "removed": [
       4
     ]

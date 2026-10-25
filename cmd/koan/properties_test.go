@@ -585,16 +585,18 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			name = "delete task"
 			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
 		case op >= 18:
-			var left []int64
-			var x string
+			var archived, left []int64
+			var xs, words []string
 			if op == 18 {
-				x, name = subject(), "archive task"
+				xs, words = subjects(subject(), pick2(subject, folderRef))
+				name = "archive task"
 			} else {
-				x, name = folderRef(), "archive folder"
+				xs, words = subjects(folderRef(), pick2(folderRef, subject))
+				name = "archive folder"
 			}
-			left, err = m.Archive(x)
-			args = []string{"archive", x}
-			want = fmt.Sprint(nonNil(left))
+			archived, left, err = m.Archive(xs...)
+			args = append([]string{"archive"}, words...)
+			want = fmt.Sprintf("%v %v", nonNil(archived), nonNil(left))
 		case op >= 15:
 			// Creates come most often and deletes least, so the folders
 			// the other parts name come back.
@@ -649,15 +651,17 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				args = append([]string{"reopen"}, words...)
 				want = fmt.Sprintf("%v %v %s", nonNil(out.Changed), nonNil(out.Reblocked), warnings(out.Warnings))
 			case 2:
-				var c model.Claim
-				c, err = m.ClaimTask(x, nil)
-				args = []string{"claim", x}
-				want = fmt.Sprint(c.Task)
+				xs, words := subjects(x, subject)
+				var claimed []int64
+				claimed, err = m.ClaimTask(xs, nil)
+				args = append([]string{"claim"}, words...)
+				want = fmt.Sprint(nonNil(claimed))
 			case 3:
-				var changed bool
-				changed, err = m.Unclaim(x)
-				args = []string{"unclaim", x}
-				want = fmt.Sprint(changed)
+				xs, words := subjects(x, subject)
+				var unclaimed []int64
+				unclaimed, err = m.Unclaim(xs...)
+				args = append([]string{"unclaim"}, words...)
+				want = fmt.Sprint(nonNil(unclaimed))
 			default:
 				sc := model.Scope{Folder: pick([]string{"/", "/a", "/a/b", "/c"}), Recursive: rng.Intn(2) == 0}
 				var c *model.Claim
@@ -720,9 +724,9 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				case "reopen":
 					got = fmt.Sprintf("%v %v %s", res["reopened"], res["reblocked"], koanWarnings(r))
 				case "claim":
-					got = fmt.Sprint(res["claim"].(map[string]any)["task"])
+					got = fmt.Sprint(res["claimed"])
 				case "unclaim":
-					got = fmt.Sprint(res["changed"])
+					got = fmt.Sprint(res["unclaimed"])
 				case "claim-next":
 					got = "<nil>"
 					if c, _ := res["claim"].(map[string]any); c != nil {
@@ -733,7 +737,11 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				case "delete":
 					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
 				case "archive":
-					got = fmt.Sprint(res["removed"])
+					ids := []any{}
+					for _, a := range res["archived"].([]any) {
+						ids = append(ids, a.(map[string]any)["id"])
+					}
+					got = fmt.Sprintf("%v %v", ids, res["removed"])
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)

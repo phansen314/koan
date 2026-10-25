@@ -1035,16 +1035,13 @@ func respells(subject, dest core.Ref) bool {
 // remove takes tasks and folders out of the tree with every edge to and
 // from them (I5), and their claims. It returns the edges removed.
 func (c *Tree) remove(tasks, folders []int64) []core.Edge {
+	edges := c.touching(tasks)
 	gone := map[int64]bool{}
 	for _, id := range tasks {
 		gone[id] = true
 	}
-	var edges []core.Edge
 	for _, x := range c.Tasks {
 		for to := range x.BlockedBy {
-			if gone[x.ID] || gone[to] {
-				edges = append(edges, core.Edge{From: x.ID, To: to})
-			}
 			if !gone[x.ID] && gone[to] {
 				delete(x.BlockedBy, to)
 				x.UpdatedAt = c.now
@@ -1057,6 +1054,24 @@ func (c *Tree) remove(tasks, folders []int64) []core.Edge {
 	}
 	for _, id := range folders {
 		delete(c.Folders, id)
+	}
+	return edges
+}
+
+// touching is every edge with an end in tasks, sorted by the task that
+// waits, then the one it waits on.
+func (c *Tree) touching(tasks []int64) []core.Edge {
+	gone := map[int64]bool{}
+	for _, id := range tasks {
+		gone[id] = true
+	}
+	var edges []core.Edge
+	for _, x := range c.Tasks {
+		for to := range x.BlockedBy {
+			if gone[x.ID] || gone[to] {
+				edges = append(edges, core.Edge{From: x.ID, To: to})
+			}
+		}
 	}
 	slices.SortFunc(edges, func(a, b core.Edge) int {
 		return cmp.Or(cmp.Compare(a.From, b.From), cmp.Compare(a.To, b.To))
@@ -1179,10 +1194,10 @@ func (t *Tree) Delete(refs []string, contents, material *bool) (out Removed, err
 	return out, err
 }
 
-// archive takes tasks and folders out of the tree into the archive, and
-// retires their IDs.
-func (c *Tree) archive(id int64, tasks, folders []int64) []int64 {
-	a := Archived{ID: id}
+// archived is what archiving an item keeps: its tasks and folders, and
+// every edge they had, to or from anything. It changes nothing.
+func (c *Tree) archived(id int64, tasks, folders []int64) Archived {
+	a := Archived{ID: id, Edges: c.touching(tasks)}
 	for _, t := range tasks {
 		x := *c.Tasks[t]
 		x.BlockedBy, x.Tags = maps.Clone(x.BlockedBy), maps.Clone(x.Tags)
@@ -1193,72 +1208,88 @@ func (c *Tree) archive(id int64, tasks, folders []int64) []int64 {
 		y.Material = maps.Clone(y.Material)
 		a.Folders = append(a.Folders, y)
 	}
-	a.Edges = c.remove(tasks, folders)
-	c.Archives = append(c.Archives, a)
-	left := slices.Sorted(slices.Values(slices.Concat(tasks, folders)))
-	for _, l := range left {
-		c.Index[l] = len(c.Archives) - 1
-	}
-	return left
+	return a
 }
 
-// Archive archives a complete task, a gate included, or a finished
-// folder with everything under it. It returns every ID that left.
-func (t *Tree) Archive(ref string) (left []int64, err error) {
+// Archive archives complete tasks, gates included, and finished folders
+// with everything under them, mixed, as one change: if any is refused,
+// none goes. Each archive keeps every edge its item had, to or from
+// anything, those to the others archived with it included. It returns
+// the subjects archived, in input order, and every ID that left.
+func (t *Tree) Archive(refs ...string) (archived, left []int64, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
-		r := s.ref("/ref", ref, core.WantRef, false)
-		if r.IsRoot() {
-			s.faultf("/ref", "the root can't be archived")
-		}
+		rs := subjectRefs(&s, refs, "archived")
 		if err := s.done(nil); err != nil {
 			return err
 		}
-		got, err := core.Resolve(c, r, core.WantRef, nil)
-		if err != nil {
-			return pointAt(err, "/ref", false)
-		}
-		if got.Kind == core.ResolvedTask {
-			x := c.Tasks[got.ID]
-			if x.Open() {
-				return core.Conflict(core.RuleNotFinished, []int64{x.ID}, nil, "@%d is open", x.ID)
-			}
-			left = c.archive(x.ID, []int64{x.ID}, nil)
-			return nil
-		}
-		tasks, folders := c.under(got.ID)
-		var open []int64
-		for _, id := range tasks {
-			if c.Tasks[id].Open() {
-				open = append(open, id)
-			}
-		}
-		if open != nil {
-			return core.Conflict(core.RuleNotFinished, open, nil, "%s is open", core.FormatIDs(open))
-		}
-		left = c.archive(got.ID, tasks, folders)
-		return nil
-	})
-	return left, err
-}
-
-// ClaimTask claims an open task with no claim.
-func (t *Tree) ClaimTask(task string, extra map[string]any) (claim Claim, err error) {
-	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		subs, err := c.resolveSubjects(rs, "archived", true)
 		if err != nil {
 			return err
 		}
-		if c.claimed(x.ID) {
-			return core.Conflict(core.RuleClaimed, []int64{x.ID}, nil, "@%d is claimed", x.ID)
+		var as []Archived
+		for _, sub := range subs {
+			tasks, folders := []int64{sub.id}, []int64(nil)
+			if sub.folder {
+				tasks, folders = c.under(sub.id)
+			}
+			var open []int64
+			for _, id := range tasks {
+				if c.Tasks[id].Open() {
+					open = append(open, id)
+				}
+			}
+			if open != nil {
+				return core.Conflict(core.RuleNotFinished, open, nil, "%s is open", core.FormatIDs(open))
+			}
+			as = append(as, c.archived(sub.id, tasks, folders))
 		}
-		if !x.Open() {
-			return core.Conflict(core.RuleComplete, []int64{x.ID}, nil, "@%d is complete", x.ID)
+		archived = []int64{}
+		for _, a := range as {
+			var tasks, folders []int64
+			for _, x := range a.Tasks {
+				tasks = append(tasks, x.ID)
+			}
+			for _, y := range a.Folders {
+				folders = append(folders, y.ID)
+			}
+			c.remove(tasks, folders)
+			c.Archives = append(c.Archives, a)
+			for _, l := range slices.Concat(tasks, folders) {
+				c.Index[l] = len(c.Archives) - 1
+			}
+			archived = append(archived, a.ID)
+			left = append(left, slices.Concat(tasks, folders)...)
 		}
-		claim = c.claim(x.ID, extra)
+		slices.Sort(left)
 		return nil
 	})
-	return claim, err
+	return archived, left, err
+}
+
+// ClaimTask claims open tasks with no claim, blocked or not, as one
+// change: if any is refused, none is claimed. extra is kept with every
+// claim. It returns the tasks claimed, in input order.
+func (t *Tree) ClaimTask(tasks []string, extra map[string]any) (claimed []int64, err error) {
+	err = t.change(func(c *Tree) error {
+		xs, err := c.subjectTasks(tasks)
+		if err != nil {
+			return err
+		}
+		claimed = []int64{}
+		for _, x := range xs {
+			if c.claimed(x.ID) {
+				return core.Conflict(core.RuleClaimed, []int64{x.ID}, nil, "@%d is claimed", x.ID)
+			}
+			if !x.Open() {
+				return core.Conflict(core.RuleComplete, []int64{x.ID}, nil, "@%d is complete", x.ID)
+			}
+			c.claim(x.ID, extra)
+			claimed = append(claimed, x.ID)
+		}
+		return nil
+	})
+	return claimed, err
 }
 
 func (c *Tree) claim(id int64, extra map[string]any) Claim {
@@ -1343,18 +1374,24 @@ func hasAll(have, want map[string]bool) bool {
 	return true
 }
 
-// Unclaim ends a task's claim, whoever made it.
-func (t *Tree) Unclaim(task string) (changed bool, err error) {
+// Unclaim ends the claims of tasks, whoever made them, as one change.
+// It returns the tasks that had one, in input order.
+func (t *Tree) Unclaim(tasks ...string) (unclaimed []int64, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
-		_, changed = c.Claims[x.ID]
-		delete(c.Claims, x.ID)
+		unclaimed = []int64{}
+		for _, x := range xs {
+			if _, ok := c.Claims[x.ID]; ok {
+				delete(c.Claims, x.ID)
+				unclaimed = append(unclaimed, x.ID)
+			}
+		}
 		return nil
 	})
-	return changed, err
+	return unclaimed, err
 }
 
 func equalPtr[T comparable](a, b *T) bool {
