@@ -92,6 +92,26 @@ func Mv() *cli.Command {
 				if err != nil {
 					return nil, nil, err
 				}
+				// A gate is refused with the subjects, before the destination
+				// resolves.
+				// Each task's row, and each folder given.
+				rows := map[int64]store.TaskRow{}
+				var ids []int64
+				for i, sub := range subs {
+					if sub.folder {
+						ids = append(ids, sub.id)
+						continue
+					}
+					row, _, err := tx.Task(sub.id)
+					if err != nil {
+						return nil, nil, err
+					}
+					if row.Gate != core.EndNone {
+						return nil, nil, &core.Error{Kind: core.KindInvalidInput, IDs: []int64{sub.id}, Problems: []string{at[i]},
+							Message: fmt.Sprintf("@%d is a gate, and stays in its folder", sub.id)}
+					}
+					rows[sub.id] = row
+				}
 				if err := within(tx, subs, at); err != nil {
 					return nil, nil, err
 				}
@@ -116,24 +136,6 @@ func Mv() *cli.Command {
 					default:
 						rename = true
 					}
-				}
-				// Each task's row, and each folder given.
-				rows := map[int64]store.TaskRow{}
-				var ids []int64
-				for i, sub := range subs {
-					if sub.folder {
-						ids = append(ids, sub.id)
-						continue
-					}
-					row, _, err := tx.Task(sub.id)
-					if err != nil {
-						return nil, nil, err
-					}
-					if row.Gate != core.EndNone {
-						return nil, nil, &core.Error{Kind: core.KindInvalidInput, IDs: []int64{sub.id}, Problems: []string{at[i]},
-							Message: fmt.Sprintf("@%d is a gate, and stays in its folder", sub.id)}
-					}
-					rows[sub.id] = row
 				}
 				// Tasks alone need no walk of the tree.
 				f := &folders{}

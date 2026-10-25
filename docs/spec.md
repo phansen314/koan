@@ -611,7 +611,7 @@ Tasks under the folder, the root when none is given, in tree order: open ones un
 
 #### block, unblock
 
-`koan block <task> [--blocked-by] [--blocks]` adds edges; `koan unblock <task> [--blocked-by] [--blocks]` removes them. `--blocked-by` lists what the task waits on, so `koan block 42 --blocked-by 17` makes `@42` wait on `@17`, as `why 42` would then show; `--blocks` lists what waits on it. At least one list must hold an entry. Block makes any gate it names, its subject included, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unblock never makes a gate: naming a gate the folder hasn't made removes nothing, as an edge that isn't there removes nothing, and gives `changed` false.
+`koan block <task> [--blocked-by] [--blocks]` adds edges; `koan unblock <task> [--blocked-by] [--blocks]` removes them. `--blocked-by` lists what the task waits on, so `koan block 42 --blocked-by 17` makes `@42` wait on `@17`, as `why 42` would then show; `--blocks` lists what waits on it. At least one list must hold an entry. Block makes any gate it names, its subject included, warns `complete-blocker` and `claimed-blocked`, and is refused by `cycle`. Unblock never makes a gate: naming one the folder hasn't made in `--blocked-by` or `--blocks` removes nothing, as an edge that isn't there removes nothing, and gives `changed` false. As the subject, a gate the folder hasn't made is `not-found`, since there is no task to report.
 
 ```json
 { "$id": "block", "$defs": {
