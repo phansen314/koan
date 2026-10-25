@@ -51,7 +51,7 @@ func TaskClaim() *cli.Command {
 					case claimed:
 						return nil, nil, core.Conflict(core.RuleClaimed, []int64{id}, nil, "@%d is already claimed", id)
 					case !tx.Open(id):
-						return nil, nil, core.Conflict(core.RuleComplete, []int64{id}, nil, "@%d is complete; only an open task can be claimed", id)
+						return nil, nil, core.Conflict(core.RuleAlreadyComplete, []int64{id}, nil, "@%d is complete; only an open task can be claimed", id)
 					}
 					if _, err := tx.InsertClaim(id, extra); err != nil {
 						return nil, nil, err

@@ -83,7 +83,7 @@ func TestShapeBeforeReferences(t *testing.T) {
 }
 
 // References resolve before the change is judged: a gate moved to a
-// folder that names nothing is not-found, not gate.
+// folder that names nothing is not-found, not invalid-input.
 func TestMoveTaskResolvesFirst(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
@@ -91,7 +91,7 @@ func TestMoveTaskResolvesFirst(t *testing.T) {
 	_, err := tr.Move(MvInto, "/nope", "/a.done")
 	wantErr(t, err, core.KindNotFound, "")
 	_, err = tr.Move(MvInto, "/", "/a.done")
-	wantErr(t, err, core.KindConflict, core.RuleGate)
+	wantErr(t, err, core.KindInvalidInput, "")
 }
 
 // An mv may name both spellings only to respell the folder's own

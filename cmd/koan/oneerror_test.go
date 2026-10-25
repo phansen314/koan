@@ -151,7 +151,7 @@ func TestWrongKindIsInvalidInput(t *testing.T) {
 		{[]string{"unclaim", "2", "1"}, "unclaim", `{"tasks":[2,1]}`, "/tasks/1", "folder"},
 		{[]string{"claim", "/w"}, "claim", `{"tasks":["/w"]}`, "/tasks/0", "folder"},
 		{[]string{"update", "1", "--priority", "1"}, "update", `{"refs":[1],"priority":1}`, "/priority", "folder"},
-		{[]string{"block", "1", "2"}, "block", `{"task":1,"blocked_by":[2]}`, "/task", "folder"},
+		{[]string{"block", "1", "--blocked-by", "2"}, "block", `{"task":1,"blocked_by":[2]}`, "/task", "folder"},
 		{[]string{"context", "2"}, "context", `{"folder":2}`, "/folder", "task"},
 		{[]string{"export", "2"}, "export", `{"folder":2}`, "/folder", "task"},
 		{[]string{"task", "list", "2"}, "task list", `{"folder":2}`, "/folder", "task"},

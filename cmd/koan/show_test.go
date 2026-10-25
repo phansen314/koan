@@ -12,7 +12,7 @@ func TestShowEitherKind(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/work")                // 1
 	ok(t, home, "task", "create", "t", "--folder", "/work") // 2
-	ok(t, home, "block", "/work.done", "2")                 // 3, the done gate
+	ok(t, home, "block", "/work.done", "--blocked-by", "2") // 3, the done gate
 
 	goldenNow(t, ok(t, home, "show", "/work.done"), "show-task-path-gate")
 	for ref, want := range map[string]string{

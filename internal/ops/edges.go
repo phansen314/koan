@@ -113,7 +113,7 @@ func (w *edges) subject(ref core.Ref, make bool) (int64, error) {
 }
 
 // resolve resolves edges given to a task, in order. With make set, a gate
-// an edge names that its folder lacks is made; else it is not-found.
+// an edge names that its folder lacks is made; else its edge is left out.
 func (w *edges) resolve(task int64, in []edgeIn, make bool) ([]edge, error) {
 	var out []edge
 	for _, e := range in {
@@ -130,9 +130,8 @@ func (w *edges) resolve(task int64, in []edgeIn, make bool) ([]edge, error) {
 		}
 		if res.MissingGate() {
 			if !make {
-				path := w.tx.Path(res.Folder)
-				return nil, core.NotFound(nil, []string{path + "." + string(res.End)},
-					"@%d (%s) has no %s gate", res.Folder, path, res.End)
+				// A removal finds an edge that isn't there.
+				continue
 			}
 			if res.ID, err = w.gate(res.Folder, res.End); err != nil {
 				return nil, err

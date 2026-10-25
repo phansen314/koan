@@ -156,7 +156,7 @@ type edge struct {
 }
 
 // resolveEdges resolves edges, making each missing gate they name when make
-// is set, and refusing it as not-found otherwise. In a batch, a refusal
+// is set, and leaving out its edge otherwise. In a batch, a refusal
 // points at the edge.
 func (c *Tree) resolveEdges(in []edgeIn, labels map[string]int64, make, batch bool) ([]edge, []GateMade, error) {
 	var out []edge
@@ -175,8 +175,8 @@ func (c *Tree) resolveEdges(in []edgeIn, labels map[string]int64, make, batch bo
 				made = append(made, g)
 				r.ID = g.ID
 			} else {
-				p := c.Path(r.Folder) + "." + string(r.End)
-				return nil, nil, pointAt(core.NotFound(nil, []string{p}, "@%d (%s) has no %s gate", r.Folder, c.Path(r.Folder), r.End), e.pointer, batch)
+				// A removal finds an edge that isn't there.
+				continue
 			}
 		}
 		x := core.Edge{From: e.task, To: r.ID}
@@ -859,11 +859,12 @@ func (t *Tree) Move(mv Mv, dest string, refs ...string) (out MoveResult, err err
 			}
 		}
 		var fs []*Folder
-		for _, sub := range subs {
+		for i, sub := range subs {
 			if sub.folder {
 				fs = append(fs, c.Folders[sub.id])
 			} else if x := c.Tasks[sub.id]; x.Gate != core.EndNone {
-				return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
+				return &core.Error{Kind: core.KindInvalidInput, IDs: []int64{x.ID}, Problems: []string{fmt.Sprintf("/refs/%d", i)},
+					Message: fmt.Sprintf("@%d is a gate, and stays in its folder", x.ID)}
 			}
 		}
 		moved := map[int64]bool{}
@@ -1283,7 +1284,7 @@ func (t *Tree) ClaimTask(tasks []string, extra map[string]any) (claimed []int64,
 				return core.Conflict(core.RuleClaimed, []int64{x.ID}, nil, "@%d is claimed", x.ID)
 			}
 			if !x.Open() {
-				return core.Conflict(core.RuleComplete, []int64{x.ID}, nil, "@%d is complete", x.ID)
+				return core.Conflict(core.RuleAlreadyComplete, []int64{x.ID}, nil, "@%d is complete", x.ID)
 			}
 			c.claim(x.ID, extra)
 			claimed = append(claimed, x.ID)

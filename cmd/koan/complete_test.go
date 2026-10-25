@@ -131,14 +131,14 @@ func TestCompleteReferences(t *testing.T) {
 		// Gates made or not where an edge names them.
 		{[]string{"block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
-		{[]string{"block", "5", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"block", "5", "--blocked-by", "@"}, offered(byID, as("@", edges...)...)},
 		{[]string{"block", "5", "--blocks", ""}, offered(byID, as("@", edges...)...)},
 		// unblock's words: tasks, made gates, and folders that have a
 		// done gate, since it never makes a gate.
-		{[]string{"unblock", "5", "@"}, offered(byID, as("@", unblockEnds...)...)},
+		{[]string{"unblock", "5", "--blocked-by", "@"}, offered(byID, as("@", unblockEnds...)...)},
 		{[]string{"unblock", "5", "--blocks", ""}, offered(byID, as("@", unblockEnds...)...)},
-		{[]string{"unblock", "5", "1"}, offered(byID, as("", "12")...)},
-		{[]string{"unblock", "5", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
+		{[]string{"unblock", "5", "--blocked-by", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"unblock", "5", "--blocked-by", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
 		{[]string{"task", "create", "t", "--blocked-by", "@2"}, offered(byID, as("@", "2", "2.start", "2.done")...)},
 		{[]string{"task", "create", "t", "--blocks=2."}, offered(byID, as("", "2.start", "2.done")...)},
 		// Folders.
@@ -198,7 +198,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"complete", "9", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
 		{[]string{"complete", "9", "12", "1"}, offered(byID, as("", "12")...)},
 		{[]string{"reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
-		{[]string{"unblock", "5", "6", "@"}, offered(byID, as("@", unblockEnds...)...)},
+		{[]string{"unblock", "5", "--blocked-by", "6", "@"}, offered(byNothing)}, // no object: a word past the subject is nothing
 		// show and where: tasks, made gates and folders.
 		{[]string{"show", ""}, offered(byID, as("@", anyRef...)...)},
 		{[]string{"show", "@"}, offered(byID, as("@", anyRef...)...)},
@@ -254,11 +254,11 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"complete", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
 		{[]string{"reopen", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
 		{[]string{"block", "/work"}, offered(byPath, "/work", "/work.start", "/work.done")},
-		{[]string{"block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
-		{[]string{"block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
-		{[]string{"unblock", "5", "/work"}, offered(byPath, "/work")},
-		{[]string{"unblock", "5", "/work."}, offered(byPath)},
-		{[]string{"unblock", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"block", "5", "--blocked-by", "/work."}, offered(byPath, "/work.start", "/work.done")},
+		{[]string{"block", "5", "--blocked-by", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"unblock", "5", "--blocked-by", "/work"}, offered(byPath, "/work")},
+		{[]string{"unblock", "5", "--blocked-by", "/work."}, offered(byPath)},
+		{[]string{"unblock", "5", "--blocked-by", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"show", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
@@ -288,11 +288,11 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"where", "@2/api"}, offered(byID)},
 		{[]string{"where", "/work/api:"}, offered(byID)},
 		{[]string{"where", "@3:docs"}, offered(byID)},
-		{[]string{"block", "5", "$design"}, offered(byID)},
+		{[]string{"block", "5", "--blocked-by", "$design"}, offered(byID)},
 		{[]string{"why", "work"}, offered(byID)},
 		// Only a list's first item completes.
-		{[]string{"block", "5", "6,@"}, offered(byID)},
-		{[]string{"block", "5", "6", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
+		{[]string{"block", "5", "--blocked-by", "6,@"}, offered(byID)},
+		{[]string{"block", "5", "--blocked-by", "6", "@3."}, offered(byNothing)},
 		{[]string{"join", "5", "/old,/w"}, offered(byID)},
 		{[]string{"task", "create", "t", "--join", "/old,/w"}, offered(byID)},
 		// A subject given, and values that aren't references.

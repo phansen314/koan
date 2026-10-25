@@ -486,7 +486,7 @@ func TestTaskUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2 4]]" {
 		t.Errorf("by ID: %s", r.Line())
 	}
-	ok(t, home, "block", "2", "/a.start")
+	ok(t, home, "block", "2", "--blocked-by", "/a.start")
 	r = ok(t, home, "unjoin", "2", "/a")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2]]" {
 		t.Errorf("one: %s", r.Line())
@@ -521,7 +521,7 @@ func TestFolderUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3 6]]" {
 		t.Errorf("both: %s", r.Line())
 	}
-	ok(t, home, "block", "/g.start", "/h.start")
+	ok(t, home, "block", "/g.start", "--blocked-by", "/h.start")
 	r = ok(t, home, "unjoin", "/g", "/h")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3]]" {
 		t.Errorf("one: %s", r.Line())

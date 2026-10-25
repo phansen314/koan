@@ -2,7 +2,7 @@
   "ok": false,
   "error": {
     "kind": "conflict",
-    "rule": "complete",
+    "rule": "already-complete",
     "message": "@1 is complete; only an open task can be claimed",
     "ids": [
       1

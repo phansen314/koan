@@ -122,7 +122,7 @@ func TestTaskMoveSeveral(t *testing.T) {
 
 	// If any is refused, none moves.
 	before := tree(t, home)
-	if r := fails(t, home, "conflict", "gate", "mv", "4", "/a.done", "/b"); fmt.Sprint(r.Error()["ids"]) != "[7]" {
+	if r := fails(t, home, "invalid-input", "", "mv", "4", "/a.done", "/b"); fmt.Sprint(r.Error()["ids"]) != "[7]" || problemFields(r) != "/refs/1" {
 		t.Errorf("gate: %s", r.Line())
 	}
 	fails(t, home, "not-found", "", "mv", "4", "99", "/b")
@@ -161,8 +161,8 @@ func TestTaskMoveGate(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")                         // 1
 	ok(t, home, "task", "create", "t", "--blocked-by", "/a.done") // 2, 3
-	golden(t, fails(t, home, "conflict", "gate", "mv", "/a.done", "/"), "task-mv-gate")
-	if r := fails(t, home, "conflict", "gate", "mv", "3", "/a"); fmt.Sprint(r.Error()["ids"]) != "[3]" {
+	golden(t, fails(t, home, "invalid-input", "", "mv", "/a.done", "/"), "task-mv-gate")
+	if r := fails(t, home, "invalid-input", "", "mv", "3", "/a"); fmt.Sprint(r.Error()["ids"]) != "[3]" || problemFields(r) != "/refs/0" {
 		t.Errorf("own folder: %s", r.Line())
 	}
 }
@@ -621,9 +621,9 @@ func TestMvMixed(t *testing.T) {
 	sameFault(t, home, "invalid-input", "/dest", []string{"mv", "/p", "6"}, "mv", `{"refs":["/p"],"dest":6}`)
 	sameFault(t, home, "invalid-input", "/into", []string{"mv", "-t", "6", "/p"}, "mv", `{"refs":["/p"],"into":6}`)
 	// A gate is refused before the folders' own refusals.
-	setup(t, home, "block", "6", "/p.start") // 7
-	r = fails(t, home, "conflict", "gate", "mv", "/a", "/p.start", "/a")
-	if fmt.Sprint(r.Error()["ids"]) != "[7]" {
+	setup(t, home, "block", "6", "--blocked-by", "/p.start") // 7
+	r = fails(t, home, "invalid-input", "", "mv", "/a", "/p.start", "/a")
+	if fmt.Sprint(r.Error()["ids"]) != "[7]" || problemFields(r) != "/refs/1" {
 		t.Errorf("gate first: %s", r.Line())
 	}
 	// Nothing refused moved anything.

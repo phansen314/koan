@@ -206,8 +206,9 @@ func TestBlockUnblock(t *testing.T) {
 
 	// Unblock never makes a gate.
 	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))
-	_, err = tr.Unblock("1", []string{"/f"}, nil)
-	wantErr(t, err, core.KindNotFound, "")
+	if r := must[EdgeResult](t)(tr.Unblock("1", []string{"/f"}, nil)); r.Changed {
+		t.Errorf("unblock of an unmade gate changed something: %+v", r)
+	}
 	if _, ok := tr.Gate(4, core.EndDone); ok {
 		t.Error("unblock made a gate")
 	}
@@ -387,7 +388,7 @@ func TestMoveTask(t *testing.T) {
 		t.Error("a move changed edges or readiness")
 	}
 	_, err = tr.Move(MvInto, "/b", "@1.done")
-	if e := wantErr(t, err, core.KindConflict, core.RuleGate); !reflect.DeepEqual(e.IDs, []int64{4}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.IDs, []int64{4}) {
 		t.Errorf("ids %v", e.IDs)
 	}
 	if out, _ := tr.Move(MvInto, "@2", "3"); len(out.Moved) != 0 {
@@ -404,7 +405,7 @@ func TestMoveTask(t *testing.T) {
 	}
 	// One refused, none moves.
 	_, err = tr.Move(MvInto, "/b", "5", "/a.done")
-	wantErr(t, err, core.KindConflict, core.RuleGate)
+	wantErr(t, err, core.KindInvalidInput, "")
 	_, err = tr.Move(MvInto, "/b", "5", "99")
 	wantErr(t, err, core.KindNotFound, "")
 	if tr.Tasks[5].Folder != 1 {
@@ -774,7 +775,7 @@ func TestClaims(t *testing.T) {
 	}
 	must[CompleteResult](t)(tr.Complete("4"))
 	_, err = tr.ClaimTask([]string{"4"}, nil)
-	wantErr(t, err, core.KindConflict, core.RuleComplete)
+	wantErr(t, err, core.KindConflict, core.RuleAlreadyComplete)
 	checked(t, tr)
 }
 
@@ -847,7 +848,7 @@ func TestMoveGateToItsFolder(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
 	_, err := tr.Move(MvInto, "/a", "/a.done")
-	wantErr(t, err, core.KindConflict, core.RuleGate)
+	wantErr(t, err, core.KindInvalidInput, "")
 }
 
 // mv checks into-itself, then case-mismatch, then exists. A path

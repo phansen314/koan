@@ -150,13 +150,10 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		return out
 	}
-	// On task create, what it waits on is --blocked-by; on block and
-	// unblock, the word after the subject.
+	// On task create, block and unblock, what it waits on is --blocked-by.
 	edgeArgs := func(args []string, bb, bl []string) []string {
-		if len(bb) > 0 && args[0] == "task" && args[1] == "create" {
+		if len(bb) > 0 {
 			args = append(args, "--blocked-by", strings.Join(bb, ","))
-		} else if len(bb) > 0 {
-			args = append(args, strings.Join(bb, ","))
 		}
 		if len(bl) > 0 {
 			args = append(args, "--blocks", strings.Join(bl, ","))

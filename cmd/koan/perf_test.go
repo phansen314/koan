@@ -237,7 +237,7 @@ var perfOps = []perfOp{
 	{name: "export", budget: 200 * ms, args: func(r *perfRoot, i int) []string { return []string{"export", r.folder(i)} }},
 	{name: "export all", budget: 200 * ms, args: always("export", "/")},
 	{name: "info", budget: 100 * ms, args: always("info")},
-	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "block", "1", "@")},
+	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "block", "1", "--blocked-by", "@")},
 	{name: "complete id", budget: 100 * ms, plain: true, args: func(r *perfRoot, i int) []string {
 		id := r.task(i, 50)
 		return []string{"__complete", "show", "@" + id[:max(1, len(id)-1)]}
@@ -258,14 +258,14 @@ var perfOps = []perfOp{
 		prep: func(r *perfRoot, i int) { r.must("complete", r.task(i, 95)) },
 		args: func(r *perfRoot, i int) []string { return []string{"reopen", r.task(i, 95)} }},
 	{name: "block", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("unblock", r.task(i, 94), r.task(i+1, 10)) },
+		prep: func(r *perfRoot, i int) { r.must("unblock", r.task(i, 94), "--blocked-by", r.task(i+1, 10)) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"block", r.task(i, 94), r.task(i+1, 10)}
+			return []string{"block", r.task(i, 94), "--blocked-by", r.task(i+1, 10)}
 		}},
 	{name: "unblock", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("block", r.task(i, 93), r.task(i, 92)) },
+		prep: func(r *perfRoot, i int) { r.must("block", r.task(i, 93), "--blocked-by", r.task(i, 92)) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"unblock", r.task(i, 93), r.task(i, 92)}
+			return []string{"unblock", r.task(i, 93), "--blocked-by", r.task(i, 92)}
 		}},
 	{name: "task mv", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		to := fmt.Sprint("@", r.moving)

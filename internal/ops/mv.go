@@ -120,7 +120,7 @@ func Mv() *cli.Command {
 				// Each task's row, and each folder given.
 				rows := map[int64]store.TaskRow{}
 				var ids []int64
-				for _, sub := range subs {
+				for i, sub := range subs {
 					if sub.folder {
 						ids = append(ids, sub.id)
 						continue
@@ -130,7 +130,8 @@ func Mv() *cli.Command {
 						return nil, nil, err
 					}
 					if row.Gate != core.EndNone {
-						return nil, nil, core.Conflict(core.RuleGate, []int64{sub.id}, nil, "@%d is a gate, and stays in its folder", sub.id)
+						return nil, nil, &core.Error{Kind: core.KindInvalidInput, IDs: []int64{sub.id}, Problems: []string{at[i]},
+							Message: fmt.Sprintf("@%d is a gate, and stays in its folder", sub.id)}
 					}
 					rows[sub.id] = row
 				}
