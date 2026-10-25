@@ -24,14 +24,6 @@ type TaskReopenResult struct {
 // taskCommand is the shape of a write that takes a task and nothing
 // else; subject is what the task completes to.
 func taskCommand(name string, subject offers, change func(tx *store.Tx, id int64) (any, []cli.Warning, error)) *cli.Command {
-	return rootedTaskCommand(name, subject, func(tx *store.Tx, _ store.Root, id int64) (any, []cli.Warning, error) {
-		return change(tx, id)
-	})
-}
-
-// rootedTaskCommand is taskCommand for a change that also needs the
-// root, to look on disk.
-func rootedTaskCommand(name string, subject offers, change func(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error)) *cli.Command {
 	return &cli.Command{
 		Name:    name,
 		Subject: &cli.Option{Field: "task", Required: true, Complete: subject.complete()},
@@ -51,7 +43,7 @@ func rootedTaskCommand(name string, subject offers, change func(tx *store.Tx, ro
 				if err != nil {
 					return nil, nil, err
 				}
-				return change(tx, s.Root, res.ID)
+				return change(tx, res.ID)
 			})
 		},
 	}

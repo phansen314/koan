@@ -6,16 +6,16 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// TaskBlockResult is block's result, in its schema's order.
-type TaskBlockResult struct {
+// BlockResult is block's result, in its schema's order.
+type BlockResult struct {
 	ID        int64      `json:"id"`
 	Changed   bool       `json:"changed"`
 	GatesMade []GateMade `json:"gates_made"`
 	Reblocked []int64    `json:"reblocked"`
 }
 
-// TaskUnblockResult is unblock's result, in its schema's order.
-type TaskUnblockResult struct {
+// UnblockResult is unblock's result, in its schema's order.
+type UnblockResult struct {
 	ID       int64   `json:"id"`
 	Changed  bool    `json:"changed"`
 	Released []int64 `json:"released"`
@@ -80,7 +80,7 @@ func TaskBlock() *cli.Command {
 			if err != nil {
 				return nil, nil, err
 			}
-			return TaskBlockResult{ID: id, Changed: changed, GatesMade: w.made, Reblocked: reblocked}, warnings, nil
+			return BlockResult{ID: id, Changed: changed, GatesMade: w.made, Reblocked: reblocked}, warnings, nil
 		})
 	})
 }
@@ -107,7 +107,7 @@ func TaskUnblock() *cli.Command {
 			if err != nil {
 				return nil, nil, err
 			}
-			return TaskUnblockResult{ID: id, Changed: changed, Released: released}, nil, nil
+			return UnblockResult{ID: id, Changed: changed, Released: released}, nil, nil
 		})
 	})
 }

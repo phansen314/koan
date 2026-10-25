@@ -60,13 +60,13 @@ func joinCommand(name string, add bool) *cli.Command {
 					if err != nil {
 						return nil, nil, err
 					}
-					return TaskUnblockResult{ID: id, Changed: changed, Released: released}, nil, nil
+					return UnblockResult{ID: id, Changed: changed, Released: released}, nil, nil
 				}
 				changed, reblocked, warnings, err := w.add(es)
 				if err != nil {
 					return nil, nil, err
 				}
-				return TaskBlockResult{ID: id, Changed: changed, GatesMade: w.made, Reblocked: reblocked}, warnings, nil
+				return BlockResult{ID: id, Changed: changed, GatesMade: w.made, Reblocked: reblocked}, warnings, nil
 			})
 		},
 	}
