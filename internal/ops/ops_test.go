@@ -54,7 +54,7 @@ func TestCommandsMatchSchemas(t *testing.T) {
 			want = append(want, props.Keys...)
 			for _, k := range props.Keys {
 				switch d := props.Get(k).Str("description"); {
-				case strings.HasPrefix(d, "Subject.") || strings.HasPrefix(d, "Subject:"):
+				case strings.HasPrefix(d, "Subject.") || strings.HasPrefix(d, "Subject:") || strings.HasPrefix(d, "Subject;"):
 					subjects = append(subjects, k)
 				case strings.HasPrefix(d, "Object.") || strings.HasPrefix(d, "Object:"):
 					objects = append(objects, k)

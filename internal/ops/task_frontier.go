@@ -17,15 +17,17 @@ func TaskFrontier() *cli.Command {
 		Name:    "frontier",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
+			{Field: "file", Kind: cli.Path},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},
 		},
+		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			ref, sc := r.scope()
+			q, sc := r.scope()
 			limit := r.limit("limit", 100)
 			fields := r.fields("fields", taskFields)
 			if e := r.err(); e != nil {
@@ -37,13 +39,13 @@ func TaskFrontier() *cli.Command {
 			}
 			defer s.Close()
 			res := TaskListResult{Tasks: []Cut[Task]{}}
+			var stale []cli.Warning
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
-				var err error
-				if sc.folder, err = resolveFolder(tx, ref, "folder"); err != nil {
-					return nil, err
-				}
 				t, err := loadTasks(tx, s.Root)
 				if err != nil {
+					return nil, err
+				}
+				if sc.folder, _, stale, err = subjectFolder(tx, t, q); err != nil {
 					return nil, err
 				}
 				matches := t.frontier(sc)
@@ -62,7 +64,7 @@ func TaskFrontier() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			return res, warnings, nil
+			return res, append(warnings, stale...), nil
 		},
 	}
 }
@@ -78,9 +80,8 @@ type scope struct {
 
 // scope reads task list's filter, but for its folder, which resolves
 // in the store.
-func (r *input) scope() (core.Ref, scope) {
-	ref := r.ref("folder", core.WantFolder, "/")
-	return ref, scope{recursive: r.boolean("recursive", true), tagsAny: r.tags("tags_any"), tagsAll: r.tags("tags_all")}
+func (r *input) scope() (*query, scope) {
+	return r.foldering("folder"), scope{recursive: r.boolean("recursive", true), tagsAny: r.tags("tags_any"), tagsAll: r.tags("tags_all")}
 }
 
 // frontier is the ready tasks with no claim within a scope, in work

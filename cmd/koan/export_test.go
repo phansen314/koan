@@ -203,10 +203,10 @@ func TestExportMarkers(t *testing.T) {
 	if r := ok(t, home, "export", "--file", wt+"/src/x.go"); r.Stdout != byRef {
 		t.Errorf("--file: %s", r.Line())
 	}
-	if r := koanIn(t, home, mkdir(t, wt, "src"), "export"); r.Exit != 0 || r.Stdout != byRef {
+	if r := koanIn(t, home, mkdir(t, wt, "src"), "export", "--here"); r.Exit != 0 || r.Stdout != byRef {
 		t.Errorf("working directory: %s", r.Line())
 	}
-	if id := koanIn(t, home, treeAt(home, "@work"), "export").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
+	if id := koanIn(t, home, treeAt(home, "@work"), "export", "--here").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
 		t.Errorf("working directory in the tree: %v", id)
 	}
 
@@ -273,7 +273,7 @@ func TestExportRefusals(t *testing.T) {
 		r.Check(t, "export")
 		return r
 	}
-	if r := in(`{}`); r.Kind() != "invalid-input" {
+	if r := in(`{}`); !r.OK() || r.Stdout != ok(t, home, "export", "/").Stdout {
 		t.Errorf("{}: %s", r.Line())
 	}
 	if r := in(`{"folder":"/work","file":"/x"}`); r.Kind() != "invalid-input" {

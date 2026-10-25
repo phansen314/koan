@@ -33,9 +33,10 @@ type Location struct {
 func Where() *cli.Command {
 	return &cli.Command{
 		Name:    "where",
-		Uses:    []string{"<ref>", "--file <path>"},
+		Uses:    []string{"<ref>", "--file <path>", "--here"},
 		Subject: &cli.Option{Field: "ref", Complete: anyRef.complete()},
 		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
+		Here:    &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			q := r.locating("ref", core.WantAny)
@@ -86,7 +87,25 @@ func (r *input) locating(field string, want core.Want) *query {
 	q.file = r.absPath("file", false)
 	_, hasFile := r.value("file")
 	if q.hasRef == hasFile {
-		r.fault("", "give exactly one of %s and file", field)
+		r.fault("", "give exactly one of %s, file and --here", field)
+	}
+	return q
+}
+
+// foldering reads the folder a command looks under: its folder subject,
+// the root when left out, or file, the folder a path on disk is in, found
+// as where finds it. Both given is a fault.
+func (r *input) foldering(field string) *query {
+	q := &query{}
+	_, hasFolder := r.value(field)
+	q.file = r.absPath("file", false)
+	_, hasFile := r.value("file")
+	if hasFolder && hasFile {
+		r.fault("", "give at most one of %s, file and --here", field)
+	}
+	q.hasRef = !hasFile
+	if q.hasRef {
+		q.ref = r.ref(field, core.WantFolder, "/")
 	}
 	return q
 }

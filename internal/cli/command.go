@@ -629,6 +629,10 @@ func (c *Command) readFiles(env *Env, l *line) *Error {
 	}
 	if h := c.Here; h != nil && h.Flag != "" {
 		if l.here {
+			if _, ok := l.in[h.Field]; ok {
+				return InvalidInput("give at most one of the folder, --file and --here",
+					Problem{Field: "", Reason: "give at most one of the folder, --file and --here"})
+			}
 			wd, e := workingDir()
 			if e != nil {
 				return e

@@ -75,8 +75,9 @@ var usages = map[string]string{
 	"delete/material":     "delete the files of yours in the folders too",
 	"bind/force":          "bind a checkout, or a directory bound to another folder",
 	"where/file":          "find the folder this file is in",
-	"context/file":        "brief the folder this file is in; the working directory when left out",
-	"export/file":         "export the folder this file is in; the working directory when left out",
+	"context/file":        "brief the folder this file is in",
+	"export/file":         "export the folder this file is in",
+	"file":                "look under the folder this file is in",
 	"kinds":               "fix only these kinds of finding",
 	"ids_from":            "the first ID the new root issues",
 	"pick/recursive":      "include subfolders; --recursive=false for the folder's own tasks and the folders directly in it",
@@ -95,7 +96,14 @@ var fileUsages = map[string]string{
 // hereUsages are each working-directory option's line in help, by
 // command.
 var hereUsages = map[string]string{
-	"pick": "pick from the folder the working directory's marker binds",
+	"pick":        "pick from the folder the working directory is in",
+	"task list":   "look under the folder the working directory is in",
+	"frontier":    "look under the folder the working directory is in",
+	"claim-next":  "look under the folder the working directory is in",
+	"folder list": "look under the folder the working directory is in",
+	"context":     "brief on the folder the working directory is in",
+	"export":      "export the folder the working directory is in",
+	"where":       "name the working directory",
 }
 
 // describe gives every command its line in help, and each option its own.

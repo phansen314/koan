@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"github.com/phansen314/koan/internal/cli"
-	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/fsstep"
 	"github.com/phansen314/koan/internal/store"
 )
@@ -23,6 +22,7 @@ func TaskList() *cli.Command {
 		Name:    "task list",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
+			{Field: "file", Kind: cli.Path},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},
@@ -32,9 +32,10 @@ func TaskList() *cli.Command {
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},
 		},
+		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			ref := r.ref("folder", core.WantFolder, "/")
+			q := r.foldering("folder")
 			recursive := r.boolean("recursive", true)
 			states := r.choices("state", []string{"open", "complete"}, []string{"open"})
 			readiness := r.choices("readiness", []string{"ready", "blocked"}, []string{"ready", "blocked"})
@@ -52,13 +53,14 @@ func TaskList() *cli.Command {
 			}
 			defer s.Close()
 			res := TaskListResult{Tasks: []Cut[Task]{}}
+			var stale []cli.Warning
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
-				folder, err := resolveFolder(tx, ref, "folder")
+				t, err := loadTasks(tx, s.Root)
 				if err != nil {
 					return nil, err
 				}
-				t, err := loadTasks(tx, s.Root)
-				if err != nil {
+				var folder int64
+				if folder, _, stale, err = subjectFolder(tx, t, q); err != nil {
 					return nil, err
 				}
 				keep := func(id int64) bool {
@@ -99,7 +101,7 @@ func TaskList() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			return res, warnings, nil
+			return res, append(warnings, stale...), nil
 		},
 	}
 }

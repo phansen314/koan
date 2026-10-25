@@ -512,12 +512,12 @@ func TestContext(t *testing.T) {
 		t.Errorf("marker: %s", r.Line())
 	}
 	goldenNow(t, r, "context-marker")
-	// With no subject, the working directory.
-	r = koanIn(t, home, mkdir(t, wt, "src"), "context")
+	// With --here, the working directory; with nothing, the root.
+	r = koanIn(t, home, mkdir(t, wt, "src"), "context", "--here")
 	if r.Exit != 0 || r.Result()["marker"] != markerFile(wt) {
 		t.Errorf("cwd: %s", r.Line())
 	}
-	if id := koanIn(t, home, treeAt(home, "@work"), "context").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
+	if id := koanIn(t, home, treeAt(home, "@work"), "context", "--here").Result()["folder"].(map[string]any)["id"]; fmt.Sprint(id) != "1" {
 		t.Errorf("cwd in the tree: %v", id)
 	}
 
@@ -607,7 +607,7 @@ func TestLocateConveniences(t *testing.T) {
 	if r := where(`{"file":"` + w + `"}`); !r.OK() {
 		t.Errorf("--input file: %s", r.Line())
 	}
-	if r := context(`{}`); r.Kind() != "invalid-input" {
+	if r := context(`{}`); !r.OK() || r.Result()["folder"].(map[string]any)["id"] != nil {
 		t.Errorf("context {}: %s", r.Line())
 	}
 	if r := context(`{"file":"` + w + `"}`); !r.OK() {
@@ -650,7 +650,9 @@ func TestUnresolvableWorkingDirectory(t *testing.T) {
 		t.Skipf("this system resolves a removed working directory: %s", r.Stdout)
 	}
 	for _, args := range [][]string{
-		{"context"},
+		{"context", "--here"},
+		{"frontier", "--here"},
+		{"where", "--here"},
 		{"where", "--file", "x"},
 		{"where", "@1.start:x", "--file", "x"},
 		{"bind", "/x:y"},

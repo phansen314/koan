@@ -70,14 +70,16 @@ func TaskClaimNext() *cli.Command {
 		Name:    "claim-next",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
+			{Field: "file", Kind: cli.Path},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
 			{Field: "extra", Kind: cli.JSON},
 		},
+		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
-			ref, sc := r.scope()
+			q, sc := r.scope()
 			extra := r.object("extra")
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -88,17 +90,17 @@ func TaskClaimNext() *cli.Command {
 			}
 			defer s.Close()
 			return s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
-				var err error
-				if sc.folder, err = resolveFolder(tx, ref, "folder"); err != nil {
-					return nil, nil, err
-				}
 				t, err := loadTasks(tx, s.Root)
 				if err != nil {
 					return nil, nil, err
 				}
+				var stale []cli.Warning
+				if sc.folder, _, stale, err = subjectFolder(tx, t, q); err != nil {
+					return nil, nil, err
+				}
 				matches := t.frontier(sc)
 				if len(matches) == 0 {
-					return TaskClaimNextResult{}, nil, nil
+					return TaskClaimNextResult{}, stale, nil
 				}
 				id := matches[0].ID
 				c, err := tx.InsertClaim(id, extra)
@@ -107,7 +109,7 @@ func TaskClaimNext() *cli.Command {
 				}
 				t.claims[id] = c
 				rec := t.record(id)
-				return TaskClaimNextResult{Task: &rec}, nil, nil
+				return TaskClaimNextResult{Task: &rec}, stale, nil
 			})
 		},
 	}
