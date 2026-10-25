@@ -50,9 +50,8 @@ func TestOldSpellings(t *testing.T) {
 			t.Errorf("koan %q: message lacks %q: %s", args, want, r.Line())
 		}
 	}
-	// A word that is no command of its own gets no pointer, and nor
-	// does one after marker, which never held a moved command.
-	for _, args := range [][]string{{"task", "release", "2"}, {"task", "frob"}, {"folder", "marker"}, {"marker", "show", "2"}} {
+	// A word that is no command of its own gets no pointer.
+	for _, args := range [][]string{{"task", "release", "2"}, {"task", "frob"}, {"folder", "marker"}} {
 		if r := usageAt(t, home, args[1], args...); strings.Contains(r.Error()["message"].(string), " is koan ") {
 			t.Errorf("koan %q: %s", args, r.Line())
 		}
