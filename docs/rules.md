@@ -261,7 +261,7 @@ A nested `.git`, or a worktree inside the folder, is material, so it leaves with
 
 **What changes in the tree.**
 
-- Every edge between what stays and what leaves is removed in the same change (I5). The archive keeps them, as part of what left.
+- Every edge between what stays and what leaves is removed in the same change (I5). The archive keeps them, as part of what left, and so does each item archived in the same change for its edges to the others: archiving several together keeps the same edges as archiving them one at a time.
 - The IDs that leave are retired. They are never issued again (I2), and never resolve again: a reference to one is `not-found`, and the error says where in the archive it went, from the index (I12).
 - No claim ends, since complete tasks hold none (I8).
 
