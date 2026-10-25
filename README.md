@@ -98,7 +98,7 @@ koan complete 3                                                          # .resu
 koan show 4                                                              # the whole task, with its notes_path
 ```
 
-A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`.
+`task` and `folder` hold only `create` and `list`; every other command is its verb alone, for tasks and folders both (`koan show 4`, `koan update 4 --priority 1`, `koan mv 4 /work`). A list or an export with no folder looks at the whole tree; in a worktree, `--here` looks under its folder, as in `koan context --here`. A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`.
 
 ### Ordering folders
 
@@ -134,7 +134,7 @@ claude plugin marketplace add phansen314/koan
 claude plugin install koan@koan
 ```
 
-Then, from a clone of this repo, add the permission rules. They let every koan command run without asking, except `koan init`, `koan task delete`, `koan folder delete` and `koan repair`, which always ask. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
+Then, from a clone of this repo, add the permission rules. They let every koan command run without asking, except `koan init`, `koan delete` and `koan repair`, which always ask. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
 
 ```shell
 scripts/install.sh               # every agent whose CLI is on PATH

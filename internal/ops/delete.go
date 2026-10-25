@@ -58,9 +58,12 @@ func Delete() *cli.Command {
 					k := input{}
 					// Given only when it does something: false is
 					// what leaving it out does.
-					for field, set := range map[string]bool{"contents": contents, "material": material} {
-						if set {
-							k.fault(cli.Pointer(field), "%s is for folders, and no folder is given", field)
+					for _, o := range []struct {
+						field string
+						set   bool
+					}{{"contents", contents}, {"material", material}} {
+						if o.set {
+							k.fault(cli.Pointer(o.field), "%s is for folders, and no folder is given", o.field)
 						}
 					}
 					if e := k.err(); e != nil {
