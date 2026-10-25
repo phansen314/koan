@@ -128,8 +128,8 @@ func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran 
 
 // groupShorts are each group's line in help.
 var groupShorts = map[string]string{
-	"task":   "Make, change and find tasks",
-	"folder": "Make, change and find folders",
+	"task":   "Make and list tasks",
+	"folder": "Make and list folders",
 }
 
 // unknown refuses a line that names no command under group, "" for the
