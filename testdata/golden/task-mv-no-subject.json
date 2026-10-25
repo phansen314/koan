@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "kind": "usage",
+    "kind": "invalid-input",
     "rule": null,
-    "message": "task mv needs a subject: task",
+    "message": "tasks is required",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "",
-        "reason": "task mv needs a subject: task"
+        "field": "/tasks",
+        "reason": "tasks is required"
       }
     ],
     "archived": []

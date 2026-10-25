@@ -107,7 +107,7 @@ func TestCreateTask(t *testing.T) {
 		{TaskInput{Title: "t", Priority: ptr(core.MaxInt + 1)}, core.KindInvalidInput, []string{"/priority"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"$a"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"/"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
-		{TaskInput{Title: "t", Folder: "@2"}, core.KindNotFound, nil}, // a task where a folder is taken
+		{TaskInput{Title: "t", Folder: "@2"}, core.KindInvalidInput, []string{"/folder"}}, // a task where a folder is taken
 		{TaskInput{Title: "t", BlockedBy: []string{"2.start"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
 	} {
 		_, err := tr.CreateTask(c.in)
@@ -773,7 +773,7 @@ func TestBlockSubjectGate(t *testing.T) {
 	_, err = tr.Block("/f.start", []string{"/f.start"}, nil)
 	wantErr(t, err, core.KindInvalidInput, "")
 	_, err = tr.Block("@1", []string{"3"}, nil)
-	wantErr(t, err, core.KindNotFound, "")
+	wantErr(t, err, core.KindInvalidInput, "")
 	if tr.Issued != 3 {
 		t.Fatalf("a refused change issued IDs: %d", tr.Issued)
 	}

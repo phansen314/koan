@@ -139,8 +139,6 @@ func TestBatchJoinNotFound(t *testing.T) {
 		`{"tasks": [{"title": "a", "join": ["/nope"]}, {"title": "b", "blocked_by": [98]}]}`:                    "/tasks/0/join/0",
 		`{"folders": [{"path": "/x", "join": ["/w/y"]}, {"path": "/w/x", "join": ["/w/z"]}]}`:                   "/folders/0/join/0",
 		`{"tasks": [{"title": "a", "join": ["/w/y"]}], "folders": [{"path": "/w/x", "join": ["/w"]}]}`:          "/tasks/0/join/0",
-		`{"tasks": [{"label": "$a", "title": "a"}, {"title": "b", "join": ["/w", 3]}]}`:                         "/tasks/1/join/1",
-		`{"folders": [{"path": "/q"}], "join": [3], "tasks": [{"title": "a"}]}`:                                 "/join/0",
 		`{"folders": [{"path": "/q"}], "join": ["@2/r"], "tasks": [{"title": "a", "join": []}]}`:                "/join/0",
 		`{"folders": [{"path": "/q", "join": ["@1/x"]}, {"path": "/w/y", "join": ["/w"]}]}`:                     "/folders/0/join/0",
 		`{"folders": [{"path": "/w/y", "join": ["/w"]}], "tasks": [{"title": "a", "join": ["/w/y/z"]}]}`:        "/tasks/0/join/0",
@@ -148,6 +146,11 @@ func TestBatchJoinNotFound(t *testing.T) {
 	} {
 		batchFails(t, home, "not-found", "", fields, in)
 	}
+	// A task made in the batch is a task, not a folder to join.
+	batchFails(t, home, "invalid-input", "", "/tasks/1/join/1",
+		`{"tasks": [{"label": "$a", "title": "a"}, {"title": "b", "join": ["/w", 3]}]}`)
+	batchFails(t, home, "invalid-input", "", "/join/0",
+		`{"folders": [{"path": "/q"}], "join": [3], "tasks": [{"title": "a"}]}`)
 	checkTree(t, home, "@w/", "@w/@notes.md=")
 	nextID(t, home, 2)
 }

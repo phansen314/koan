@@ -182,8 +182,8 @@ func TestCompleteSeveral(t *testing.T) {
 	r = input(t, home, "complete", `{"tasks":[1,"@2","3"]}`)
 	golden(t, r, "complete-input")
 	// At least one task, as a word or in the input.
-	golden(t, usageAt(t, home, "", "complete"), "complete-no-subject")
-	usageAt(t, home, "", "reopen")
+	golden(t, invalidAt(t, home, "/tasks", "complete"), "complete-no-subject")
+	invalidAt(t, home, "/tasks", "reopen")
 	r = testrun.Run{Home: home, Stdin: strings.NewReader(`{"tasks":[]}`)}.Koan(t, "complete", "-i", "-")
 	if r.Kind() != "invalid-input" || problemFields(r) != "/tasks" {
 		t.Errorf("an empty list: %s", r.Line())

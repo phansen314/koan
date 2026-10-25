@@ -138,9 +138,9 @@ func TestTaskMoveUsage(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/w") // 1
 	ok(t, home, "task", "create", "t")    // 2
-	golden(t, usageAt(t, home, "", "task", "mv", "2"), "task-mv-no-object")
-	golden(t, usageAt(t, home, "", "task", "mv", "-t", "/w"), "task-mv-no-subject")
-	usageAt(t, home, "", "task", "mv")
+	golden(t, invalidAt(t, home, "/into", "task", "mv", "2"), "task-mv-no-object")
+	golden(t, invalidAt(t, home, "/tasks", "task", "mv", "-t", "/w"), "task-mv-no-subject")
+	invalidAt(t, home, "/tasks", "task", "mv")
 	golden(t, usageAt(t, home, "--to", "task", "mv", "2", "--to", "/w"), "task-mv-to")
 	golden(t, usageAt(t, home, "move", "task", "move", "2", "/w"), "task-move-old")
 	usageAt(t, home, "--to", "task", "move", "2", "--to", "/w")
@@ -536,13 +536,13 @@ func TestFolderMoveUsage(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a") // 1
 	ok(t, home, "folder", "create", "/c") // 2
-	golden(t, usageAt(t, home, "", "folder", "mv", "/a"), "folder-mv-no-object")
-	usageAt(t, home, "", "folder", "mv", "-T", "/a")
-	usageAt(t, home, "", "folder", "mv", "-t", "/c")
-	usageAt(t, home, "", "folder", "mv")
+	golden(t, invalidAt(t, home, "", "folder", "mv", "/a"), "folder-mv-no-object")
+	invalidAt(t, home, "", "folder", "mv", "-T", "/a")
+	invalidAt(t, home, "/folders", "folder", "mv", "-t", "/c")
+	invalidAt(t, home, "/folders", "folder", "mv")
 	golden(t, usageAt(t, home, "/c", "folder", "mv", "-T", "/a", "/b", "/c"), "folder-mv-rename-extra")
-	golden(t, usageAt(t, home, "", "folder", "mv", "-T", "-t", "/c", "/a"), "folder-mv-both-flags")
-	usageAt(t, home, "", "folder", "mv", "-t", "/c", "/a", "--rename")
+	golden(t, invalidAt(t, home, "", "folder", "mv", "-T", "-t", "/c", "/a"), "folder-mv-both-flags")
+	invalidAt(t, home, "", "folder", "mv", "-t", "/c", "/a", "--rename")
 	golden(t, usageAt(t, home, "move", "folder", "move", "/a", "/c"), "folder-move-old")
 	usageAt(t, home, "--to", "folder", "mv", "/a", "--to", "/c")
 	usageAt(t, home, "--into", "folder", "mv", "-t", "/c", "--into", "/", "/a")

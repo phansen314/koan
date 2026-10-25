@@ -149,8 +149,8 @@ func TestResolveRefusals(t *testing.T) {
 		paths  []string
 	}{
 		{"id names nothing", "@300", WantTask, nil, KindNotFound, "", []int64{300}, nil},
-		{"a task where a folder is taken", "@4", WantFolder, nil, KindNotFound, "", []int64{4}, nil},
-		{"a folder where a task is taken", "@9", WantTask, nil, KindNotFound, "", []int64{9}, nil},
+		{"a task where a folder is taken", "@4", WantFolder, nil, KindInvalidInput, "", nil, nil},
+		{"a folder where a task is taken", "@9", WantTask, nil, KindInvalidInput, "", nil, nil},
 		{"path names nothing", "/work/phase3", WantFolder, nil, KindNotFound, "", nil, []string{"/work/phase3"}},
 		{"path matches only ignoring case", "/Work/phase2", WantFolder, nil, KindConflict, RuleCaseMismatch, []int64{1}, []string{"/Work", "/work"}},
 		{"deep part matches only ignoring case", "/work/Phase2", WantFolder, nil, KindConflict, RuleCaseMismatch, []int64{9}, []string{"/work/Phase2", "/work/phase2"}},

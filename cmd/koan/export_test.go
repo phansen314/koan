@@ -260,7 +260,7 @@ func TestExportRefusals(t *testing.T) {
 	if a := r.Error()["archived"].([]any); len(a) != 1 {
 		t.Errorf("archived: %s", r.Line())
 	}
-	fails(t, home, "not-found", "", "export", "5")
+	fails(t, home, "invalid-input", "", "export", "5")
 	fails(t, home, "not-found", "", "export", "/nope")
 	fails(t, home, "invalid-input", "", "export", "/work/api.done")
 	fails(t, home, "invalid-input", "", "export", "/work/api:docs")

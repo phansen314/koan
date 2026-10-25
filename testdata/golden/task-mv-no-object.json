@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "kind": "usage",
+    "kind": "invalid-input",
     "rule": null,
-    "message": "task mv needs a folder after the subject",
+    "message": "into is required",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "",
-        "reason": "task mv needs a folder after the subject"
+        "field": "/into",
+        "reason": "into is required"
       }
     ],
     "archived": []

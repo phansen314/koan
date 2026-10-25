@@ -207,12 +207,8 @@ func TestTaskCreateJoin(t *testing.T) {
 
 	// An end, the root, or a task where a folder joined is taken.
 	for _, join := range []string{"/a.start", "@1.done", "/", "2"} {
-		code := "invalid-input"
-		if join == "2" {
-			code = "not-found"
-		}
-		r := fails(t, home, code, "", "task", "create", "z", "--join", join)
-		if code == "invalid-input" && problemFields(r) != "/join/0" {
+		r := fails(t, home, "invalid-input", "", "task", "create", "z", "--join", join)
+		if problemFields(r) != "/join/0" {
 			t.Errorf("--join %s: %s", join, r.Line())
 		}
 	}
@@ -370,8 +366,8 @@ func TestTaskJoin(t *testing.T) {
 func TestJoinUsage(t *testing.T) {
 	home := root(t)
 	for _, args := range [][]string{{"join"}, {"unjoin"}} {
-		usageAt(t, home, "", args...)
-		usageAt(t, home, "", append(args, "42")...)
+		invalidAt(t, home, "/ref", args...)
+		invalidAt(t, home, "/join", append(args, "42")...)
 		usageAt(t, home, "--join", append(args, "42", "--join", "/a")...)
 		usageAt(t, home, "--join", append(args, "42", "/a", "--join", "/b")...)
 	}

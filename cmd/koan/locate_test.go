@@ -521,7 +521,7 @@ func TestContext(t *testing.T) {
 		t.Errorf("cwd in the tree: %v", id)
 	}
 
-	fails(t, home, "not-found", "", "context", "@3")
+	fails(t, home, "invalid-input", "", "context", "@3")
 	fails(t, home, "not-found", "", "context", "--file", mkdir(t, home, "none"))
 	fails(t, home, "invalid-input", "", "context", "/work.start")
 	fails(t, home, "conflict", "case-mismatch", "context", "/WORK")

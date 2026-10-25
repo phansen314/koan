@@ -322,7 +322,7 @@ func TestTaskBlockRefused(t *testing.T) {
 		t.Errorf("subject first: %s", r.Line())
 	}
 	fails(t, home, "not-found", "", "block", "99", "2")
-	fails(t, home, "not-found", "", "block", "@1", "2")
+	fails(t, home, "invalid-input", "", "block", "@1", "2")
 	fails(t, home, "not-found", "", "block", "2", "--blocks", "/Work/api")
 	golden(t, fails(t, home, "conflict", "case-mismatch", "block", "2", "/work.start"), "block-case-mismatch")
 	fails(t, home, "conflict", "case-mismatch", "block", "/WORK.done", "2")

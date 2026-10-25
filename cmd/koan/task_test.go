@@ -178,7 +178,7 @@ func TestTaskCreateRefused(t *testing.T) {
 	ok(t, home, "folder", "create", "/Work/api")
 	ok(t, home, "task", "create", "t") // 3
 	golden(t, fails(t, home, "not-found", "", "task", "create", "x", "--folder", "/Work/web"), "task-create-not-found")
-	fails(t, home, "not-found", "", "task", "create", "x", "--folder", "@3")
+	fails(t, home, "invalid-input", "", "task", "create", "x", "--folder", "@3")
 	fails(t, home, "not-found", "", "task", "create", "x", "--folder", "@99")
 	golden(t, fails(t, home, "conflict", "case-mismatch", "task", "create", "x", "--folder", "/work/api"), "task-create-case-mismatch")
 	r := fails(t, home, "invalid-input", "", "task", "create", "x", "--folder", "@3/a")

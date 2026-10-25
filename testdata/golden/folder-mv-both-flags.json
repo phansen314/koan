@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "kind": "usage",
+    "kind": "invalid-input",
     "rule": null,
-    "message": "-t and -T can't go together",
+    "message": "rename takes dest, not into",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "",
-        "reason": "-t and -T can't go together"
+        "reason": "rename takes dest, not into"
       }
     ],
     "archived": []

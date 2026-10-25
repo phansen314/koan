@@ -37,7 +37,6 @@ func FolderMv() *cli.Command {
 		Instead:      "into",
 		Single:       "rename",
 		SingleObject: newPaths.complete(),
-		Apart:        []string{"into", "rename"},
 		Options: []cli.Option{
 			{Field: "into", Short: "t", Arg: "folder", Complete: foldersOnly.complete()},
 			{Field: "rename", Short: "T", Kind: cli.Bool},

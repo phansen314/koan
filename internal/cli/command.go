@@ -150,12 +150,9 @@ type Command struct {
 	// SingleObject, with Single, is what the object completes to once
 	// Single is given true, if not the object's own Complete.
 	SingleObject Completer
-	// Apart are the fields of options that can't be given together. A
-	// boolean given false isn't given: it sets what leaving it out does.
-	Apart   []string
-	Options []Option
-	Files   []File
-	Here    *Here
+	Options      []Option
+	Files        []File
+	Here         *Here
 	// Fields are input fields only --input gives, with no option.
 	Fields []string
 	// Plain marks a command for people, which prints plain text rather
@@ -414,20 +411,6 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 		}
 		return nil
 	}
-	var apart []string
-	for _, field := range c.Apart {
-		f := cmd.Flags().Lookup(strings.ReplaceAll(field, "_", "-"))
-		switch {
-		case !f.Changed, l.in[field] == false:
-		case f.Shorthand != "":
-			apart = append(apart, "-"+f.Shorthand)
-		default:
-			apart = append(apart, "--"+f.Name)
-		}
-	}
-	if len(apart) > 1 {
-		return Usage("", strings.Join(apart, " and ")+" can't go together")
-	}
 	object := c.Object
 	if c.Instead != "" && cmd.Flags().Changed(strings.ReplaceAll(c.Instead, "_", "-")) {
 		object = nil
@@ -448,12 +431,6 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 	}
 	if object != nil && object.Kind != List && len(objects) > 1 {
 		return Usage(objects[1], "a word past the object: "+c.Name+" takes one "+object.arg())
-	}
-	if len(subjects) == 0 && c.Subject.Required {
-		return Usage("", c.Name+" needs a subject: "+c.Subject.arg())
-	}
-	if object != nil && len(objects) == 0 && object.Required {
-		return Usage("", c.Name+" needs a "+object.arg()+" after the subject")
 	}
 	for _, p := range []struct {
 		opt   *Option

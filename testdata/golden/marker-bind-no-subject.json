@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "kind": "usage",
+    "kind": "invalid-input",
     "rule": null,
-    "message": "marker bind needs a subject: folder",
+    "message": "folder is required",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "",
-        "reason": "marker bind needs a subject: folder"
+        "field": "/folder",
+        "reason": "folder is required"
       }
     ],
     "archived": []

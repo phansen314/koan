@@ -380,6 +380,11 @@ func (t *tasks) locateMarker(tx *store.Tx, p place) (Location, int64, []cli.Warn
 // issued or from an earlier root.
 func markerFolder(tx *store.Tx, id int64) (int64, error) {
 	res, err := core.Resolve(tx, core.Ref{Raw: fmt.Sprintf("@%d", id), Kind: core.TargetID, ID: id}, core.WantFolder, nil)
+	if e, ok := err.(*core.Error); ok && e.Kind == core.KindInvalidInput {
+		// A marker is no input: whatever it names that isn't a live
+		// folder, it binds nothing.
+		return 0, core.NotFound([]int64{id}, nil, "@%d is a task, not a folder", id)
+	}
 	if err != nil {
 		return 0, err
 	}

@@ -121,7 +121,7 @@ func TestMarkerBind(t *testing.T) {
 	// The folder: by reference, never the root, never a task.
 	golden(t, fails(t, home, "invalid-input", "", "marker", "bind", "/", wt), "marker-bind-root")
 	ok(t, home, "task", "create", "a")
-	fails(t, home, "not-found", "", "marker", "bind", "@5", wt)
+	fails(t, home, "invalid-input", "", "marker", "bind", "@5", wt)
 	fails(t, home, "not-found", "", "marker", "bind", "/nope", wt)
 	fails(t, home, "conflict", "case-mismatch", "marker", "bind", "/HOME", wt)
 	fails(t, home, "invalid-input", "", "marker", "bind", "/home.done", wt)
@@ -333,7 +333,7 @@ func TestMarkerBindDir(t *testing.T) {
 		}
 	}
 	// The folder, then the directory: one word each, and --dir is gone.
-	golden(t, usageAt(t, home, "", "marker", "bind"), "marker-bind-no-subject")
+	golden(t, invalidAt(t, home, "/folder", "marker", "bind"), "marker-bind-no-subject")
 	golden(t, usageAt(t, home, sub, "marker", "bind", "/work", wt, sub), "marker-bind-extra")
 	golden(t, usageAt(t, home, "--dir", "marker", "bind", "/work", "--dir", wt), "marker-bind-dir")
 	usageAt(t, home, sub, "marker", "unbind", wt, sub)
