@@ -33,14 +33,20 @@
             "type": "object",
             "required": [
               "id",
-              "archive",
+              "ref",
+              "notes_path",
+              "dir",
               "json"
             ],
             "properties": {
               "id": {
                 "$ref": "types#/$defs/id"
               },
-              "archive": {
+              "ref": {
+                "$ref": "types#/$defs/kept",
+                "description": "Its kept text, with the path it had."
+              },
+              "notes_path": {
                 "anyOf": [
                   {
                     "$ref": "types#/$defs/abs-path"
@@ -49,7 +55,18 @@
                     "type": "null"
                   }
                 ],
-                "description": "The archived notes, or for a folder its directory; null for a task archived without a notes file."
+                "description": "Its archived notes; null for a task archived without a notes file."
+              },
+              "dir": {
+                "anyOf": [
+                  {
+                    "$ref": "types#/$defs/abs-path"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "A folder's archived directory; null for a task."
               },
               "json": {
                 "$ref": "types#/$defs/abs-path",

@@ -33,7 +33,6 @@
               "folder"
             ]
           },
-          "uniqueItems": true,
           "minItems": 1,
           "default": [
             "task",

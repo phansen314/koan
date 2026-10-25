@@ -11,6 +11,15 @@
         },
         "file": {
           "$ref": "task-list#/$defs/filter/properties/file"
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": 100,
+          "description": "null: every open task."
         }
       },
       "not": {

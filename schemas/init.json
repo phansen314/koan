@@ -25,7 +25,7 @@
       "required": [
         "root",
         "tree",
-        "archive",
+        "archived",
         "database",
         "made",
         "first_id"
@@ -37,8 +37,9 @@
         "tree": {
           "$ref": "types#/$defs/abs-path"
         },
-        "archive": {
-          "$ref": "types#/$defs/abs-path"
+        "archived": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "The archive's directory, archived/."
         },
         "database": {
           "$ref": "types#/$defs/abs-path"
@@ -49,7 +50,7 @@
             "enum": [
               "root",
               "tree",
-              "archive",
+              "archived",
               "database"
             ]
           },

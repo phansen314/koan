@@ -40,9 +40,29 @@
         "ready": {
           "type": "array",
           "items": {
-            "$ref": "types#/$defs/id"
+            "$ref": "#/$defs/ready-task"
           },
           "description": "Ready tasks it waits on, at any depth through open blockers, claimed ones included, since they are the work in progress. Work order."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ready-task": {
+      "type": "object",
+      "required": [
+        "id",
+        "ref",
+        "claimed"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "ref": {
+          "$ref": "types#/$defs/kept"
+        },
+        "claimed": {
+          "type": "boolean"
         }
       },
       "unevaluatedProperties": false

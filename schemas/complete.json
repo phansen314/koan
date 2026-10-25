@@ -23,6 +23,7 @@
       "type": "object",
       "required": [
         "completed",
+        "unclaimed",
         "released"
       ],
       "properties": {
@@ -33,6 +34,14 @@
           },
           "uniqueItems": true,
           "description": "The tasks it completed. Input order."
+        },
+        "unclaimed": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The tasks completed whose claim it ended, in completed's order."
         },
         "released": {
           "$ref": "types#/$defs/ids",

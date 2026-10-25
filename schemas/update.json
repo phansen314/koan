@@ -33,7 +33,6 @@
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true,
           "description": "Tasks only."
         },
         "tags_remove": {
@@ -41,7 +40,6 @@
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true,
           "description": "Tasks only."
         },
         "tags_replace_all": {
@@ -49,7 +47,6 @@
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true,
           "description": "Tasks only."
         },
         "extra_merge": {
@@ -59,8 +56,7 @@
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "uniqueItems": true
+          }
         },
         "extra_replace_all": {
           "$ref": "types#/$defs/extra"

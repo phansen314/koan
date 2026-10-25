@@ -90,7 +90,6 @@
             "items": {
               "$ref": "types#/$defs/tag"
             },
-            "uniqueItems": true,
             "default": []
           },
           "blocked_by": {

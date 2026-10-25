@@ -32,13 +32,27 @@
     "result": {
       "type": "object",
       "required": [
+        "deleted",
         "removed",
+        "unclaimed",
         "released"
       ],
       "properties": {
+        "deleted": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The subjects. Input order."
+        },
         "removed": {
           "$ref": "types#/$defs/ids",
-          "description": "Every task and folder removed."
+          "description": "Every task and folder removed: the subjects and everything under them. Ascending."
+        },
+        "unclaimed": {
+          "$ref": "types#/$defs/ids",
+          "description": "The tasks removed that had a claim. Ascending."
         },
         "released": {
           "$ref": "types#/$defs/ids",
