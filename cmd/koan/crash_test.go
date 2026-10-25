@@ -242,7 +242,7 @@ var crashCases = []crashCase{
 	{name: "folder create", args: []string{"folder", "create", "/a/b/c", "--notes", "c notes"}},
 	{name: "task create", prep: func(t *testing.T, home string) { ok(t, home, "folder", "create", "/a") },
 		args: []string{"task", "create", "t", "--folder", "/a", "--notes", "t notes", "--blocked-by", "/a.start", "--blocks", "/a.done"}},
-	{name: "task update", args: []string{"task", "update", "1", "--title", "u", "--tags-add", "x"}},
+	{name: "task update", args: []string{"update", "1", "--title", "u", "--tags-add", "x"}},
 	{name: "complete", prep: func(t *testing.T, home string) { ok(t, home, "claim", "1") },
 		args: []string{"complete", "1"}},
 	{name: "block", prep: func(t *testing.T, home string) { ok(t, home, "folder", "create", "/a") },
@@ -250,10 +250,10 @@ var crashCases = []crashCase{
 	{name: "task mv", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "m", "--notes", "m notes")
-	}, args: []string{"task", "mv", "4", "/a/b"}},
+	}, args: []string{"mv", "4", "/a/b"}},
 	{name: "task delete", prep: func(t *testing.T, home string) {
 		ok(t, home, "task", "create", "d", "--notes", "d notes", "--blocks", "1")
-	}, args: []string{"task", "delete", "2"}},
+	}, args: []string{"delete", "2"}},
 	{name: "archive task", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
@@ -264,23 +264,23 @@ var crashCases = []crashCase{
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes")
 		ok(t, home, "folder", "create", "/x/y")
 		writeTree(t, home, "@a/@b/src/main.go", "package main")
-	}, args: []string{"folder", "mv", "-T", "/a", "/x/y/z"}},
+	}, args: []string{"mv", "-T", "/a", "/x/y/z"}},
 	{name: "folder mv case-only", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/work/api", "--notes", "api notes")
 		ok(t, home, "task", "create", "x", "--folder", "/work/api", "--notes", "x notes", "--blocked-by", "/work/api.start")
 		writeTree(t, home, "@work/@api/docs/readme", "material")
-	}, args: []string{"folder", "mv", "-T", "/work/api", "/work/API"}},
+	}, args: []string{"mv", "-T", "/work/api", "/work/API"}},
 	{name: "folder delete", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
 		ok(t, home, "block", "1", "/a.done")
-	}, args: []string{"folder", "delete", "/a", "--contents"}},
+	}, args: []string{"delete", "/a", "--contents"}},
 	{name: "folder delete force", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes")
 		writeTree(t, home, "@a/@b/src/main.go", "package main")
 		writeTree(t, home, "@a/.DS_Store", "")
-	}, args: []string{"folder", "delete", "/a", "--contents", "--material"}},
+	}, args: []string{"delete", "/a", "--contents", "--material"}},
 	{name: "archive folder", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
@@ -313,7 +313,7 @@ var crashCases = []crashCase{
 // the database is as it was before or as it is after, never between, and
 // a read reports steps left pending. The next write, or repair, then
 // brings the tree back to T1 to T6, as it would be had nothing crashed.
-// -short runs the case-only folder mv and the case-differs repair, at
+// -short runs the case-only mv and the case-differs repair, at
 // every third point.
 func TestCrashPoints(t *testing.T) {
 	for _, c := range crashCases {
@@ -400,7 +400,7 @@ func crashMatrix(t *testing.T, c crashCase) {
 				if how == "repair" {
 					r = koan(t, h, "repair")
 				} else {
-					r = koan(t, h, "task", "update", "1", "--title", "next")
+					r = koan(t, h, "update", "1", "--title", "next")
 				}
 				if !r.OK() || len(r.Envelope["warnings"].([]any)) != 0 {
 					t.Errorf("%s: %s", how, r.Line())

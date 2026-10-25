@@ -379,7 +379,7 @@ func TestMoveTask(t *testing.T) {
 	ready := tr.readySet()
 
 	out, err := tr.MoveTask("/b", "3")
-	if err != nil || !reflect.DeepEqual(out.Moved, []int64{3}) || !reflect.DeepEqual(out.Warnings, []Warning{{"moved-claimed", []int64{3}}}) {
+	if err != nil || !reflect.DeepEqual(out.Moved, []FolderAt{{3, "/b"}}) || !reflect.DeepEqual(out.Warnings, []Warning{{"moved-claimed", []int64{3}}}) {
 		t.Errorf("move: %v %v", out, err)
 	}
 	// No edge changes, so no readiness does.
@@ -395,11 +395,11 @@ func TestMoveTask(t *testing.T) {
 	}
 	// Several, in input order; one already there isn't listed.
 	out, err = tr.MoveTask("/", "6", "5", "3")
-	if err != nil || !reflect.DeepEqual(out.Moved, []int64{6, 5, 3}) {
+	if err != nil || !reflect.DeepEqual(out.Moved, []FolderAt{{6, "/"}, {5, "/"}, {3, "/"}}) {
 		t.Errorf("several: %v %v", out, err)
 	}
 	out, err = tr.MoveTask("/a", "5", "6")
-	if err != nil || !reflect.DeepEqual(out.Moved, []int64{5, 6}) || out.Warnings != nil {
+	if err != nil || !reflect.DeepEqual(out.Moved, []FolderAt{{5, "/a"}, {6, "/a"}}) || out.Warnings != nil {
 		t.Errorf("several: %v %v", out, err)
 	}
 	// One refused, none moves.
@@ -412,7 +412,7 @@ func TestMoveTask(t *testing.T) {
 	}
 	// Given twice, however written, at the later occurrence.
 	_, err = tr.MoveTask("/b", "5", "@5")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("problems %v", e.Problems)
 	}
 	_, err = tr.MoveTask("/b")
@@ -428,7 +428,7 @@ func TestMoveFolder(t *testing.T) {
 	must[Claim](t)(tr.ClaimTask("4", nil))
 
 	// Into a folder that exists; otherwise renamed.
-	r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/other", "/work"))
+	r := must[MoveResult](t)(tr.MoveFolder(MvDest, "/other", "/work"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{1, "/other/work"}}) ||
 		!reflect.DeepEqual(r.Warnings, []Warning{{"moved-claimed", []int64{4}}}) {
 		t.Errorf("into: %+v", r)
@@ -436,7 +436,7 @@ func TestMoveFolder(t *testing.T) {
 	if tr.Path(2) != "/other/work/api" {
 		t.Errorf("child path %s", tr.Path(2))
 	}
-	r = must[FolderMoved](t)(tr.MoveFolder(MvDest, "/other/work2", "/other/work"))
+	r = must[MoveResult](t)(tr.MoveFolder(MvDest, "/other/work2", "/other/work"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{1, "/other/work2"}}) {
 		t.Errorf("renamed: %+v", r)
 	}
@@ -461,7 +461,7 @@ func TestMoveFolder(t *testing.T) {
 	wantErr(t, err, core.KindInvalidInput, "")
 
 	// An anchored path, whose last name is the new one.
-	r = must[FolderMoved](t)(tr.MoveFolder(MvRename, "@3/api2", "@2"))
+	r = must[MoveResult](t)(tr.MoveFolder(MvRename, "@3/api2", "@2"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{2, "/other/api2"}}) {
 		t.Errorf("anchored: %+v", r)
 	}
@@ -470,7 +470,7 @@ func TestMoveFolder(t *testing.T) {
 	wantErr(t, err, core.KindNotFound, "")
 
 	// A case-only rename: the one input naming both spellings.
-	r = must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Other", "/other"))
+	r = must[MoveResult](t)(tr.MoveFolder(MvDest, "/Other", "/other"))
 	if len(r.Moved) != 1 || tr.Folders[3].Name != "Other" {
 		t.Errorf("case-only rename: %+v", r)
 	}
@@ -490,7 +490,7 @@ func TestMoveFolderOntoItself(t *testing.T) {
 		mv          Mv
 		dest, which string
 	}{{MvRename, "/a", "/a"}, {MvRename, "@1", "/a"}, {MvDest, "/a", "/a/b"}, {MvInto, "/", "/a"}, {MvRename, "/a/b", "@2"}} {
-		if r := must[FolderMoved](t)(tr.MoveFolder(c.mv, c.dest, c.which)); len(r.Moved) != 0 {
+		if r := must[MoveResult](t)(tr.MoveFolder(c.mv, c.dest, c.which)); len(r.Moved) != 0 {
 			t.Errorf("%v %s %s: %+v", c.mv, c.dest, c.which, r)
 		}
 	}
@@ -516,21 +516,21 @@ func TestMoveFolders(t *testing.T) {
 	_, err = tr.MoveFolder(MvDest, "/z", "/a/x", "/d/X")
 	wantErr(t, err, core.KindNotFound, "")
 	_, err = tr.MoveFolder(MvDest, "/c", "/a", "/a/x")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("nested: %v", e.Problems)
 	}
 	_, err = tr.MoveFolder(MvDest, "/c", "/a/x", "@2")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("twice: %v", e.Problems)
 	}
 	_, err = tr.MoveFolder(MvRename, "/c/y", "/a/x", "/d/X")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("rename of two: %v", e.Problems)
 	}
 	if tr.Path(2) != "/a/x" {
 		t.Fatalf("a refused move moved something")
 	}
-	r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/c", "/d/X", "/b"))
+	r := must[MoveResult](t)(tr.MoveFolder(MvDest, "/c", "/d/X", "/b"))
 	if !reflect.DeepEqual(r.Moved, []FolderAt{{6, "/c/X"}, {3, "/c/b"}}) {
 		t.Errorf("several: %+v", r)
 	}
@@ -599,7 +599,7 @@ func TestDeleteSeveral(t *testing.T) {
 	}
 	must[EdgeResult](t)(tr.Block("2", []string{"1"}, []string{"3"}))
 	_, err := tr.DeleteTask("1", "@1")
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/tasks/1"}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("duplicate %v", e.Problems)
 	}
 	_, err = tr.DeleteTask("1", "99")
@@ -615,11 +615,11 @@ func TestDeleteSeveral(t *testing.T) {
 	tr.PutMaterial(5, "x")
 	tr.PutMaterial(6, "y")
 	_, err = tr.DeleteFolder([]string{"/f/sub", "/g", "/f"}, true, true)
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/0"}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/0"}) {
 		t.Errorf("inside %v", e.Problems)
 	}
 	_, err = tr.DeleteFolder([]string{"/g", "6"}, true, true)
-	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/1"}) {
 		t.Errorf("twice %v", e.Problems)
 	}
 	_, err = tr.DeleteFolder([]string{"/f", "/g"}, false, false)
@@ -752,7 +752,7 @@ func TestCase(t *testing.T) {
 		t.Errorf("tree order %v", tr.TreeOrder())
 	}
 	// Changing a folder's case is a rename.
-	must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Work", "/work"))
+	must[MoveResult](t)(tr.MoveFolder(MvDest, "/Work", "/work"))
 	if tr.Path(2) != "/Work/a" {
 		t.Errorf("path %s", tr.Path(2))
 	}
@@ -802,7 +802,7 @@ func TestMoveGateToItsFolder(t *testing.T) {
 	wantErr(t, err, core.KindConflict, core.RuleGate)
 }
 
-// folder mv checks into-itself, then case-mismatch, then exists. A path
+// mv checks into-itself, then case-mismatch, then exists. A path
 // names a folder only in its exact case, so into-itself follows exact
 // names.
 func TestMoveFolderOrder(t *testing.T) {

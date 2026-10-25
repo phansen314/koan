@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// task delete removes a task, its notes, its claim and every edge to and
+// delete removes a task, its notes, its claim and every edge to and
 // from it. What it was the last open blocker of is released, and every
 // task that lost an edge to it gets a new updated_at. It never splices.
 // Its ID is never issued again.
@@ -21,7 +21,7 @@ func TestTaskDelete(t *testing.T) {
 	ok(t, home, "block", "4", "1")
 	ok(t, home, "claim", "2")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
-	r := ok(t, home, "task", "delete", "2")
+	r := ok(t, home, "delete", "2")
 	golden(t, r, "task-delete")
 	if fmt.Sprint(r.Result()) != "map[released:[3] removed:[2]]" {
 		t.Errorf("delete: %s", r.Line())
@@ -47,11 +47,11 @@ func TestTaskDelete(t *testing.T) {
 	// A task with nothing waiting releases nothing; notes already gone
 	// are no failure.
 	os.Remove(treePath(home, "@5.md"))
-	if r := ok(t, home, "task", "delete", "@5"); fmt.Sprint(r.Result()) != "map[released:[] removed:[5]]" {
+	if r := ok(t, home, "delete", "@5"); fmt.Sprint(r.Result()) != "map[released:[] removed:[5]]" {
 		t.Errorf("alone: %s", r.Line())
 	}
-	golden(t, fails(t, home, "not-found", "", "task", "delete", "2"), "task-delete-not-found")
-	if r := fails(t, home, "invalid-input", "", "task", "delete", "/"); problemFields(r) != "/tasks/0" {
+	golden(t, fails(t, home, "not-found", "", "delete", "2"), "task-delete-not-found")
+	if r := fails(t, home, "invalid-input", "", "delete", "/"); problemFields(r) != "/refs/0" {
 		t.Errorf("the root: %s", r.Line())
 	}
 }
@@ -63,7 +63,7 @@ func TestTaskDeleteGate(t *testing.T) {
 	ok(t, home, "folder", "create", "/w")                          // 1
 	ok(t, home, "task", "create", "t", "--blocked-by", "/w.start") // 2, 3
 	writeTree(t, home, "@w/@start.md", "gate notes")
-	r := ok(t, home, "task", "delete", "/w.start")
+	r := ok(t, home, "delete", "/w.start")
 	if fmt.Sprint(r.Result()) != "map[released:[2] removed:[3]]" {
 		t.Errorf("gate: %s", r.Line())
 	}
@@ -71,12 +71,12 @@ func TestTaskDeleteGate(t *testing.T) {
 	if g := ok(t, home, "show", "/w").Result()["folder"].(map[string]any)["gates"]; fmt.Sprint(g) != "map[done:<nil> start:<nil>]" {
 		t.Errorf("gates: %v", g)
 	}
-	fails(t, home, "not-found", "", "task", "delete", "/w.start")
-	fails(t, home, "conflict", "case-mismatch", "task", "delete", "/W.done")
+	fails(t, home, "not-found", "", "delete", "/w.start")
+	fails(t, home, "conflict", "case-mismatch", "delete", "/W.done")
 }
 
-// folder delete removes a folder and everything under it, gates included,
-// as task delete removes a task; removed lists every task and folder
+// delete removes a folder and everything under it, gates included,
+// as it removes a task; removed lists every task and folder
 // removed, and released what outside it was left ready.
 func TestFolderDelete(t *testing.T) {
 	home := root(t)
@@ -91,8 +91,8 @@ func TestFolderDelete(t *testing.T) {
 	writeTree(t, home, "@w/@a/@notes.md", "folder notes")
 	writeTree(t, home, "@w/@done.md", "gate notes")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
-	golden(t, fails(t, home, "conflict", "not-empty", "folder", "delete", "/w"), "folder-delete-not-empty")
-	r := ok(t, home, "folder", "delete", "/w", "--contents")
+	golden(t, fails(t, home, "conflict", "not-empty", "delete", "/w"), "folder-delete-not-empty")
+	r := ok(t, home, "delete", "/w", "--contents")
 	golden(t, r, "folder-delete")
 	if fmt.Sprint(r.Result()) != "map[released:[4 6] removed:[1 2 3 5]]" {
 		t.Errorf("delete: %s", r.Line())
@@ -112,23 +112,23 @@ func TestFolderDelete(t *testing.T) {
 	}
 	// A folder holding only its gates is empty.
 	ok(t, home, "block", "4", "/k.start,/k.done") // 8, 9
-	r = ok(t, home, "folder", "delete", "/k")
+	r = ok(t, home, "delete", "/k")
 	if fmt.Sprint(r.Result()) != "map[released:[4] removed:[7 8 9]]" {
 		t.Errorf("gates only: %s", r.Line())
 	}
 	checkTree(t, home, "@4.md=", "@6.md=")
-	golden(t, fails(t, home, "invalid-input", "", "folder", "delete", "/"), "folder-delete-root")
-	fails(t, home, "not-found", "", "folder", "delete", "/w")
+	golden(t, fails(t, home, "invalid-input", "", "delete", "/"), "folder-delete-root")
+	fails(t, home, "not-found", "", "delete", "/w")
 	for in, fields := range map[string]string{
-		`{}`:                                  "/folders",
-		`{"folders":[]}`:                      "/folders",
-		`{"folders":["/w.start"]}`:            "/folders/0",
-		`{"folders":["/k"],"contents":"yes"}`: "/contents",
-		`{"folders":["/k"],"material":1}`:     "/material",
-		`{"folders":["/k"],"force":true}`:     "/force",
-		`{"folders":["/"],"material":1}`:      "/folders/0 /material",
+		`{}`:                               "/refs",
+		`{"refs":[]}`:                      "/refs",
+		`{"refs":["/k:x"]}`:                "/refs/0",
+		`{"refs":["/k"],"contents":"yes"}`: "/contents",
+		`{"refs":["/k"],"material":1}`:     "/material",
+		`{"refs":["/k"],"force":true}`:     "/force",
+		`{"refs":["/"],"material":1}`:      "/refs/0 /material",
 	} {
-		if r := input(t, home, "folder delete", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
+		if r := input(t, home, "delete", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
 			t.Errorf("%s: %s", in, r.Line())
 		}
 	}
@@ -143,11 +143,11 @@ func TestFolderDeleteNotEmpty(t *testing.T) {
 	ok(t, home, "task", "create", "u", "--blocked-by", "/w.done") // 5, 6
 	ok(t, home, "folder", "create", "/w/a")                       // 7
 	writeTree(t, home, "@w/thesis.tex", "t")
-	r := fails(t, home, "conflict", "not-empty", "folder", "delete", "/w", "--material")
+	r := fails(t, home, "conflict", "not-empty", "delete", "/w", "--material")
 	if fmt.Sprint(r.Error()["ids"]) != "[2 4 7]" {
 		t.Errorf("not-empty: %s", r.Line())
 	}
-	fails(t, home, "conflict", "has-material", "folder", "delete", "/w", "--contents")
+	fails(t, home, "conflict", "has-material", "delete", "/w", "--contents")
 }
 
 // has-material names the material at any depth, each folder's own
@@ -179,12 +179,12 @@ func TestFolderDeleteMaterial(t *testing.T) {
 	} {
 		writeTree(t, home, rel, content)
 	}
-	r := fails(t, home, "conflict", "has-material", "folder", "delete", "/w", "--contents")
+	r := fails(t, home, "conflict", "has-material", "delete", "/w", "--contents")
 	golden(t, r, "folder-delete-has-material")
 	if fmt.Sprint(r.Error()["paths"]) != "[/w:@start.md /w:@todo.md /w:docs /w/a:.git /w/a:@stray /w/b:@5.md /w/b:@done.md /w/b:__init__.py]" {
 		t.Errorf("material: %s", r.Line())
 	}
-	r = ok(t, home, "folder", "delete", "/w", "--contents", "--material")
+	r = ok(t, home, "delete", "/w", "--contents", "--material")
 	if fmt.Sprint(r.Result()) != "map[released:[5] removed:[1 2 3 4 6]]" {
 		t.Errorf("forced: %s", r.Line())
 	}
@@ -198,7 +198,7 @@ func TestFolderDeleteMaterial(t *testing.T) {
 	writeTree(t, home, "@v/@hollow/@y.md", "")
 	writeTree(t, home, "@v/@start.md", "its gate's")
 	writeTree(t, home, "@v/@done.md", "")
-	ok(t, home, "folder", "delete", "/v")
+	ok(t, home, "delete", "/v")
 	checkTree(t, home, "@5.md=")
 }
 
@@ -216,26 +216,26 @@ func TestFolderDeleteStuck(t *testing.T) {
 	dir := filepath.Join(home, "koan-root", "tree")
 	os.Chmod(dir, 0o555)
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
-	r := warned(t, home, []string{"pending-step"}, "folder", "delete", "/w")
+	r := warned(t, home, []string{"pending-step"}, "delete", "/w")
 	golden(t, r, "folder-delete-pending-step")
 	if fmt.Sprint(r.Result()) != "map[released:[] removed:[1]]" {
 		t.Errorf("delete: %s", r.Line())
 	}
 	os.Chmod(dir, 0o755)
 	writeTree(t, home, "@w/thesis.tex", "written after commit")
-	r = warned(t, home, []string{"stuck-step"}, "folder", "delete", "/k")
+	r = warned(t, home, []string{"stuck-step"}, "delete", "/k")
 	golden(t, r, "folder-delete-stuck-step")
 	checkTree(t, home, "@w/", "@w/thesis.tex=written after commit")
 	golden(t, fails(t, home, "conflict", "exists", "folder", "create", "/w"), "folder-delete-taken")
 	fails(t, home, "conflict", "exists", "folder", "create", "/W")
 	warned(t, home, []string{"stuck-step"}, "folder", "create", "/m")
-	r = fails(t, home, "conflict", "exists", "folder", "mv", "-T", "/m", "/w")
+	r = fails(t, home, "conflict", "exists", "mv", "-T", "/m", "/w")
 	if fmt.Sprint(r.Error()["paths"]) != "["+treePath(home, "@w")+"]" {
 		t.Errorf("move: %s", r.Line())
 	}
 }
 
-// task delete takes a list of tasks, comma-separated or as more words,
+// delete takes a list of tasks, comma-separated or as more words,
 // and removes them as one change: if any is refused, none goes. removed
 // is ascending. A task deleted in the same call is never released, and a
 // task given twice, however it is written, is invalid-input at its later
@@ -250,20 +250,20 @@ func TestTaskDeleteSeveral(t *testing.T) {
 	ok(t, home, "block", "5", "4")
 
 	// A bad entry mid-list removes nothing.
-	fails(t, home, "not-found", "", "task", "delete", "4", "99", "1")
+	fails(t, home, "not-found", "", "delete", "4", "99", "1")
 	checkTree(t, home, "@1.md=", "@2.md=", "@3.md=", "@4.md=", "@5.md=")
-	if r := fails(t, home, "invalid-input", "", "task", "delete", "1", "@1"); problemFields(r) != "/tasks/1" ||
+	if r := fails(t, home, "invalid-input", "", "delete", "1", "@1"); problemFields(r) != "/refs/1" ||
 		r.Error()["message"] != "@1 is given twice" {
 		t.Errorf("duplicate: %s", r.Line())
 	}
-	if r := fails(t, home, "invalid-input", "", "task", "delete", "1", "/"); problemFields(r) != "/tasks/1" {
+	if r := fails(t, home, "invalid-input", "", "delete", "1", "/"); problemFields(r) != "/refs/1" {
 		t.Errorf("the root: %s", r.Line())
 	}
-	if r := input(t, home, "task delete", `{"tasks":[]}`); r.Kind() != "invalid-input" || problemFields(r) != "/tasks" {
+	if r := input(t, home, "delete", `{"refs":[]}`); r.Kind() != "invalid-input" || problemFields(r) != "/refs" {
 		t.Errorf("none: %s", r.Line())
 	}
 	// 2 is deleted with 1, so only 3 and 5 are released.
-	r := ok(t, home, "task", "delete", "2,1", "4")
+	r := ok(t, home, "delete", "2,1", "4")
 	golden(t, r, "task-delete-several")
 	if fmt.Sprint(r.Result()) != "map[released:[3 5] removed:[1 2 4]]" {
 		t.Errorf("several: %s", r.Line())
@@ -273,13 +273,13 @@ func TestTaskDeleteSeveral(t *testing.T) {
 		fails(t, home, "not-found", "", "show", id)
 	}
 	// Through --input.
-	if r := input(t, home, "task delete", `{"tasks":[3,"@5"]}`); !r.OK() || fmt.Sprint(r.Result()) != "map[released:[] removed:[3 5]]" {
+	if r := input(t, home, "delete", `{"refs":[3,"@5"]}`); !r.OK() || fmt.Sprint(r.Result()) != "map[released:[] removed:[3 5]]" {
 		t.Errorf("input: %s", r.Line())
 	}
 	checkTree(t, home)
 }
 
-// folder delete takes a list of folders and removes them as one change:
+// delete takes a list of folders and removes them as one change:
 // if any is refused, none goes. A folder given twice is invalid-input at
 // its later occurrence, and one inside another given is invalid-input at
 // the one inside. not-empty names the direct contents of the first
@@ -303,45 +303,45 @@ func TestFolderDeleteSeveral(t *testing.T) {
 		}
 	}
 
-	r := fails(t, home, "invalid-input", "", "folder", "delete", "/a/x", "/c", "/a")
+	r := fails(t, home, "invalid-input", "", "delete", "/a/x", "/c", "/a")
 	golden(t, r, "folder-delete-nested")
-	if problemFields(r) != "/folders/0" {
+	if problemFields(r) != "/refs/0" {
 		t.Errorf("nested: %s", r.Line())
 	}
-	if r := fails(t, home, "invalid-input", "", "folder", "delete", "/a", "@2", "--contents", "--material"); problemFields(r) != "/folders/1" {
+	if r := fails(t, home, "invalid-input", "", "delete", "/a", "@2", "--contents", "--material"); problemFields(r) != "/refs/1" {
 		t.Errorf("nested by ID: %s", r.Line())
 	}
-	if r := fails(t, home, "invalid-input", "", "folder", "delete", "/c", "@7"); problemFields(r) != "/folders/1" ||
+	if r := fails(t, home, "invalid-input", "", "delete", "/c", "@7"); problemFields(r) != "/refs/1" ||
 		r.Error()["message"] != "@7 is given twice" {
 		t.Errorf("duplicate: %s", r.Line())
 	}
-	if r := fails(t, home, "invalid-input", "", "folder", "delete", "/c", "/"); problemFields(r) != "/folders/1" {
+	if r := fails(t, home, "invalid-input", "", "delete", "/c", "/"); problemFields(r) != "/refs/1" {
 		t.Errorf("the root: %s", r.Line())
 	}
-	if r := fails(t, home, "invalid-input", "", "folder", "delete", "/c", "/C"); problemFields(r) != "/folders/0 /folders/1" {
+	if r := fails(t, home, "invalid-input", "", "delete", "/c", "/C"); problemFields(r) != "/refs/0 /refs/1" {
 		t.Errorf("case: %s", r.Line())
 	}
-	fails(t, home, "not-found", "", "folder", "delete", "/c", "/nope")
+	fails(t, home, "not-found", "", "delete", "/c", "/nope")
 	unchanged()
 
 	// /c holds only material, so /b is the first that holds tasks.
-	r = fails(t, home, "conflict", "not-empty", "folder", "delete", "/c", "/b", "/a")
+	r = fails(t, home, "conflict", "not-empty", "delete", "/c", "/b", "/a")
 	golden(t, r, "folder-delete-not-empty-first")
 	if fmt.Sprint(r.Error()["ids"]) != "[4]" {
 		t.Errorf("not-empty: %s", r.Line())
 	}
-	r = fails(t, home, "conflict", "has-material", "folder", "delete", "/c", "/b", "/a", "--contents")
+	r = fails(t, home, "conflict", "has-material", "delete", "/c", "/b", "/a", "--contents")
 	golden(t, r, "folder-delete-has-material-several")
 	if fmt.Sprint(r.Error()["paths"]) != "[/c:docs /a/x:main.go]" {
 		t.Errorf("has-material: %s", r.Line())
 	}
-	usageAt(t, home, "--force", "folder", "delete", "/c", "--force")
-	golden(t, usageAt(t, home, "--force", "folder", "delete", "/c", "/b", "--contents", "--force"), "folder-delete-force")
+	usageAt(t, home, "--force", "delete", "/c", "--force")
+	golden(t, usageAt(t, home, "--force", "delete", "/c", "/b", "--contents", "--force"), "folder-delete-force")
 	unchanged()
 
 	// 6, the gate under /a, goes with it, releasing 5; 8 is released by
 	// 4, deleted in /b.
-	r = ok(t, home, "folder", "delete", "/c,/a", "/b", "--contents", "--material")
+	r = ok(t, home, "delete", "/c,/a", "/b", "--contents", "--material")
 	golden(t, r, "folder-delete-several")
 	if fmt.Sprint(r.Result()) != "map[released:[5 8] removed:[1 2 3 4 6 7]]" {
 		t.Errorf("several: %s", r.Line())
@@ -355,7 +355,7 @@ func TestFolderDeleteSeveral(t *testing.T) {
 	ok(t, home, "folder", "create", "/d") // 9
 	ok(t, home, "folder", "create", "/e") // 10
 	writeTree(t, home, "@e/notes.txt", "kept by hand")
-	r = input(t, home, "folder delete", `{"folders":["/d",10],"material":true}`)
+	r = input(t, home, "delete", `{"refs":["/d",10],"material":true}`)
 	golden(t, r, "folder-delete-input")
 	if !r.OK() || fmt.Sprint(r.Result()) != "map[released:[] removed:[9 10]]" {
 		t.Errorf("input: %s", r.Line())
@@ -378,11 +378,11 @@ func TestDeleteSeveralPending(t *testing.T) {
 	dir := filepath.Join(home, "koan-root", "tree")
 	os.Chmod(dir, 0o555)
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
-	r := warned(t, home, []string{"pending-step"}, "folder", "delete", "/w", "/k")
+	r := warned(t, home, []string{"pending-step"}, "delete", "/w", "/k")
 	if fmt.Sprint(r.Result()) != "map[released:[] removed:[1 2]]" {
 		t.Errorf("folder delete: %s", r.Line())
 	}
-	r = warned(t, home, []string{"pending-step"}, "task", "delete", "3", "4")
+	r = warned(t, home, []string{"pending-step"}, "delete", "3", "4")
 	if fmt.Sprint(r.Result()) != "map[released:[] removed:[3 4]]" {
 		t.Errorf("task delete: %s", r.Line())
 	}
@@ -398,4 +398,47 @@ func TestDeleteSeveralPending(t *testing.T) {
 	}
 	ok(t, home, "folder", "create", "/m") // 5
 	checkTree(t, home, "@m/", "@m/@notes.md=")
+}
+
+// delete takes tasks and folders mixed, as one change. A task inside a
+// folder given is invalid-input at the task, since it goes with the
+// folder; --contents and --material are for folders, and with only tasks
+// given either is invalid-input at its field, as through --input.
+func TestDeleteMixed(t *testing.T) {
+	home := root(t)
+	setup(t, home, "folder", "create", "/w/a")                 // 1, 2
+	setup(t, home, "task", "create", "t", "--folder", "/w/a")  // 3
+	setup(t, home, "task", "create", "u", "--blocked-by", "3") // 4
+	setup(t, home, "task", "create", "v", "--blocked-by", "4") // 5
+	setup(t, home, "folder", "create", "/k")                   // 6
+	setup(t, home, "task", "create", "x", "--folder", "/k")    // 7
+	writeTree(t, home, "@k/docs/x.md", "x")
+
+	r := fails(t, home, "invalid-input", "", "delete", "3", "/w")
+	golden(t, r, "delete-inside")
+	if problemFields(r) != "/refs/0" || r.Error()["message"] != "@3 is inside @1, also given" {
+		t.Errorf("inside: %s", r.Line())
+	}
+	if r := fails(t, home, "invalid-input", "", "delete", "/w", "7", "@2", "--contents"); problemFields(r) != "/refs/2" {
+		t.Errorf("inside, later: %s", r.Line())
+	}
+	sameFault(t, home, "invalid-input", "/contents", []string{"delete", "4", "5", "--contents"}, "delete", `{"refs":[4,5],"contents":true}`)
+	sameFault(t, home, "invalid-input", "/material", []string{"delete", "4", "--material=false"}, "delete", `{"refs":[4],"material":false}`)
+	if r := fails(t, home, "invalid-input", "", "delete", "4", "--contents", "--material"); problemFields(r) != "/contents /material" {
+		t.Errorf("both: %s", r.Line())
+	}
+	// The folder's refusals hold with a task beside it, and nothing goes.
+	fails(t, home, "conflict", "not-empty", "delete", "4", "/k")
+	fails(t, home, "conflict", "has-material", "delete", "4", "/k", "--contents")
+	if r := koan(t, home, "task", "list", "--fields", "id"); fmt.Sprint(r.Result()["total"]) != "4" {
+		t.Errorf("a refused delete removed something: %s", r.Line())
+	}
+
+	// 4 goes with the tasks of /w; 5 waited only on 4.
+	r = ok(t, home, "delete", "4", "/w", "--contents")
+	golden(t, r, "delete-mixed")
+	if fmt.Sprint(r.Result()) != "map[released:[5] removed:[1 2 3 4]]" {
+		t.Errorf("mixed: %s", r.Line())
+	}
+	checkTree(t, home, "@5.md=", "@k/", "@k/@notes.md=", "@k/@7.md=", "@k/docs/", "@k/docs/x.md=x")
 }

@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "result": {
+    "moved": [
+      {
+        "id": 4,
+        "ref": "@4 (/b)",
+        "notes_path": "$HOME/koan-root/tree/@b/@4.md",
+        "dir": null
+      },
+      {
+        "id": 2,
+        "ref": "@2 (/b/p)",
+        "notes_path": "$HOME/koan-root/tree/@b/@p/@notes.md",
+        "dir": "$HOME/koan-root/tree/@b/@p"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "moved-claimed",
+      "message": "@4, @5 are claimed, and their notes moved; whoever holds them should read them at the new paths.",
+      "ids": [
+        4,
+        5
+      ],
+      "paths": [
+        "$HOME/koan-root/tree/@b/@4.md",
+        "$HOME/koan-root/tree/@b/@p/@5.md"
+      ]
+    }
+  ]
+}

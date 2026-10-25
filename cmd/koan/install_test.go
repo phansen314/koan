@@ -154,8 +154,8 @@ func backups(t *testing.T, path string) []string {
 
 var (
 	koanAllow = []any{"Bash(koan:*)", "Bash(jq:*)"}
-	koanAsk   = []any{"Bash(koan init:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)", "Bash(koan repair:*)"}
-	ocKoan    = []string{"koan_*", "jq_*", "koan_init*", "koan_task_delete_*", "koan_folder_delete_*", "koan_repair*"}
+	koanAsk   = []any{"Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan repair:*)"}
+	ocKoan    = []string{"koan_*", "jq_*", "koan_init*", "koan_delete_*", "koan_repair*"}
 )
 
 func TestInstallShellcheck(t *testing.T) {
@@ -187,7 +187,7 @@ func TestInstallFresh(t *testing.T) {
 	}
 	bash := oc["permission"].(map[string]any)["bash"].(map[string]any)
 	for k, v := range map[string]string{"koan *": "allow", "jq *": "allow", "koan init*": "ask",
-		"koan task delete *": "ask", "koan folder delete *": "ask", "koan repair*": "ask"} {
+		"koan delete *": "ask", "koan repair*": "ask"} {
 		if bash[k] != v {
 			t.Errorf("opencode rule %q is %v, want %s", k, bash[k], v)
 		}
@@ -247,10 +247,11 @@ func TestInstallFresh(t *testing.T) {
 }
 
 // The user's own settings stay, and are backed up before anything changes;
-// the original koan's rule for koan migrate goes.
+// the original koan's rule for koan migrate goes, and so do the asks for
+// the deletes before they were one command.
 func TestInstallKeepsTheUsersSettings(t *testing.T) {
 	in := newInstaller(t)
-	settings := `{"model": "opus", "permissions": {"allow": ["Bash(ls:*)", "Bash(koan:*)"], "ask": ["Bash(koan migrate:*)", "Bash(rm:*)"], "deny": ["Bash(curl:*)"]}}` + "\n"
+	settings := `{"model": "opus", "permissions": {"allow": ["Bash(ls:*)", "Bash(koan:*)"], "ask": ["Bash(koan migrate:*)", "Bash(koan task delete:*)", "Bash(rm:*)", "Bash(koan folder delete:*)"], "deny": ["Bash(curl:*)"]}}` + "\n"
 	writeFile(t, in.settings(), settings)
 	ocjson := `{"model": "x", "permission": {"edit": "ask", "bash": "ask"}}` + "\n"
 	writeFile(t, in.ocJSON(), ocjson)
@@ -282,7 +283,7 @@ func TestInstallKeepsTheUsersSettings(t *testing.T) {
 	// koan's rules written before the user's move to the end, the
 	// original's migrate rule goes, and a rule of the user's that matches
 	// koan is warned about.
-	writeFile(t, in.ocJSON(), `{"permission": {"bash": {"koan repair*": "ask", "koan migrate*": "ask", "git *": "allow", "koan show*": "deny"}}}`)
+	writeFile(t, in.ocJSON(), `{"permission": {"bash": {"koan repair*": "ask", "koan migrate*": "ask", "koan task delete *": "ask", "git *": "allow", "koan show*": "deny", "koan folder delete *": "ask"}}}`)
 	out, code = in.run(t, "--opencode")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)

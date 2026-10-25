@@ -111,6 +111,12 @@ func TaskClaimNext() *cli.Command {
 	}
 }
 
+// TaskUnclaimResult is unclaim's result, in its schema's order.
+type TaskUnclaimResult struct {
+	ID      int64 `json:"id"`
+	Changed bool  `json:"changed"`
+}
+
 // TaskUnclaim ends a task's claim, whoever made it.
 func TaskUnclaim() *cli.Command {
 	return taskCommand("unclaim", claimedOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
@@ -118,7 +124,7 @@ func TaskUnclaim() *cli.Command {
 		if err != nil {
 			return nil, nil, err
 		}
-		return TaskUpdateResult{ID: id, Changed: changed}, nil, nil
+		return TaskUnclaimResult{ID: id, Changed: changed}, nil, nil
 	})
 }
 

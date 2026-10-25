@@ -210,7 +210,7 @@ func TestExportMarkers(t *testing.T) {
 		t.Errorf("working directory in the tree: %v", id)
 	}
 
-	ok(t, home, "folder", "mv", "-T", "/work/api", "/work/web")
+	ok(t, home, "mv", "-T", "/work/api", "/work/web")
 	r := koan(t, home, "export", "--file", wt)
 	ws := r.Envelope["warnings"].([]any)
 	if r.Exit != 0 || len(ws) != 1 || ws[0].(map[string]any)["kind"] != "stale-marker" || r.Stderr != "koan: 1 warning\n" {
@@ -236,7 +236,7 @@ func TestExportMarkers(t *testing.T) {
 	dir := mkdir(t, home, "gone")
 	ok(t, home, "folder", "create", "/gone") // 4
 	ok(t, home, "marker", "bind", "/gone", dir)
-	ok(t, home, "folder", "delete", "/gone")
+	ok(t, home, "delete", "/gone")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[4]" || len(r.Error()["archived"].([]any)) != 0 {
 		t.Errorf("deleted: %s", r.Line())

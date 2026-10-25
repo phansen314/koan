@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command folder mv: mv is koan mv",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "mv",
+        "reason": "unknown command folder mv: mv is koan mv"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

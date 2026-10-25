@@ -374,7 +374,7 @@ func TestWhereMarkerBindsNothing(t *testing.T) {
 	// Deleted and archived folders: where says which, and where an
 	// archived one went, from the index.
 	ok(t, home, "marker", "bind", "/gone", dir, "--force")
-	ok(t, home, "folder", "delete", "/gone")
+	ok(t, home, "delete", "/gone")
 	r = fails(t, home, "not-found", "", "where", "--file", dir+"/x")
 	golden(t, r, "where-marker-deleted")
 	if fmt.Sprint(r.Error()["ids"]) != "[3]" || len(r.Error()["archived"].([]any)) != 0 {
@@ -401,7 +401,7 @@ func TestStaleMarker(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api")
 	wt := mkdir(t, home, "wt")
 	ok(t, home, "marker", "bind", "/work/api", wt)
-	ok(t, home, "folder", "mv", "-T", "/work/api", "/work/web")
+	ok(t, home, "mv", "-T", "/work/api", "/work/web")
 	r := koan(t, home, "where", "--file", wt)
 	if r.Exit != 0 || r.Stderr != "koan: 1 warning\n" || r.Result()["ref"] != "@2 (/work/web)" {
 		t.Fatalf("exit %d, stderr %q: %s", r.Exit, r.Stderr, r.Line())

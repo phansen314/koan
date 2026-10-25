@@ -249,7 +249,7 @@ var perfOps = []perfOp{
 		return []string{"task", "create", fmt.Sprint("new ", i), "--folder", r.folder(i), "--blocked-by", r.task(i, 97), "--notes", "notes"}
 	}},
 	{name: "task update", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
-		return []string{"task", "update", r.task(i, 50), "--title", fmt.Sprint("updated ", i), "--tags-add", "x"}
+		return []string{"update", r.task(i, 50), "--title", fmt.Sprint("updated ", i), "--tags-add", "x"}
 	}},
 	{name: "complete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.must("reopen", r.task(i, 96)) },
@@ -272,13 +272,13 @@ var perfOps = []perfOp{
 		if r.away[r.mover] = !r.away[r.mover]; r.away[r.mover] {
 			to = "/"
 		}
-		return []string{"task", "mv", fmt.Sprint(r.mover), to}
+		return []string{"mv", fmt.Sprint(r.mover), to}
 	}},
 	{name: "task delete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			r.seq = int(num(r.must("task", "create", "doomed", "--folder", r.folder(i), "--blocks", r.task(i, 97))["id"]))
 		},
-		args: func(r *perfRoot, i int) []string { return []string{"task", "delete", fmt.Sprint(r.seq)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"delete", fmt.Sprint(r.seq)} }},
 	{name: "archive task", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			r.seq = int(num(r.must("task", "create", "done", "--folder", r.folder(i), "--notes", "notes")["id"]))
@@ -303,19 +303,19 @@ var perfOps = []perfOp{
 		return []string{"folder", "create", fmt.Sprintf("/new/n%d/x", r.seq), "--notes", "notes"}
 	}},
 	{name: "folder update", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
-		return []string{"folder", "update", r.folder(i), "--title", fmt.Sprint("folder ", i)}
+		return []string{"update", r.folder(i), "--title", fmt.Sprint("folder ", i)}
 	}},
 	{name: "folder mv", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		to := "/mv/f"
 		if r.away[r.moving] = !r.away[r.moving]; r.away[r.moving] {
 			to = "/moved/f"
 		}
-		return []string{"folder", "mv", "-T", fmt.Sprint(r.moving), to}
+		return []string{"mv", "-T", fmt.Sprint(r.moving), to}
 	}},
 	{name: "folder delete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.seq = r.smallFolder("/del", false) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"folder", "delete", fmt.Sprint(r.seq), "--contents"}
+			return []string{"delete", fmt.Sprint(r.seq), "--contents"}
 		}},
 	{name: "archive folder", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.seq = r.smallFolder("/arc", true) },

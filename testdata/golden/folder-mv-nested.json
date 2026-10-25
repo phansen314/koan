@@ -8,7 +8,7 @@
     "paths": [],
     "problems": [
       {
-        "field": "/folders/1",
+        "field": "/refs/1",
         "reason": "@8 is inside @1, also given"
       }
     ],

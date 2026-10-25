@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "tasks is required",
+    "message": "refs is required",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "/tasks",
-        "reason": "tasks is required"
+        "field": "/refs",
+        "reason": "refs is required"
       }
     ],
     "archived": []

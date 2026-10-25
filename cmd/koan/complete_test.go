@@ -96,7 +96,6 @@ func as(prefix string, keys ...string) []string {
 func TestCompleteReferences(t *testing.T) {
 	home := completeTree(t)
 	all := []string{"9", "12", "8", "7", "5", "6", "3.start", "3.done"}
-	allTasks := []string{"9", "12", "8", "7", "5", "6"}
 	edges := []string{"9", "12", "1", "1.start", "1.done", "8", "2", "2.start", "2.done", "7",
 		"3", "5", "6", "3.start", "3.done", "4", "4.start", "4.done"}
 	folders := []string{"1", "2", "3", "4"}
@@ -110,8 +109,6 @@ func TestCompleteReferences(t *testing.T) {
 		// Tasks and made gates, in pick's order.
 		{[]string{"why", ""}, offered(byID, as("@", all...)...)},
 		{[]string{"why", "@"}, offered(byID, as("@", all...)...)},
-		{[]string{"task", "update", "@"}, offered(byID, as("@", all...)...)},
-		{[]string{"task", "delete", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"unblock", "@"}, offered(byID, as("@", all...)...)},
 		// An ID's digits, with or without the @, as typed; a gate by its
 		// folder's ID and end.
@@ -131,7 +128,6 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
 		{[]string{"unclaim", "@"}, offered(byID, as("@", "6")...)},
-		{[]string{"task", "mv", "@"}, offered(byID, as("@", allTasks...)...)},
 		// Gates made or not where an edge names them.
 		{[]string{"block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
@@ -152,16 +148,19 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"claim-next", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "list", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"pick", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "mv", "5", "-t", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"mv", "5", "-t", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "update", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "mv", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "delete", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"export", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"marker", "bind", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "create", "t", "--join", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "create", "/new", "--join", "@"}, offered(byID, as("@", folders...)...)},
+		// update and delete: tasks, made gates and folders, every word.
+		{[]string{"update", "@"}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"update", "9", "@"}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"delete", "@"}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"delete", "9", "@"}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"delete", "3", "@"}, offered(byID, as("@", anyRef...)...)},
 		// A join's subject: tasks and folders, never gates.
 		{[]string{"join", ""}, offered(byID, as("@", tasksAndFolders...)...)},
 		{[]string{"join", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
@@ -176,31 +175,29 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"join", "5", "/work/api", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"join", "/work/api", "/old", "2"}, offered(byID, as("", "2")...)},
 		{[]string{"context", "3"}, offered(byID, as("", "3")...)},
-		// task mv: the first word offers tasks, and every word after it
-		// tasks and folders, since any can be the last; after -t, every
-		// word is a task.
-		{[]string{"task", "mv", "5", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
-		{[]string{"task", "mv", "5", "6", ""}, offered(byID, as("@", tasksAndFolders...)...)},
-		{[]string{"task", "mv", "5", "2"}, offered(byID, as("", "2")...)},
-		{[]string{"task", "mv", "-t", "/work", "@"}, offered(byID, as("@", allTasks...)...)},
-		{[]string{"task", "mv", "-t", "/work", "5", "@"}, offered(byID, as("@", allTasks...)...)},
-		{[]string{"task", "mv", "5", "-t", "/work", "@"}, offered(byID, as("@", allTasks...)...)},
-		{[]string{"task", "mv", "--into=/work", "5", "@"}, offered(byID, as("@", allTasks...)...)},
-		// folder mv: every word offers folders, but with -T the second.
-		{[]string{"folder", "mv", "3", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "mv", "3", "4", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "mv", "-t", "/old", "3", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "mv", "-T", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "mv", "-T", "3", "@"}, offered(byID)},
-		{[]string{"folder", "mv", "3", "-T", ""}, offered(byID)},
-		{[]string{"folder", "mv", "--rename", "3", "2"}, offered(byID)},
-		{[]string{"folder", "mv", "-T", "3", "/old", ""}, offered(byNothing)},
+		// mv: every word offers tasks and folders, with -t or without,
+		// since without it any can be the last; with -T the first word
+		// offers folders, and the second is a new path.
+		{[]string{"mv", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "5", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "5", "6", ""}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "5", "2"}, offered(byID, as("", "2")...)},
+		{[]string{"mv", "-t", "/work", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "-t", "/work", "5", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "5", "-t", "/work", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "--into=/work", "5", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "3", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "3", "4", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "-t", "/old", "3", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"mv", "-T", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"mv", "-T", "3", "@"}, offered(byID)},
+		{[]string{"mv", "3", "-T", ""}, offered(byID)},
+		{[]string{"mv", "--rename", "3", "2"}, offered(byID)},
+		{[]string{"mv", "-T", "3", "/old", ""}, offered(byNothing)},
 		// Each word of a list subject offers what the subject takes.
 		{[]string{"complete", "9", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
 		{[]string{"complete", "9", "12", "1"}, offered(byID, as("", "12")...)},
 		{[]string{"reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
-		{[]string{"task", "delete", "9", "@"}, offered(byID, as("@", all...)...)},
-		{[]string{"folder", "delete", "3", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"unblock", "5", "6", "@"}, offered(byID, as("@", unblockEnds...)...)},
 		// show and where: tasks, made gates and folders.
 		{[]string{"show", ""}, offered(byID, as("@", anyRef...)...)},
@@ -225,7 +222,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"context", "/nope/"}, offered(byPath)},
 		{[]string{"context", "/work//"}, offered(byPath)},
 		{[]string{"task", "list", "/w"}, offered(byPath, "/work")},
-		{[]string{"task", "mv", "5", "-t", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"mv", "5", "-t", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"join", "42", "/w"}, offered(byPath, "/work")},
 		{[]string{"unjoin", "5", "/work/api"}, offered(byPath, "/work/api")},
 		{[]string{"join", "/work/api", "/o"}, offered(byPath, "/old")},
@@ -239,13 +236,13 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "list", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"pick", "/o"}, offered(byPath, "/old")},
 		{[]string{"marker", "bind", "/o"}, offered(byPath, "/old")},
-		{[]string{"task", "mv", "5", "/w"}, offered(byPath, "/work")},
-		{[]string{"task", "mv", "5", "6", "/work/api"}, offered(byPath, "/work/api")},
-		{[]string{"task", "mv", "-t", "/work", "5", "/"}, offered(byPath)},
-		{[]string{"folder", "mv", "/work/api", "/o"}, offered(byPath, "/old")},
-		{[]string{"folder", "mv", "/work/api", "/old", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
-		{[]string{"folder", "mv", "-T", "/w"}, offered(byPath, "/work")},
-		{[]string{"folder", "delete", "/work/api", "/o"}, offered(byPath, "/old")},
+		{[]string{"mv", "5", "/w"}, offered(byPath, "/work")},
+		{[]string{"mv", "5", "6", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"mv", "-t", "/work", "5", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"mv", "/work/api", "/o"}, offered(byPath, "/old")},
+		{[]string{"mv", "/work/api", "/old", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"mv", "-T", "/w"}, offered(byPath, "/work")},
+		{[]string{"delete", "/work/api", "/o"}, offered(byPath, "/old")},
 		{[]string{"complete", "9", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
 		// A folder is a step toward its gates, wherever a gate is taken.
 		{[]string{"why", "/"}, offered(byPath, "/old", "/work")},
@@ -266,8 +263,10 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"show", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"show", "/work/api.s"}, offered(byPath, "/work/api.start")},
-		// Only tasks: a path offers nothing.
-		{[]string{"task", "mv", "/"}, offered(byPath)},
+		// Tasks and folders, so a folder path, but no gates after it.
+		{[]string{"mv", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"mv", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"delete", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		// A join's subject: folders, but no gates after a path.
 		{[]string{"join", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"unjoin", "/work/api"}, offered(byPath, "/work/api")},
@@ -281,8 +280,8 @@ func TestCompleteReferences(t *testing.T) {
 		// Paths only, as steps toward a new path.
 		{[]string{"folder", "create", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "create", "/work/api"}, offered(byPath, "/work/api")},
-		{[]string{"folder", "mv", "-T", "/work/api", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
-		{[]string{"folder", "mv", "/work/api", "-T", "/o"}, offered(byPath, "/old")},
+		{[]string{"mv", "-T", "/work/api", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"mv", "/work/api", "-T", "/o"}, offered(byPath, "/old")},
 		{[]string{"folder", "create", "@"}, offered(byID)},
 		{[]string{"folder", "create", ""}, offered(byID)},
 		// Anything else offers nothing: an anchored path, material, a label.
@@ -301,9 +300,9 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "create", ""}, offered(byNothing)},
 		{[]string{"task", "create", "t", "--tags", ""}, offered(byNothing)},
 		{[]string{"task", "list", "--state", ""}, offered(byNothing)},
-		{[]string{"task", "update", "5", "--priority", ""}, offered(byNothing)},
+		{[]string{"update", "5", "--priority", ""}, offered(byNothing)},
 		{[]string{"task", "list", "2", ""}, offered(byNothing)},
-		{[]string{"task", "mv", "-t", ""}, offered(byID, as("@", folders...)...)},
+		{[]string{"mv", "-t", ""}, offered(byID, as("@", folders...)...)},
 		// Files.
 		{[]string{"backup", ""}, offered(byFiles)},
 		{[]string{"task", "create", "t", "--notes-file", ""}, offered(byFiles)},

@@ -1,17 +1,16 @@
 {
   "ok": false,
   "error": {
-    "kind": "invalid-input",
-    "rule": null,
-    "message": "\"/w\": a path names a task only as a folder's gate, ending .start or .done",
-    "ids": [],
-    "paths": [],
-    "problems": [
-      {
-        "field": "/tasks/1",
-        "reason": "\"/w\": a path names a task only as a folder's gate, ending .start or .done"
-      }
+    "kind": "conflict",
+    "rule": "into-itself",
+    "message": "@1 would land inside itself at /w/w",
+    "ids": [
+      1
     ],
+    "paths": [
+      "/w/w"
+    ],
+    "problems": [],
     "archived": []
   },
   "warnings": []

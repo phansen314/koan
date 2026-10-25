@@ -50,7 +50,7 @@ func nextID(t *testing.T, home string, want int) {
 	if r.Result()["id"] != json.Number(fmt.Sprint(want)) {
 		t.Errorf("a refused batch issued an ID: %s", r.Line())
 	}
-	ok(t, home, "task", "delete", fmt.Sprint(want))
+	ok(t, home, "delete", fmt.Sprint(want))
 }
 
 // The spec's batch file: a missing parent is made, folders first, then

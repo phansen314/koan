@@ -53,7 +53,8 @@ var move = &Command{
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
-// rename is move with -T as well, which makes the subject one word.
+// rename is move with -T as well, which makes the subject one word for
+// completion only: the line still reads as a list before an object.
 var rename = &Command{
 	Name:    "folder mv",
 	Subject: &Option{Field: "folders", Kind: List, Arg: "folder", Required: true},
@@ -164,6 +165,7 @@ func TestParseLines(t *testing.T) {
 		{rename, []string{"-T", "/a", "/b"}, `{"folders":["/a"],"dest":"/b","rename":true}`},
 		{rename, []string{"/a", "--rename", "/b,c"}, `{"folders":["/a"],"dest":"/b,c","rename":true}`},
 		{rename, []string{"-T", "/a,/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":true}`},
+		{rename, []string{"-T", "/a", "/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":true}`},
 		{rename, []string{"--rename=false", "/a", "/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":false}`},
 		{bind, []string{"@41"}, `{"folder":"@41"}`},
 		{bind, []string{"@41", "/d"}, `{"folder":"@41","dir":"/d"}`},
@@ -258,7 +260,6 @@ func TestParseUsage(t *testing.T) {
 		{move, []string{"-t", "/w", "-t", "/x", "42"}, "--into"},
 		{move, []string{"-i", "f", "42", "/w"}, "42"},
 		{move, []string{"-i", "f", "-t", "/w"}, "--into"},
-		{rename, []string{"-T", "/a", "/b", "/c"}, "/c"},
 		{rename, []string{"/a", "/b", "--to", "/c"}, "--to"},
 		{bind, []string{"@41", "/d", "/e"}, "/e"},
 		{bind, []string{"@41", "--dir", "/d"}, "--dir"},

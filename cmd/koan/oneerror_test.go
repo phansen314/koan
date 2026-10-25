@@ -88,14 +88,16 @@ func TestMissingIsInvalidInput(t *testing.T) {
 		{[]string{"archive"}, "archive", `{}`, "/ref"},
 		{[]string{"task", "create"}, "task create", `{}`, "/title"},
 		{[]string{"folder", "create"}, "folder create", `{}`, "/path"},
-		{[]string{"folder", "delete"}, "folder delete", `{}`, "/folders"},
-		{[]string{"task", "mv"}, "task mv", `{}`, "/tasks"},
-		{[]string{"task", "mv", "-t", "/w"}, "task mv", `{"into":"/w"}`, "/tasks"},
-		{[]string{"task", "mv", "2"}, "task mv", `{"tasks":[2]}`, "/into"},
-		{[]string{"folder", "mv"}, "folder mv", `{}`, "/folders"},
-		{[]string{"folder", "mv", "/w"}, "folder mv", `{"folders":["/w"]}`, ""},
-		{[]string{"folder", "mv", "-T", "/w"}, "folder mv", `{"folders":["/w"],"rename":true}`, ""},
-		{[]string{"folder", "mv", "-T", "-t", "/w", "/w"}, "folder mv", `{"folders":["/w"],"rename":true,"into":"/w"}`, ""},
+		{[]string{"update"}, "update", `{}`, "/refs"},
+		{[]string{"update", "2"}, "update", `{"refs":[2]}`, ""},
+		{[]string{"delete"}, "delete", `{}`, "/refs"},
+		{[]string{"mv"}, "mv", `{}`, "/refs"},
+		{[]string{"mv", "-t", "/w"}, "mv", `{"into":"/w"}`, "/refs"},
+		{[]string{"mv", "2"}, "mv", `{"refs":[2]}`, ""},
+		{[]string{"mv", "/w"}, "mv", `{"refs":["/w"]}`, ""},
+		{[]string{"mv", "-T", "/w"}, "mv", `{"refs":["/w"],"rename":true}`, ""},
+		{[]string{"mv", "-T", "-t", "/w", "/w"}, "mv", `{"refs":["/w"],"rename":true,"into":"/w"}`, ""},
+		{[]string{"mv", "-T", "/w", "/x", "/y"}, "mv", `{"refs":["/w","/x"],"dest":"/y","rename":true}`, "/refs/1"},
 	} {
 		t.Run(strings.Join(c.args, " "), func(t *testing.T) {
 			sameFault(t, home, "invalid-input", c.field, c.args, c.command, c.in)
@@ -118,7 +120,6 @@ func TestUsageStays(t *testing.T) {
 		{[]string{"claim", "2", "3"}, "3"},
 		{[]string{"show", "2", "3"}, "3"},
 		{[]string{"context", "/w", "/w"}, "/w"},
-		{[]string{"folder", "mv", "-T", "/w", "/x", "/y"}, "/y"},
 		{[]string{"join", "2", "/w", "-i", "-"}, "2"},
 		{[]string{"why", "--frob"}, "--frob"},
 		{[]string{"frob"}, "frob"},
@@ -150,7 +151,7 @@ func TestWrongKindIsInvalidInput(t *testing.T) {
 		{[]string{"claim", "1"}, "claim", `{"task":1}`, "/task", "folder"},
 		{[]string{"unclaim", "1"}, "unclaim", `{"task":1}`, "/task", "folder"},
 		{[]string{"claim", "/w"}, "claim", `{"task":"/w"}`, "/task", "folder"},
-		{[]string{"task", "update", "1", "--priority", "1"}, "task update", `{"task":1,"priority":1}`, "/task", "folder"},
+		{[]string{"update", "1", "--priority", "1"}, "update", `{"refs":[1],"priority":1}`, "/priority", "folder"},
 		{[]string{"block", "1", "2"}, "block", `{"task":1,"blocked_by":[2]}`, "/task", "folder"},
 		{[]string{"context", "2"}, "context", `{"folder":2}`, "/folder", "task"},
 		{[]string{"export", "2"}, "export", `{"folder":2}`, "/folder", "task"},
@@ -158,14 +159,10 @@ func TestWrongKindIsInvalidInput(t *testing.T) {
 		{[]string{"frontier", "2"}, "frontier", `{"folder":2}`, "/folder", "task"},
 		{[]string{"folder", "list", "2"}, "folder list", `{"folder":2}`, "/folder", "task"},
 		{[]string{"task", "create", "x", "--folder", "2"}, "task create", `{"title":"x","folder":2}`, "/folder", "task"},
-		{[]string{"task", "mv", "1", "/w"}, "task mv", `{"tasks":[1],"into":"/w"}`, "/tasks/0", "folder"},
-		{[]string{"task", "mv", "2", "2"}, "task mv", `{"tasks":[2],"into":2}`, "/into", "task"},
-		{[]string{"task", "mv", "-t", "2", "2"}, "task mv", `{"tasks":[2],"into":2}`, "/into", "task"},
-		{[]string{"folder", "mv", "/v", "2"}, "folder mv", `{"folders":["/v"],"dest":2}`, "/dest", "task"},
-		{[]string{"folder", "mv", "-t", "2", "/v"}, "folder mv", `{"folders":["/v"],"into":2}`, "/into", "task"},
-		{[]string{"folder", "mv", "2", "/x"}, "folder mv", `{"folders":[2],"dest":"/x"}`, "/folders/0", "task"},
-		{[]string{"folder", "delete", "2"}, "folder delete", `{"folders":[2]}`, "/folders/0", "task"},
-		{[]string{"folder", "update", "2", "--title", "x"}, "folder update", `{"folder":2,"title":"x"}`, "/folder", "task"},
+		{[]string{"mv", "2", "2"}, "mv", `{"refs":[2],"dest":2}`, "/dest", "task"},
+		{[]string{"mv", "-t", "2", "2"}, "mv", `{"refs":[2],"into":2}`, "/into", "task"},
+		{[]string{"mv", "/v", "2"}, "mv", `{"refs":["/v"],"dest":2}`, "/dest", "task"},
+		{[]string{"mv", "-t", "2", "/v"}, "mv", `{"refs":["/v"],"into":2}`, "/into", "task"},
 		{[]string{"marker", "bind", "2"}, "marker bind", `{"folder":2,"dir":"/tmp"}`, "/folder", "task"},
 		{[]string{"join", "2", "2"}, "join", `{"ref":2,"join":[2]}`, "/join/0", "task"},
 		{[]string{"join", "2", "/w", "2"}, "join", `{"ref":2,"join":["/w",2]}`, "/join/1", "task"},
@@ -182,7 +179,7 @@ func TestWrongKindIsInvalidInput(t *testing.T) {
 	fails(t, home, "not-found", "", "why", "99")
 	fails(t, home, "not-found", "", "context", "99")
 	// A path anchored at a task is invalid-input, as before.
-	r := testrun.Run{Home: home}.Koan(t, "folder", "mv", "/v", "@2/x")
+	r := testrun.Run{Home: home}.Koan(t, "mv", "/v", "@2/x")
 	if r.Exit != 1 || r.Kind() != "invalid-input" || problemFields(r) != "/dest" {
 		t.Errorf("anchored at a task: %s", r.Line())
 	}

@@ -587,7 +587,7 @@ func TestNotFoundID(t *testing.T) {
 	ok(t, home, "folder", "create", "/w") // 100
 	ok(t, home, "task", "create", "t")    // 101
 	ok(t, home, "task", "create", "u")    // 102
-	ok(t, home, "task", "delete", "102")
+	ok(t, home, "delete", "102")
 	for _, c := range []struct {
 		args    []string
 		message string
@@ -599,7 +599,7 @@ func TestNotFoundID(t *testing.T) {
 		{[]string{"show", "@200"}, "@200 was never issued"},
 		{[]string{"task", "create", "x", "--folder", "@102"}, "@102 was deleted"},
 		{[]string{"block", "101", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
-		{[]string{"task", "update", "150", "--title", "x"}, "@150 was never issued"},
+		{[]string{"update", "150", "--title", "x"}, "@150 was never issued"},
 	} {
 		r := fails(t, home, "not-found", "", c.args...)
 		if r.Error()["message"] != c.message {

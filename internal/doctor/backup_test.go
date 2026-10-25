@@ -68,7 +68,7 @@ func TestBackupRecopies(t *testing.T) {
 	hook(t, func(stage string) {
 		if stage == "copy" && moves == 0 {
 			moves++
-			koan(t, home, "folder", "mv", "-T", "/a", "/b")
+			koan(t, home, "mv", "-T", "/a", "/b")
 		}
 	})
 	dir := filepath.Join(t.TempDir(), "backup")

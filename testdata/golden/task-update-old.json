@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command task update: update is koan update",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "update",
+        "reason": "unknown command task update: update is koan update"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

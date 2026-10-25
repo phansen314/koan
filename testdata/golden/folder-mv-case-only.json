@@ -4,7 +4,8 @@
     "moved": [
       {
         "id": 1,
-        "path": "/Work",
+        "ref": "@1 (/Work)",
+        "notes_path": "$HOME/koan-root/tree/@Work/@notes.md",
         "dir": "$HOME/koan-root/tree/@Work"
       }
     ]

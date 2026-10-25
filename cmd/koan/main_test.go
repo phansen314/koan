@@ -192,7 +192,7 @@ func TestMalformed(t *testing.T) {
 		{[]string{"task", "list", "--claimed", "--claimed=false"}, "--claimed"},
 		{[]string{"task", "create", "t", "--notes", "n", "--notes-file", "f"}, ""},
 		{[]string{"task", "create", "t", "-i", "in.json"}, "t"},
-		{[]string{"task", "update", "1", "--title", "a", "--title", "b"}, "--title"},
+		{[]string{"update", "1", "--title", "a", "--title", "b"}, "--title"},
 		{[]string{"completion", "zhs"}, "zhs"},
 		{[]string{"completion", "bash", "extra"}, ""},
 		// An option pflag refuses comes before help.
@@ -241,12 +241,11 @@ func TestHelpText(t *testing.T) {
 		lacks []string
 	}{
 		{[]string{"where", "-h"}, []string{"koan where <ref> [flags]\n", "koan where --file <path> [flags]\n"}, []string{"[<ref>]"}},
-		{[]string{"folder", "mv", "-h"}, []string{
-			"koan folder mv <folder> <dest> [flags]\n", "koan folder mv <folder>... <folder> [flags]\n",
-			"koan folder mv -t <folder> <folder>... [flags]\n", "koan folder mv -T <folder> <path> [flags]\n",
+		{[]string{"mv", "-h"}, []string{
+			"koan mv <ref>... <dest> [flags]\n", "koan mv -t <folder> <ref>... [flags]\n", "koan mv -T <folder> <path> [flags]\n",
 			"-t, --into folder "}, []string{"string"}},
 		{[]string{"unblock", "-h"}, []string{"Remove edges: what a task waits on, or what waits on it"}, nil},
-		{[]string{"task", "mv", "-h"}, []string{"-t, --into folder "}, nil},
+		{[]string{"mv", "-h"}, []string{"-t, --into folder "}, nil},
 		{[]string{"task", "create", "-h"}, []string{"--folder folder "}, nil},
 	} {
 		r := testrun.Koan(t, c.args...)
@@ -534,8 +533,8 @@ func TestIDsRunOut(t *testing.T) {
 	if r := batch(t, home, `{"tasks":[{"title":"t"}]}`); r.Kind() != "conflict" || r.Error()["rule"] != "no-ids" {
 		t.Errorf("batch: %s", r.Line())
 	}
-	ok(t, home, "task", "update", "999999999999999", "--title", "still")
-	ok(t, home, "folder", "mv", "-T", "/work", "/Work")
+	ok(t, home, "update", "999999999999999", "--title", "still")
+	ok(t, home, "mv", "-T", "/work", "/Work")
 	ok(t, home, "complete", "999999999999999")
 	r = ok(t, home, "info")
 	if r.Result()["next_id"] != nil || r.Result()["tasks"] != json.Number("1") || r.Result()["folders"] != json.Number("1") {
