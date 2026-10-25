@@ -188,7 +188,7 @@ func TestBatchJoinInvalid(t *testing.T) {
 // in cycle order: the batch's own at /join/<n>, however many task parts
 // take it, and a folder part's, whose gates other parts can name.
 func TestBatchJoinCycle(t *testing.T) {
-	// The rules example's task join 10 @7, as a batch's join two parts
+	// The rules example's join 10 @7, as a batch's join two parts
 	// take: the second, waiting on @10, closes it.
 	home := example(t)
 	r := batchFails(t, home, "conflict", "cycle", "/join/0 /tasks/1/blocked_by/0",
@@ -232,14 +232,14 @@ func TestBatchJoinWarnings(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")                // 1
 	ok(t, home, "task", "create", "x", "--blocks", "/a") // 2, /a.done 3
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "3")
 	warned(t, home, []string{"complete-blocker"}, "batch", "-i", writeInput(t, `{"join": ["/a"], "tasks": [{"title": "y"}]}`))
 
 	home = root(t)
 	ok(t, home, "folder", "create", "/c")                // 1
 	ok(t, home, "task", "create", "x", "--blocks", "/c") // 2, /c.done 3
-	ok(t, home, "task", "complete", "2")
-	ok(t, home, "task", "claim", "3")
+	ok(t, home, "complete", "2")
+	ok(t, home, "claim", "3")
 	r := warned(t, home, []string{"claimed-blocked"}, "batch", "-i", writeInput(t, `{"folders": [{"path": "/e", "join": ["/c"]}]}`))
 	if fmt.Sprint(r.Result()["reblocked"]) != "[3]" {
 		t.Errorf("reblocked: %s", r.Line())

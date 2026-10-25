@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "result": {
+    "id": 10,
+    "archive": "$HOME/koan-root/archived/work/@10_HOME-12345",
+    "json": "$HOME/koan-root/archived/work/@10_HOME-12345.json",
+    "removed": [
+      10
+    ]
+  },
+  "warnings": []
+}

@@ -98,7 +98,7 @@
         "claim": {
           "anyOf": [
             {
-              "$ref": "claim"
+              "$ref": "claim-record"
             },
             {
               "type": "null"

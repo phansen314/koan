@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command folder join: join is koan join",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "join",
+        "reason": "unknown command folder join: join is koan join"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

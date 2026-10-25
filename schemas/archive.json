@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "archive",
+  "$defs": {
+    "input": {
+      "$ref": "show#/$defs/input"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "id",
+        "archive",
+        "json",
+        "removed"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "types#/$defs/id"
+        },
+        "archive": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/abs-path"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The archived notes, or for a folder its directory; null for a task archived without a notes file."
+        },
+        "json": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "The JSON beside it."
+        },
+        "removed": {
+          "$ref": "types#/$defs/ids",
+          "description": "Every ID that left the tree, now retired."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

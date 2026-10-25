@@ -45,7 +45,7 @@ func (s *shell) edit(keys, want string) {
 // the line as it was (spec pick, --bash and --zsh).
 func altK(s *shell) {
 	s.t.Helper()
-	s.edit("koan task show \x1bk", "koan task show @9")
+	s.edit("koan show \x1bk", "koan show @9")
 	s.edit("echo ab\x02\x1bkX", "echo a@9Xb")
 	for _, exit := range []string{"130", "1"} {
 		s.send("\x05\x15export FAKE_FZF_PICK= FAKE_FZF_EXIT=" + exit + "; echo SE''T\r")

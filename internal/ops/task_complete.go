@@ -9,13 +9,13 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// TaskCompleteResult is task complete's result, in its schema's order.
+// TaskCompleteResult is complete's result, in its schema's order.
 type TaskCompleteResult struct {
 	Completed []int64 `json:"completed"`
 	Released  []int64 `json:"released"`
 }
 
-// TaskReopenResult is task reopen's result, in its schema's order.
+// TaskReopenResult is reopen's result, in its schema's order.
 type TaskReopenResult struct {
 	Reopened  []int64 `json:"reopened"`
 	Reblocked []int64 `json:"reblocked"`
@@ -24,14 +24,6 @@ type TaskReopenResult struct {
 // taskCommand is the shape of a write that takes a task and nothing
 // else; subject is what the task completes to.
 func taskCommand(name string, subject offers, change func(tx *store.Tx, id int64) (any, []cli.Warning, error)) *cli.Command {
-	return rootedTaskCommand(name, subject, func(tx *store.Tx, _ store.Root, id int64) (any, []cli.Warning, error) {
-		return change(tx, id)
-	})
-}
-
-// rootedTaskCommand is taskCommand for a change that also needs the
-// root, to look on disk.
-func rootedTaskCommand(name string, subject offers, change func(tx *store.Tx, root store.Root, id int64) (any, []cli.Warning, error)) *cli.Command {
 	return &cli.Command{
 		Name:    name,
 		Subject: &cli.Option{Field: "task", Required: true, Complete: subject.complete()},
@@ -51,7 +43,7 @@ func rootedTaskCommand(name string, subject offers, change func(tx *store.Tx, ro
 				if err != nil {
 					return nil, nil, err
 				}
-				return change(tx, s.Root, res.ID)
+				return change(tx, res.ID)
 			})
 		},
 	}
@@ -117,7 +109,7 @@ func waiting(tx *store.Tx, ids []int64) []int64 {
 // What waited on them alone is released; a task completed with them never
 // is.
 func TaskComplete() *cli.Command {
-	return tasksCommand("task complete", openOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
+	return tasksCommand("complete", openOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
 		watched := watch(tx, waiting(tx, ids))
 		completed := []int64{}
 		for _, id := range ids {
@@ -137,7 +129,7 @@ func TaskComplete() *cli.Command {
 // them waits again, a claimed task with its claim kept. A task reopened
 // with them wasn't ready, so it never waits again.
 func TaskReopen() *cli.Command {
-	return tasksCommand("task reopen", completeOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
+	return tasksCommand("reopen", completeOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
 		watched := watch(tx, waiting(tx, ids))
 		reopened := []int64{}
 		for _, id := range ids {

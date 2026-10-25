@@ -1233,30 +1233,31 @@ func (c *Tree) archive(id int64, tasks, folders []int64) []int64 {
 	return left
 }
 
-// ArchiveTask archives a complete task. It returns every ID that left.
-func (t *Tree) ArchiveTask(task string) (left []int64, err error) {
+// Archive archives a complete task, a gate included, or a finished
+// folder with everything under it. It returns every ID that left.
+func (t *Tree) Archive(ref string) (left []int64, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
-		if err != nil {
+		var s shape
+		r := s.ref("/ref", ref, core.WantRef, false)
+		if r.IsRoot() {
+			s.faultf("/ref", "the root can't be archived")
+		}
+		if err := s.done(nil); err != nil {
 			return err
 		}
-		if x.Open() {
-			return core.Conflict(core.RuleNotFinished, []int64{x.ID}, nil, "@%d is open", x.ID)
-		}
-		left = c.archive(x.ID, []int64{x.ID}, nil)
-		return nil
-	})
-	return left, err
-}
-
-// ArchiveFolder archives a finished folder with everything under it.
-func (t *Tree) ArchiveFolder(folder string) (left []int64, err error) {
-	err = t.change(func(c *Tree) error {
-		f, err := c.subjectFolder(folder)
+		got, err := core.Resolve(c, r, core.WantRef, nil)
 		if err != nil {
-			return err
+			return pointAt(err, "/ref", false)
 		}
-		tasks, folders := c.under(f.ID)
+		if got.Kind == core.ResolvedTask {
+			x := c.Tasks[got.ID]
+			if x.Open() {
+				return core.Conflict(core.RuleNotFinished, []int64{x.ID}, nil, "@%d is open", x.ID)
+			}
+			left = c.archive(x.ID, []int64{x.ID}, nil)
+			return nil
+		}
+		tasks, folders := c.under(got.ID)
 		var open []int64
 		for _, id := range tasks {
 			if c.Tasks[id].Open() {
@@ -1266,7 +1267,7 @@ func (t *Tree) ArchiveFolder(folder string) (left []int64, err error) {
 		if open != nil {
 			return core.Conflict(core.RuleNotFinished, open, nil, "%s is open", core.FormatIDs(open))
 		}
-		left = c.archive(f.ID, tasks, folders)
+		left = c.archive(got.ID, tasks, folders)
 		return nil
 	})
 	return left, err
@@ -1373,8 +1374,8 @@ func hasAll(have, want map[string]bool) bool {
 	return true
 }
 
-// Release ends a task's claim, whoever made it.
-func (t *Tree) Release(task string) (changed bool, err error) {
+// Unclaim ends a task's claim, whoever made it.
+func (t *Tree) Unclaim(task string) (changed bool, err error) {
 	err = t.change(func(c *Tree) error {
 		x, err := c.subjectTask(task)
 		if err != nil {

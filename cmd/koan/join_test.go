@@ -8,7 +8,7 @@ import (
 	"github.com/phansen314/koan/internal/testrun"
 )
 
-// waitsOn is the IDs a task waits on, as task show gives them, sorted.
+// waitsOn is the IDs a task waits on, as show gives them, sorted.
 func waitsOn(t *testing.T, home, ref string) []int64 {
 	t.Helper()
 	var out []int64
@@ -37,9 +37,9 @@ func usageAt(t *testing.T, home, field string, args ...string) *testrun.Result {
 // The join rows of the rules doc's "Changes, in the example above", each
 // on a fresh copy of the example. The first ID a change issues is 16.
 func TestJoinExamples(t *testing.T) {
-	t.Run("task join 4 @1", func(t *testing.T) {
+	t.Run("join 4 @1", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "task", "join", "4", "@1")
+		r := ok(t, home, "join", "4", "@1")
 		if fmt.Sprint(r.Result()) != "map[changed:true gates_made:[map[end:start folder:map[id:1 path:/work] id:16]] id:4 reblocked:[]]" {
 			t.Errorf("result: %s", r.Line())
 		}
@@ -50,9 +50,9 @@ func TestJoinExamples(t *testing.T) {
 			t.Errorf("@1.done waits on %v", got)
 		}
 	})
-	t.Run("task join 8 @1", func(t *testing.T) {
+	t.Run("join 8 @1", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "task", "join", "8", "@1")
+		r := ok(t, home, "join", "8", "@1")
 		if fmt.Sprint(r.Result()["gates_made"]) != "[map[end:start folder:map[id:1 path:/work] id:16]]" {
 			t.Errorf("result: %s", r.Line())
 		}
@@ -63,10 +63,10 @@ func TestJoinExamples(t *testing.T) {
 			t.Errorf("@1.done waits on %v", got)
 		}
 	})
-	t.Run("task join 10 @7", func(t *testing.T) {
+	t.Run("join 10 @7", func(t *testing.T) {
 		home := example(t)
-		r := fails(t, home, "conflict", "cycle", "task", "join", "10", "@7")
-		golden(t, r, "task-join-cycle")
+		r := fails(t, home, "conflict", "cycle", "join", "10", "@7")
+		golden(t, r, "join-cycle")
 		if fmt.Sprint(r.Error()["ids"]) != "[12 10 13]" || problemFields(r) != "/join/0" {
 			t.Errorf("cycle: %s", r.Line())
 		}
@@ -74,23 +74,23 @@ func TestJoinExamples(t *testing.T) {
 			t.Errorf("a refused join wrote an edge: @10 waits on %v", got)
 		}
 	})
-	t.Run("task join 8 @7", func(t *testing.T) {
+	t.Run("join 8 @7", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "task", "join", "8", "@7")
+		r := ok(t, home, "join", "8", "@7")
 		if fmt.Sprint(r.Result()) != "map[changed:false gates_made:[] id:8 reblocked:[]]" {
 			t.Errorf("result: %s", r.Line())
 		}
 	})
-	t.Run("task join @7.start @1", func(t *testing.T) {
+	t.Run("join @7.start @1", func(t *testing.T) {
 		home := example(t)
-		r := fails(t, home, "invalid-input", "", "task", "join", "@7.start", "@1")
-		if problemFields(r) != "/task" {
+		r := fails(t, home, "invalid-input", "", "join", "@7.start", "@1")
+		if problemFields(r) != "/ref" {
 			t.Errorf("problems: %s", r.Line())
 		}
 	})
-	t.Run("folder join @9 @1", func(t *testing.T) {
+	t.Run("join @9 @1", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "folder", "join", "@9", "@1")
+		r := ok(t, home, "join", "@9", "@1")
 		if fmt.Sprint(r.Result()) != "map[changed:true gates_made:[map[end:start folder:map[id:1 path:/work] id:16]] id:9 reblocked:[]]" {
 			t.Errorf("result: %s", r.Line())
 		}
@@ -101,9 +101,9 @@ func TestJoinExamples(t *testing.T) {
 			t.Errorf("@1.done waits on %v", got)
 		}
 	})
-	t.Run("folder join @1 @9", func(t *testing.T) {
+	t.Run("join @1 @9", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "folder", "join", "@1", "@9")
+		r := ok(t, home, "join", "@1", "@9")
 		if fmt.Sprint(r.Result()) != "map[changed:true gates_made:[map[end:start folder:map[id:1 path:/work] id:16]] id:1 reblocked:[]]" {
 			t.Errorf("result: %s", r.Line())
 		}
@@ -114,9 +114,9 @@ func TestJoinExamples(t *testing.T) {
 			t.Errorf("@9.done waits on %v", got)
 		}
 	})
-	t.Run("folder join @7 @1", func(t *testing.T) {
+	t.Run("join @7 @1", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "folder", "join", "@7", "@1")
+		r := ok(t, home, "join", "@7", "@1")
 		if fmt.Sprint(r.Result()) != "map[changed:true gates_made:[map[end:start folder:map[id:1 path:/work] id:16]] id:7 reblocked:[11]]" {
 			t.Errorf("result: %s", r.Line())
 		}
@@ -147,16 +147,16 @@ func TestJoinExamples(t *testing.T) {
 			t.Errorf("the new done gate is not ready")
 		}
 	})
-	t.Run("task unjoin 10 @9", func(t *testing.T) {
+	t.Run("unjoin 10 @9", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "task", "unjoin", "10", "@9")
+		r := ok(t, home, "unjoin", "10", "@9")
 		if fmt.Sprint(r.Result()) != "map[changed:true id:10 released:[10 14]]" {
 			t.Errorf("result: %s", r.Line())
 		}
 	})
-	t.Run("task unjoin 4 @7", func(t *testing.T) {
+	t.Run("unjoin 4 @7", func(t *testing.T) {
 		home := example(t)
-		r := ok(t, home, "task", "unjoin", "4", "@7")
+		r := ok(t, home, "unjoin", "4", "@7")
 		if fmt.Sprint(r.Result()) != "map[changed:false id:4 released:[]]" {
 			t.Errorf("result: %s", r.Line())
 		}
@@ -265,21 +265,21 @@ func TestJoinWarnings(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")
 	ok(t, home, "task", "create", "x", "--blocks", "/a")
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "3")
 	r := warned(t, home, []string{"complete-blocker"}, "task", "create", "y", "--join", "/a")
 	if fmt.Sprint(r.Envelope["warnings"].([]any)[0].(map[string]any)["ids"]) != "[3]" {
 		t.Errorf("warning: %s", r.Line())
 	}
 	ok(t, home, "task", "create", "z")
-	warned(t, home, []string{"complete-blocker"}, "task", "join", "6", "/a")
+	warned(t, home, []string{"complete-blocker"}, "join", "6", "/a")
 
 	// A claimed, ready task joined to a folder whose start gate is new.
 	home = root(t)
 	ok(t, home, "folder", "create", "/b")
 	ok(t, home, "task", "create", "x")
-	ok(t, home, "task", "claim", "2")
-	r = warned(t, home, []string{"claimed-blocked"}, "task", "join", "2", "/b")
-	golden(t, r, "task-join-claimed-blocked")
+	ok(t, home, "claim", "2")
+	r = warned(t, home, []string{"claimed-blocked"}, "join", "2", "/b")
+	golden(t, r, "join-claimed-blocked")
 	if fmt.Sprint(r.Result()["reblocked"]) != "[2]" {
 		t.Errorf("reblocked: %s", r.Line())
 	}
@@ -289,7 +289,7 @@ func TestJoinWarnings(t *testing.T) {
 	home = root(t)
 	ok(t, home, "folder", "create", "/c")
 	ok(t, home, "task", "create", "x", "--blocks", "/c")
-	ok(t, home, "task", "complete", "3")
+	ok(t, home, "complete", "3")
 	r = warned(t, home, []string{"complete-blocker"}, "folder", "create", "/c/d", "--join", "/c")
 	if fmt.Sprint(r.Result()["reblocked"]) != "[]" {
 		t.Errorf("reblocked: %s", r.Line())
@@ -297,8 +297,8 @@ func TestJoinWarnings(t *testing.T) {
 	home = root(t)
 	ok(t, home, "folder", "create", "/c")
 	ok(t, home, "task", "create", "x", "--blocks", "/c")
-	ok(t, home, "task", "complete", "2")
-	ok(t, home, "task", "claim", "3")
+	ok(t, home, "complete", "2")
+	ok(t, home, "claim", "3")
 	r = warned(t, home, []string{"claimed-blocked"}, "folder", "create", "/e", "--join", "/c")
 	golden(t, r, "folder-create-join-claimed-blocked")
 	if fmt.Sprint(r.Result()["reblocked"]) != "[3]" {
@@ -306,16 +306,16 @@ func TestJoinWarnings(t *testing.T) {
 	}
 }
 
-// task join writes the two edges once: joining again changes nothing.
+// join writes a task's two edges once: joining again changes nothing.
 // The folders are the words after the subject, comma-separated or not.
 func TestTaskJoin(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")
 	ok(t, home, "folder", "create", "/b")
 	ok(t, home, "task", "create", "x")
-	r := ok(t, home, "task", "join", "3", "/a")
-	golden(t, r, "task-join")
-	r = ok(t, home, "task", "join", "@3", "/a")
+	r := ok(t, home, "join", "3", "/a")
+	golden(t, r, "join")
+	r = ok(t, home, "join", "@3", "/a")
 	if fmt.Sprint(r.Result()) != "map[changed:false gates_made:[] id:3 reblocked:[]]" {
 		t.Errorf("again: %s", r.Line())
 	}
@@ -327,7 +327,7 @@ func TestTaskJoin(t *testing.T) {
 		ok(t, home, "folder", "create", "/a")
 		ok(t, home, "folder", "create", "/b")
 		ok(t, home, "task", "create", "x")
-		r := ok(t, home, append([]string{"task", "join", "3"}, args...)...)
+		r := ok(t, home, append([]string{"join", "3"}, args...)...)
 		lines[fmt.Sprint(args)] = r.Line()
 	}
 	if lines["[/a,/b]"] != lines["[/a /b]"] {
@@ -338,68 +338,94 @@ func TestTaskJoin(t *testing.T) {
 	home = root(t)
 	ok(t, home, "folder", "create", "/a")
 	ok(t, home, "task", "create", "x")
-	r = ok(t, home, "task", "join", "-i", writeInput(t, `{"task": 2, "join": ["/a"]}`))
+	r = ok(t, home, "join", "-i", writeInput(t, `{"ref": 2, "join": ["/a"]}`))
+	golden(t, r, "join-input-task")
 	if fmt.Sprint(r.Result()["changed"]) != "true" {
 		t.Errorf("--input: %s", r.Line())
 	}
-	for _, in := range []string{`{"task": 2}`, `{"task": 2, "join": []}`} {
-		r := fails(t, home, "invalid-input", "", "task", "join", "-i", writeInput(t, in))
+	golden(t, input(t, home, "unjoin", `{"ref": "@2", "join": ["/a"]}`), "unjoin-input")
+	for _, in := range []string{`{"ref": 2}`, `{"ref": 2, "join": []}`} {
+		r := fails(t, home, "invalid-input", "", "join", "-i", writeInput(t, in))
 		if problemFields(r) != "/join" {
 			t.Errorf("%s: %s", in, r.Line())
 		}
 	}
-	fails(t, home, "invalid-input", "", "task", "unjoin", "-i", writeInput(t, `{"task": 2, "join": []}`))
+	fails(t, home, "invalid-input", "", "unjoin", "-i", writeInput(t, `{"ref": 2, "join": []}`))
+
+	// The old subject fields are fields join doesn't take, and ref is
+	// then missing.
+	r = fails(t, home, "invalid-input", "", "join", "-i", writeInput(t, `{"folder": "/s", "join": ["/a"]}`))
+	golden(t, r, "join-input-old-field")
+	if problemFields(r) != "/folder /ref" {
+		t.Errorf("old field: %s", r.Line())
+	}
+	r = fails(t, home, "invalid-input", "", "unjoin", "-i", writeInput(t, `{"task": 2, "join": ["/a"]}`))
+	if problemFields(r) != "/ref /task" {
+		t.Errorf("old field: %s", r.Line())
+	}
 }
 
 // The command line: the folders are words after the subject, at least
 // one, and there is no --join option.
 func TestJoinUsage(t *testing.T) {
 	home := root(t)
-	for _, args := range [][]string{{"task", "join"}, {"task", "unjoin"}, {"folder", "join"}, {"folder", "unjoin"}} {
+	for _, args := range [][]string{{"join"}, {"unjoin"}} {
 		usageAt(t, home, "", args...)
 		usageAt(t, home, "", append(args, "42")...)
 		usageAt(t, home, "--join", append(args, "42", "--join", "/a")...)
 		usageAt(t, home, "--join", append(args, "42", "/a", "--join", "/b")...)
 	}
-	golden(t, usageAt(t, home, "--join", "task", "join", "42", "/a", "--join", "/b"), "task-join-join")
+	golden(t, usageAt(t, home, "--join", "join", "42", "/a", "--join", "/b"), "join-join")
 }
 
-// A gate is never task join's or task unjoin's subject, made or not,
-// however it is written; the root is never a folder joined, nor folder
-// join's subject; a folder can't join itself.
+// A gate is never join's or unjoin's subject, made or not, however it is
+// written; the root is never a folder joined, nor the subject; a folder
+// can't join itself.
 func TestJoinRefused(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")
 	ok(t, home, "folder", "create", "/b")
 	ok(t, home, "task", "create", "x", "--blocks", "/a")
+	gates := map[string]string{"/a.done": "join-gate-path", "@1.done": "join-gate-id", "4": "join-gate-own-id", "/b.start": "join-gate-not-made"}
 	for _, cmd := range []string{"join", "unjoin"} {
 		for _, subject := range []string{"/a.done", "@1.done", "4", "/a.start", "@1.start", "/b.start"} {
-			r := fails(t, home, "invalid-input", "", "task", cmd, subject, "/b")
-			if problemFields(r) != "/task" {
-				t.Errorf("task %s %s: %s", cmd, subject, r.Line())
+			r := fails(t, home, "invalid-input", "", cmd, subject, "/b")
+			if problemFields(r) != "/ref" {
+				t.Errorf("%s %s: %s", cmd, subject, r.Line())
+			}
+			if name, ok := gates[subject]; ok && cmd == "join" {
+				golden(t, r, name)
 			}
 		}
-		r := fails(t, home, "invalid-input", "", "task", cmd, "3", "/")
+		r := fails(t, home, "invalid-input", "", cmd, "3", "/")
 		if problemFields(r) != "/join/0" {
-			t.Errorf("task %s 3 /: %s", cmd, r.Line())
+			t.Errorf("%s 3 /: %s", cmd, r.Line())
 		}
-		r = fails(t, home, "invalid-input", "", "task", cmd, "3", "/a.start")
+		r = fails(t, home, "invalid-input", "", cmd, "3", "/a.start")
 		if problemFields(r) != "/join/0" {
-			t.Errorf("task %s 3 /a.start: %s", cmd, r.Line())
+			t.Errorf("%s 3 /a.start: %s", cmd, r.Line())
 		}
-		r = fails(t, home, "invalid-input", "", "folder", cmd, "/", "/a")
-		if problemFields(r) != "/folder" {
-			t.Errorf("folder %s / /a: %s", cmd, r.Line())
+		r = fails(t, home, "invalid-input", "", cmd, "/", "/a")
+		if problemFields(r) != "/ref" {
+			t.Errorf("%s / /a: %s", cmd, r.Line())
 		}
-		r = fails(t, home, "invalid-input", "", "folder", cmd, "/a", "/b", "/")
+		if cmd == "join" {
+			golden(t, r, "join-root")
+		}
+		r = fails(t, home, "invalid-input", "", cmd, "/a", "/b", "/")
 		if problemFields(r) != "/join/1" {
-			t.Errorf("folder %s /a /b /: %s", cmd, r.Line())
+			t.Errorf("%s /a /b /: %s", cmd, r.Line())
+		}
+		// Material is no subject.
+		r = fails(t, home, "invalid-input", "", cmd, "@1:x", "/b")
+		if problemFields(r) != "/ref" {
+			t.Errorf("%s @1:x /b: %s", cmd, r.Line())
 		}
 	}
-	r := fails(t, home, "invalid-input", "", "folder", "join", "/b", "/b")
-	golden(t, r, "folder-join-itself")
+	r := fails(t, home, "invalid-input", "", "join", "/b", "/b")
+	golden(t, r, "join-folder-itself")
 	if problemFields(r) != "/join/0" {
-		t.Errorf("folder join /b /b: %s", r.Line())
+		t.Errorf("join /b /b: %s", r.Line())
 	}
 	// Nothing refused made a gate: /b has none.
 	r = ok(t, home, "task", "list", "/b", "--fields", "id", "--state", "open,complete")
@@ -408,47 +434,75 @@ func TestJoinRefused(t *testing.T) {
 	}
 }
 
-// folder join writes the two edges through the gates; joining again
-// changes nothing.
+// join writes a folder's two edges through the gates; joining again
+// changes nothing. A folder is named by path or by ID, through the
+// command line or -i.
 func TestFolderJoin(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/g")
 	ok(t, home, "folder", "create", "/h")
-	r := ok(t, home, "folder", "join", "/g", "/h")
-	golden(t, r, "folder-join")
+	r := ok(t, home, "join", "/g", "/h")
+	golden(t, r, "join-folder")
 	if fmt.Sprint(r.Result()["gates_made"]) != "[map[end:start folder:map[id:1 path:/g] id:3] map[end:done folder:map[id:1 path:/g] id:4] map[end:start folder:map[id:2 path:/h] id:5] map[end:done folder:map[id:2 path:/h] id:6]]" {
 		t.Errorf("gates: %s", r.Line())
 	}
-	r = ok(t, home, "folder", "join", "1", "/h")
+	r = ok(t, home, "join", "1", "/h")
 	if fmt.Sprint(r.Result()) != "map[changed:false gates_made:[] id:1 reblocked:[]]" {
 		t.Errorf("again: %s", r.Line())
 	}
+
+	home = root(t)
+	ok(t, home, "folder", "create", "/g")
+	ok(t, home, "folder", "create", "/h")
+	r = ok(t, home, "join", "@1", "2")
+	golden(t, r, "join-folder-by-id")
+	if got := waitsOn(t, home, "3"); fmt.Sprint(got) != "[5]" {
+		t.Errorf("/g.start waits on %v", got)
+	}
+	if got := waitsOn(t, home, "6"); fmt.Sprint(got) != "[4]" {
+		t.Errorf("/h.done waits on %v", got)
+	}
+
+	home = root(t)
+	ok(t, home, "folder", "create", "/g")
+	ok(t, home, "folder", "create", "/h")
+	r = input(t, home, "join", `{"ref": "/g", "join": ["/h"]}`)
+	golden(t, r, "join-input-folder")
+	if fmt.Sprint(r.Result()["id"]) != "1" || fmt.Sprint(r.Result()["changed"]) != "true" {
+		t.Errorf("-i: %s", r.Line())
+	}
 }
 
-// task unjoin removes both edges, or the one there, and changes nothing
-// with neither; it never makes a gate.
+// unjoin removes a task's two edges, or the one there, and changes
+// nothing with neither; it never makes a gate.
 func TestTaskUnjoin(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a")
 	ok(t, home, "task", "create", "x", "--join", "/a")
-	r := ok(t, home, "task", "unjoin", "2", "/a")
-	golden(t, r, "task-unjoin")
+	r := ok(t, home, "unjoin", "2", "/a")
+	golden(t, r, "unjoin")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2 4]]" {
 		t.Errorf("both: %s", r.Line())
 	}
-	ok(t, home, "task", "block", "2", "/a.start")
-	r = ok(t, home, "task", "unjoin", "2", "/a")
+	ok(t, home, "join", "2", "/a")
+	r = ok(t, home, "unjoin", "@2", "1")
+	golden(t, r, "unjoin-task-by-id")
+	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2 4]]" {
+		t.Errorf("by ID: %s", r.Line())
+	}
+	ok(t, home, "block", "2", "/a.start")
+	r = ok(t, home, "unjoin", "2", "/a")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2]]" {
 		t.Errorf("one: %s", r.Line())
 	}
-	r = ok(t, home, "task", "unjoin", "2", "/a")
+	r = ok(t, home, "unjoin", "2", "/a")
 	if fmt.Sprint(r.Result()) != "map[changed:false id:2 released:[]]" {
 		t.Errorf("neither: %s", r.Line())
 	}
 
 	// From a folder with no gates: nothing changes, and no gate is made.
 	ok(t, home, "folder", "create", "/b")
-	r = ok(t, home, "task", "unjoin", "2", "/b")
+	r = ok(t, home, "unjoin", "2", "/b")
 	if fmt.Sprint(r.Result()) != "map[changed:false id:2 released:[]]" {
 		t.Errorf("no gates: %s", r.Line())
 	}
@@ -458,42 +512,43 @@ func TestTaskUnjoin(t *testing.T) {
 	}
 }
 
-// folder unjoin removes both edges, or the one there; unjoining a folder
-// from itself changes nothing, and beside another removes only that
-// one's edges.
+// unjoin removes a folder's two edges, or the one there; unjoining a
+// folder from itself changes nothing, and beside another removes only
+// that one's edges.
 func TestFolderUnjoin(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/g")
 	ok(t, home, "folder", "create", "/h")
-	ok(t, home, "folder", "join", "/g", "/h")
-	r := ok(t, home, "folder", "unjoin", "/g", "/h")
-	golden(t, r, "folder-unjoin")
+	ok(t, home, "join", "/g", "/h")
+	r := ok(t, home, "unjoin", "/g", "/h")
+	golden(t, r, "unjoin-folder")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3 6]]" {
 		t.Errorf("both: %s", r.Line())
 	}
-	ok(t, home, "task", "block", "/g.start", "/h.start")
-	r = ok(t, home, "folder", "unjoin", "/g", "/h")
+	ok(t, home, "block", "/g.start", "/h.start")
+	r = ok(t, home, "unjoin", "/g", "/h")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3]]" {
 		t.Errorf("one: %s", r.Line())
 	}
-	r = ok(t, home, "folder", "unjoin", "/g", "/h")
+	r = ok(t, home, "unjoin", "/g", "/h")
 	if fmt.Sprint(r.Result()) != "map[changed:false id:1 released:[]]" {
 		t.Errorf("neither: %s", r.Line())
 	}
 
-	ok(t, home, "folder", "join", "/g", "/h")
-	r = ok(t, home, "folder", "unjoin", "/g", "/g")
+	ok(t, home, "join", "/g", "/h")
+	r = ok(t, home, "unjoin", "/g", "/g")
 	if fmt.Sprint(r.Result()) != "map[changed:false id:1 released:[]]" {
 		t.Errorf("itself: %s", r.Line())
 	}
-	r = ok(t, home, "folder", "unjoin", "/g", "/g", "/h")
+	r = ok(t, home, "unjoin", "/g", "/g", "/h")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3 6]]" {
 		t.Errorf("itself and /h: %s", r.Line())
 	}
 
 	// A subject with no gates: nothing changes, and none is made.
 	ok(t, home, "folder", "create", "/k")
-	r = ok(t, home, "folder", "unjoin", "/k", "/h")
+	r = ok(t, home, "unjoin", "/k", "/h")
+	golden(t, r, "unjoin-folder-missing-gate")
 	if fmt.Sprint(r.Result()) != "map[changed:false id:7 released:[]]" {
 		t.Errorf("no gates: %s", r.Line())
 	}

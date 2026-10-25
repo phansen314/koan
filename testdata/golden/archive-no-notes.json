@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "result": {
+    "id": 1,
+    "archive": null,
+    "json": "$HOME/koan-root/archived/@1.json",
+    "removed": [
+      1
+    ]
+  },
+  "warnings": []
+}

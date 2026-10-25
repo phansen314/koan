@@ -810,7 +810,7 @@ func TestInitDatabaseNotAFile(t *testing.T) {
 
 // A claim is its own row: claiming and ending one leave the task's
 // updated_at alone, and completing a task ends its claim, the one helper
-// release, complete and delete share.
+// unclaim, complete and delete share.
 func TestClaims(t *testing.T) {
 	home, s := newRoot(t, 1)
 	db := rawDB(t, home)

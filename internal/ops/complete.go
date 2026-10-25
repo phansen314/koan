@@ -21,6 +21,9 @@ type offers struct {
 	unmade bool
 	// finished offers only finished folders.
 	finished bool
+	// done offers only folders that have a done gate, which an edge
+	// names when it names a folder with no end.
+	done bool
 	// steps offers folder paths alone, as steps toward a new path.
 	steps bool
 }
@@ -36,9 +39,10 @@ var (
 	tasksOnly       = offers{kinds: []string{"task"}}
 	blockable       = offers{kinds: []string{"task", "gate"}, unmade: true}
 	edgeEnds        = offers{kinds: []string{"task", "gate", "folder"}, unmade: true}
+	madeEnds        = offers{kinds: []string{"task", "gate", "folder"}, done: true}
 	foldersOnly     = offers{kinds: []string{"folder"}}
 	tasksAndFolders = offers{kinds: []string{"task", "folder"}}
-	finishedOnes    = offers{kinds: []string{"folder"}, finished: true}
+	archivable      = offers{kinds: []string{"task", "gate", "folder"}, states: []string{"complete"}, finished: true}
 	newPaths        = offers{steps: true}
 	anyRef          = offers{kinds: []string{"task", "gate", "folder"}}
 )
@@ -95,6 +99,9 @@ func (o offers) choices(t *tasks) []choice {
 	var out []choice
 	for _, c := range choices(t, p, core.RootID) {
 		if c.kind == "folder" && o.finished && t.folders.counts[c.id].Open != 0 {
+			continue
+		}
+		if _, ok := t.folders.gates[c.id][core.EndDone]; c.kind == "folder" && o.done && !ok {
 			continue
 		}
 		out = append(out, c)

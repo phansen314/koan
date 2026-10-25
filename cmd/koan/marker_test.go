@@ -64,7 +64,7 @@ func TestMarkerBind(t *testing.T) {
 	wt := mkdir(t, home, "wt")
 	r := ok(t, home, "marker", "bind", "/work/api", wt)
 	golden(t, r, "marker-bind")
-	if r.Result()["replaced"] != false || r.Result()["file"] != markerFile(wt) {
+	if r.Result()["replaced"] != false || r.Result()["marker"] != markerFile(wt) {
 		t.Errorf("bind: %s", r.Line())
 	}
 	m := checkMarker(t, wt)
@@ -129,7 +129,7 @@ func TestMarkerBind(t *testing.T) {
 		t.Errorf("--force=x: %s", r.Line())
 	}
 	ok(t, home, "folder", "create", "/done")
-	ok(t, home, "folder", "archive", "/done")
+	ok(t, home, "archive", "/done")
 	fails(t, home, "not-found", "", "marker", "bind", "/done", wt)
 	r = fails(t, home, "not-found", "", "marker", "bind", "@6", wt)
 	if len(r.Error()["archived"].([]any)) != 1 {
@@ -237,7 +237,7 @@ func TestMarkerBindRealPath(t *testing.T) {
 	via := filepath.Join(home, "via")
 	os.Symlink(wt, via)
 	r := ok(t, home, "marker", "bind", "/work", via)
-	if r.Result()["file"] != via+"/.koan/marker.json" || r.Result()["marker"].(map[string]any)["dir"] != wt {
+	if r.Result()["marker"] != via+"/.koan/marker.json" || r.Result()["binding"].(map[string]any)["dir"] != wt {
 		t.Errorf("via: %s", r.Line())
 	}
 	if got := koanDir(t, wt); len(got) != 2 {
@@ -315,10 +315,10 @@ func TestMarkerBindDir(t *testing.T) {
 	ok(t, home, "folder", "create", "/work")
 	wt := mkdir(t, home, "wt")
 	sub := mkdir(t, wt, "sub")
-	if r := koanIn(t, home, sub, "marker", "bind", "/work"); r.Result()["file"] != markerFile(sub) {
+	if r := koanIn(t, home, sub, "marker", "bind", "/work"); r.Result()["marker"] != markerFile(sub) {
 		t.Errorf("cwd: %s", r.Line())
 	}
-	if r := koanIn(t, home, sub, "marker", "bind", "/work", ".."); r.Result()["file"] != markerFile(wt) {
+	if r := koanIn(t, home, sub, "marker", "bind", "/work", ".."); r.Result()["marker"] != markerFile(wt) {
 		t.Errorf("relative: %s", r.Line())
 	}
 	for _, c := range []struct{ in, field string }{
@@ -341,7 +341,7 @@ func TestMarkerBindDir(t *testing.T) {
 	usageAt(t, home, "/work", "marker", "bind", "/work", wt, "-i", "-")
 	r := testrun.Run{Home: home, Stdin: strings.NewReader(`{"folder":"/work","dir":"` + wt + `"}`)}.Koan(t, "marker", "bind", "-i", "-")
 	r.Check(t, "marker bind")
-	if r.Exit != 0 || r.Result()["file"] != markerFile(wt) {
+	if r.Exit != 0 || r.Result()["marker"] != markerFile(wt) {
 		t.Errorf("--input: %s", r.Line())
 	}
 	golden(t, r, "marker-bind-input")

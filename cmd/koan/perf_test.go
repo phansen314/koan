@@ -221,13 +221,13 @@ const batchParts = 100
 // repair 1 s, export 200 ms, a batch 100 ms and 1 ms a part, and backup
 // none.
 var perfOps = []perfOp{
-	{name: "task show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"task", "show", r.task(i, 50)} }},
+	{name: "show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.task(i, 50)} }},
 	{name: "task list", budget: 100 * ms, args: always("task", "list")},
 	{name: "task list all", budget: 100 * ms, args: always("task", "list", "--state", "open,complete", "--limit", "null")},
-	{name: "task frontier", budget: 100 * ms, args: always("task", "frontier")},
-	{name: "task frontier all", budget: 100 * ms, args: always("task", "frontier", "--limit", "null", "--recursive")},
-	{name: "task why", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"task", "why", r.task(i, 97)} }},
-	{name: "folder show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"folder", "show", r.folder(i)} }},
+	{name: "frontier", budget: 100 * ms, args: always("frontier")},
+	{name: "frontier all", budget: 100 * ms, args: always("frontier", "--limit", "null", "--recursive")},
+	{name: "why", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"why", r.task(i, 97)} }},
+	{name: "show folder", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.folder(i)} }},
 	{name: "folder list", budget: 100 * ms, args: always("folder", "list", "--limit", "null", "--recursive")},
 	{name: "where", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"where", "@" + r.task(i, 50)} }},
 	{name: "where --file", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
@@ -237,12 +237,12 @@ var perfOps = []perfOp{
 	{name: "export", budget: 200 * ms, args: func(r *perfRoot, i int) []string { return []string{"export", r.folder(i)} }},
 	{name: "export all", budget: 200 * ms, args: always("export", "/")},
 	{name: "info", budget: 100 * ms, args: always("info")},
-	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "task", "block", "1", "@")},
+	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "block", "1", "@")},
 	{name: "complete id", budget: 100 * ms, plain: true, args: func(r *perfRoot, i int) []string {
 		id := r.task(i, 50)
-		return []string{"__complete", "task", "show", "@" + id[:max(1, len(id)-1)]}
+		return []string{"__complete", "show", "@" + id[:max(1, len(id)-1)]}
 	}},
-	{name: "complete path", budget: 100 * ms, plain: true, args: always("__complete", "folder", "show", "/")},
+	{name: "complete path", budget: 100 * ms, plain: true, args: always("__complete", "show", "/")},
 	{name: "version", budget: 100 * ms, args: always("version")},
 	{name: "init", budget: 100 * ms, args: always("init")},
 	{name: "task create", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
@@ -251,21 +251,21 @@ var perfOps = []perfOp{
 	{name: "task update", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		return []string{"task", "update", r.task(i, 50), "--title", fmt.Sprint("updated ", i), "--tags-add", "x"}
 	}},
-	{name: "task complete", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "reopen", r.task(i, 96)) },
-		args: func(r *perfRoot, i int) []string { return []string{"task", "complete", r.task(i, 96)} }},
-	{name: "task reopen", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "complete", r.task(i, 95)) },
-		args: func(r *perfRoot, i int) []string { return []string{"task", "reopen", r.task(i, 95)} }},
-	{name: "task block", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "unblock", r.task(i, 94), r.task(i+1, 10)) },
+	{name: "complete", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("reopen", r.task(i, 96)) },
+		args: func(r *perfRoot, i int) []string { return []string{"complete", r.task(i, 96)} }},
+	{name: "reopen", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("complete", r.task(i, 95)) },
+		args: func(r *perfRoot, i int) []string { return []string{"reopen", r.task(i, 95)} }},
+	{name: "block", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("unblock", r.task(i, 94), r.task(i+1, 10)) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"task", "block", r.task(i, 94), r.task(i+1, 10)}
+			return []string{"block", r.task(i, 94), r.task(i+1, 10)}
 		}},
-	{name: "task unblock", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "block", r.task(i, 93), r.task(i, 92)) },
+	{name: "unblock", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("block", r.task(i, 93), r.task(i, 92)) },
 		args: func(r *perfRoot, i int) []string {
-			return []string{"task", "unblock", r.task(i, 93), r.task(i, 92)}
+			return []string{"unblock", r.task(i, 93), r.task(i, 92)}
 		}},
 	{name: "task mv", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		to := fmt.Sprint("@", r.moving)
@@ -279,25 +279,25 @@ var perfOps = []perfOp{
 			r.seq = int(num(r.must("task", "create", "doomed", "--folder", r.folder(i), "--blocks", r.task(i, 97))["id"]))
 		},
 		args: func(r *perfRoot, i int) []string { return []string{"task", "delete", fmt.Sprint(r.seq)} }},
-	{name: "task archive", budget: 100 * ms,
+	{name: "archive task", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			r.seq = int(num(r.must("task", "create", "done", "--folder", r.folder(i), "--notes", "notes")["id"]))
-			r.must("task", "complete", fmt.Sprint(r.seq))
+			r.must("complete", fmt.Sprint(r.seq))
 		},
-		args: func(r *perfRoot, i int) []string { return []string{"task", "archive", fmt.Sprint(r.seq)} }},
-	{name: "task claim", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "release", r.task(i, 90)) },
-		args: func(r *perfRoot, i int) []string { return []string{"task", "claim", r.task(i, 90)} }},
-	{name: "task claim-next", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("task", "release", r.task(i, 33)) },
-		args: func(r *perfRoot, i int) []string { return []string{"task", "claim-next", r.folder(i)} }},
-	{name: "task release", budget: 100 * ms,
+		args: func(r *perfRoot, i int) []string { return []string{"archive", fmt.Sprint(r.seq)} }},
+	{name: "claim", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("unclaim", r.task(i, 90)) },
+		args: func(r *perfRoot, i int) []string { return []string{"claim", r.task(i, 90)} }},
+	{name: "claim-next", budget: 100 * ms,
+		prep: func(r *perfRoot, i int) { r.must("unclaim", r.task(i, 33)) },
+		args: func(r *perfRoot, i int) []string { return []string{"claim-next", r.folder(i)} }},
+	{name: "unclaim", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
-			if res := r.run("", "task", "claim", r.task(i, 89)); !res.OK() && res.Error()["rule"] != "claimed" {
+			if res := r.run("", "claim", r.task(i, 89)); !res.OK() && res.Error()["rule"] != "claimed" {
 				r.tb.Fatal(res.Line())
 			}
 		},
-		args: func(r *perfRoot, i int) []string { return []string{"task", "release", r.task(i, 89)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"unclaim", r.task(i, 89)} }},
 	{name: "folder create", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		r.seq++
 		return []string{"folder", "create", fmt.Sprintf("/new/n%d/x", r.seq), "--notes", "notes"}
@@ -317,9 +317,9 @@ var perfOps = []perfOp{
 		args: func(r *perfRoot, i int) []string {
 			return []string{"folder", "delete", fmt.Sprint(r.seq), "--contents"}
 		}},
-	{name: "folder archive", budget: 100 * ms,
+	{name: "archive folder", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.seq = r.smallFolder("/arc", true) },
-		args: func(r *perfRoot, i int) []string { return []string{"folder", "archive", fmt.Sprint(r.seq)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"archive", fmt.Sprint(r.seq)} }},
 	{name: "batch", budget: 100*ms + batchParts*ms, args: always("batch", "-i", "-"), stdin: func(r *perfRoot, i int) string {
 		r.seq++
 		var tasks []any

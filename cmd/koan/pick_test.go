@@ -206,8 +206,8 @@ func pickTree(t *testing.T) string {
 	if string(got) != want {
 		t.Fatalf("the tree's IDs: %s", got)
 	}
-	ok(t, home, "task", "complete", "6")
-	ok(t, home, "task", "claim", "4")
+	ok(t, home, "complete", "6")
+	ok(t, home, "claim", "4")
 	return home
 }
 

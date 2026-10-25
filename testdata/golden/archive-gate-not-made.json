@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "@1 (/work) has no done gate",
+    "ids": [],
+    "paths": [
+      "/work.done"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unjoin",
+  "$defs": {
+    "input": {
+      "$ref": "join#/$defs/input"
+    },
+    "result": {
+      "$ref": "unblock#/$defs/result"
+    }
+  }
+}

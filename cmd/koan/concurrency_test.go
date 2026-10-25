@@ -134,7 +134,7 @@ func TestConcurrency(t *testing.T) {
 	var procs []*proc
 	add := func(stdin string, args ...string) { procs = append(procs, &proc{args: args, stdin: stdin}) }
 	for range claimers {
-		add("", "task", "claim-next", "/pool")
+		add("", "claim-next", "/pool")
 	}
 	for i := range movers {
 		add("", "folder", "mv", "-T", fmt.Sprintf("/m%d", i), fmt.Sprintf("/moved/m%d", i))
@@ -143,10 +143,10 @@ func TestConcurrency(t *testing.T) {
 		add("", "folder", "delete", fmt.Sprintf("/d%d", i), "--contents")
 	}
 	for i := range archivers {
-		add("", "folder", "archive", fmt.Sprintf("/a%d", i))
+		add("", "archive", fmt.Sprintf("/a%d", i))
 	}
 	for _, id := range cIDs {
-		add("", "task", "complete", id)
+		add("", "complete", id)
 	}
 	for i := range batches {
 		add(fmt.Sprintf(`{"folders":[{"path":"/b/b%d"}],"folder":"/b/b%d","tasks":[
@@ -231,7 +231,7 @@ func TestConcurrency(t *testing.T) {
 		}
 		res := p.result()
 		switch p.args[0] + " " + p.args[1] {
-		case "task claim-next":
+		case "claim-next /pool":
 			if c, _ := res["claim"].(map[string]any); c != nil {
 				claimed[fmt.Sprint(c["task"])]++
 			} else {
@@ -289,7 +289,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	// A claimer that got busy took nothing; the pool is claimed whole
 	// unless one did.
-	if b := busyBy["task claim-next"]; len(claimed)+nulls+b != claimers || len(claimed) > pool || b == 0 && len(claimed) != pool {
+	if b := busyBy["claim-next /pool"]; len(claimed)+nulls+b != claimers || len(claimed) > pool || b == 0 && len(claimed) != pool {
 		t.Errorf("%d claimed, %d nulls, %d busy", len(claimed), nulls, b)
 	}
 

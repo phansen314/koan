@@ -29,9 +29,9 @@ func completeTree(t *testing.T) string {
 	    {"title": "Shipped", "folder": "/old"},
 	    {"title": "Root task"}]}`)
 	ok(t, home, "task", "create", "Notes")
-	ok(t, home, "task", "complete", "8")
-	ok(t, home, "task", "complete", "10")
-	ok(t, home, "task", "claim", "6")
+	ok(t, home, "complete", "8")
+	ok(t, home, "complete", "10")
+	ok(t, home, "claim", "6")
 	return home
 }
 
@@ -101,75 +101,81 @@ func TestCompleteReferences(t *testing.T) {
 		"3", "5", "6", "3.start", "3.done", "4", "4.start", "4.done"}
 	folders := []string{"1", "2", "3", "4"}
 	tasksAndFolders := []string{"9", "12", "1", "8", "2", "7", "3", "5", "6", "4"}
+	anyRef := []string{"9", "12", "1", "8", "2", "7", "3", "5", "6", "3.start", "3.done", "4"}
+	unblockEnds := []string{"9", "12", "8", "7", "3", "5", "6", "3.start", "3.done"}
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		// Tasks and made gates, in pick's order.
-		{[]string{"task", "show", ""}, offered(byID, as("@", all...)...)},
-		{[]string{"task", "show", "@"}, offered(byID, as("@", all...)...)},
-		{[]string{"task", "why", "@"}, offered(byID, as("@", all...)...)},
+		{[]string{"why", ""}, offered(byID, as("@", all...)...)},
+		{[]string{"why", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"task", "update", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"task", "delete", "@"}, offered(byID, as("@", all...)...)},
-		{[]string{"task", "unblock", "@"}, offered(byID, as("@", all...)...)},
+		{[]string{"unblock", "@"}, offered(byID, as("@", all...)...)},
 		// An ID's digits, with or without the @, as typed; a gate by its
 		// folder's ID and end.
-		{[]string{"task", "show", "1"}, offered(byID, as("", "12")...)},
-		{[]string{"task", "show", "@1"}, offered(byID, as("@", "12")...)},
-		{[]string{"task", "show", "@3"}, offered(byID, as("@", "3.start", "3.done")...)},
-		{[]string{"task", "show", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
-		{[]string{"task", "show", "3.d"}, offered(byID, as("", "3.done")...)},
-		{[]string{"task", "show", "@3.done"}, offered(byID, as("@", "3.done")...)},
-		{[]string{"task", "show", "@10"}, offered(byID)},
-		{[]string{"task", "show", "@3.x"}, offered(byID)},
-		{[]string{"task", "show", "@x"}, offered(byID)},
-		{[]string{"task", "show", "@.start"}, offered(byID)},
-		{[]string{"task", "show", "@@1"}, offered(byID)},
+		{[]string{"why", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"why", "@1"}, offered(byID, as("@", "12")...)},
+		{[]string{"why", "@3"}, offered(byID, as("@", "3.start", "3.done")...)},
+		{[]string{"why", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
+		{[]string{"why", "3.d"}, offered(byID, as("", "3.done")...)},
+		{[]string{"why", "@3.done"}, offered(byID, as("@", "3.done")...)},
+		{[]string{"why", "@10"}, offered(byID)},
+		{[]string{"why", "@3.x"}, offered(byID)},
+		{[]string{"why", "@x"}, offered(byID)},
+		{[]string{"why", "@.start"}, offered(byID)},
+		{[]string{"why", "@@1"}, offered(byID)},
 		// By state and claim, gates as tasks.
-		{[]string{"task", "complete", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
-		{[]string{"task", "reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
-		{[]string{"task", "archive", "@"}, offered(byID, as("@", "8", "3.start")...)},
-		{[]string{"task", "claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
-		{[]string{"task", "release", "@"}, offered(byID, as("@", "6")...)},
+		{[]string{"complete", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
+		{[]string{"reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
+		{[]string{"claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
+		{[]string{"unclaim", "@"}, offered(byID, as("@", "6")...)},
 		{[]string{"task", "mv", "@"}, offered(byID, as("@", allTasks...)...)},
-		{[]string{"task", "join", "@"}, offered(byID, as("@", allTasks...)...)},
-		{[]string{"task", "unjoin", "@"}, offered(byID, as("@", allTasks...)...)},
 		// Gates made or not where an edge names them.
-		{[]string{"task", "block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
+		{[]string{"block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
-		{[]string{"task", "block", "5", "@"}, offered(byID, as("@", edges...)...)},
-		{[]string{"task", "block", "5", "--blocks", ""}, offered(byID, as("@", edges...)...)},
-		{[]string{"task", "unblock", "5", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"block", "5", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"block", "5", "--blocks", ""}, offered(byID, as("@", edges...)...)},
+		// unblock's words: tasks, made gates, and folders that have a
+		// done gate, since it never makes a gate.
+		{[]string{"unblock", "5", "@"}, offered(byID, as("@", unblockEnds...)...)},
+		{[]string{"unblock", "5", "--blocks", ""}, offered(byID, as("@", unblockEnds...)...)},
+		{[]string{"unblock", "5", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"unblock", "5", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
 		{[]string{"task", "create", "t", "--blocked-by", "@2"}, offered(byID, as("@", "2", "2.start", "2.done")...)},
 		{[]string{"task", "create", "t", "--blocks=2."}, offered(byID, as("", "2.start", "2.done")...)},
 		// Folders.
 		{[]string{"task", "create", "t", "--folder", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "list", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "frontier", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "claim-next", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"frontier", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"claim-next", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "list", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"pick", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "mv", "5", "-t", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "show", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "update", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "mv", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "delete", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"export", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"marker", "bind", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "join", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "unjoin", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "create", "t", "--join", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "create", "/new", "--join", "@"}, offered(byID, as("@", folders...)...)},
+		// A join's subject: tasks and folders, never gates.
+		{[]string{"join", ""}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"join", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"unjoin", "@"}, offered(byID, as("@", tasksAndFolders...)...)},
+		{[]string{"join", "3"}, offered(byID, as("", "3")...)},
+		{[]string{"unjoin", "@3"}, offered(byID, as("@", "3")...)},
 		// Each word after a join's subject offers folders.
-		{[]string{"task", "join", "5", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "unjoin", "5", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "join", "3", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "unjoin", "3", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "join", "5", "/work/api", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "join", "/work/api", "/old", "2"}, offered(byID, as("", "2")...)},
-		{[]string{"folder", "show", "3"}, offered(byID, as("", "3")...)},
-		{[]string{"folder", "archive", "@"}, offered(byID, as("@", "1", "4")...)},
+		{[]string{"join", "5", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"unjoin", "5", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"join", "3", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"unjoin", "3", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"join", "5", "/work/api", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"join", "/work/api", "/old", "2"}, offered(byID, as("", "2")...)},
+		{[]string{"context", "3"}, offered(byID, as("", "3")...)},
 		// task mv: the first word offers tasks, and every word after it
 		// tasks and folders, since any can be the last; after -t, every
 		// word is a task.
@@ -190,38 +196,46 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "mv", "--rename", "3", "2"}, offered(byID)},
 		{[]string{"folder", "mv", "-T", "3", "/old", ""}, offered(byNothing)},
 		// Each word of a list subject offers what the subject takes.
-		{[]string{"task", "complete", "9", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
-		{[]string{"task", "complete", "9", "12", "1"}, offered(byID, as("", "12")...)},
-		{[]string{"task", "reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
+		{[]string{"complete", "9", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
+		{[]string{"complete", "9", "12", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"task", "delete", "9", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"folder", "delete", "3", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"task", "unblock", "5", "6", "@"}, offered(byID, as("@", edges...)...)},
-		// where: tasks, made gates and folders.
-		{[]string{"where", ""}, offered(byID, as("@", "9", "12", "1", "8", "2", "7", "3", "5", "6", "3.start", "3.done", "4")...)},
+		{[]string{"unblock", "5", "6", "@"}, offered(byID, as("@", unblockEnds...)...)},
+		// show and where: tasks, made gates and folders.
+		{[]string{"show", ""}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"show", "@"}, offered(byID, as("@", anyRef...)...)},
+		{[]string{"show", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
+		{[]string{"where", ""}, offered(byID, as("@", anyRef...)...)},
 		{[]string{"where", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
+		// archive: complete tasks, made gates, and finished folders.
+		{[]string{"archive", ""}, offered(byID, as("@", "1", "8", "3.start", "4")...)},
+		{[]string{"archive", "@"}, offered(byID, as("@", "1", "8", "3.start", "4")...)},
+		{[]string{"archive", "1"}, offered(byID, as("", "1")...)},
+		{[]string{"archive", "@3"}, offered(byID, as("@", "3.start")...)},
 		// Paths as paths, folder by folder.
-		{[]string{"folder", "show", "/"}, offered(byPath, "/old", "/work")},
-		{[]string{"folder", "show", "/w"}, offered(byPath, "/work")},
-		{[]string{"folder", "show", "/work"}, offered(byPath, "/work")},
-		{[]string{"folder", "show", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
-		{[]string{"folder", "show", "/work/ap"}, offered(byPath, "/work/api", "/work/apps")},
-		{[]string{"folder", "show", "/work/api"}, offered(byPath, "/work/api")},
-		{[]string{"folder", "show", "/work."}, offered(byPath)},
-		{[]string{"folder", "show", "/Work/"}, offered(byPath)},
-		{[]string{"folder", "show", "/nope/"}, offered(byPath)},
-		{[]string{"folder", "show", "/work//"}, offered(byPath)},
+		{[]string{"context", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"context", "/w"}, offered(byPath, "/work")},
+		{[]string{"context", "/work"}, offered(byPath, "/work")},
+		{[]string{"context", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"context", "/work/ap"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"context", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"context", "/work."}, offered(byPath)},
+		{[]string{"context", "/Work/"}, offered(byPath)},
+		{[]string{"context", "/nope/"}, offered(byPath)},
+		{[]string{"context", "/work//"}, offered(byPath)},
 		{[]string{"task", "list", "/w"}, offered(byPath, "/work")},
 		{[]string{"task", "mv", "5", "-t", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
-		{[]string{"task", "join", "42", "/w"}, offered(byPath, "/work")},
-		{[]string{"task", "unjoin", "5", "/work/api"}, offered(byPath, "/work/api")},
-		{[]string{"folder", "join", "/work/api", "/o"}, offered(byPath, "/old")},
-		{[]string{"folder", "unjoin", "/work/api", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"join", "42", "/w"}, offered(byPath, "/work")},
+		{[]string{"unjoin", "5", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"join", "/work/api", "/o"}, offered(byPath, "/old")},
+		{[]string{"unjoin", "/work/api", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"task", "create", "t", "--join", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "create", "/new", "--join", "/w"}, offered(byPath, "/work")},
 		{[]string{"context", "/o"}, offered(byPath, "/old")},
 		{[]string{"export", "/o"}, offered(byPath, "/old")},
-		{[]string{"task", "frontier", "/w"}, offered(byPath, "/work")},
-		{[]string{"task", "claim-next", "/w"}, offered(byPath, "/work")},
+		{[]string{"frontier", "/w"}, offered(byPath, "/work")},
+		{[]string{"claim-next", "/w"}, offered(byPath, "/work")},
 		{[]string{"folder", "list", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"pick", "/o"}, offered(byPath, "/old")},
 		{[]string{"marker", "bind", "/o"}, offered(byPath, "/old")},
@@ -232,27 +246,38 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "mv", "/work/api", "/old", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "mv", "-T", "/w"}, offered(byPath, "/work")},
 		{[]string{"folder", "delete", "/work/api", "/o"}, offered(byPath, "/old")},
-		{[]string{"task", "complete", "9", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
+		{[]string{"complete", "9", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
 		// A folder is a step toward its gates, wherever a gate is taken.
-		{[]string{"task", "show", "/"}, offered(byPath, "/old", "/work")},
-		{[]string{"task", "show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
-		{[]string{"task", "show", "/work/api."}, offered(byPath, "/work/api.start", "/work/api.done")},
-		{[]string{"task", "show", "/work/api.d"}, offered(byPath, "/work/api.done")},
-		{[]string{"task", "show", "/work/ap"}, offered(byPath, "/work/api", "/work/apps")},
-		{[]string{"task", "show", "/work"}, offered(byPath, "/work")},
-		{[]string{"task", "complete", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
-		{[]string{"task", "reopen", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
-		{[]string{"task", "block", "/work"}, offered(byPath, "/work", "/work.start", "/work.done")},
-		{[]string{"task", "block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
-		{[]string{"task", "block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"why", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"why", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"why", "/work/api."}, offered(byPath, "/work/api.start", "/work/api.done")},
+		{[]string{"why", "/work/api.d"}, offered(byPath, "/work/api.done")},
+		{[]string{"why", "/work/ap"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"why", "/work"}, offered(byPath, "/work")},
+		{[]string{"complete", "/work/api"}, offered(byPath, "/work/api", "/work/api.done")},
+		{[]string{"reopen", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
+		{[]string{"block", "/work"}, offered(byPath, "/work", "/work.start", "/work.done")},
+		{[]string{"block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
+		{[]string{"block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"unblock", "5", "/work"}, offered(byPath, "/work")},
+		{[]string{"unblock", "5", "/work."}, offered(byPath)},
+		{[]string{"unblock", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"show", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"show", "/work/api.s"}, offered(byPath, "/work/api.start")},
 		// Only tasks: a path offers nothing.
 		{[]string{"task", "mv", "/"}, offered(byPath)},
-		{[]string{"task", "join", "/"}, offered(byPath)},
-		{[]string{"task", "unjoin", "/work/api"}, offered(byPath)},
-		// Finished folders, and the steps toward them.
-		{[]string{"folder", "archive", "/"}, offered(byPath, "/old", "/work")},
-		{[]string{"folder", "archive", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		// A join's subject: folders, but no gates after a path.
+		{[]string{"join", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"unjoin", "/work/api"}, offered(byPath, "/work/api")},
+		{[]string{"join", "/work/api."}, offered(byPath)},
+		// archive: finished folders and complete gates, and the steps
+		// toward them.
+		{[]string{"archive", "/"}, offered(byPath, "/old", "/work")},
+		{[]string{"archive", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
+		{[]string{"archive", "/work/api"}, offered(byPath, "/work/api", "/work/api.start")},
+		{[]string{"archive", "/work/api.d"}, offered(byPath)},
 		// Paths only, as steps toward a new path.
 		{[]string{"folder", "create", "/work/"}, offered(byPath, "/work/api", "/work/apps")},
 		{[]string{"folder", "create", "/work/api"}, offered(byPath, "/work/api")},
@@ -264,15 +289,15 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"where", "@2/api"}, offered(byID)},
 		{[]string{"where", "/work/api:"}, offered(byID)},
 		{[]string{"where", "@3:docs"}, offered(byID)},
-		{[]string{"task", "block", "5", "$design"}, offered(byID)},
-		{[]string{"task", "show", "work"}, offered(byID)},
+		{[]string{"block", "5", "$design"}, offered(byID)},
+		{[]string{"why", "work"}, offered(byID)},
 		// Only a list's first item completes.
-		{[]string{"task", "block", "5", "6,@"}, offered(byID)},
-		{[]string{"task", "block", "5", "6", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
-		{[]string{"task", "join", "5", "/old,/w"}, offered(byID)},
+		{[]string{"block", "5", "6,@"}, offered(byID)},
+		{[]string{"block", "5", "6", "@3."}, offered(byID, as("@", "3.start", "3.done")...)},
+		{[]string{"join", "5", "/old,/w"}, offered(byID)},
 		{[]string{"task", "create", "t", "--join", "/old,/w"}, offered(byID)},
 		// A subject given, and values that aren't references.
-		{[]string{"task", "show", "5", ""}, offered(byNothing)},
+		{[]string{"why", "5", ""}, offered(byNothing)},
 		{[]string{"task", "create", ""}, offered(byNothing)},
 		{[]string{"task", "create", "t", "--tags", ""}, offered(byNothing)},
 		{[]string{"task", "list", "--state", ""}, offered(byNothing)},
@@ -288,16 +313,21 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"marker", "bind", "3", "/tmp", ""}, offered(byNothing)},
 		{[]string{"marker", "unbind", "/tmp", ""}, offered(byNothing)},
 		{[]string{"backup", "/tmp", ""}, offered(byNothing)},
-		{[]string{"task", "show", "-i", ""}, offered(byFiles)},
+		{[]string{"why", "-i", ""}, offered(byFiles)},
 	} {
 		if got := completes(t, home, c.args...); got != c.want {
 			t.Errorf("__complete %q:\ngot:\n%s\nwant:\n%s", c.args, got, c.want)
 		}
 	}
 	// Without descriptions, the candidates alone.
-	r := testrun.Run{Home: home}.Koan(t, "__completeNoDesc", "task", "show", "@3")
+	r := testrun.Run{Home: home}.Koan(t, "__completeNoDesc", "why", "@3")
 	if want := offered(byID, "@3.start", "@3.done"); r.Stdout != want {
 		t.Errorf("__completeNoDesc: %q, want %q", r.Stdout, want)
+	}
+	// complete and completion both start comp: one more letter settles it.
+	r = testrun.Run{Home: home}.Koan(t, "__completeNoDesc", "comp")
+	if want := offered(byNothing, "complete", "completion"); r.Stdout != want {
+		t.Errorf("__completeNoDesc comp: %q, want %q", r.Stdout, want)
 	}
 }
 
@@ -318,11 +348,11 @@ func manyTree(t *testing.T) string {
 func TestCompleteTooMany(t *testing.T) {
 	home := manyTree(t)
 	hint := "_activeHelp_ 101 match: type more, or use koan pick"
-	if got, want := completes(t, home, "task", "show", "@"), offered(byID, hint); got != want {
+	if got, want := completes(t, home, "why", "@"), offered(byID, hint); got != want {
 		t.Errorf("101: %q, want %q", got, want)
 	}
-	ok(t, home, "task", "complete", "101")
-	got := completes(t, home, "task", "complete", "")
+	ok(t, home, "complete", "101")
+	got := completes(t, home, "complete", "")
 	if lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n"); len(lines) != 101 ||
 		lines[0] != "@1\tTask 1  /" || lines[99] != "@100\tTask 100  /" || lines[100] != ":36" {
 		t.Errorf("100: %d lines:\n%s", len(lines), got)
@@ -333,7 +363,7 @@ func TestCompleteTooMany(t *testing.T) {
 		want = append(want, fmt.Sprintf("%d\tTask %d  /", i, i))
 	}
 	want = append(want, "100\tTask 100  /", "101\tTask 101  /")
-	if got := completes(t, home, "task", "show", "1"); got != offered(byID, want...) {
+	if got := completes(t, home, "why", "1"); got != offered(byID, want...) {
 		t.Errorf("typed 1: %q", got)
 	}
 }
@@ -341,10 +371,10 @@ func TestCompleteTooMany(t *testing.T) {
 // A root that isn't usable offers nothing, and prints no envelope.
 func TestCompleteFailures(t *testing.T) {
 	home := t.TempDir()
-	if got := completes(t, home, "task", "show", "@"); got != offered(byID) {
+	if got := completes(t, home, "why", "@"); got != offered(byID) {
 		t.Errorf("no root: %q", got)
 	}
-	if got := completes(t, home, "folder", "show", "/"); got != offered(byPath) {
+	if got := completes(t, home, "context", "/"); got != offered(byPath) {
 		t.Errorf("no root, a path: %q", got)
 	}
 }

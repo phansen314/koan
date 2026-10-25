@@ -14,8 +14,8 @@ import (
 
 // MarkerBindResult is marker bind's result, in its schema's order.
 type MarkerBindResult struct {
-	Marker   markers.Marker `json:"marker"`
-	File     string         `json:"file"`
+	Marker   string         `json:"marker"`
+	Binding  markers.Marker `json:"binding"`
 	Replaced bool           `json:"replaced"`
 }
 
@@ -49,7 +49,7 @@ func MarkerBind() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			res := MarkerBindResult{File: markers.File(dir)}
+			res := MarkerBindResult{Marker: markers.File(dir)}
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
 				id, err := resolveFolder(tx, ref, "folder")
 				if err != nil {
@@ -71,13 +71,13 @@ func MarkerBind() *cli.Command {
 				}
 				res.Replaced = slices.Contains(names, markers.FileName)
 				if res.Replaced && !force {
-					m, why := markers.Read(res.File, real)
+					m, why := markers.Read(res.Marker, real)
 					if n, ok := tx.Node(m.ID); why == "" && ok && n.Kind == core.NodeFolder && m.ID != id {
-						return nil, core.Conflict(core.RuleBound, []int64{m.ID}, []string{res.File},
+						return nil, core.Conflict(core.RuleBound, []int64{m.ID}, []string{res.Marker},
 							"%s is bound to @%d (%s); use --force to bind it to @%d instead", dir, m.ID, tx.Path(m.ID), id)
 					}
 				}
-				res.Marker = markers.Marker{Schema: markers.Schema, ID: id, Path: tx.Path(id), Dir: real}
+				res.Binding = markers.Marker{Schema: markers.Schema, ID: id, Path: tx.Path(id), Dir: real}
 				return nil, nil
 			})
 			if e != nil {
@@ -87,8 +87,8 @@ func MarkerBind() *cli.Command {
 				at := dir + "/" + markers.DirName
 				return nil, nil, cli.IO("could not write the marker: "+at+" is not a directory", at)
 			}
-			if err := markers.Write(dir, res.Marker); err != nil {
-				return nil, nil, writeIO(err, res.File)
+			if err := markers.Write(dir, res.Binding); err != nil {
+				return nil, nil, writeIO(err, res.Marker)
 			}
 			return res, warnings, nil
 		},

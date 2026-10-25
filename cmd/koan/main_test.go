@@ -187,7 +187,7 @@ func TestMalformed(t *testing.T) {
 		{[]string{"task", "frob"}, "frob"},
 		{[]string{"folder"}, ""},
 		{[]string{"marker", "Bind"}, "Bind"},
-		{[]string{"task", "show"}, ""},
+		{[]string{"show"}, ""},
 		{[]string{"task", "list", "--limit", "ten"}, "--limit"},
 		{[]string{"task", "list", "--recursive=maybe"}, "--recursive"},
 		{[]string{"task", "list", "--claimed", "--claimed=false"}, "--claimed"},
@@ -229,6 +229,51 @@ func TestHelp(t *testing.T) {
 	for _, opt := range []string{"--blocked-by", "--notes-file", "--input"} {
 		if !strings.Contains(r.Stdout, opt) {
 			t.Errorf("task create --help lacks %s: %q", opt, r.Stdout)
+		}
+	}
+}
+
+// Help's usage lines are the spec's, its summaries say what a command
+// does, and an option that takes a reference says which kind.
+func TestHelpText(t *testing.T) {
+	for _, c := range []struct {
+		args  []string
+		has   []string
+		lacks []string
+	}{
+		{[]string{"where", "-h"}, []string{"koan where <ref> [flags]\n", "koan where --file <path> [flags]\n"}, []string{"[<ref>]"}},
+		{[]string{"folder", "mv", "-h"}, []string{
+			"koan folder mv <folder> <dest> [flags]\n", "koan folder mv <folder>... <folder> [flags]\n",
+			"koan folder mv -t <folder> <folder>... [flags]\n", "koan folder mv -T <folder> <path> [flags]\n",
+			"-t, --into folder "}, []string{"string"}},
+		{[]string{"unblock", "-h"}, []string{"Remove edges: what a task waits on, or what waits on it"}, nil},
+		{[]string{"task", "mv", "-h"}, []string{"-t, --into folder "}, nil},
+		{[]string{"task", "create", "-h"}, []string{"--folder folder "}, nil},
+	} {
+		r := testrun.Koan(t, c.args...)
+		for _, s := range c.has {
+			if !strings.Contains(r.Stdout, s) {
+				t.Errorf("koan %q lacks %q: %s", c.args, s, r.Stdout)
+			}
+		}
+		for _, s := range c.lacks {
+			if strings.Contains(r.Stdout, s) {
+				t.Errorf("koan %q has %q: %s", c.args, s, r.Stdout)
+			}
+		}
+	}
+}
+
+// --notes with --notes-file is usage at "", worded as -t with -T is.
+func TestNotesClash(t *testing.T) {
+	home := root(t)
+	for _, args := range [][]string{
+		{"task", "create", "a", "--notes", "x", "--notes-file", "-"},
+		{"folder", "create", "/a", "--notes-file", "-", "--notes", "x"},
+	} {
+		r := usageAt(t, home, "", args...)
+		if msg := r.Error()["message"]; msg != "--notes and --notes-file can't go together" {
+			t.Errorf("koan %q: %s", args, r.Line())
 		}
 	}
 }
@@ -486,13 +531,13 @@ func TestIDsRunOut(t *testing.T) {
 	r := fails(t, home, "conflict", "no-ids", "task", "create", "one more")
 	golden(t, r, "no-ids")
 	fails(t, home, "conflict", "no-ids", "folder", "create", "/web")
-	fails(t, home, "conflict", "no-ids", "task", "block", "999999999999999", "/work.start")
+	fails(t, home, "conflict", "no-ids", "block", "999999999999999", "/work.start")
 	if r := batch(t, home, `{"tasks":[{"title":"t"}]}`); r.Kind() != "conflict" || r.Error()["rule"] != "no-ids" {
 		t.Errorf("batch: %s", r.Line())
 	}
 	ok(t, home, "task", "update", "999999999999999", "--title", "still")
 	ok(t, home, "folder", "mv", "-T", "/work", "/Work")
-	ok(t, home, "task", "complete", "999999999999999")
+	ok(t, home, "complete", "999999999999999")
 	r = ok(t, home, "info")
 	if r.Result()["next_id"] != nil || r.Result()["tasks"] != json.Number("1") || r.Result()["folders"] != json.Number("1") {
 		t.Errorf("info: %s", r.Line())

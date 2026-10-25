@@ -25,12 +25,12 @@ func exportTree(t *testing.T) string {
 	ok(t, home, "folder", "create", "/other")                                                                               // 4
 	ok(t, home, "task", "create", "a", "--folder", "/work/api", "--blocked-by", "/work/api.start", "--blocks", "/work/api") // 5, gates 6 and 7
 	ok(t, home, "task", "create", "b", "--folder", "/work/api/sub")                                                         // 8
-	ok(t, home, "task", "block", "/work/api.start", "/other")                                                               // gate 9
-	ok(t, home, "task", "complete", "9")
+	ok(t, home, "block", "/work/api.start", "/other")                                                                       // gate 9
+	ok(t, home, "complete", "9")
 	ok(t, home, "task", "create", "waiter", "--folder", "/work", "--blocked-by", "/work/api,/other") // 10
 	ok(t, home, "task", "create", "loose", "--blocked-by", "8")                                      // 11
-	ok(t, home, "task", "complete", "8")
-	ok(t, home, "task", "claim", "5", "--extra", `{"by":"me"}`)
+	ok(t, home, "complete", "8")
+	ok(t, home, "claim", "5", "--extra", `{"by":"me"}`)
 	return home
 }
 
@@ -243,7 +243,7 @@ func TestExportMarkers(t *testing.T) {
 	}
 	ok(t, home, "folder", "create", "/done") // 5
 	ok(t, home, "marker", "bind", "/done", dir)
-	ok(t, home, "folder", "archive", "/done")
+	ok(t, home, "archive", "/done")
 	r = fails(t, home, "not-found", "", "export", "--file", dir)
 	if fmt.Sprint(r.Error()["ids"]) != "[5]" || len(r.Error()["archived"].([]any)) != 1 {
 		t.Errorf("archived: %s", r.Line())
@@ -254,7 +254,7 @@ func TestExportMarkers(t *testing.T) {
 func TestExportRefusals(t *testing.T) {
 	home := exportTree(t)
 	ok(t, home, "folder", "create", "/old") // 12
-	ok(t, home, "folder", "archive", "/old")
+	ok(t, home, "archive", "/old")
 	r := fails(t, home, "not-found", "", "export", "@12")
 	golden(t, r, "export-archived")
 	if a := r.Error()["archived"].([]any); len(a) != 1 {

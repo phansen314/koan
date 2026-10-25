@@ -37,11 +37,7 @@ func realRoot(t *testing.T) string {
 func koanIn(t *testing.T, home, dir string, args ...string) *testrun.Result {
 	t.Helper()
 	r := testrun.Run{Home: home, Dir: dir}.Koan(t, args...)
-	name := args[0]
-	if len(args) > 1 && (name == "folder" || name == "task" || name == "marker") {
-		name += " " + args[1]
-	}
-	r.Check(t, name)
+	r.Check(t, commandName(args))
 	return r
 }
 
@@ -112,8 +108,8 @@ func TestWhereRef(t *testing.T) {
 	fails(t, home, "invalid-input", "", "where", "$a")
 
 	// An archived ID is not-found, with where it went.
-	ok(t, home, "task", "complete", "6")
-	ok(t, home, "task", "archive", "6")
+	ok(t, home, "complete", "6")
+	ok(t, home, "archive", "6")
 	r := fails(t, home, "not-found", "", "where", "@6")
 	golden(t, r, "where-archived")
 	if a := r.Error()["archived"].([]any); len(a) != 1 {
@@ -206,10 +202,10 @@ func TestWhereRootPath(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api")
 	ok(t, home, "task", "create", "a", "--folder", "/work/api") // 3
 	ok(t, home, "task", "create", "b")                          // 4
-	ok(t, home, "task", "complete", "3")
-	ok(t, home, "task", "complete", "4")
-	ok(t, home, "task", "archive", "4")
-	ok(t, home, "folder", "archive", "/work/api")
+	ok(t, home, "complete", "3")
+	ok(t, home, "complete", "4")
+	ok(t, home, "archive", "4")
+	ok(t, home, "archive", "/work/api")
 	root := filepath.Join(home, "koan-root")
 
 	for _, file := range []string{root, root + "/koan.db", root + "/elsewhere/x", root + "/archived", root + "/archived/work"} {
@@ -385,7 +381,7 @@ func TestWhereMarkerBindsNothing(t *testing.T) {
 		t.Errorf("deleted: %s", r.Line())
 	}
 	ok(t, home, "marker", "bind", "/archive", dir)
-	ok(t, home, "folder", "archive", "/archive")
+	ok(t, home, "archive", "/archive")
 	r = fails(t, home, "not-found", "", "where", "--file", dir+"/x")
 	golden(t, r, "where-marker-archived")
 	a := r.Error()["archived"].([]any)
@@ -474,7 +470,7 @@ func TestContext(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api/sub")                                               // 7
 	ok(t, home, "task", "create", "d", "--folder", "/work/api/sub")                                // 8
 	ok(t, home, "task", "create", "e")                                                             // 9
-	ok(t, home, "task", "complete", "6")
+	ok(t, home, "complete", "6")
 
 	r := ok(t, home, "context", "/work/api")
 	goldenNow(t, r, "context")
@@ -707,7 +703,7 @@ func TestCaseOutsideTheTree(t *testing.T) {
 			t.Errorf("context: folder %v", id)
 		}
 		r := ok(t, home, "marker", "bind", "/work", upper)
-		if r.Result()["file"] != upper+"/.koan/marker.json" || r.Result()["marker"].(map[string]any)["dir"] != wt {
+		if r.Result()["marker"] != upper+"/.koan/marker.json" || r.Result()["binding"].(map[string]any)["dir"] != wt {
 			t.Errorf("bind: %s", r.Line())
 		}
 		// A wrongly-cased route to the root is under it.

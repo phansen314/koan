@@ -75,18 +75,30 @@ func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran 
 		Use:           "koan",
 		Short:         "Task management for one person on one machine",
 		Args:          cobra.ArbitraryArgs,
-		RunE:          unknown(""),
+		RunE:          unknown("", nil),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
 	directive := noFiles
 	root.CompletionOptions.DefaultShellCompDirective = &directive
 	groups := map[string]*cobra.Command{}
+	top := map[string]bool{}
+	for _, c := range commands {
+		if !strings.Contains(c.Name, " ") {
+			top[c.Name] = true
+		}
+	}
 	for _, c := range commands {
 		parent := root
 		if g, _, ok := strings.Cut(c.Name, " "); ok {
 			if groups[g] == nil {
-				groups[g] = &cobra.Command{Use: g, Short: groupShorts[g], Args: cobra.ArbitraryArgs, RunE: unknown(g)}
+				// Only task and folder ever held the commands now
+				// top-level.
+				var moved map[string]bool
+				if g == "task" || g == "folder" {
+					moved = top
+				}
+				groups[g] = &cobra.Command{Use: g, Short: groupShorts[g], Args: cobra.ArbitraryArgs, RunE: unknown(g, moved)}
 				root.AddCommand(groups[g])
 			}
 			parent = groups[g]
@@ -116,14 +128,15 @@ func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran 
 
 // groupShorts are each group's line in help.
 var groupShorts = map[string]string{
-	"task":   "Make, change, find and claim tasks",
+	"task":   "Make, change and find tasks",
 	"folder": "Make, change and find folders",
 	"marker": "Bind directories outside the tree, such as worktrees, to folders",
 }
 
 // unknown refuses a line that names no command under group, "" for the
-// root.
-func unknown(group string) func(*cobra.Command, []string) error {
+// root. When the word after a group is a command of its own, one of
+// top, the message says so.
+func unknown(group string, top map[string]bool) func(*cobra.Command, []string) error {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			if group == "" {
@@ -131,6 +144,10 @@ func unknown(group string) func(*cobra.Command, []string) error {
 			}
 			return Usage("", "no command given after "+group)
 		}
-		return Usage(args[0], "unknown command "+strings.TrimSpace(group+" "+args[0]))
+		message := "unknown command " + strings.TrimSpace(group+" "+args[0])
+		if top[args[0]] {
+			message += ": " + args[0] + " is koan " + args[0]
+		}
+		return Usage(args[0], message)
 	}
 }

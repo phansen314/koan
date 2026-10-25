@@ -42,7 +42,7 @@ func TestTaskMove(t *testing.T) {
 		t.Errorf("mv: %s", r.Line())
 	}
 	checkTree(t, home, "@a/", "@a/@notes.md=", "@a/@4.md=", "@b/", "@b/@notes.md=", "@b/@3.md=mine")
-	rec := ok(t, home, "task", "show", "3").Result()["task"].(map[string]any)
+	rec := ok(t, home, "show", "3").Result()["task"].(map[string]any)
 	if rec["updated_at"] != fixed || fmt.Sprint(rec["folder"]) != "map[id:2 path:/b]" || rec["notes_path"] != treePath(home, "@b/@3.md") {
 		t.Errorf("moved: %v", rec)
 	}
@@ -65,7 +65,7 @@ func TestTaskMove(t *testing.T) {
 	os.Remove(treePath(home, "@a/@4.md"))
 	ok(t, home, "task", "mv", "4", "/b")
 	checkTree(t, home, "@a/", "@a/@notes.md=", "@b/", "@b/@notes.md=", "@3.md=mine")
-	if koan(t, home, "task", "show", "4").Result()["task"].(map[string]any)["folder"].(map[string]any)["path"] != "/b" {
+	if koan(t, home, "show", "4").Result()["task"].(map[string]any)["folder"].(map[string]any)["path"] != "/b" {
 		t.Errorf("moved without notes")
 	}
 
@@ -176,7 +176,7 @@ func TestTaskMoveClaimed(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a") // 1
 	ok(t, home, "task", "create", "t")    // 2
-	ok(t, home, "task", "claim", "2")
+	ok(t, home, "claim", "2")
 	r := warned(t, home, []string{"moved-claimed"}, "task", "mv", "2", "/a")
 	golden(t, r, "task-mv-moved-claimed")
 	w := r.Envelope["warnings"].([]any)[0].(map[string]any)
@@ -190,7 +190,7 @@ func TestTaskMoveClaimed(t *testing.T) {
 
 	ok(t, home, "task", "create", "u") // 3
 	ok(t, home, "task", "create", "v") // 4
-	ok(t, home, "task", "claim", "4")
+	ok(t, home, "claim", "4")
 	r = warned(t, home, []string{"moved-claimed"}, "task", "mv", "4", "3", "2", "/")
 	w = r.Envelope["warnings"].([]any)[0].(map[string]any)
 	if fmt.Sprint(w["ids"]) != "[2]" || fmt.Sprint(w["paths"]) != "["+treePath(home, "@2.md")+"]" {
@@ -507,9 +507,9 @@ func TestFolderMoveClaimed(t *testing.T) {
 	ok(t, home, "task", "create", "u", "--blocked-by", "/w/x.done") // 4, 5
 	ok(t, home, "task", "create", "v", "--folder", "/w")            // 6
 	ok(t, home, "folder", "create", "/v")                           // 7
-	ok(t, home, "task", "claim", "5")
-	ok(t, home, "task", "claim", "3")
-	ok(t, home, "task", "claim", "4")
+	ok(t, home, "claim", "5")
+	ok(t, home, "claim", "3")
+	ok(t, home, "claim", "4")
 	r := warned(t, home, []string{"moved-claimed"}, "folder", "mv", "/w", "/v")
 	golden(t, r, "folder-mv-moved-claimed")
 	w := r.Envelope["warnings"].([]any)[0].(map[string]any)
@@ -520,7 +520,7 @@ func TestFolderMoveClaimed(t *testing.T) {
 
 	ok(t, home, "folder", "create", "/s")                // 8
 	ok(t, home, "task", "create", "s", "--folder", "/s") // 9
-	ok(t, home, "task", "claim", "9")
+	ok(t, home, "claim", "9")
 	r = warned(t, home, []string{"moved-claimed"}, "folder", "mv", "-t", "/v", "/s", "/v/w/x")
 	w = r.Envelope["warnings"].([]any)[0].(map[string]any)
 	if fmt.Sprint(w["ids"]) != "[3 5 9]" || fmt.Sprint(w["paths"]) != fmt.Sprintf("[%s %s %s]",

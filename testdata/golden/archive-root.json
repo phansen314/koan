@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "the root can't be archived",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "the root can't be archived"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

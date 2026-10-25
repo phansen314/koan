@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "result": {
+    "id": 2,
+    "readiness": "blocked",
+    "blockers": [
+      {
+        "id": 3,
+        "ref": "@3 (/w)",
+        "state": "open"
+      }
+    ],
+    "ready": [
+      3
+    ]
+  },
+  "warnings": []
+}

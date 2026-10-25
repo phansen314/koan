@@ -27,7 +27,7 @@ func TestCommandsMatchSchemas(t *testing.T) {
 		var want, subjects, objects []string
 		// An input's fields are its own and those of the fragments it
 		// builds on through allOf, such as task list's filter, or of the
-		// input it is through $ref, such as task why's.
+		// input it is through $ref, such as reopen's.
 		at := func(doc, ref string) (string, *testrun.Node) {
 			name, ptr, _ := strings.Cut(ref, "#")
 			if name == "" {

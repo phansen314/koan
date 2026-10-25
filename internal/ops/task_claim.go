@@ -6,12 +6,12 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// TaskClaimResult is task claim's result, in its schema's order.
+// TaskClaimResult is claim's result, in its schema's order.
 type TaskClaimResult struct {
 	Claim Claim `json:"claim"`
 }
 
-// TaskClaimNextResult is task claim-next's result, in its schema's
+// TaskClaimNextResult is claim-next's result, in its schema's
 // order: both null when the frontier is empty.
 type TaskClaimNextResult struct {
 	Task  *Task  `json:"task"`
@@ -21,7 +21,7 @@ type TaskClaimNextResult struct {
 // TaskClaim claims an open task with no claim, blocked or not.
 func TaskClaim() *cli.Command {
 	return &cli.Command{
-		Name:    "task claim",
+		Name:    "claim",
 		Subject: &cli.Option{Field: "task", Required: true, Complete: claimable.complete()},
 		Options: []cli.Option{{Field: "extra", Kind: cli.JSON}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
@@ -62,10 +62,10 @@ func TaskClaim() *cli.Command {
 }
 
 // TaskClaimNext claims the first task of the frontier within a scope, as
-// task frontier finds it. The record it returns shows the new claim.
+// frontier finds it. The record it returns shows the new claim.
 func TaskClaimNext() *cli.Command {
 	return &cli.Command{
-		Name:    "task claim-next",
+		Name:    "claim-next",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
 			{Field: "recursive", Kind: cli.Bool},
@@ -111,9 +111,9 @@ func TaskClaimNext() *cli.Command {
 	}
 }
 
-// TaskRelease ends a task's claim, whoever made it.
-func TaskRelease() *cli.Command {
-	return taskCommand("task release", claimedOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
+// TaskUnclaim ends a task's claim, whoever made it.
+func TaskUnclaim() *cli.Command {
+	return taskCommand("unclaim", claimedOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
 		changed, err := tx.EndClaim(id)
 		if err != nil {
 			return nil, nil, err

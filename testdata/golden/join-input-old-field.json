@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "join takes no field folder",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/folder",
+        "reason": "unknown field"
+      },
+      {
+        "field": "/ref",
+        "reason": "ref is required"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

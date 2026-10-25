@@ -72,9 +72,9 @@ func TestProperties(t *testing.T) {
 	if t.Failed() || *seedFlag != 0 {
 		return
 	}
-	for _, cmd := range []string{"task create", "task update", "task block", "task unblock", "task complete", "task reopen",
-		"task claim", "task claim-next", "task release", "task mv", "task delete", "task archive", "folder create",
-		"folder update", "folder mv", "folder mv case", "folder delete", "folder delete material", "folder archive", "batch"} {
+	for _, cmd := range []string{"task create", "task update", "block", "unblock", "complete", "reopen",
+		"claim", "claim-next", "unclaim", "task mv", "task delete", "archive task", "folder create",
+		"folder update", "folder mv", "folder mv case", "folder delete", "folder delete material", "archive folder", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -151,10 +151,10 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		return out
 	}
-	// On task create, what it waits on is --blocked-by; on task block and
+	// On task create, what it waits on is --blocked-by; on block and
 	// unblock, the word after the subject.
 	edgeArgs := func(args []string, bb, bl []string) []string {
-		if len(bb) > 0 && args[1] == "create" {
+		if len(bb) > 0 && args[0] == "task" && args[1] == "create" {
 			args = append(args, "--blocked-by", strings.Join(bb, ","))
 		} else if len(bb) > 0 {
 			args = append(args, strings.Join(bb, ","))
@@ -529,13 +529,13 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			x, bb, bl := subject(), edgeList(), edgeList()
 			var out model.EdgeResult
 			out, err = m.Block(x, bb, bl)
-			args = edgeArgs([]string{"task", "block", x}, bb, bl)
+			args = edgeArgs([]string{"block", x}, bb, bl)
 			want = fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, gates(out.GatesMade), nonNil(out.Reblocked), warnings(out.Warnings))
 		case op < 8:
 			x, bb, bl := subject(), edgeList(), edgeList()
 			var out model.EdgeResult
 			out, err = m.Unblock(x, bb, bl)
-			args = edgeArgs([]string{"task", "unblock", x}, bb, bl)
+			args = edgeArgs([]string{"unblock", x}, bb, bl)
 			want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
 		case op == 13:
 			xs, words := subjects(subject(), subject)
@@ -555,15 +555,14 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
 		case op >= 18:
 			var left []int64
+			var x string
 			if op == 18 {
-				x := subject()
-				left, err = m.ArchiveTask(x)
-				args = []string{"task", "archive", x}
+				x, name = subject(), "archive task"
 			} else {
-				x := folderRef()
-				left, err = m.ArchiveFolder(x)
-				args = []string{"folder", "archive", x}
+				x, name = folderRef(), "archive folder"
 			}
+			left, err = m.Archive(x)
+			args = []string{"archive", x}
 			want = fmt.Sprint(nonNil(left))
 		case op >= 15:
 			// Creates come most often and deletes least, so the folders
@@ -608,29 +607,29 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				xs, words := subjects(x, subject)
 				var out model.CompleteResult
 				out, err = m.Complete(xs...)
-				args = append([]string{"task", "complete"}, words...)
+				args = append([]string{"complete"}, words...)
 				want = fmt.Sprintf("%v %v", nonNil(out.Changed), nonNil(out.Released))
 			case 1:
 				xs, words := subjects(x, subject)
 				var out model.CompleteResult
 				out, err = m.Reopen(xs...)
-				args = append([]string{"task", "reopen"}, words...)
+				args = append([]string{"reopen"}, words...)
 				want = fmt.Sprintf("%v %v %s", nonNil(out.Changed), nonNil(out.Reblocked), warnings(out.Warnings))
 			case 2:
 				var c model.Claim
 				c, err = m.ClaimTask(x, nil)
-				args = []string{"task", "claim", x}
+				args = []string{"claim", x}
 				want = fmt.Sprint(c.Task)
 			case 3:
 				var changed bool
-				changed, err = m.Release(x)
-				args = []string{"task", "release", x}
+				changed, err = m.Unclaim(x)
+				args = []string{"unclaim", x}
 				want = fmt.Sprint(changed)
 			default:
 				sc := model.Scope{Folder: pick([]string{"/", "/a", "/a/b", "/c"}), Recursive: rng.Intn(2) == 0}
 				var c *model.Claim
 				c, err = m.ClaimNext(sc, nil)
-				args = []string{"task", "claim-next", sc.Folder, fmt.Sprintf("--recursive=%v", sc.Recursive)}
+				args = []string{"claim-next", sc.Folder, fmt.Sprintf("--recursive=%v", sc.Recursive)}
 				want = "<nil>"
 				if c != nil {
 					want = fmt.Sprint(c.Task)
@@ -639,7 +638,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		if args != nil {
 			if name == "" {
-				name = args[0] + " " + args[1]
+				name = commandName(args)
 			}
 			var r *testrun.Result
 			if stdin != "" {
@@ -666,8 +665,9 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			default:
 				res := r.Result()
 				var got string
-				switch args[1] {
-				case "-i":
+				verb := commandName(args)
+				switch verb[strings.LastIndex(verb, " ")+1:] {
+				case "batch":
 					got = fmt.Sprintf("%v %v %v %s %v %s", koanMade(res["folders"]), res["tasks"], res["labels"],
 						koanGates(r), res["reblocked"], koanWarnings(r))
 				case "create":
@@ -688,7 +688,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					got = fmt.Sprintf("%v %v %s", res["reopened"], res["reblocked"], koanWarnings(r))
 				case "claim":
 					got = fmt.Sprint(res["claim"].(map[string]any)["task"])
-				case "release":
+				case "unclaim":
 					got = fmt.Sprint(res["changed"])
 				case "claim-next":
 					got = "<nil>"
@@ -704,7 +704,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				case "delete":
 					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
 				case "archive":
-					got = fmt.Sprint(res["left"])
+					got = fmt.Sprint(res["removed"])
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)
@@ -785,7 +785,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			t.Fatalf("step %d: folders: koan %v, model %v", step, gotFolders, wantFolders)
 		}
 		var front []string
-		for _, x := range ok(t, home, "task", "frontier", "--limit", "null", "--fields", "id").Result()["tasks"].([]any) {
+		for _, x := range ok(t, home, "frontier", "--limit", "null", "--fields", "id").Result()["tasks"].([]any) {
 			front = append(front, fmt.Sprint(x.(map[string]any)["id"]))
 		}
 		if fmt.Sprint(front) != fmt.Sprint(m.Frontier()) {
@@ -820,8 +820,8 @@ func TestCheckRoot(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api") // 1, 2
 	ok(t, home, "task", "create", "a", "--folder", "/work", "--blocked-by", "/work.start")
 	ok(t, home, "task", "create", "b")
-	ok(t, home, "task", "complete", "5")
-	ok(t, home, "task", "archive", "5")
+	ok(t, home, "complete", "5")
+	ok(t, home, "archive", "5")
 	ok(t, home, "task", "create", "c")
 	snap, bad := testrun.CheckRoot(home, nil, testrun.Checks{Notes: true})
 	if len(bad) > 0 {

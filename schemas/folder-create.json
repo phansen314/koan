@@ -53,8 +53,8 @@
       "required": [
         "id",
         "ref",
-        "dir",
         "notes_path",
+        "dir",
         "created",
         "gates_made",
         "reblocked"
@@ -66,10 +66,10 @@
         "ref": {
           "$ref": "types#/$defs/kept"
         },
-        "dir": {
+        "notes_path": {
           "$ref": "types#/$defs/abs-path"
         },
-        "notes_path": {
+        "dir": {
           "$ref": "types#/$defs/abs-path"
         },
         "created": {

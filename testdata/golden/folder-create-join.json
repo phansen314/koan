@@ -3,8 +3,8 @@
   "result": {
     "id": 2,
     "ref": "@2 (/f/g)",
-    "dir": "$HOME/koan-root/tree/@f/@g",
     "notes_path": "$HOME/koan-root/tree/@f/@g/@notes.md",
+    "dir": "$HOME/koan-root/tree/@f/@g",
     "created": [
       {
         "id": 2,

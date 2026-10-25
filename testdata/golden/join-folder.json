@@ -1,0 +1,43 @@
+{
+  "ok": true,
+  "result": {
+    "id": 1,
+    "changed": true,
+    "gates_made": [
+      {
+        "id": 3,
+        "folder": {
+          "id": 1,
+          "path": "/g"
+        },
+        "end": "start"
+      },
+      {
+        "id": 4,
+        "folder": {
+          "id": 1,
+          "path": "/g"
+        },
+        "end": "done"
+      },
+      {
+        "id": 5,
+        "folder": {
+          "id": 2,
+          "path": "/h"
+        },
+        "end": "start"
+      },
+      {
+        "id": 6,
+        "folder": {
+          "id": 2,
+          "path": "/h"
+        },
+        "end": "done"
+      }
+    ],
+    "reblocked": []
+  },
+  "warnings": []
+}

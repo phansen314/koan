@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "result": {
+    "id": 1,
+    "archive": "$HOME/koan-root/archived/@1_f",
+    "json": "$HOME/koan-root/archived/@1_f.json",
+    "removed": [
+      1
+    ]
+  },
+  "warnings": [
+    {
+      "kind": "stuck-step",
+      "message": "A filesystem step found both its source and its destination holding content, or neither, or a remove found material, and is set aside with the rest of its change. Keep one copy, or move the material out, then run koan repair.",
+      "ids": [],
+      "paths": [
+        "$HOME/koan-root/tree/@f",
+        "$HOME/koan-root/archived/@1_f"
+      ]
+    }
+  ]
+}

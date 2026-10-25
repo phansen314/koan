@@ -282,15 +282,15 @@ func TestInstallKeepsTheUsersSettings(t *testing.T) {
 	// koan's rules written before the user's move to the end, the
 	// original's migrate rule goes, and a rule of the user's that matches
 	// koan is warned about.
-	writeFile(t, in.ocJSON(), `{"permission": {"bash": {"koan repair*": "ask", "koan migrate*": "ask", "git *": "allow", "koan task show*": "deny"}}}`)
+	writeFile(t, in.ocJSON(), `{"permission": {"bash": {"koan repair*": "ask", "koan migrate*": "ask", "git *": "allow", "koan show*": "deny"}}}`)
 	out, code = in.run(t, "--opencode")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
-	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, append([]string{"git_*", "koan_task_show*"}, ocKoan...)) {
+	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, append([]string{"git_*", "koan_show*"}, ocKoan...)) {
 		t.Errorf("opencode rules %v", got)
 	}
-	if !strings.Contains(out, "koan task show*") || !strings.Contains(out, "warning") {
+	if !strings.Contains(out, "koan show*") || !strings.Contains(out, "warning") {
 		t.Errorf("no warning of the user's koan rule:\n%s", out)
 	}
 
@@ -304,7 +304,7 @@ func TestInstallKeepsTheUsersSettings(t *testing.T) {
 	if got := decode(t, in.settings()); !reflect.DeepEqual(got, want) {
 		t.Errorf("settings.json after uninstall: %v\nwant %v", got, want)
 	}
-	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, []string{"git_*", "koan_task_show*"}) {
+	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, []string{"git_*", "koan_show*"}) {
 		t.Errorf("opencode rules after uninstall: %v", got)
 	}
 }

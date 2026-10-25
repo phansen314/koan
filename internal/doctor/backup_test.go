@@ -84,7 +84,7 @@ func TestBackupRecopies(t *testing.T) {
 	if f := koan(t, restored, "doctor")["findings"].([]any); len(f) != 0 {
 		t.Errorf("doctor on the restored root: %v", f)
 	}
-	task := koan(t, restored, "task", "show", "3")["task"].(map[string]any)
+	task := koan(t, restored, "show", "3")["task"].(map[string]any)
 	if task["folder"].(map[string]any)["path"] != "/b/x" {
 		t.Errorf("task: %v", task)
 	}

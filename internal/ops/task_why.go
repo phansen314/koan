@@ -7,7 +7,7 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// TaskWhyResult is task why's result, in its schema's order.
+// TaskWhyResult is why's result, in its schema's order.
 type TaskWhyResult struct {
 	ID        int64     `json:"id"`
 	Readiness *string   `json:"readiness"`
@@ -19,7 +19,7 @@ type TaskWhyResult struct {
 // tasks it waits on at any depth through open blockers.
 func TaskWhy() *cli.Command {
 	return &cli.Command{
-		Name:    "task why",
+		Name:    "why",
 		Subject: &cli.Option{Field: "task", Required: true, Complete: tasksAndGates.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}

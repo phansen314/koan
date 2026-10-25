@@ -12,8 +12,8 @@ import (
 	"github.com/phansen314/koan/internal/store"
 )
 
-// TaskUpdateResult is the result of task update, folder update and task
-// release, in its schema's order.
+// TaskUpdateResult is the result of task update, folder update and
+// unclaim, in its schema's order.
 type TaskUpdateResult struct {
 	ID      int64 `json:"id"`
 	Changed bool  `json:"changed"`

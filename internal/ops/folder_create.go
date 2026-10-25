@@ -14,8 +14,8 @@ import (
 type FolderCreateResult struct {
 	ID        int64      `json:"id"`
 	Ref       string     `json:"ref"`
-	Dir       string     `json:"dir"`
 	NotesPath string     `json:"notes_path"`
+	Dir       string     `json:"dir"`
 	Created   []FolderAt `json:"created"`
 	GatesMade []GateMade `json:"gates_made"`
 	Reblocked []int64    `json:"reblocked"`

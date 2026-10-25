@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"@1:x\": material isn't taken here",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "\"@1:x\": material isn't taken here"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

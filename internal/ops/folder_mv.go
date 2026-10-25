@@ -31,6 +31,7 @@ type FolderMoved struct {
 func FolderMv() *cli.Command {
 	return &cli.Command{
 		Name:         "folder mv",
+		Uses:         []string{"<folder> <dest>", "<folder>... <folder>", "-t <folder> <folder>...", "-T <folder> <path>"},
 		Subject:      &cli.Option{Field: "folders", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
 		Object:       &cli.Option{Field: "dest", Required: true, Complete: foldersOnly.complete()},
 		Instead:      "into",
@@ -38,7 +39,7 @@ func FolderMv() *cli.Command {
 		SingleObject: newPaths.complete(),
 		Apart:        []string{"into", "rename"},
 		Options: []cli.Option{
-			{Field: "into", Short: "t", Complete: foldersOnly.complete()},
+			{Field: "into", Short: "t", Arg: "folder", Complete: foldersOnly.complete()},
 			{Field: "rename", Short: "T", Kind: cli.Bool},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {

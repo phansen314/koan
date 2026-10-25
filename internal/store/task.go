@@ -261,7 +261,7 @@ func (t *Tx) InsertClaim(id int64, extra json.RawMessage) (ClaimRow, error) {
 	return c, err
 }
 
-// EndClaim ends a task's claim, as release, complete and delete do, and
+// EndClaim ends a task's claim, as unclaim, complete and delete do, and
 // reports whether it had one. A claim isn't a field of its task, so its
 // updated_at stays.
 func (t *Tx) EndClaim(id int64) (bool, error) {

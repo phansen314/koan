@@ -178,20 +178,23 @@ echo READY
 	}
 
 	s := start(completeTree(t))
-	s.line("koan task show /wo\t", "koan task show /work")
-	s.line("koan task show /work/api.d\t", "koan task show /work/api.done")
-	s.list("koan task show /work/api.\t\t", "/work/api.start", "/work/api.done")
-	s.line("koan task show @3.s\t", "koan task show @3.start ")
-	s.line("koan task show 1\t", "koan task show 12 ")
-	s.list("koan task complete @\t\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
-	s.line("koan task block 5 /work.\t", "koan task block 5 /work.")
-	s.list("koan task block 5 /work.\t\t", "/work.start", "/work.done")
+	s.line("koan why /wo\t", "koan why /work")
+	s.line("koan why /work/api.d\t", "koan why /work/api.done")
+	s.list("koan why /work/api.\t\t", "/work/api.start", "/work/api.done")
+	s.line("koan why @3.s\t", "koan why @3.start ")
+	s.line("koan why 1\t", "koan why 12 ")
+	s.list("koan complete @\t\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
+	s.line("koan block 5 /work.\t", "koan block 5 /work.")
+	s.list("koan block 5 /work.\t\t", "/work.start", "/work.done")
 	s.line("koan task mv 5 /wo\t", "koan task mv 5 /work")
-	s.line("koan task complete 9 1\t", "koan task complete 9 12 ")
+	s.line("koan complete 9 1\t", "koan complete 9 12 ")
+	s.line("koan show /wo\t", "koan show /work")
+	s.line("koan archive /work/api.\t", "koan archive /work/api.start")
+	s.line("koan join 4\t", "koan join 4 ")
 	s.line("koan folder mv -T /old /work/api\t", "koan folder mv -T /old /work/api")
 
 	s = start(manyTree(t))
-	s.list("koan task show \t\t", "101 match: type more, or use koan pick")
+	s.list("koan why \t\t", "101 match: type more, or use koan pick")
 }
 
 // A real zsh does the same.
@@ -219,17 +222,20 @@ echo READY
 	}
 
 	s := start(completeTree(t))
-	s.line("koan task show /wo\t", "koan task show /work")
-	s.line("koan task show /work/api.d\t", "koan task show /work/api.done")
-	s.list("koan task show /work/api.\t", "/work/api.start", "/work/api.done")
-	s.line("koan task show @3.s\t", "koan task show @3.start ")
-	s.line("koan task show 1\t", "koan task show 12 ")
-	s.list("koan task complete @\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
-	s.list("koan task block 5 /work.\t", "/work.start", "/work.done")
+	s.line("koan why /wo\t", "koan why /work")
+	s.line("koan why /work/api.d\t", "koan why /work/api.done")
+	s.list("koan why /work/api.\t", "/work/api.start", "/work/api.done")
+	s.line("koan why @3.s\t", "koan why @3.start ")
+	s.line("koan why 1\t", "koan why 12 ")
+	s.list("koan complete @\t", "@9", "Root task  /", "@3.done", "Done of /work/api")
+	s.list("koan block 5 /work.\t", "/work.start", "/work.done")
 	s.line("koan task mv 5 /wo\t", "koan task mv 5 /work")
-	s.line("koan task complete 9 1\t", "koan task complete 9 12 ")
+	s.line("koan complete 9 1\t", "koan complete 9 12 ")
+	s.line("koan show /wo\t", "koan show /work")
+	s.line("koan archive /work/api.\t", "koan archive /work/api.start")
+	s.line("koan join 4\t", "koan join 4 ")
 	s.line("koan folder mv -T /old /work/api\t", "koan folder mv -T /old /work/api")
 
 	s = start(manyTree(t))
-	s.list("koan task show \t", "101 match: type more, or use koan pick")
+	s.list("koan why \t", "101 match: type more, or use koan pick")
 }

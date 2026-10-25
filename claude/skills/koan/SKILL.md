@@ -13,6 +13,8 @@ description: Track and work through the user's tasks with the koan CLI — a loc
 
 Every command prints **exactly one line of JSON** on standard output. The examples below run in order on one tree, whose first ID is @40.
 
+`task` and `folder` keep the five commands that need the noun: `create` and `list`, where no reference names the kind, and `update`, `delete` and `mv`, whose options differ by kind. Every other command is its verb alone, since its subject, or the verb itself, says what it acts on: `koan show 42` shows @42 whether it is a task or a folder, and `koan task show 42` is `usage`. So `koan task <verb>` is `usage` for every verb but the five: drop `task`.
+
 ## Before the first command
 
 ```sh
@@ -44,11 +46,11 @@ Every field is always there; a field with no value is `null` or empty. **Branch 
 | 2 | `usage`: the command line couldn't be read; `.error.problems[0].field` is the argument at fault | Fix the command; `koan --help`, `koan task create --help` |
 | 3, or anything else | The outcome is unknown: koan couldn't print, or was killed | Look before running it again, below |
 
-**After an unknown outcome**, check what landed before you rerun. Most writes are safe to rerun: a second `task complete` lists nothing in `completed`, and a second `task block` changes nothing (`changed: false`). These aren't:
+**After an unknown outcome**, check what landed before you rerun. Most writes are safe to rerun: a second `complete` lists nothing in `completed`, and a second `block` changes nothing (`changed: false`). These aren't:
 
 - `task create` and `batch` make new tasks each time: look with `task list` first.
-- `task claim-next` claims another task: look with `task list --claimed` first.
-- `task claim` fails `claimed` when your first run took the claim, and koan can't tell your claim from someone else's: ask the user before starting the task.
+- `claim-next` claims another task: look with `task list --claimed` first.
+- `claim` fails `claimed` when your first run took the claim, and koan can't tell your claim from someone else's: ask the user before starting the task.
 - `folder create` fails `exists` when the first run landed.
 
 ### Errors
@@ -59,7 +61,7 @@ Every field is always there; a field with no value is `null` or empty. **Branch 
 - `not-initialized`, `unsupported-format`, `corrupt`, `io`, `internal`: stop and report, quoting `.error.message`. Never edit `koan.db` or koan's files to work around them.
 - `conflict`: valid input the tree refuses. `.error.rule` says why:
   - `cycle`: the edge would make a task wait on itself; `.error.ids` is the cycle, in order. Tell the user rather than rearranging their edges.
-  - `claimed`: someone holds a claim on it (see Claims). `complete`: claiming a complete task; it needs `task reopen` first, if the user wants it worked on again.
+  - `claimed`: someone holds a claim on it (see Claims). `complete`: claiming a complete task; it needs `reopen` first, if the user wants it worked on again.
   - `case-mismatch`: a path matched a folder only ignoring case; `.error.paths` has the path as given, then as it is. Use the folder's spelling. Don't rename the folder to match unless asked.
   - `exists`: the destination is taken: a folder path for a create or a move, an entry on disk there, or a non-empty directory for a backup.
   - `not-finished`: archiving work that isn't complete; `.error.ids` is the open tasks. Ask the user; never complete them to get past it.
@@ -87,7 +89,7 @@ Warnings never stop a command, and come with failures too. **Always tell the use
 - **Tasks** sit in a folder or the root. A task has an ID, a title, a priority (an integer or `null`), tags, an `extra` object, and notes, `@<id>.md` in its folder's directory. It is `open` or `complete`; complete covers cancelled too.
 - **Edges** are between tasks, and nothing else: a task's `blocked_by` lists the tasks it waits on. An open task is `ready` when nothing it waits on is open, and `blocked` otherwise. **Where a task sits never orders it**: a folder holds its tasks without waiting on them, so moving changes no readiness.
 - **Gates** order whole folders. A folder can have a start gate, `/work/api.start`, which its work waits on, and a done gate, `/work/api.done`, which waits on its work and which what comes after waits on. Gates are ordinary tasks, made the first time an edge names them: someone completes a gate as they complete any task, and a ready gate is on the frontier like any other. In an edge, a folder with no end means its done gate: `--blocked-by /work/api` is "after /work/api".
-- **Joining a folder** is two edges: the task waits on the start gate, and the done gate waits on the task. `--join /work/api` on `task create` writes both, `koan task join 42 /work/api` joins a task that exists, and `koan folder join /work/api/impl /work/api` joins a folder through its gates; `task unjoin` and `folder unjoin` remove them. A gate that waits on nothing is ready at once, so write a plan's edges together, in one batch.
+- **Joining a folder** is two edges: the task waits on the start gate, and the done gate waits on the task. `--join /work/api` on `task create` writes both, `koan join 42 /work/api` joins a task that exists, and `koan join /work/api/impl /work/api` joins a folder through its gates; `unjoin` removes them. A gate that waits on nothing is ready at once, so write a plan's edges together, in one batch.
 
 ### A plan: several tasks at once
 
@@ -110,39 +112,39 @@ The result names everything by ID: `folders` made, parents first (`/work` @40, `
 ## The daily loop
 
 ```sh
-koan task frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order: only @45, the start gate
-koan task why 43                                    # .result.ready: [45], what to finish to move @43
-koan task complete 45                               # .result.released: [42], the tasks it made ready
-koan task claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
-koan task show 42                                   # the whole task: .result.task, with its notes_path
-koan task complete 42                               # ends the claim; .result.released: [43]
+koan frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order: only @45, the start gate
+koan why 43                                   # .result.ready: [45], what to finish to move @43
+koan complete 45                              # .result.released: [42], the tasks it made ready
+koan claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
+koan show 42                                  # the whole task: .result.task, with its notes_path
+koan complete 42                              # ends the claim; .result.released: [43]
 ```
 
 - **Work order** is highest `priority` first, `null` last, then lowest ID. Scope the frontier, and `claim-next`, with the folder as the subject, `--recursive=false`, `--tags-any` and `--tags-all`.
-- `task why` gives a blocked task's open `blockers`, and in `ready` the ready tasks it waits on at any depth: what to work on to move it. Don't walk `blocked_by` by hand.
+- `why` gives a blocked task's open `blockers`, and in `ready` the ready tasks it waits on at any depth: what to work on to move it. Don't walk `blocked_by` by hand.
 - **Notes are plain files.** Read and edit a task's at its `notes_path` with your file tools; there is no koan command for notes after creation. A folder's `@notes.md` is where what the work is about goes.
-- `task complete` reports in `released` the open tasks it made ready, and `task reopen` in `reblocked` the ready tasks it made wait again. Tell the user about both when they matter.
+- `complete` reports in `released` the open tasks it made ready, and `reopen` in `reblocked` the ready tasks it made wait again. Tell the user about both when they matter.
 
 ### Claims
 
-Other agents may be working from the same tree. A **claim** reserves a task: no one else can claim it, and it leaves the frontier, until it is released or completed.
+Other agents may be working from the same tree. A **claim** reserves a task: no one else can claim it, and it leaves the frontier, until it is unclaimed or completed.
 
 ```sh
-koan task claim 43 --extra '{"by":"agent-1"}'      # this task: .result.claim
-koan task claim 43                                 # a second claim fails: conflict, rule claimed
+koan claim 43 --extra '{"by":"agent-1"}'      # this task: .result.claim
+koan claim 43                                 # a second claim fails: conflict, rule claimed
 koan task list --claimed --limit 20 --fields title,claim   # what is taken, by whom, since when
-koan task release 43                               # you won't do it after all
+koan unclaim 43                               # you won't do it after all
 ```
 
-- **Claim a task before starting it**, whether you picked it or the user named it. `task claim-next` picks and claims in one step and returns the task's record, so prefer it when the choice is yours. Its `task` is `null` when nothing ready is free.
+- **Claim a task before starting it**, whether you picked it or the user named it. `claim-next` picks and claims in one step and returns the task's record, so prefer it when the choice is yours. Its `task` is `null` when nothing ready is free.
 - **On `claimed`**, someone else has it: pick another if the choice was yours; tell the user if they named it.
-- **`task complete` ends the claim.** If you stop without finishing, `task release` it.
-- **A claim is a reservation, not a lock.** It refuses other claims and nothing else, never expires, and koan doesn't know who made it: `claim.extra` is whatever the claimer stored. So the rules are yours to keep: never change, move, complete or release a task someone else has claimed, or edit its notes, unless the user says so. Whoever holds the claim edits the notes.
+- **`complete` ends the claim.** If you stop without finishing, `unclaim` it.
+- **A claim is a reservation, not a lock.** It refuses other claims and nothing else, never expires, and koan doesn't know who made it: `claim.extra` is whatever the claimer stored. So the rules are yours to keep: never change, move, complete or unclaim a task someone else has claimed, or edit its notes, unless the user says so. Whoever holds the claim edits the notes.
 - **A claimed task can be blocked again** by a new edge or a reopened blocker, and the claim stays: the change warns `claimed-blocked`. A blocked task can be claimed too, to reserve it ahead.
 
 ### If a coordinator started you with one task
 
-When another agent started you with a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's reads (`task show`, `task list`, `task frontier`, `task why`, `folder show`, `folder list`, `where`, `context`, `export`, `info`), and put everything you want changed, follow-ups and the task being complete included, in your final report. The coordinator makes those changes.
+When another agent started you with a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's reads (`show`, `task list`, `frontier`, `why`, `folder list`, `where`, `context`, `export`, `info`), and put everything you want changed, follow-ups and the task being complete included, in your final report. The coordinator makes those changes.
 
 ## Writing
 
@@ -152,16 +154,16 @@ koan task create 'Investigate the flaky test' --notes-file - <<'EOF'
 Seen in CI on 2026-10-19; fails about 1 run in 20.
 EOF
 koan task update 48 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'
-koan task block 44 48                           # @44 waits on @48 too
-koan task unblock 44 48
-koan task block 42 43                           # refused: conflict, rule cycle, since @43 waits on @42
+koan block 44 48                           # @44 waits on @48 too
+koan unblock 44 48
+koan block 42 43                           # refused: conflict, rule cycle, since @43 waits on @42
 ```
 
-- **A write returns identities, not records**: `.result.id`, or the IDs it changed, such as `completed` and `moved`, and what else it touched, such as `released`, `reblocked` and `gates_made`, or `changed: false` when it changed nothing. `task show` it when you need its fields.
+- **A write returns identities, not records**: `.result.id`, or the IDs it changed, such as `completed` and `moved`, and what else it touched, such as `released`, `reblocked` and `gates_made`, or `changed: false` when it changed nothing. `show` it when you need its fields.
 - `task create` puts the task in an existing folder, `--folder`, or the root. It never makes a folder: a path that names none is `not-found`.
-- What the task waits on is `--blocked-by` on `task create`, and the words after the task on `task block` and `task unblock`; `--blocks` lists what waits on it. Both take tasks (`42`, `@42`), gates (`/work/api.start`, `@41.done`), and folders, which mean their done gate. They make any gate they name, and say so in `gates_made`.
-- **Titles** are one line, up to 200 characters; quote them with single quotes, and put one starting with `-` after `--`. **Tags** are lowercase letters, digits and hyphens. **Priority** is an integer, higher first; `null` clears it. Option lists are comma-separated or repeated, and `null` is written `null`. Where a command takes several tasks or folders, as `task complete`, `task mv` and `folder delete` do, give them as more words or comma-separated: `koan task complete 41 42` is `koan task complete 41,42`.
-- `task update` changes the title, priority, tags (`--tags-add`, `--tags-remove`, `--tags-replace-all`) and `extra` (`--extra-merge`, top level only; `--extra-remove key`, once per key; `--extra-replace-all`). Edges change only through `task block` and `task unblock`, the join commands (`task join`, `task unjoin`, `folder join`, `folder unjoin`) and `--join`; state only through `task complete` and `task reopen`.
+- What the task waits on is `--blocked-by` on `task create`, and the words after the task on `block` and `unblock`; `--blocks` lists what waits on it. Both take tasks (`42`, `@42`), gates (`/work/api.start`, `@41.done`), and folders, which mean their done gate. They make any gate they name, and say so in `gates_made`.
+- **Titles** are one line, up to 200 characters; quote them with single quotes, and put one starting with `-` after `--`. **Tags** are lowercase letters, digits and hyphens. **Priority** is an integer, higher first; `null` clears it. Option lists are comma-separated or repeated, and `null` is written `null`. Where a command takes several tasks or folders, as `complete`, `task mv` and `folder delete` do, give them as more words or comma-separated: `koan complete 41 42` is `koan complete 41,42`.
+- `task update` changes the title, priority, tags (`--tags-add`, `--tags-remove`, `--tags-replace-all`) and `extra` (`--extra-merge`, top level only; `--extra-remove key`, once per key; `--extra-replace-all`). Edges change only through `block` and `unblock`, `join` and `unjoin`, and `--join`; state only through `complete` and `reopen`.
 - Notes: short text with `--notes`, anything longer through a quoted heredoc with `--notes-file -`.
 - `-i <file>` (or `-i -`) gives the whole input as JSON instead of options. Use it for `batch`, which takes nothing else, or when building input from other JSON.
 
@@ -170,9 +172,9 @@ koan task block 42 43                           # refused: conflict, rule cycle,
 ```sh
 koan folder create /work/web/client --title 'Web client'    # makes /work/web too: .result.created lists both
 koan folder update /work/web/client --extra-merge '{"jira":"WEB-12"}'
-koan folder show /work/api                                   # .result.folder: gates, open, complete, finished, notes_path
+koan show /work/api                                         # .result.folder: gates, open, complete, finished, notes_path
 koan task create 'Port the client' --folder /work/web/client --blocked-by /work/web/client.start --blocks /work/web/client
-koan task block /work/web/client.start /work/api                # the client's work starts once the API is done
+koan block /work/web/client.start /work/api                 # the client's work starts once the API is done
 ```
 
 - `folder create` makes any missing parents, and lists every folder made in `created`. It refuses a path that is taken (`exists`) or that differs from a sibling only in case (`case-mismatch`).
@@ -194,7 +196,7 @@ A task or folder is `42` or `@42`; a gate is `@41.start` or `/work/api.done`; a 
 
 ## Keep output small
 
-Everything koan prints lands in your context. **Pass `--limit` and `--fields` to `task list`, `task frontier` and `folder list`**, and widen only when the question needs it:
+Everything koan prints lands in your context. **Pass `--limit` and `--fields` to `task list`, `frontier` and `folder list`**, and widen only when the question needs it:
 
 ```sh
 koan task list --limit 20 --fields ref,title,readiness           # open tasks, in tree order
@@ -205,7 +207,7 @@ koan folder list /work --recursive=false --fields path,title,open,finished
 - `--fields` gives `id` first, then the fields named, in the record's order. Task fields: `ref`, `gate`, `title`, `priority`, `folder`, `created_at`, `completed_at`, `updated_at`, `state`, `readiness`, `blocked_by`, `blocks`, `tags`, `extra`, `claim`, `notes_path`. Folder fields: `ref`, `name`, `path`, `title`, `extra`, `gates`, `open`, `complete`, `finished`, `notes_path`, `dir`.
 - `--limit` defaults to 100, and `--limit null` lists everything. The result always has `total` and `truncated`: when `truncated` is true you got the first `--limit` of `total`. Say so rather than presenting them as all.
 - `task list` filters by `--state open,complete` (open by default), `--readiness ready,blocked`, `--claimed` or `--claimed=false`, `--tags-any a,b`, `--tags-all a,b`, and the folder as the subject, with `--recursive=false` for only its own tasks.
-- `task show` and `folder show` give one whole record. A record is exact only as of the call.
+- `show` gives one whole record, `.result.task` or `.result.folder` by what the reference names. A record is exact only as of the call.
 
 **With `jq`, a failure looks like success**: the pipe's status is jq's, and the error vanishes. Never trim a write's or a show's envelope: print it as is. When a big read needs `jq`, keep the envelope and shape only the result, and when the filter drops tasks, say how many it didn't see:
 
@@ -262,13 +264,13 @@ koan folder delete /work/client --contents       # only once the user said so: .
 Archiving moves complete work out of the tree into `~/koan-root/archived/`, kept as files with a JSON of its fields beside it, so the tree stays small. There is no unarchive.
 
 ```sh
-koan folder archive /work/api                       # refused while anything under it is open: conflict, rule not-finished
-koan task update 48 --tags-add cancelled && koan task complete 48 && koan task archive 48   # one task: .result.archive
-koan task show 48                                   # not-found: .error.archived says where it went
+koan archive /work/api                              # refused while anything under it is open: conflict, rule not-finished
+koan task update 48 --tags-add cancelled && koan complete 48 && koan archive 48   # one task: .result.archive
+koan show 48                                        # not-found: .error.archived says where it went
 ```
 
 - **When the last open task in a folder is complete**, or the user says its work has shipped, offer to archive it. Never archive on your own initiative. A folder archives when every task under it is complete, gates included; otherwise `not-finished` lists the open tasks in `.error.ids`: ask the user, don't complete them to get past it.
-- `.result.left` is every ID that left the tree. They never resolve again: a command naming one fails `not-found`, saying where it went. A worktree bound to an archived folder binds nothing: mention it, so the user can remove the worktree.
+- `.result.removed` is every ID that left the tree. They never resolve again: a command naming one fails `not-found`, saying where it went. A worktree bound to an archived folder binds nothing: mention it, so the user can remove the worktree.
 - **Finding archived work**: search it with `rg '<text>' ~/koan-root/archived`. Each item keeps its ID in its name, such as `archived/work/@41_api/` for a folder or `archived/work/api/@48.md` for a task, with its fields in the `.json` beside it. Read archived files; never change them. To pick the work up again, make new tasks from what you find.
 
 ## When the tree is damaged
@@ -297,6 +299,6 @@ koan backup ~/backups/koan-$(date +%F)     # .result.clean is true when the copy
 
 ## Conventions
 
-- **Cancelled**: tag it, then complete it: `koan task update 48 --tags-add cancelled && koan task complete 48`.
+- **Cancelled**: tag it, then complete it: `koan task update 48 --tags-add cancelled && koan complete 48`.
 - **Waiting on someone**: `--extra-merge '{"status":"waiting","on":"vendor quote"}'`; clear it with `--extra-remove status --extra-remove on`.
 - **Where a task came from**: links to the PR, issue or ticket go in its notes, not its title.

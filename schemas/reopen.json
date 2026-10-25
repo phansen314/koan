@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reopen",
+  "$defs": {
+    "input": {
+      "$ref": "complete#/$defs/input"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "reopened",
+        "reblocked"
+      ],
+      "properties": {
+        "reopened": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The tasks it reopened. Input order."
+        },
+        "reblocked": {
+          "$ref": "types#/$defs/ids",
+          "description": "Ready tasks it made wait, claimed ones included."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

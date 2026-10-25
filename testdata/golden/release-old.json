@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command release",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "release",
+        "reason": "unknown command release"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

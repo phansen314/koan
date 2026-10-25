@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "join",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "ref",
+        "join"
+      ],
+      "properties": {
+        "ref": {
+          "$ref": "show#/$defs/input/properties/ref",
+          "description": "Subject. A task or a folder, never a gate."
+        },
+        "join": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/folder-ref"
+          },
+          "minItems": 1,
+          "description": "Object: the folders joined, the words after the subject."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "$ref": "block#/$defs/result"
+    }
+  }
+}
