@@ -62,7 +62,8 @@ type Option struct {
 	// completes to at a shell's Tab.
 	Complete Completer
 	// Arg, for a position, is what help calls each of its words; the
-	// field when not set.
+	// field when not set. For an option that takes a reference, it is
+	// what help calls its value, such as folder.
 	Arg string
 }
 
@@ -128,6 +129,9 @@ func (e *Env) Home() (string, *Error) {
 type Command struct {
 	Name  string
 	Short string // its line in help
+	// Uses are help's usage lines, each after the command's name, where
+	// its positions alone don't show its forms.
+	Uses []string
 	// Subject is the first position: one word, or with Kind List the
 	// words before the object, each read as a List option's text is.
 	Subject *Option
@@ -221,6 +225,9 @@ func (v *value) Type() string {
 		return "json"
 	case Path:
 		return "path"
+	}
+	if v.opt.Arg != "" {
+		return v.opt.Arg
 	}
 	return "string"
 }
@@ -328,6 +335,13 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 			return nil
 		},
 	}
+	if len(c.Uses) > 0 {
+		lines := make([]string, len(c.Uses))
+		for i, u := range c.Uses {
+			lines[i] = "koan " + c.Name + " " + u + " [flags]"
+		}
+		cc.SetUsageTemplate(strings.Replace(cc.UsageTemplate(), "{{.UseLine}}", strings.Join(lines, "\n  "), 1))
+	}
 	cc.ValidArgsFunction = c.subjectCompletion(env, l)
 	flags := cc.Flags()
 	add := func(v pflag.Value) pflag.Value {
@@ -357,11 +371,6 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 		name := strings.TrimPrefix(f.Name, "--")
 		flags.Var(add(&fileValue{f: f, l: l}), name, f.Usage)
 		cc.RegisterFlagCompletionFunc(name, fixed(fileNames))
-		for _, o := range c.Options {
-			if o.Field == f.Field {
-				cc.MarkFlagsMutuallyExclusive(o.flag(), name)
-			}
-		}
 	}
 	if h := c.Here; h != nil && h.Flag != "" {
 		name := strings.TrimPrefix(h.Flag, "--")
@@ -373,8 +382,16 @@ func (c *Command) cobra(env *Env, completing bool, ran func(*Command, *line)) *c
 	return cc
 }
 
-// finish checks what pflag can't: --input alone, and the positions.
+// finish checks what pflag can't: a convenience with its option, --input
+// alone, and the positions.
 func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
+	for _, f := range c.Files {
+		for _, o := range c.Options {
+			if o.Field == f.Field && cmd.Flags().Changed(o.flag()) && cmd.Flags().Changed(strings.TrimPrefix(f.Name, "--")) {
+				return Usage("", "--"+o.flag()+" and "+f.Name+" can't go together")
+			}
+		}
+	}
 	if l.hasInput {
 		other := ""
 		if len(args) > 0 {

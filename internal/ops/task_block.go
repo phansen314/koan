@@ -22,14 +22,15 @@ type UnblockResult struct {
 }
 
 // edgeCommand is the shape block and unblock share: a task,
-// then what it waits on, and at least one edge.
-func edgeCommand(name string, subject offers, run func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error)) *cli.Command {
+// then what it waits on, and at least one edge. ends is what the edges'
+// other ends complete to.
+func edgeCommand(name string, subject, ends offers, run func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error)) *cli.Command {
 	return &cli.Command{
 		Name:    name,
 		Subject: &cli.Option{Field: "task", Required: true, Complete: subject.complete()},
-		Object:  &cli.Option{Field: "blocked_by", Kind: cli.List, Arg: "blocker", Complete: edgeEnds.complete()},
+		Object:  &cli.Option{Field: "blocked_by", Kind: cli.List, Arg: "blocker", Complete: ends.complete()},
 		Options: []cli.Option{
-			{Field: "blocks", Kind: cli.List, Complete: edgeEnds.complete()},
+			{Field: "blocks", Kind: cli.List, Complete: ends.complete()},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
@@ -60,7 +61,7 @@ func edgeCommand(name string, subject offers, run func(env *cli.Env, task core.R
 // TaskBlock adds edges to a task, making any gate they name, its own
 // included, whose ID is issued first.
 func TaskBlock() *cli.Command {
-	return edgeCommand("block", blockable, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
+	return edgeCommand("block", blockable, edgeEnds, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e
@@ -87,7 +88,7 @@ func TaskBlock() *cli.Command {
 
 // TaskUnblock removes edges from a task. It never makes a gate.
 func TaskUnblock() *cli.Command {
-	return edgeCommand("unblock", tasksAndGates, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
+	return edgeCommand("unblock", tasksAndGates, madeEnds, func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error) {
 		s, e := openStore(env)
 		if e != nil {
 			return nil, nil, e

@@ -1374,8 +1374,8 @@ func hasAll(have, want map[string]bool) bool {
 	return true
 }
 
-// Release ends a task's claim, whoever made it.
-func (t *Tree) Release(task string) (changed bool, err error) {
+// Unclaim ends a task's claim, whoever made it.
+func (t *Tree) Unclaim(task string) (changed bool, err error) {
 	err = t.change(func(c *Tree) error {
 		x, err := c.subjectTask(task)
 		if err != nil {

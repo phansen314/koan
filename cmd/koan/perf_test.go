@@ -286,18 +286,18 @@ var perfOps = []perfOp{
 		},
 		args: func(r *perfRoot, i int) []string { return []string{"archive", fmt.Sprint(r.seq)} }},
 	{name: "claim", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("release", r.task(i, 90)) },
+		prep: func(r *perfRoot, i int) { r.must("unclaim", r.task(i, 90)) },
 		args: func(r *perfRoot, i int) []string { return []string{"claim", r.task(i, 90)} }},
 	{name: "claim-next", budget: 100 * ms,
-		prep: func(r *perfRoot, i int) { r.must("release", r.task(i, 33)) },
+		prep: func(r *perfRoot, i int) { r.must("unclaim", r.task(i, 33)) },
 		args: func(r *perfRoot, i int) []string { return []string{"claim-next", r.folder(i)} }},
-	{name: "release", budget: 100 * ms,
+	{name: "unclaim", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			if res := r.run("", "claim", r.task(i, 89)); !res.OK() && res.Error()["rule"] != "claimed" {
 				r.tb.Fatal(res.Line())
 			}
 		},
-		args: func(r *perfRoot, i int) []string { return []string{"release", r.task(i, 89)} }},
+		args: func(r *perfRoot, i int) []string { return []string{"unclaim", r.task(i, 89)} }},
 	{name: "folder create", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		r.seq++
 		return []string{"folder", "create", fmt.Sprintf("/new/n%d/x", r.seq), "--notes", "notes"}

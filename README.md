@@ -123,7 +123,7 @@ koan batch -i - <<'EOF'
 EOF
 ```
 
-Several agents can work from one tree: a **claim** reserves a task, so two workers are never handed the same one. It never expires; `complete` or `release` ends it. Finished work leaves the tree with `koan archive`, for a task or a folder, into `~/koan-root/archived`, where `rg` finds it.
+Several agents can work from one tree: a **claim** reserves a task, so two workers are never handed the same one. It never expires; `complete` or `unclaim` ends it. Finished work leaves the tree with `koan archive`, for a task or a folder, into `~/koan-root/archived`, where `rg` finds it.
 
 ## Use it from Claude Code and OpenCode
 

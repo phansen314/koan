@@ -111,7 +111,7 @@ func TestTaskReopen(t *testing.T) {
 	}
 	// Unclaimed, and two claimed in the plural.
 	ok(t, home, "complete", "1")
-	ok(t, home, "release", "2")
+	ok(t, home, "unclaim", "2")
 	golden(t, ok(t, home, "reopen", "1"), "reopen")
 	ok(t, home, "complete", "1")
 	ok(t, home, "claim", "2")
@@ -353,7 +353,7 @@ func TestFolderUpdate(t *testing.T) {
 }
 
 // claim claims an open task, blocked or not, with the caller's
-// extra; a second claim is claimed, a complete task complete. release
+// extra; a second claim is claimed, a complete task complete. unclaim
 // ends a claim whoever made it, and a task with none changes nothing.
 // Neither moves updated_at.
 func TestTaskClaim(t *testing.T) {
@@ -374,19 +374,19 @@ func TestTaskClaim(t *testing.T) {
 	if r := input(t, home, "claim", `{"task":1,"extra":[]}`); r.Kind() != "invalid-input" || problemFields(r) != "/extra" {
 		t.Errorf("extra: %s", r.Line())
 	}
-	r = ok(t, home, "release", "2")
-	golden(t, r, "release")
+	r = ok(t, home, "unclaim", "2")
+	golden(t, r, "unclaim")
 	if field(t, home, "2", "claim") != nil || field(t, home, "2", "updated_at") != fixed {
-		t.Errorf("released")
+		t.Errorf("unclaimed")
 	}
-	if r := ok(t, home, "release", "2"); fmt.Sprint(r.Result()) != "map[changed:false id:2]" {
+	if r := ok(t, home, "unclaim", "2"); fmt.Sprint(r.Result()) != "map[changed:false id:2]" {
 		t.Errorf("again: %s", r.Line())
 	}
 	r = ok(t, home, "claim", "2")
 	if fmt.Sprint(r.Result()["claim"].(map[string]any)["extra"]) != "map[]" {
 		t.Errorf("default extra: %s", r.Line())
 	}
-	fails(t, home, "not-found", "", "release", "99")
+	fails(t, home, "not-found", "", "unclaim", "99")
 }
 
 // claim-next takes the folder it looks under as its subject.

@@ -102,6 +102,7 @@ func TestCompleteReferences(t *testing.T) {
 	folders := []string{"1", "2", "3", "4"}
 	tasksAndFolders := []string{"9", "12", "1", "8", "2", "7", "3", "5", "6", "4"}
 	anyRef := []string{"9", "12", "1", "8", "2", "7", "3", "5", "6", "3.start", "3.done", "4"}
+	unblockEnds := []string{"9", "12", "8", "7", "3", "5", "6", "3.start", "3.done"}
 	for _, c := range []struct {
 		args []string
 		want string
@@ -129,14 +130,19 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"complete", "@"}, offered(byID, as("@", "9", "12", "7", "5", "6", "3.done")...)},
 		{[]string{"reopen", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"claim", "@"}, offered(byID, as("@", "9", "12", "7", "5", "3.done")...)},
-		{[]string{"release", "@"}, offered(byID, as("@", "6")...)},
+		{[]string{"unclaim", "@"}, offered(byID, as("@", "6")...)},
 		{[]string{"task", "mv", "@"}, offered(byID, as("@", allTasks...)...)},
 		// Gates made or not where an edge names them.
 		{[]string{"block", "@"}, offered(byID, as("@", "9", "12", "1.start", "1.done", "8", "2.start", "2.done", "7",
 			"5", "6", "3.start", "3.done", "4.start", "4.done")...)},
 		{[]string{"block", "5", "@"}, offered(byID, as("@", edges...)...)},
 		{[]string{"block", "5", "--blocks", ""}, offered(byID, as("@", edges...)...)},
-		{[]string{"unblock", "5", "@"}, offered(byID, as("@", edges...)...)},
+		// unblock's words: tasks, made gates, and folders that have a
+		// done gate, since it never makes a gate.
+		{[]string{"unblock", "5", "@"}, offered(byID, as("@", unblockEnds...)...)},
+		{[]string{"unblock", "5", "--blocks", ""}, offered(byID, as("@", unblockEnds...)...)},
+		{[]string{"unblock", "5", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"unblock", "5", "3"}, offered(byID, as("", "3", "3.start", "3.done")...)},
 		{[]string{"task", "create", "t", "--blocked-by", "@2"}, offered(byID, as("@", "2", "2.start", "2.done")...)},
 		{[]string{"task", "create", "t", "--blocks=2."}, offered(byID, as("", "2.start", "2.done")...)},
 		// Folders.
@@ -195,7 +201,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"reopen", "8", "@"}, offered(byID, as("@", "8", "3.start")...)},
 		{[]string{"task", "delete", "9", "@"}, offered(byID, as("@", all...)...)},
 		{[]string{"folder", "delete", "3", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"unblock", "5", "6", "@"}, offered(byID, as("@", edges...)...)},
+		{[]string{"unblock", "5", "6", "@"}, offered(byID, as("@", unblockEnds...)...)},
 		// show and where: tasks, made gates and folders.
 		{[]string{"show", ""}, offered(byID, as("@", anyRef...)...)},
 		{[]string{"show", "@"}, offered(byID, as("@", anyRef...)...)},
@@ -253,6 +259,9 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"block", "/work"}, offered(byPath, "/work", "/work.start", "/work.done")},
 		{[]string{"block", "5", "/work."}, offered(byPath, "/work.start", "/work.done")},
 		{[]string{"block", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
+		{[]string{"unblock", "5", "/work"}, offered(byPath, "/work")},
+		{[]string{"unblock", "5", "/work."}, offered(byPath)},
+		{[]string{"unblock", "5", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"where", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},
 		{[]string{"show", "/"}, offered(byPath, "/old", "/work")},
 		{[]string{"show", "/work/api"}, offered(byPath, "/work/api", "/work/api.start", "/work/api.done")},

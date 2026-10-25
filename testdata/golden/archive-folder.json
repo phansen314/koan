@@ -4,7 +4,7 @@
     "id": 2,
     "archive": "$HOME/koan-root/archived/work/@2_HOME-12345",
     "json": "$HOME/koan-root/archived/work/@2_HOME-12345.json",
-    "left": [
+    "removed": [
       2,
       3,
       4,

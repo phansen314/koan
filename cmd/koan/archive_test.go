@@ -124,7 +124,7 @@ func TestTaskArchive(t *testing.T) {
 	}
 	r = ok(t, home, "archive", "3")
 	golden(t, r, "archive")
-	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archive:%s id:3 json:%s left:[3]]",
+	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archive:%s id:3 json:%s removed:[3]]",
 		archivePath(home, "work/HOME-777/@3.md"), archivePath(home, "work/HOME-777/@3.json")) {
 		t.Errorf("archive: %s", r.Line())
 	}
@@ -226,7 +226,7 @@ func TestTaskArchiveGate(t *testing.T) {
 		"UPDATE task SET completed_at = '"+fixed+"' WHERE completed_at IS NOT NULL")
 	r := ok(t, home, "archive", "/work/api.start")
 	golden(t, r, "archive-gate")
-	if fmt.Sprint(r.Result()["left"]) != "[4]" || r.Result()["archive"] != archivePath(home, "work/api/@4_start.md") ||
+	if fmt.Sprint(r.Result()["removed"]) != "[4]" || r.Result()["archive"] != archivePath(home, "work/api/@4_start.md") ||
 		r.Result()["json"] != archivePath(home, "work/api/@4_start.json") {
 		t.Errorf("gate: %s", r.Line())
 	}
@@ -287,7 +287,7 @@ func TestFolderArchive(t *testing.T) {
 	r = ok(t, home, "archive", "/work/HOME-12345")
 	golden(t, r, "archive-folder")
 	dir := archivePath(home, "work/@2_HOME-12345")
-	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archive:%s id:2 json:%s.json left:[2 3 4 5 6 8]]", dir, dir) {
+	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archive:%s id:2 json:%s.json removed:[2 3 4 5 6 8]]", dir, dir) {
 		t.Errorf("archive: %s", r.Line())
 	}
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@7.md=", "@9.md=")
@@ -364,7 +364,7 @@ func TestFolderArchiveEmpty(t *testing.T) {
 	ok(t, home, "complete", "3")
 	os.Remove(treePath(home, "@f/@g/@3.md"))
 	r := ok(t, home, "archive", "/f")
-	if fmt.Sprint(r.Result()["left"]) != "[1 2 3]" || r.Result()["archive"] != archivePath(home, "@1_f") {
+	if fmt.Sprint(r.Result()["removed"]) != "[1 2 3]" || r.Result()["archive"] != archivePath(home, "@1_f") {
 		t.Errorf("archive: %s", r.Line())
 	}
 	checkArchive(t, home, "@1_f/", "@1_f.json=folder", "@1_f/@notes.md=", "@1_f/@g/", "@1_f/@g/@notes.md=")
@@ -448,7 +448,7 @@ func TestFolderArchiveStuck(t *testing.T) {
 	os.RemoveAll(treePath(home, "@f"))
 	r := warned(t, home, []string{"stuck-step"}, "archive", "/f")
 	golden(t, r, "archive-folder-stuck-step")
-	if fmt.Sprint(r.Result()["left"]) != "[1]" {
+	if fmt.Sprint(r.Result()["removed"]) != "[1]" {
 		t.Errorf("archive: %s", r.Line())
 	}
 	fails(t, home, "not-found", "", "show", "1")

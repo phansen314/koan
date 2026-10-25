@@ -703,7 +703,7 @@ func TestCaseOutsideTheTree(t *testing.T) {
 			t.Errorf("context: folder %v", id)
 		}
 		r := ok(t, home, "marker", "bind", "/work", upper)
-		if r.Result()["file"] != upper+"/.koan/marker.json" || r.Result()["marker"].(map[string]any)["dir"] != wt {
+		if r.Result()["marker"] != upper+"/.koan/marker.json" || r.Result()["binding"].(map[string]any)["dir"] != wt {
 			t.Errorf("bind: %s", r.Line())
 		}
 		// A wrongly-cased route to the root is under it.

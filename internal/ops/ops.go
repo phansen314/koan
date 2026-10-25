@@ -23,7 +23,7 @@ func Commands() []*cli.Command {
 		Archive(),
 		TaskClaim(),
 		TaskClaimNext(),
-		TaskRelease(),
+		TaskUnclaim(),
 		FolderCreate(),
 		FolderList(),
 		FolderUpdate(),

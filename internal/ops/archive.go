@@ -21,7 +21,7 @@ type ArchiveResult struct {
 	ID      int64   `json:"id"`
 	Archive *string `json:"archive"`
 	JSON    string  `json:"json"`
-	Left    []int64 `json:"left"`
+	Removed []int64 `json:"removed"`
 }
 
 // archiveFile is the JSON beside an archived item, in the archive-file
@@ -260,7 +260,7 @@ func (t *tasks) archive(tx *store.Tx, l leaving) (any, []cli.Warning, error) {
 	if _, err := fsstep.Add(tx, step); err != nil {
 		return nil, nil, err
 	}
-	res := ArchiveResult{ID: l.id, JSON: fsstep.Abs(t.root, l.file), Left: slices.Sorted(slices.Values(slices.Concat(l.tasks, l.folders)))}
+	res := ArchiveResult{ID: l.id, JSON: fsstep.Abs(t.root, l.file), Removed: slices.Sorted(slices.Values(slices.Concat(l.tasks, l.folders)))}
 	if !l.missing {
 		at := fsstep.Abs(t.root, l.to)
 		res.Archive = &at

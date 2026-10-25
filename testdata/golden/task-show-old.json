@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "unknown command task show",
+    "message": "unknown command task show: show is koan show",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "show",
-        "reason": "unknown command task show"
+        "reason": "unknown command task show: show is koan show"
       }
     ],
     "archived": []

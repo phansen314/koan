@@ -6,9 +6,11 @@ import (
 	"testing"
 )
 
-// A command sits under task or folder only where the kind changes what
-// it does, so each old spelling is usage, an unknown command after task
-// or folder, with its problem at the verb; it changes nothing.
+// A command sits under task or folder only where no reference names the
+// kind, or where its options differ by kind, so each old spelling is
+// usage, an unknown command after task or folder, with its problem at
+// the verb, and its message names the command it now is; it changes
+// nothing. release is no command at all now.
 func TestOldSpellings(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/w")                // 1
@@ -32,11 +34,22 @@ func TestOldSpellings(t *testing.T) {
 		{"task", "unblock", "2", "3"},
 		{"task", "claim", "2"},
 		{"task", "claim-next"},
-		{"task", "release", "2"},
+		{"task", "unclaim", "2"},
 		{"task", "frontier"},
 	} {
-		usageAt(t, home, args[1], args...)
+		r := usageAt(t, home, args[1], args...)
+		if want := args[1] + " is koan " + args[1]; !strings.Contains(r.Error()["message"].(string), want) {
+			t.Errorf("koan %q: message lacks %q: %s", args, want, r.Line())
+		}
 	}
+	// A word that is no command of its own gets no pointer, and nor
+	// does one after marker, which never held a moved command.
+	for _, args := range [][]string{{"task", "release", "2"}, {"task", "frob"}, {"folder", "marker"}, {"marker", "show", "2"}} {
+		if r := usageAt(t, home, args[1], args...); strings.Contains(r.Error()["message"].(string), " is koan ") {
+			t.Errorf("koan %q: %s", args, r.Line())
+		}
+	}
+	golden(t, usageAt(t, home, "release", "release", "2"), "release-old")
 	// Nothing changed: the first task is open, unclaimed and waits on
 	// nothing.
 	if r := ok(t, home, "why", "2"); fmt.Sprint(r.Result()["blockers"]) != "[]" {
@@ -60,7 +73,7 @@ func TestMovedCommandsInput(t *testing.T) {
 	golden(t, input(t, home, "frontier", `{"folder":"/w","fields":["title"]}`), "frontier-input")
 	golden(t, input(t, home, "unblock", `{"task":2,"blocked_by":["@3"]}`), "unblock-input")
 	goldenNow(t, input(t, home, "claim", `{"task":"@2","extra":{"by":"me"}}`), "claim-input")
-	golden(t, input(t, home, "release", `{"task":2}`), "release-input")
+	golden(t, input(t, home, "unclaim", `{"task":2}`), "unclaim-input")
 	goldenNow(t, input(t, home, "claim-next", `{"folder":"/w","extra":{"by":"me"}}`), "claim-next-input")
 	ok(t, home, "complete", "2", "3")
 	golden(t, input(t, home, "reopen", `{"tasks":[2,"@3"]}`), "reopen-input")

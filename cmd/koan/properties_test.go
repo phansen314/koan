@@ -73,7 +73,7 @@ func TestProperties(t *testing.T) {
 		return
 	}
 	for _, cmd := range []string{"task create", "task update", "block", "unblock", "complete", "reopen",
-		"claim", "claim-next", "release", "task mv", "task delete", "archive task", "folder create",
+		"claim", "claim-next", "unclaim", "task mv", "task delete", "archive task", "folder create",
 		"folder update", "folder mv", "folder mv case", "folder delete", "folder delete material", "archive folder", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
@@ -622,8 +622,8 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				want = fmt.Sprint(c.Task)
 			case 3:
 				var changed bool
-				changed, err = m.Release(x)
-				args = []string{"release", x}
+				changed, err = m.Unclaim(x)
+				args = []string{"unclaim", x}
 				want = fmt.Sprint(changed)
 			default:
 				sc := model.Scope{Folder: pick([]string{"/", "/a", "/a/b", "/c"}), Recursive: rng.Intn(2) == 0}
@@ -688,7 +688,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					got = fmt.Sprintf("%v %v %s", res["reopened"], res["reblocked"], koanWarnings(r))
 				case "claim":
 					got = fmt.Sprint(res["claim"].(map[string]any)["task"])
-				case "release":
+				case "unclaim":
 					got = fmt.Sprint(res["changed"])
 				case "claim-next":
 					got = "<nil>"
@@ -704,7 +704,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				case "delete":
 					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
 				case "archive":
-					got = fmt.Sprint(res["left"])
+					got = fmt.Sprint(res["removed"])
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)

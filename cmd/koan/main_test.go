@@ -233,6 +233,51 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+// Help's usage lines are the spec's, its summaries say what a command
+// does, and an option that takes a reference says which kind.
+func TestHelpText(t *testing.T) {
+	for _, c := range []struct {
+		args  []string
+		has   []string
+		lacks []string
+	}{
+		{[]string{"where", "-h"}, []string{"koan where <ref> [flags]\n", "koan where --file <path> [flags]\n"}, []string{"[<ref>]"}},
+		{[]string{"folder", "mv", "-h"}, []string{
+			"koan folder mv <folder> <dest> [flags]\n", "koan folder mv <folder>... <folder> [flags]\n",
+			"koan folder mv -t <folder> <folder>... [flags]\n", "koan folder mv -T <folder> <path> [flags]\n",
+			"-t, --into folder "}, []string{"string"}},
+		{[]string{"unblock", "-h"}, []string{"Remove edges: what a task waits on, or what waits on it"}, nil},
+		{[]string{"task", "mv", "-h"}, []string{"-t, --into folder "}, nil},
+		{[]string{"task", "create", "-h"}, []string{"--folder folder "}, nil},
+	} {
+		r := testrun.Koan(t, c.args...)
+		for _, s := range c.has {
+			if !strings.Contains(r.Stdout, s) {
+				t.Errorf("koan %q lacks %q: %s", c.args, s, r.Stdout)
+			}
+		}
+		for _, s := range c.lacks {
+			if strings.Contains(r.Stdout, s) {
+				t.Errorf("koan %q has %q: %s", c.args, s, r.Stdout)
+			}
+		}
+	}
+}
+
+// --notes with --notes-file is usage at "", worded as -t with -T is.
+func TestNotesClash(t *testing.T) {
+	home := root(t)
+	for _, args := range [][]string{
+		{"task", "create", "a", "--notes", "x", "--notes-file", "-"},
+		{"folder", "create", "/a", "--notes-file", "-", "--notes", "x"},
+	} {
+		r := usageAt(t, home, "", args...)
+		if msg := r.Error()["message"]; msg != "--notes and --notes-file can't go together" {
+			t.Errorf("koan %q: %s", args, r.Line())
+		}
+	}
+}
+
 // Exit 3: koan couldn't write the envelope.
 func TestOutputFails(t *testing.T) {
 	if runtime.GOOS == "linux" {

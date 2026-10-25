@@ -111,9 +111,9 @@ func TaskClaimNext() *cli.Command {
 	}
 }
 
-// TaskRelease ends a task's claim, whoever made it.
-func TaskRelease() *cli.Command {
-	return taskCommand("release", claimedOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
+// TaskUnclaim ends a task's claim, whoever made it.
+func TaskUnclaim() *cli.Command {
+	return taskCommand("unclaim", claimedOnes, func(tx *store.Tx, id int64) (any, []cli.Warning, error) {
 		changed, err := tx.EndClaim(id)
 		if err != nil {
 			return nil, nil, err

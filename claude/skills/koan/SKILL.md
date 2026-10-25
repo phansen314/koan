@@ -13,7 +13,7 @@ description: Track and work through the user's tasks with the koan CLI — a loc
 
 Every command prints **exactly one line of JSON** on standard output. The examples below run in order on one tree, whose first ID is @40.
 
-`task` and `folder` keep the five commands whose kind changes what they do: `create`, `list`, `update`, `delete` and `mv`. Every other command is its verb alone, since its subject, or the verb itself, says what it acts on: `koan show 42` shows @42 whether it is a task or a folder, and `koan task show 42` is `usage`.
+`task` and `folder` keep the five commands that need the noun: `create` and `list`, where no reference names the kind, and `update`, `delete` and `mv`, whose options differ by kind. Every other command is its verb alone, since its subject, or the verb itself, says what it acts on: `koan show 42` shows @42 whether it is a task or a folder, and `koan task show 42` is `usage`. So `koan task <verb>` is `usage` for every verb but the five: drop `task`.
 
 ## Before the first command
 
@@ -127,19 +127,19 @@ koan complete 42                              # ends the claim; .result.released
 
 ### Claims
 
-Other agents may be working from the same tree. A **claim** reserves a task: no one else can claim it, and it leaves the frontier, until it is released or completed.
+Other agents may be working from the same tree. A **claim** reserves a task: no one else can claim it, and it leaves the frontier, until it is unclaimed or completed.
 
 ```sh
 koan claim 43 --extra '{"by":"agent-1"}'      # this task: .result.claim
 koan claim 43                                 # a second claim fails: conflict, rule claimed
 koan task list --claimed --limit 20 --fields title,claim   # what is taken, by whom, since when
-koan release 43                               # you won't do it after all
+koan unclaim 43                               # you won't do it after all
 ```
 
 - **Claim a task before starting it**, whether you picked it or the user named it. `claim-next` picks and claims in one step and returns the task's record, so prefer it when the choice is yours. Its `task` is `null` when nothing ready is free.
 - **On `claimed`**, someone else has it: pick another if the choice was yours; tell the user if they named it.
-- **`complete` ends the claim.** If you stop without finishing, `release` it.
-- **A claim is a reservation, not a lock.** It refuses other claims and nothing else, never expires, and koan doesn't know who made it: `claim.extra` is whatever the claimer stored. So the rules are yours to keep: never change, move, complete or release a task someone else has claimed, or edit its notes, unless the user says so. Whoever holds the claim edits the notes.
+- **`complete` ends the claim.** If you stop without finishing, `unclaim` it.
+- **A claim is a reservation, not a lock.** It refuses other claims and nothing else, never expires, and koan doesn't know who made it: `claim.extra` is whatever the claimer stored. So the rules are yours to keep: never change, move, complete or unclaim a task someone else has claimed, or edit its notes, unless the user says so. Whoever holds the claim edits the notes.
 - **A claimed task can be blocked again** by a new edge or a reopened blocker, and the claim stays: the change warns `claimed-blocked`. A blocked task can be claimed too, to reserve it ahead.
 
 ### If a coordinator started you with one task
@@ -270,7 +270,7 @@ koan show 48                                        # not-found: .error.archived
 ```
 
 - **When the last open task in a folder is complete**, or the user says its work has shipped, offer to archive it. Never archive on your own initiative. A folder archives when every task under it is complete, gates included; otherwise `not-finished` lists the open tasks in `.error.ids`: ask the user, don't complete them to get past it.
-- `.result.left` is every ID that left the tree. They never resolve again: a command naming one fails `not-found`, saying where it went. A worktree bound to an archived folder binds nothing: mention it, so the user can remove the worktree.
+- `.result.removed` is every ID that left the tree. They never resolve again: a command naming one fails `not-found`, saying where it went. A worktree bound to an archived folder binds nothing: mention it, so the user can remove the worktree.
 - **Finding archived work**: search it with `rg '<text>' ~/koan-root/archived`. Each item keeps its ID in its name, such as `archived/work/@41_api/` for a folder or `archived/work/api/@48.md` for a task, with its fields in the `.json` beside it. Read archived files; never change them. To pick the work up again, make new tasks from what you find.
 
 ## When the tree is damaged

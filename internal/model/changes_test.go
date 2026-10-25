@@ -721,8 +721,8 @@ func TestClaims(t *testing.T) {
 		t.Errorf("claim-next with nothing left: %d", got)
 	}
 
-	if !must[bool](t)(tr.Release("4")) || tr.claimed(4) {
-		t.Error("release")
+	if !must[bool](t)(tr.Unclaim("4")) || tr.claimed(4) {
+		t.Error("unclaim")
 	}
 	must[CompleteResult](t)(tr.Complete("4"))
 	_, err = tr.ClaimTask("4", nil)

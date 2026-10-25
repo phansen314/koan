@@ -26,7 +26,7 @@ func TaskCreate() *cli.Command {
 		Name:    "task create",
 		Subject: &cli.Option{Field: "title", Required: true},
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
+			{Field: "folder", Kind: cli.String, Arg: "folder", Complete: foldersOnly.complete()},
 			{Field: "priority", Kind: cli.Integer, Nullable: true},
 			{Field: "tags", Kind: cli.List},
 			{Field: "blocked_by", Kind: cli.List, Complete: edgeEnds.complete()},
