@@ -427,31 +427,112 @@ func TestMoveFolder(t *testing.T) {
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Folder: "/work/api"})) // @4
 	must[Claim](t)(tr.ClaimTask("4", nil))
 
-	r := must[FolderMoved](t)(tr.MoveFolder("/work", "/archive/old/work2"))
-	if !r.Changed || r.Path != "/archive/old/work2" || len(r.Created) != 2 ||
+	// Into a folder that exists; otherwise renamed.
+	r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/other", "/work"))
+	if !reflect.DeepEqual(r.Moved, []FolderAt{{1, "/other/work"}}) ||
 		!reflect.DeepEqual(r.Warnings, []Warning{{"moved-claimed", []int64{4}}}) {
-		t.Errorf("move: %+v", r)
+		t.Errorf("into: %+v", r)
 	}
-	if tr.Path(2) != "/archive/old/work2/api" {
+	if tr.Path(2) != "/other/work/api" {
 		t.Errorf("child path %s", tr.Path(2))
 	}
+	r = must[FolderMoved](t)(tr.MoveFolder(MvDest, "/other/work2", "/other/work"))
+	if !reflect.DeepEqual(r.Moved, []FolderAt{{1, "/other/work2"}}) {
+		t.Errorf("renamed: %+v", r)
+	}
+	// No parent is made.
+	_, err := tr.MoveFolder(MvRename, "/archive/work", "@1")
+	wantErr(t, err, core.KindNotFound, "")
+	_, err = tr.MoveFolder(MvDest, "/archive/work", "@1")
+	wantErr(t, err, core.KindNotFound, "")
 
-	_, err := tr.MoveFolder("@1", "/archive/old/work2/api/x")
+	_, err = tr.MoveFolder(MvRename, "/other/work2/api/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
-	if e := err.(*core.Error); !reflect.DeepEqual(e.IDs, []int64{1}) || !reflect.DeepEqual(e.Paths, []string{"/archive/old/work2/api/x"}) {
+	if e := err.(*core.Error); !reflect.DeepEqual(e.IDs, []int64{1}) || !reflect.DeepEqual(e.Paths, []string{"/other/work2/api/x"}) {
 		t.Errorf("into-itself names the folder and the destination: %v %v", e.IDs, e.Paths)
 	}
-	_, err = tr.MoveFolder("@1", "/other")
+	_, err = tr.MoveFolder(MvRename, "/other", "@2")
 	wantErr(t, err, core.KindConflict, core.RuleExists)
-	_, err = tr.MoveFolder("@1", "/OTHER")
+	_, err = tr.MoveFolder(MvRename, "/OTHER", "@2")
 	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
-	_, err = tr.MoveFolder("/", "/x")
+	_, err = tr.MoveFolder(MvDest, "/x", "/")
+	wantErr(t, err, core.KindInvalidInput, "")
+	_, err = tr.MoveFolder(MvRename, "/", "/other")
 	wantErr(t, err, core.KindInvalidInput, "")
 
-	// A case-only rename is a move: the one input naming both spellings.
-	r = must[FolderMoved](t)(tr.MoveFolder("/other", "/Other"))
-	if !r.Changed || tr.Folders[3].Name != "Other" {
+	// An anchored path, whose last name is the new one.
+	r = must[FolderMoved](t)(tr.MoveFolder(MvRename, "@3/api2", "@2"))
+	if !reflect.DeepEqual(r.Moved, []FolderAt{{2, "/other/api2"}}) {
+		t.Errorf("anchored: %+v", r)
+	}
+	// A bare ID names no new path.
+	_, err = tr.MoveFolder(MvRename, "@99", "@2")
+	wantErr(t, err, core.KindNotFound, "")
+
+	// A case-only rename: the one input naming both spellings.
+	r = must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Other", "/other"))
+	if len(r.Moved) != 1 || tr.Folders[3].Name != "Other" {
 		t.Errorf("case-only rename: %+v", r)
+	}
+	checked(t, tr)
+}
+
+// Onto itself, as mv: into itself is into-itself; renamed to its own path,
+// or into the folder it is in, nothing changes.
+func TestMoveFolderOntoItself(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/a/b", nil, nil)) // @1, @2
+	_, err := tr.MoveFolder(MvDest, "/a", "/a")
+	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	_, err = tr.MoveFolder(MvInto, "/a/b", "/a")
+	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	for _, c := range []struct {
+		mv          Mv
+		dest, which string
+	}{{MvRename, "/a", "/a"}, {MvRename, "@1", "/a"}, {MvDest, "/a", "/a/b"}, {MvInto, "/", "/a"}, {MvRename, "/a/b", "@2"}} {
+		if r := must[FolderMoved](t)(tr.MoveFolder(c.mv, c.dest, c.which)); len(r.Moved) != 0 {
+			t.Errorf("%v %s %s: %+v", c.mv, c.dest, c.which, r)
+		}
+	}
+	checked(t, tr)
+}
+
+// Several folders move as one change, judged against the tree as the
+// whole move would leave it.
+func TestMoveFolders(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/a/x", nil, nil)) // @1, @2
+	must[[]FolderAt](t)(tr.CreateFolder("/b/x", nil, nil)) // @3, @4
+	must[[]FolderAt](t)(tr.CreateFolder("/d/X", nil, nil)) // @5, @6
+	must[[]FolderAt](t)(tr.CreateFolder("/c", nil, nil))   // @7
+
+	_, err := tr.MoveFolder(MvDest, "/c", "/a/x", "/b/x")
+	wantErr(t, err, core.KindConflict, core.RuleExists)
+	_, err = tr.MoveFolder(MvInto, "/c", "/a/x", "/d/X", "/b/x")
+	e := wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
+	if !reflect.DeepEqual(e.Paths, []string{"/c/X", "/c/x"}) {
+		t.Errorf("case-mismatch before exists: %v", e.Paths)
+	}
+	_, err = tr.MoveFolder(MvDest, "/z", "/a/x", "/d/X")
+	wantErr(t, err, core.KindNotFound, "")
+	_, err = tr.MoveFolder(MvDest, "/c", "/a", "/a/x")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+		t.Errorf("nested: %v", e.Problems)
+	}
+	_, err = tr.MoveFolder(MvDest, "/c", "/a/x", "@2")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+		t.Errorf("twice: %v", e.Problems)
+	}
+	_, err = tr.MoveFolder(MvRename, "/c/y", "/a/x", "/d/X")
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/folders/1"}) {
+		t.Errorf("rename of two: %v", e.Problems)
+	}
+	if tr.Path(2) != "/a/x" {
+		t.Fatalf("a refused move moved something")
+	}
+	r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/c", "/d/X", "/b"))
+	if !reflect.DeepEqual(r.Moved, []FolderAt{{6, "/c/X"}, {3, "/c/b"}}) {
+		t.Errorf("several: %+v", r)
 	}
 	checked(t, tr)
 }
@@ -663,8 +744,8 @@ func TestCase(t *testing.T) {
 	if tr.Folders[3].Name != "Zeta" || tr.TreeOrder()[0] != 3 {
 		t.Errorf("tree order %v", tr.TreeOrder())
 	}
-	// Changing a folder's case is a move.
-	must[FolderMoved](t)(tr.MoveFolder("/work", "/Work"))
+	// Changing a folder's case is a rename.
+	must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Work", "/work"))
 	if tr.Path(2) != "/Work/a" {
 		t.Errorf("path %s", tr.Path(2))
 	}
@@ -714,22 +795,28 @@ func TestMoveGateToItsFolder(t *testing.T) {
 	wantErr(t, err, core.KindConflict, core.RuleGate)
 }
 
-// folder move checks into-itself, then case-mismatch, then exists. A path
+// folder mv checks into-itself, then case-mismatch, then exists. A path
 // names a folder only in its exact case, so into-itself follows exact
 // names.
 func TestMoveFolderOrder(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a/b", nil, nil)) // @1, @2
 	must[[]FolderAt](t)(tr.CreateFolder("/c/d", nil, nil)) // @3, @4
-	_, err := tr.MoveFolder("@1", "/a/b")
+	_, err := tr.MoveFolder(MvRename, "/a/b", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
-	_, err = tr.MoveFolder("@1", "/a/B/x")
+	_, err = tr.MoveFolder(MvRename, "/a/B/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
-	_, err = tr.MoveFolder("@1", "/C/d")
+	_, err = tr.MoveFolder(MvDest, "/a/B/x", "@1")
+	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	_, err = tr.MoveFolder(MvRename, "@2/x", "@1")
+	wantErr(t, err, core.KindConflict, core.RuleIntoItself)
+	_, err = tr.MoveFolder(MvRename, "/C/d", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
-	_, err = tr.MoveFolder("@1", "/A/x")
+	_, err = tr.MoveFolder(MvRename, "/A/x", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleCaseMismatch)
-	_, err = tr.MoveFolder("@1", "/c/d")
+	_, err = tr.MoveFolder(MvRename, "/c/d", "@1")
+	wantErr(t, err, core.KindConflict, core.RuleExists)
+	_, err = tr.MoveFolder(MvRename, "@4", "@1")
 	wantErr(t, err, core.KindConflict, core.RuleExists)
 	checked(t, tr)
 }

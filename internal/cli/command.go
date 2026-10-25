@@ -138,6 +138,11 @@ type Command struct {
 	// Instead, for a command an option can take the object's place on,
 	// is that option's field: given, every positional is a subject.
 	Instead string
+	// Single, for a command a Bool option limits to one subject, is that
+	// option's field: given true, the subject is one word.
+	Single string
+	// Apart are the fields of options that can't be given together.
+	Apart   []string
 	Options []Option
 	Files   []File
 	Here    *Here
@@ -386,21 +391,36 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 		}
 		return nil
 	}
+	var apart []string
+	for _, field := range c.Apart {
+		f := cmd.Flags().Lookup(strings.ReplaceAll(field, "_", "-"))
+		switch {
+		case !f.Changed:
+		case f.Shorthand != "":
+			apart = append(apart, "-"+f.Shorthand)
+		default:
+			apart = append(apart, "--"+f.Name)
+		}
+	}
+	if len(apart) > 1 {
+		return Usage("", strings.Join(apart, " and ")+" can't go together")
+	}
 	object := c.Object
 	if c.Instead != "" && cmd.Flags().Changed(strings.ReplaceAll(c.Instead, "_", "-")) {
 		object = nil
 	}
+	list := c.Subject.Kind == List && (c.Single == "" || l.in[c.Single] != true)
 	// The subject's words, then the object's: one subject before a list,
 	// or a list of subjects before one object.
 	n := len(args)
 	if object != nil && n > 1 {
 		n = 1
-		if c.Subject.Kind == List {
+		if list {
 			n = len(args) - 1
 		}
 	}
 	subjects, objects := args[:n], args[n:]
-	if c.Subject.Kind != List && len(subjects) > 1 {
+	if !list && len(subjects) > 1 {
 		return Usage(subjects[1], "a second subject: "+c.Name+" takes one")
 	}
 	if object != nil && object.Kind != List && len(objects) > 1 {

@@ -95,21 +95,21 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "cd ~/code/api-v2 && koan context", want: []string{`{"ok":true,"result":{"folder":{"id":41},"ancestors":[{"id":40}],"notes":"Move the API to v2.\n",
 		"tasks":[{"id":43},{"id":46},{"id":47}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
 	{cmd: "koan where --file ~/code/api-v2/src/main.go", want: []string{`{"ok":true,"result":{"ref":"@41 (/work/api)","kind":"folder","marker":"~/code/api-v2/.koan/marker.json"},"warnings":[]}`}},
-	{cmd: "koan folder move /work/api --to /work/api2", want: []string{`{"ok":true,"result":{"id":41,"changed":true,"path":"/work/api2"}}`}},
+	{cmd: "koan folder mv -T /work/api /work/api2", want: []string{`{"ok":true,"result":{"moved":[{"id":41,"path":"/work/api2"}]}}`}},
 	{cmd: "koan where --file ~/code/api-v2", want: []string{`{"ok":true,"result":{"ref":"@41 (/work/api2)"},"warnings":[{"kind":"stale-marker","ids":[41]}]}`}},
 	{cmd: "koan marker bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":{"id":41,"path":"/work/api2"},"replaced":true}}`}},
-	{cmd: "koan folder move /work/api2 --to /work/api", want: []string{`{"ok":true,"result":{"id":41,"changed":true,"path":"/work/api"}}`}},
+	{cmd: "koan folder mv -T /work/api2 /work/api", want: []string{`{"ok":true,"result":{"moved":[{"id":41,"path":"/work/api"}]}}`}},
 
 	// Moving, deleting and archiving
 	{cmd: "koan task mv 48 /work/api", want: []string{`{"ok":true,"result":{"moved":[{"id":48,"notes_path":"~/koan-root/tree/@work/@api/@48.md"}]}}`}},
-	{cmd: "koan folder move /work/web/client --to /work/client", want: []string{`{"ok":true,"result":{"id":50,"changed":true,"path":"/work/client","created":[]}}`}},
+	{cmd: "koan folder mv -T /work/web/client /work/client", want: []string{`{"ok":true,"result":{"moved":[{"id":50,"path":"/work/client"}]}}`}},
 	{cmd: "koan task list /work/client --state open,complete --fields title,state,claim", want: []string{`{"ok":true,"result":{"tasks":[{"id":51},{"id":52},{"id":53}],"total":3}}`}},
 	{cmd: "koan folder delete /work/client", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"not-empty","ids":[51]}}`}},
 	{cmd: "koan folder delete /work/client --contents", want: []string{`{"ok":true,"result":{"removed":[50,51,52,53],"released":[]}}`}},
 	{cmd: "koan folder archive /work/api", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"not-finished","ids":[43,46,47,48]}}`}},
 	{cmd: "koan task update 48 --tags-add cancelled && koan task complete 48 && koan task archive 48", want: []string{
 		`{"ok":true,"result":{"id":48,"changed":true}}`,
-		`{"ok":true,"result":{"id":48,"changed":true}}`,
+		`{"ok":true,"result":{"completed":[48],"released":[]}}`,
 		`{"ok":true,"result":{"id":48,"archive":"~/koan-root/archived/work/api/@48.md","left":[48]}}`}},
 	{cmd: "koan task show 48", exit: 1, want: []string{`{"ok":false,"error":{"kind":"not-found","ids":[48],"archived":[{"id":48,"archive":"~/koan-root/archived/work/api/@48.md"}]}}`}},
 

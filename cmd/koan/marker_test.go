@@ -78,7 +78,7 @@ func TestMarkerBind(t *testing.T) {
 
 	// The same folder again replaces it, refreshing its path; another
 	// live folder needs --force.
-	ok(t, home, "folder", "move", "/work/api", "--to", "/work/web")
+	ok(t, home, "folder", "mv", "-T", "/work/api", "/work/web")
 	r = ok(t, home, "marker", "bind", "2", wt)
 	if r.Result()["replaced"] != true || checkMarker(t, wt)["path"] != "/work/web" {
 		t.Errorf("rebind: %s", r.Line())

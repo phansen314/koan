@@ -151,7 +151,7 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"task", "mv", "5", "-t", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "show", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "update", "@"}, offered(byID, as("@", folders...)...)},
-		{[]string{"folder", "move", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"folder", "mv", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "delete", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"export", "@"}, offered(byID, as("@", folders...)...)},
@@ -218,8 +218,6 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"folder", "create", "/work/api"}, offered(byPath, "/work/api")},
 		{[]string{"folder", "create", "@"}, offered(byID)},
 		{[]string{"folder", "create", ""}, offered(byID)},
-		{[]string{"folder", "move", "/work", "--to", "/o"}, offered(byPath, "/old")},
-		{[]string{"folder", "move", "/work", "--to", "@"}, offered(byID)},
 		// Anything else offers nothing: an anchored path, material, a label.
 		{[]string{"where", "@2/api"}, offered(byID)},
 		{[]string{"where", "/work/api:"}, offered(byID)},

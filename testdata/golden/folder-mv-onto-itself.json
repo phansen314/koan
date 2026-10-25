@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "into-itself",
+    "message": "@1 would land inside itself at /a/a",
+    "ids": [
+      1
+    ],
+    "paths": [
+      "/a/a"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

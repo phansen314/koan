@@ -1,14 +1,11 @@
 {
   "ok": true,
   "result": {
-    "id": 1,
-    "changed": true,
-    "path": "/v/w",
-    "dir": "$HOME/koan-root/tree/@v/@w",
-    "created": [
+    "moved": [
       {
-        "id": 7,
-        "path": "/v"
+        "id": 1,
+        "path": "/v/w",
+        "dir": "$HOME/koan-root/tree/@v/@w"
       }
     ]
   },

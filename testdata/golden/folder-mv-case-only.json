@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "result": {
+    "moved": [
+      {
+        "id": 1,
+        "path": "/Work",
+        "dir": "$HOME/koan-root/tree/@Work"
+      }
+    ]
+  },
+  "warnings": []
+}

@@ -35,7 +35,7 @@ var (
 func TestProperties(t *testing.T) {
 	t.Parallel()
 	// The first seed alone makes every command succeed, for -short.
-	seeds := []int64{59, 11, 1, 2}
+	seeds := []int64{1, 59, 11, 2}
 	steps := 200
 	switch {
 	case *seedFlag != 0:
@@ -74,7 +74,7 @@ func TestProperties(t *testing.T) {
 	}
 	for _, cmd := range []string{"task create", "task update", "task block", "task unblock", "task complete", "task reopen",
 		"task claim", "task claim-next", "task release", "task mv", "task delete", "task archive", "folder create",
-		"folder update", "folder move", "folder move case", "folder delete", "folder delete material", "folder archive", "batch"} {
+		"folder update", "folder mv", "folder mv case", "folder delete", "folder delete material", "folder archive", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -426,10 +426,13 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			if rng.Intn(2) == 0 {
 				x = m.Path(id)
 			}
+			mv, args := model.MvDest, []string{"folder", "mv", x, string(p)}
+			if rng.Intn(2) == 0 {
+				mv, args = model.MvRename, []string{"folder", "mv", "-T", x, string(p)}
+			}
 			var out model.FolderMoved
-			out, err = m.MoveFolder(x, string(p))
-			return []string{"folder", "move", x, "--to", string(p)}, "folder move case",
-				fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, out.Path, madeAt(out.Created), warnings(out.Warnings)), err
+			out, err = m.MoveFolder(mv, string(p), x)
+			return args, "folder mv case", fmt.Sprintf("%v %s", madeAt(out.Moved), warnings(out.Warnings)), err
 		case op == 7:
 			xs, words := subjects(folderRef(), folderRef)
 			var out model.Removed
@@ -572,10 +575,24 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				args = []string{"folder", "create", to}
 				want = fmt.Sprint(madeAt(made))
 			case 4, 5, 6:
+				// Into a folder, renamed, or as the destination says; now
+				// and then the destination is any folder reference.
+				if rng.Intn(4) == 0 {
+					to = folderRef()
+				}
 				var out model.FolderMoved
-				out, err = m.MoveFolder(x, to)
-				args = []string{"folder", "move", x, "--to", to}
-				want = fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, out.Path, madeAt(out.Created), warnings(out.Warnings))
+				switch xs, words := subjects(x, folderRef); rng.Intn(3) {
+				case 0:
+					out, err = m.MoveFolder(model.MvRename, to, x)
+					args = []string{"folder", "mv", "-T", x, to}
+				case 1:
+					out, err = m.MoveFolder(model.MvInto, to, xs...)
+					args = append([]string{"folder", "mv", "-t", to}, words...)
+				default:
+					out, err = m.MoveFolder(model.MvDest, to, xs...)
+					args = append(append([]string{"folder", "mv"}, words...), to)
+				}
+				want = fmt.Sprintf("%v %s", madeAt(out.Moved), warnings(out.Warnings))
 			default:
 				contents := rng.Intn(3) == 0
 				var out model.Removed
@@ -679,9 +696,11 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 						got = fmt.Sprint(c["task"])
 					}
 				case "mv":
+					if args[0] == "folder" {
+						got = fmt.Sprintf("%v %s", koanMade(res["moved"]), koanWarnings(r))
+						break
+					}
 					got = fmt.Sprintf("%v %s", ids(res["moved"]), koanWarnings(r))
-				case "move":
-					got = fmt.Sprintf("%v %v %v %v %s", res["id"], res["changed"], res["path"], koanMade(res["created"]), koanWarnings(r))
 				case "delete":
 					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
 				case "archive":

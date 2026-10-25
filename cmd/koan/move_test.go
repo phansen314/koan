@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -197,18 +198,32 @@ func TestTaskMoveClaimed(t *testing.T) {
 	}
 }
 
-// folder move moves or renames a folder, everything under it included,
-// material too, making missing parents as folder create makes them. A
-// move to its own path changes nothing.
+// folders is each folder in a result's moved, as id and path.
+func moved(v any) string {
+	var out []string
+	for _, x := range v.([]any) {
+		x := x.(map[string]any)
+		out = append(out, fmt.Sprintf("%v %v", x["id"], x["path"]))
+	}
+	return "[" + strings.Join(out, ", ") + "]"
+}
+
+// folder mv moves a folder into one that exists, or renames it, as mv
+// moves and renames a directory: everything under it included, material
+// too. No parent is made, and a move that changes nothing moves nothing.
 func TestFolderMove(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/w/api", "--notes", "api notes")              // 1, 2
 	ok(t, home, "task", "create", "t", "--folder", "/w/api", "--notes", "t notes") // 3
 	ok(t, home, "task", "create", "u", "--blocked-by", "/w.start")                 // 4, 5
+	ok(t, home, "folder", "create", "/x/y")                                        // 6, 7
 	writeTree(t, home, "@w/docs/plan.md", "plan")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
-	r := ok(t, home, "folder", "move", "/w", "--to", "/x/y/w2")
-	golden(t, r, "folder-move")
+	r := ok(t, home, "folder", "mv", "-T", "/w", "/x/y/w2")
+	golden(t, r, "folder-mv")
+	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[moved:[map[dir:%s id:1 path:/x/y/w2]]]", treePath(home, "@x/@y/@w2")) {
+		t.Errorf("mv: %s", r.Line())
+	}
 	checkTree(t, home, "@x/", "@x/@notes.md=", "@x/@y/", "@x/@y/@notes.md=", "@x/@y/@w2/", "@x/@y/@w2/@notes.md=",
 		"@x/@y/@w2/@start.md=", "@x/@y/@w2/docs/", "@x/@y/@w2/docs/plan.md=plan",
 		"@x/@y/@w2/@api/", "@x/@y/@w2/@api/@notes.md=api notes", "@x/@y/@w2/@api/@3.md=t notes", "@4.md=")
@@ -220,22 +235,117 @@ func TestFolderMove(t *testing.T) {
 		field(t, home, "5", "notes_path") != treePath(home, "@x/@y/@w2/@start.md") {
 		t.Errorf("no field and no readiness changes")
 	}
-	// Its own path, by any reference, changes nothing and makes nothing.
-	for _, subject := range []string{"/x/y/w2", "@1", "@6/y/w2"} {
-		r := ok(t, home, "folder", "move", subject, "--to", "/x/y/w2")
-		if fmt.Sprint(r.Result()) != fmt.Sprintf("map[changed:false created:[] dir:%s id:1 path:/x/y/w2]", treePath(home, "@x/@y/@w2")) {
-			t.Errorf("%s: %s", subject, r.Line())
+	// Renamed to its own path, or into the folder it is in, by any
+	// reference: nothing moves.
+	for i, subject := range []string{"/x/y/w2", "@1", "@6/y/w2"} {
+		r := ok(t, home, "folder", "mv", "-T", subject, "/x/y/w2")
+		if i == 0 {
+			golden(t, r, "folder-mv-rename-itself")
+		}
+		if fmt.Sprint(r.Result()["moved"]) != "[]" {
+			t.Errorf("-T %s: %s", subject, r.Line())
+		}
+		r = ok(t, home, "folder", "mv", subject, "/x/y")
+		if i == 0 {
+			golden(t, r, "folder-mv-own-parent")
+		}
+		if fmt.Sprint(r.Result()["moved"]) != "[]" {
+			t.Errorf("%s into its own parent: %s", subject, r.Line())
 		}
 	}
-	// A rename in place, and up a level; no parent is made.
-	r = ok(t, home, "folder", "move", "/x/y/w2", "--to", "/x/y/w3")
-	if fmt.Sprint(r.Result()["created"]) != "[]" || r.Result()["path"] != "/x/y/w3" {
-		t.Errorf("rename: %s", r.Line())
+	ok(t, home, "folder", "mv", "-T", "/x/y/w2", "@1")
+	// With nothing at the destination, it is the new path; with a folder
+	// there, the folder to move into.
+	for _, c := range []struct {
+		args         []string
+		name, result string
+	}{
+		{[]string{"/x/y/w2", "/x/y/w3"}, "folder-mv-rename", "[1 /x/y/w3]"},
+		{[]string{"@2", "/x"}, "folder-mv-into", "[2 /x/api]"},
+		{[]string{"-t", "/", "@2"}, "folder-mv-into-flag", "[2 /api]"},
+		{[]string{"/x/y/w3", "/"}, "folder-mv-into-root", "[1 /w3]"},
+		{[]string{"-T", "@2", "@1/api2"}, "folder-mv-anchored", "[2 /w3/api2]"},
+	} {
+		r := ok(t, home, append([]string{"folder", "mv"}, c.args...)...)
+		golden(t, r, c.name)
+		if moved(r.Result()["moved"]) != c.result {
+			t.Errorf("%q: %s", c.args, r.Line())
+		}
 	}
-	ok(t, home, "folder", "move", "@2", "--to", "/api")
-	checkTree(t, home, "@x/", "@x/@notes.md=", "@x/@y/", "@x/@y/@notes.md=", "@x/@y/@w3/", "@x/@y/@w3/@notes.md=",
-		"@x/@y/@w3/@start.md=", "@x/@y/@w3/docs/", "@x/@y/@w3/docs/plan.md=plan",
-		"@api/", "@api/@notes.md=api notes", "@api/@3.md=t notes", "@4.md=")
+	checkTree(t, home, "@x/", "@x/@notes.md=", "@x/@y/", "@x/@y/@notes.md=",
+		"@w3/", "@w3/@notes.md=", "@w3/@start.md=", "@w3/docs/", "@w3/docs/plan.md=plan",
+		"@w3/@api2/", "@w3/@api2/@notes.md=api notes", "@w3/@api2/@3.md=t notes", "@4.md=")
+}
+
+// folder mv takes several folders, as words, joined by commas, or after
+// -t; they move as one change, judged against the tree as the whole move
+// would leave it, and moved lists those that moved in input order.
+func TestFolderMoveSeveral(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/a/p")                // 1, 2
+	ok(t, home, "folder", "create", "/b/q")                // 3, 4
+	ok(t, home, "folder", "create", "/c")                  // 5
+	ok(t, home, "folder", "create", "/d")                  // 6
+	ok(t, home, "task", "create", "t", "--folder", "/a/p") // 7
+	r := ok(t, home, "folder", "mv", "/a/p", "/b/q", "/c")
+	golden(t, r, "folder-mv-several")
+	if moved(r.Result()["moved"]) != "[2 /c/p, 4 /c/q]" || field(t, home, "7", "notes_path") != treePath(home, "@c/@p/@7.md") {
+		t.Errorf("several: %s", r.Line())
+	}
+	if r := ok(t, home, "folder", "mv", "/c/q,/c/p", "/d"); moved(r.Result()["moved"]) != "[4 /d/q, 2 /d/p]" {
+		t.Errorf("with commas: %s", r.Line())
+	}
+	if r := ok(t, home, "folder", "mv", "--into", "/c", "/d/p", "/d/q"); moved(r.Result()["moved"]) != "[2 /c/p, 4 /c/q]" {
+		t.Errorf("--into: %s", r.Line())
+	}
+	for _, c := range []struct{ name, in, result string }{
+		{"folder-mv-input", `{"folders":["/c/p"],"dest":"/d"}`, "[2 /d/p]"},
+		{"folder-mv-input-into", `{"folders":["/d/p",4],"into":"/c"}`, "[2 /c/p]"},
+		{"folder-mv-input-rename", `{"folders":["/c/p"],"dest":"/c/p2","rename":true}`, "[2 /c/p2]"},
+	} {
+		r := input(t, home, "folder mv", c.in)
+		golden(t, r, c.name)
+		if moved(r.Result()["moved"]) != c.result {
+			t.Errorf("%s: %s", c.in, r.Line())
+		}
+	}
+	checkTree(t, home, "@a/", "@a/@notes.md=", "@b/", "@b/@notes.md=", "@c/", "@c/@notes.md=",
+		"@c/@p2/", "@c/@p2/@notes.md=", "@c/@p2/@7.md=", "@c/@q/", "@c/@q/@notes.md=", "@d/", "@d/@notes.md=")
+
+	// If any is refused, none moves.
+	ok(t, home, "folder", "create", "/a/q") // 8
+	ok(t, home, "folder", "create", "/b/Q") // 9
+	before := tree(t, home)
+	golden(t, fails(t, home, "not-found", "", "folder", "mv", "/c/p2", "/c/q", "/nothing"), "folder-mv-several-dest-missing")
+	r = fails(t, home, "conflict", "exists", "folder", "mv", "/a/q", "/c/q", "/d")
+	golden(t, r, "folder-mv-same-name")
+	if fmt.Sprint(r.Error()["paths"]) != "[/d/q]" {
+		t.Errorf("same name: %s", r.Line())
+	}
+	// Names that differ only in case, before a name taken.
+	for _, args := range [][]string{{"/a/q", "/b/Q", "/d"}, {"/a/q", "/c/q", "/b/Q", "/d"}} {
+		r := fails(t, home, "conflict", "case-mismatch", append([]string{"folder", "mv"}, args...)...)
+		if fmt.Sprint(r.Error()["paths"]) != "[/d/Q /d/q]" || fmt.Sprint(r.Error()["ids"]) != "[8]" {
+			t.Errorf("%q: %s", args, r.Line())
+		}
+	}
+	// A folder that exists is never replaced, even by one moving out.
+	fails(t, home, "conflict", "exists", "folder", "mv", "-t", "/c", "/a/q", "/c/q")
+	r = fails(t, home, "invalid-input", "", "folder", "mv", "/a", "/a/q", "/d")
+	golden(t, r, "folder-mv-nested")
+	if problemFields(r) != "/folders/1" {
+		t.Errorf("nested: %s", r.Line())
+	}
+	if r := fails(t, home, "invalid-input", "", "folder", "mv", "/a/q", "@8", "/d"); problemFields(r) != "/folders/1" {
+		t.Errorf("twice: %s", r.Line())
+	}
+	if r := fails(t, home, "invalid-input", "", "folder", "mv", "-T", "/a/q,/b/Q", "/d/x"); problemFields(r) != "/folders/1" {
+		t.Errorf("a rename of two: %s", r.Line())
+	}
+	fails(t, home, "not-found", "", "folder", "mv", "/a/q", "/zz", "/d")
+	if fmt.Sprint(tree(t, home)) != fmt.Sprint(before) {
+		t.Errorf("a refused move moved something")
+	}
 }
 
 // A case-only rename is a move, through a temporary name, on every
@@ -245,21 +355,26 @@ func TestFolderMoveCase(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/work/a")                // 1, 2
 	ok(t, home, "task", "create", "t", "--folder", "/work/a") // 3
-	r := ok(t, home, "folder", "move", "/work", "--to", "/Work")
-	golden(t, r, "folder-move-case-only")
+	r := ok(t, home, "folder", "mv", "/work", "/Work")
+	golden(t, r, "folder-mv-case-only")
 	checkTree(t, home, "@Work/", "@Work/@notes.md=", "@Work/@a/", "@Work/@a/@notes.md=", "@Work/@a/@3.md=")
-	ok(t, home, "folder", "move", "/Work/a", "--to", "/Work/A")
+	ok(t, home, "folder", "mv", "-T", "/Work/a", "/Work/A")
 	checkTree(t, home, "@Work/", "@Work/@notes.md=", "@Work/@A/", "@Work/@A/@notes.md=", "@Work/@A/@3.md=")
+	ok(t, home, "folder", "mv", "-T", "@1/A", "@1/a")
+	ok(t, home, "folder", "mv", "/Work/a", "/Work/A")
 	if field(t, home, "3", "notes_path") != treePath(home, "@Work/@A/@3.md") {
 		t.Errorf("notes path")
 	}
 	// Two spellings of anything else in one input are invalid-input.
 	for in, fields := range map[string]string{
-		`{"folder":"/Work/A","to":"/work/b"}`: "/folder /to",
-		`{"folder":"/Work/A","to":"/WORK/A"}`: "/folder /to",
-		`{"folder":"/Work","to":"/work/x"}`:   "/folder /to",
+		`{"folders":["/Work/A"],"dest":"/work/b"}`:             "/folders/0 /dest",
+		`{"folders":["/Work/A"],"dest":"/WORK/A"}`:             "/folders/0 /dest",
+		`{"folders":["/Work"],"dest":"/work/x"}`:               "/folders/0 /dest",
+		`{"folders":["/Work/A"],"into":"/Work/a"}`:             "/folders/0 /into",
+		`{"folders":["/Work/A","/Work/b"],"dest":"/Work/a"}`:   "/folders/0 /dest",
+		`{"folders":["/Work/A"],"dest":"/work","rename":true}`: "/folders/0 /dest",
 	} {
-		if r := input(t, home, "folder move", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
+		if r := input(t, home, "folder mv", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
 			t.Errorf("%s: %s", in, r.Line())
 		}
 	}
@@ -267,57 +382,101 @@ func TestFolderMoveCase(t *testing.T) {
 
 // The refusals, each checked in the order the docs give: into-itself,
 // then case-mismatch, then exists, by a folder or by an entry on disk.
+// No parent is made, and nothing is ever replaced.
 func TestFolderMoveRefused(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/a/b") // 1, 2
 	ok(t, home, "folder", "create", "/c")   // 3
-	golden(t, fails(t, home, "conflict", "into-itself", "folder", "move", "/a", "--to", "/a/b/x"), "folder-move-into-itself")
-	golden(t, fails(t, home, "conflict", "case-mismatch", "folder", "move", "/a", "--to", "/C"), "folder-move-case-mismatch")
-	golden(t, fails(t, home, "conflict", "exists", "folder", "move", "/a", "--to", "/c"), "folder-move-exists")
+	golden(t, fails(t, home, "conflict", "into-itself", "folder", "mv", "-T", "/a", "/a/b/x"), "folder-mv-into-itself")
+	r := fails(t, home, "conflict", "into-itself", "folder", "mv", "/a", "/a")
+	golden(t, r, "folder-mv-onto-itself")
+	if fmt.Sprint(r.Error()["paths"]) != "[/a/a]" {
+		t.Errorf("onto itself: %s", r.Line())
+	}
+	golden(t, fails(t, home, "conflict", "case-mismatch", "folder", "mv", "/a", "/C"), "folder-mv-case-mismatch")
+	ok(t, home, "folder", "create", "/c/b") // 4
+	golden(t, fails(t, home, "conflict", "exists", "folder", "mv", "/a/b", "/c"), "folder-mv-exists")
+	golden(t, fails(t, home, "conflict", "exists", "folder", "mv", "-T", "/a", "/c"), "folder-mv-rename-flag")
 	writeTree(t, home, "@Stray/x", "x")
-	golden(t, fails(t, home, "conflict", "exists", "folder", "move", "/c", "--to", "/stray"), "folder-move-exists-on-disk")
+	golden(t, fails(t, home, "conflict", "exists", "folder", "mv", "-T", "/c", "/stray"), "folder-mv-exists-on-disk")
+	r = fails(t, home, "not-found", "", "folder", "mv", "-T", "/c", "/stray/c")
+	golden(t, r, "folder-mv-no-parent")
+	if fmt.Sprint(r.Error()["paths"]) != "[/stray]" {
+		t.Errorf("no parent: %s", r.Line())
+	}
+	fails(t, home, "not-found", "", "folder", "mv", "/c", "/x/y")
+	golden(t, fails(t, home, "not-found", "", "folder", "mv", "/c", "99"), "folder-mv-id-rename")
+	fails(t, home, "not-found", "", "folder", "mv", "-T", "/c", "@99")
+	fails(t, home, "not-found", "", "folder", "mv", "-t", "99", "/c")
+	fails(t, home, "not-found", "", "folder", "mv", "-T", "/c", "@99/x")
+	fails(t, home, "not-found", "", "folder", "mv", "/z", "/y")
+	fails(t, home, "conflict", "case-mismatch", "folder", "mv", "/A", "/y")
 	for _, c := range []struct {
 		args       []string
 		rule, path string
 	}{
 		// Into itself before the destination is taken, by a folder or on
-		// disk.
-		{[]string{"@1", "--to", "/a/b"}, "into-itself", "/a/b"},
-		{[]string{"@1", "--to", "/a/b/c/d"}, "into-itself", "/a/b/c/d"},
-		{[]string{"@2", "--to", "/a/b/x"}, "into-itself", "/a/b/x"},
+		// disk, or its parent is missing.
+		{[]string{"-T", "@1", "/a/b"}, "into-itself", "/a/b"},
+		{[]string{"-T", "@1", "/a/b/c/d"}, "into-itself", "/a/b/c/d"},
+		{[]string{"-T", "@2", "/a/b/x"}, "into-itself", "/a/b/x"},
+		{[]string{"-T", "@1", "@2/x"}, "into-itself", "@2/x"},
+		{[]string{"@1", "/a/B/x"}, "into-itself", "/a/B/x"},
+		{[]string{"@1", "/a/b"}, "into-itself", "/a/b/a"},
+		{[]string{"-t", "@2", "@1"}, "into-itself", "/a/b/a"},
 		// A parent that matches only ignoring case, before what is at
 		// the end.
-		{[]string{"@3", "--to", "/A/b"}, "case-mismatch", "/A"},
-		{[]string{"/c", "--to", "/a/B"}, "case-mismatch", "/a/B"},
-		// A missing parent made is a destination too.
-		{[]string{"/c", "--to", "/stray/c"}, "exists", treePath(home, "@Stray")},
-		{[]string{"/c", "--to", "/STRAY/c"}, "exists", treePath(home, "@Stray")},
+		{[]string{"-T", "@3", "/A/b"}, "case-mismatch", "/A"},
+		{[]string{"-T", "/c", "/a/B"}, "case-mismatch", "/a/B"},
+		{[]string{"-T", "/c", "/a/B/x"}, "case-mismatch", "/a/B"},
+		{[]string{"/c", "/a/B"}, "case-mismatch", "/a/B"},
+		// An entry on disk is in the way, by any spelling.
+		{[]string{"/c", "/stray"}, "exists", treePath(home, "@Stray")},
+		{[]string{"-T", "/c", "/STRAY"}, "exists", treePath(home, "@Stray")},
 	} {
-		r := fails(t, home, "conflict", c.rule, append([]string{"folder", "move"}, c.args...)...)
+		r := fails(t, home, "conflict", c.rule, append([]string{"folder", "mv"}, c.args...)...)
 		if paths := r.Error()["paths"].([]any); len(paths) == 0 || paths[0] != c.path {
 			t.Errorf("%q: %s", c.args, r.Line())
 		}
 	}
 	// Material inside is not in the way.
 	writeTree(t, home, "@c/c", "x")
-	ok(t, home, "folder", "move", "/c", "--to", "/a/c")
-	checkTree(t, home, "@a/", "@a/@notes.md=", "@a/@b/", "@a/@b/@notes.md=", "@a/@c/", "@a/@c/@notes.md=", "@a/@c/c=x", "@Stray/", "@Stray/x=x")
-	golden(t, fails(t, home, "invalid-input", "", "folder", "move", "/", "--to", "/x"), "folder-move-root")
+	ok(t, home, "folder", "mv", "/c", "/a")
+	checkTree(t, home, "@a/", "@a/@notes.md=", "@a/@b/", "@a/@b/@notes.md=", "@a/@c/", "@a/@c/@notes.md=", "@a/@c/c=x",
+		"@a/@c/@b/", "@a/@c/@b/@notes.md=", "@Stray/", "@Stray/x=x")
+	golden(t, fails(t, home, "invalid-input", "", "folder", "mv", "/", "/x"), "folder-mv-root")
+	r = fails(t, home, "invalid-input", "", "folder", "mv", "/a", "/a/c.start")
+	golden(t, r, "folder-mv-end")
+	if problemFields(r) != "/dest" {
+		t.Errorf("end: %s", r.Line())
+	}
 	for in, fields := range map[string]string{
-		`{"folder":"/a"}`:                  "/to",
-		`{"folder":"/a","to":"/"}`:         "/to",
-		`{"folder":"/a","to":"@1/x"}`:      "/to",
-		`{"folder":"/a","to":"/x.start"}`:  "/to",
-		`{"folder":"/a.start","to":"/x"}`:  "/folder",
-		`{"folder":"/","to":"/x","y":1}`:   "/y",
-		`{"folder":"/a","to":"/bad name"}`: "/to",
+		`{"folders":["/a"]}`:                                    "",
+		`{"dest":"/a"}`:                                         "/folders",
+		`{"folders":[],"dest":"/a"}`:                            "/folders",
+		`{"folders":"/a","dest":"/c"}`:                          "/folders",
+		`{"folders":["/a/c"],"dest":"/"}`:                       "",
+		`{"folders":["/a/c"],"dest":"/","rename":true}`:         "/dest",
+		`{"folders":["/a/c"],"into":"/x.start"}`:                "/into",
+		`{"folders":["/a/c"],"dest":"/a:docs"}`:                 "/dest",
+		`{"folders":["/a.start"],"dest":"/x"}`:                  "/folders/0",
+		`{"folders":["/"],"dest":"/x","y":1}`:                   "/y",
+		`{"folders":["/a/c"],"dest":"/bad name"}`:               "/dest",
+		`{"folders":["/a/c"],"dest":"/x","rename":"yes"}`:       "/rename",
+		`{"folders":["/a/c"],"into":"/","rename":true}`:         "",
+		`{"folders":["/a/c"],"dest":"/","into":"/a"}`:           "",
+		`{"folders":["/a/c","/a/b"],"dest":"/x","rename":true}`: "/folders/1",
 	} {
-		if r := input(t, home, "folder move", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
+		r := input(t, home, "folder mv", in)
+		if fields == "" && r.OK() {
+			continue
+		}
+		if r.Kind() != "invalid-input" || problemFields(r) != fields {
 			t.Errorf("%s: %s", in, r.Line())
 		}
 	}
-	fails(t, home, "not-found", "", "folder", "move", "/z", "--to", "/y")
-	fails(t, home, "conflict", "case-mismatch", "folder", "move", "/A", "--to", "/y")
+	golden(t, input(t, home, "folder mv", `{"folders":["/a/c"],"dest":"/","into":"/"}`), "folder-mv-input-both")
+	golden(t, input(t, home, "folder mv", `{"folders":["/a/c","/a/b"],"dest":"/x","rename":true}`), "folder-mv-input-rename-several")
 }
 
 // On a filesystem that tells case apart, an entry beside a case-only
@@ -330,13 +489,13 @@ func TestFolderMoveCaseTaken(t *testing.T) {
 	if _, err := os.Stat(treePath(home, "@WORK/@notes.md")); err == nil {
 		t.Skip("the filesystem ignores case")
 	}
-	r := fails(t, home, "conflict", "exists", "folder", "move", "/work", "--to", "/Work")
+	r := fails(t, home, "conflict", "exists", "folder", "mv", "/work", "/Work")
 	if fmt.Sprint(r.Error()["paths"]) != "["+treePath(home, "@WORK")+"]" {
 		t.Errorf("taken: %s", r.Line())
 	}
 }
 
-// A move that changes the notes path of claimed tasks under the folder,
+// A move that changes the notes path of claimed tasks under the folders,
 // at any depth and gates included, warns moved-claimed, lowest ID first,
 // each with its new notes path.
 func TestFolderMoveClaimed(t *testing.T) {
@@ -345,14 +504,52 @@ func TestFolderMoveClaimed(t *testing.T) {
 	ok(t, home, "task", "create", "t", "--folder", "/w/x")          // 3
 	ok(t, home, "task", "create", "u", "--blocked-by", "/w/x.done") // 4, 5
 	ok(t, home, "task", "create", "v", "--folder", "/w")            // 6
+	ok(t, home, "folder", "create", "/v")                           // 7
 	ok(t, home, "task", "claim", "5")
 	ok(t, home, "task", "claim", "3")
 	ok(t, home, "task", "claim", "4")
-	r := warned(t, home, []string{"moved-claimed"}, "folder", "move", "/w", "--to", "/v/w")
-	golden(t, r, "folder-move-moved-claimed")
+	r := warned(t, home, []string{"moved-claimed"}, "folder", "mv", "/w", "/v")
+	golden(t, r, "folder-mv-moved-claimed")
 	w := r.Envelope["warnings"].([]any)[0].(map[string]any)
 	if fmt.Sprint(w["ids"]) != "[3 5]" || fmt.Sprint(w["paths"]) != fmt.Sprintf("[%s %s]", treePath(home, "@v/@w/@x/@3.md"), treePath(home, "@v/@w/@x/@done.md")) {
 		t.Errorf("warning: %v", w)
 	}
-	ok(t, home, "folder", "move", "/v/w", "--to", "/v/w")
+	ok(t, home, "folder", "mv", "/v/w", "/v")
+
+	ok(t, home, "folder", "create", "/s")                // 8
+	ok(t, home, "task", "create", "s", "--folder", "/s") // 9
+	ok(t, home, "task", "claim", "9")
+	r = warned(t, home, []string{"moved-claimed"}, "folder", "mv", "-t", "/v", "/s", "/v/w/x")
+	w = r.Envelope["warnings"].([]any)[0].(map[string]any)
+	if fmt.Sprint(w["ids"]) != "[3 5 9]" || fmt.Sprint(w["paths"]) != fmt.Sprintf("[%s %s %s]",
+		treePath(home, "@v/@x/@3.md"), treePath(home, "@v/@x/@done.md"), treePath(home, "@v/@s/@9.md")) {
+		t.Errorf("of several: %v", w)
+	}
+}
+
+// The command line of folder mv: the last word is the destination, or
+// -t takes its place and every word is a folder; -T makes it the one
+// folder's new path. folder move and --to are gone.
+func TestFolderMoveUsage(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/a") // 1
+	ok(t, home, "folder", "create", "/c") // 2
+	golden(t, usageAt(t, home, "", "folder", "mv", "/a"), "folder-mv-no-object")
+	usageAt(t, home, "", "folder", "mv", "-T", "/a")
+	usageAt(t, home, "", "folder", "mv", "-t", "/c")
+	usageAt(t, home, "", "folder", "mv")
+	golden(t, usageAt(t, home, "/c", "folder", "mv", "-T", "/a", "/b", "/c"), "folder-mv-rename-extra")
+	golden(t, usageAt(t, home, "", "folder", "mv", "-T", "-t", "/c", "/a"), "folder-mv-both-flags")
+	usageAt(t, home, "", "folder", "mv", "-t", "/c", "/a", "--rename")
+	golden(t, usageAt(t, home, "move", "folder", "move", "/a", "/c"), "folder-move-old")
+	usageAt(t, home, "--to", "folder", "mv", "/a", "--to", "/c")
+	usageAt(t, home, "--into", "folder", "mv", "-t", "/c", "--into", "/", "/a")
+	usageAt(t, home, "/a", "folder", "mv", "/a", "/c", "-i", "-")
+	// With -t, every word is a folder to move.
+	if r := koan(t, home, "folder", "mv", "-t", "/c", "/a", "/c"); r.Kind() != "conflict" || r.Error()["rule"] != "into-itself" {
+		t.Errorf("the folder after -t: %s", r.Line())
+	}
+	if fmt.Sprint(tree(t, home)) != "[@a/ @a/@notes.md= @c/ @c/@notes.md=]" {
+		t.Errorf("a refused line moved a folder: %q", tree(t, home))
+	}
 }

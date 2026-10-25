@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "kind": "invalid-input",
+    "kind": "usage",
     "rule": null,
-    "message": "the root can't be moved",
+    "message": "folder mv needs a dest after the subject",
     "ids": [],
     "paths": [],
     "problems": [
       {
-        "field": "/folder",
-        "reason": "the root can't be moved"
+        "field": "",
+        "reason": "folder mv needs a dest after the subject"
       }
     ],
     "archived": []

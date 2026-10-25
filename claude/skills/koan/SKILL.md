@@ -228,10 +228,10 @@ A **marker** binds a directory outside the tree, usually a git worktree, to a fo
 koan marker bind @41 ~/code/api-v2                 # right after git worktree add; <dir> defaults to the working directory
 cd ~/code/api-v2 && koan context                   # the brief: the folder, the folders above it, its notes, its open tasks
 koan where --file ~/code/api-v2/src/main.go        # which folder a file is in: .result.ref is @41 (/work/api)
-koan folder move /work/api --to /work/api2         # a rename: the marker still binds @41, by ID
+koan folder mv -T /work/api /work/api2             # a rename: the marker still binds @41, by ID
 koan where --file ~/code/api-v2                    # still @41, with a stale-marker warning
 koan marker bind @41 ~/code/api-v2                 # refreshes the hint: .result.replaced is true
-koan folder move /work/api2 --to /work/api
+koan folder mv -T /work/api2 /work/api
 ```
 
 - **Starting work in a worktree, run `koan context` first**, and print it as is: `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `koan context <folder>` briefs any folder.
@@ -244,7 +244,7 @@ koan folder move /work/api2 --to /work/api
 
 ```sh
 koan task mv 48 /work/api                       # its notes move with it; .result.moved[0].notes_path is the new path
-koan folder move /work/web/client --to /work/client  # --to is the whole new path; a case-only rename is a move too
+koan folder mv -T /work/web/client /work/client  # -T: the new path; -t: the folder to move into
 koan task list /work/client --state open,complete --fields title,state,claim   # before deleting: what goes
 koan folder delete /work/client                     # refused without --contents: conflict, rule not-empty
 koan folder delete /work/client --contents          # only once the user said so: .result.removed, .result.released

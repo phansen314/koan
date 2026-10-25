@@ -229,7 +229,7 @@ func TestFolderDeleteStuck(t *testing.T) {
 	golden(t, fails(t, home, "conflict", "exists", "folder", "create", "/w"), "folder-delete-taken")
 	fails(t, home, "conflict", "exists", "folder", "create", "/W")
 	warned(t, home, []string{"stuck-step"}, "folder", "create", "/m")
-	r = fails(t, home, "conflict", "exists", "folder", "move", "/m", "--to", "/w")
+	r = fails(t, home, "conflict", "exists", "folder", "mv", "-T", "/m", "/w")
 	if fmt.Sprint(r.Error()["paths"]) != "["+treePath(home, "@w")+"]" {
 		t.Errorf("move: %s", r.Line())
 	}

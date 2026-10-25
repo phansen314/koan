@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "a rename takes one folder",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/folders/1",
+        "reason": "a rename takes one folder"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

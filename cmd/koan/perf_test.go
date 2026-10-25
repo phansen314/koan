@@ -27,7 +27,7 @@ type perfRoot struct {
 	home    string
 	folders []int64   // each chain's folder
 	tasks   [][]int64 // each folder's tasks, in chain order
-	moving  int64     // a folder only the folder move moves
+	moving  int64     // a folder only the folder mv moves
 	mover   int64     // a task only the task mv moves
 	away    map[int64]bool
 	dir     string // a directory outside the tree, for markers
@@ -134,6 +134,7 @@ func getPerfRoot(tb testing.TB, n int) *perfRoot {
 	r.db(stmts...)
 	r.moving = num(r.must("folder", "create", "/mv/f")["created"].([]any)[1].(map[string]any)["id"])
 	r.mover = num(r.must("task", "create", "mover", "--folder", "/mv/f")["id"])
+	r.must("folder", "create", "/moved")
 	info := r.must("info")
 	tb.Logf("a root of %v live tasks and %v folders, built in %v, in %s", info["tasks"], info["folders"], time.Since(start).Round(time.Millisecond), home)
 	perfRoots[n] = r
@@ -304,12 +305,12 @@ var perfOps = []perfOp{
 	{name: "folder update", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		return []string{"folder", "update", r.folder(i), "--title", fmt.Sprint("folder ", i)}
 	}},
-	{name: "folder move", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
+	{name: "folder mv", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
 		to := "/mv/f"
 		if r.away[r.moving] = !r.away[r.moving]; r.away[r.moving] {
 			to = "/moved/f"
 		}
-		return []string{"folder", "move", fmt.Sprint(r.moving), "--to", to}
+		return []string{"folder", "mv", "-T", fmt.Sprint(r.moving), to}
 	}},
 	{name: "folder delete", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.seq = r.smallFolder("/del", false) },

@@ -790,77 +790,213 @@ func (t *Tree) MoveTask(into string, tasks ...string) (out TaskMoved, err error)
 	return out, err
 }
 
-// FolderMoved is what folder move returns.
+// FolderMoved is what folder mv returns.
 type FolderMoved struct {
-	ID       int64
-	Changed  bool
-	Path     string
-	Created  []FolderAt
+	Moved    []FolderAt // the folders that moved, in input order, at their new paths
 	Warnings []Warning
 }
 
-// MoveFolder moves or renames a folder to its whole new path, everything
-// under it included. Missing parents are made. A case-only rename is a
-// move, and the one input allowed to name both spellings, and only of the
+// Mv is how folder mv reads its destination.
+type Mv int
+
+const (
+	// MvDest is a folder that exists, to move into; otherwise the one
+	// folder's new path.
+	MvDest Mv = iota
+	// MvInto is the folder to move into: -t.
+	MvInto
+	// MvRename is the one folder's new path, whatever exists: -T.
+	MvRename
+)
+
+// MoveFolder moves folders into a folder that exists, or renames one to a
+// new path whose parent exists, everything under each included, as one
+// change. Nothing is replaced and no parent is made. A case-only rename
+// is the one input allowed to name both spellings, and only of the
 // folder's own name.
-func (t *Tree) MoveFolder(folder, to string) (out FolderMoved, err error) {
+func (t *Tree) MoveFolder(mv Mv, dest string, folders ...string) (out FolderMoved, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
-		subject := s.ref("/folder", folder, core.WantFolder, false)
-		dest := s.path("/to", to)
-		if err := s.done(respells); err != nil {
+		refs := folderRefs(&s, folders, "moved")
+		pointer := "/dest"
+		if mv == MvInto {
+			pointer = "/into"
+		}
+		if mv == MvRename && len(folders) > 1 {
+			s.faultf("/folders/1", "a rename takes one folder")
+		}
+		to := s.ref(pointer, dest, core.WantFolder, false)
+		if mv == MvRename && to.IsRoot() {
+			s.faultf(pointer, "the root can't be a new path")
+		}
+		one := len(folders) == 1 && mv != MvInto
+		if err := s.done(func(a, b core.Ref) bool { return one && respells(a, b) }); err != nil {
 			return err
 		}
-		f, err := c.resolveSubjectFolder(subject)
+		fs, err := c.resolveFolders(refs, "moved")
 		if err != nil {
 			return err
 		}
-		n := len(dest.Names)
-		parent, made, err := c.parents(dest.Names[:n-1], f.ID)
-		if e, ok := err.(*core.Error); ok && e.Rule == core.RuleIntoItself {
-			// The rule's paths are the destination.
-			e.Paths = []string{dest.TargetString()}
-		}
-		if err != nil {
-			return err
-		}
-		name, path := dest.Names[n-1], dest.TargetString()
-		out.ID, out.Created = f.ID, made
-		if id, ok := c.Child(parent, name); ok {
-			if id != f.ID {
-				return core.Conflict(core.RuleExists, nil, []string{path}, "%s is taken", path)
+		into, rename := core.RootID, mv == MvRename
+		switch mv {
+		case MvInto:
+			if into, err = c.resolveFolder(to, pointer); err != nil {
+				return err
 			}
-		} else if id, spelled, ok := c.ChildFold(parent, name); ok && id != f.ID {
-			is := strings.TrimSuffix(c.Path(parent), "/") + "/" + spelled
-			return core.Conflict(core.RuleCaseMismatch, []int64{id}, []string{path, is},
-				"%s differs from %s only in case", path, is)
+		case MvDest:
+			r, err := core.Resolve(c, to, core.WantFolder, nil)
+			switch {
+			case err == nil:
+				into = r.ID
+			case len(fs) > 1 || to.Kind == core.TargetID:
+				return pointAt(err, pointer, false)
+			default:
+				rename = true
+			}
 		}
-		if f.Parent != parent || f.Name != name {
-			f.Parent, f.Name, out.Changed = parent, name, true
-		}
-		out.Path = c.Path(f.ID)
-		if out.Changed {
-			var ids []int64
-			for id := range c.Claims {
-				if c.Under(id, f.ID) {
-					ids = append(ids, id)
+		var moved []*Folder
+		if rename {
+			f := fs[0]
+			parent, name, err := c.newPath(to, f.ID, pointer)
+			if err != nil {
+				return err
+			}
+			path := strings.TrimSuffix(c.Path(parent), "/") + "/" + name
+			if id, ok := c.Child(parent, name); ok {
+				if id != f.ID {
+					return core.Conflict(core.RuleExists, nil, []string{path}, "%s is taken", path)
+				}
+			} else if id, spelled, ok := c.ChildFold(parent, name); ok && id != f.ID {
+				is := strings.TrimSuffix(c.Path(parent), "/") + "/" + spelled
+				return core.Conflict(core.RuleCaseMismatch, []int64{id}, []string{path, is},
+					"%s differs from %s only in case", path, is)
+			}
+			if f.Parent != parent || f.Name != name {
+				f.Parent, f.Name = parent, name
+				moved = append(moved, f)
+			}
+		} else {
+			at := strings.TrimSuffix(c.Path(into), "/") + "/"
+			for _, f := range fs {
+				if into == f.ID || c.Under(into, f.ID) {
+					return core.Conflict(core.RuleIntoItself, []int64{f.ID}, []string{at + f.Name},
+						"@%d would land inside itself at %s", f.ID, at+f.Name)
 				}
 			}
-			if ids != nil {
-				slices.Sort(ids)
-				out.Warnings = []Warning{{Kind: "moved-claimed", IDs: ids}}
+			// What the folder holds once the move is made: what is there,
+			// and each folder that lands, in input order.
+			var there []*Folder
+			for _, g := range c.Folders {
+				if g.Parent == into {
+					there = append(there, g)
+				}
 			}
+			slices.SortFunc(there, func(a, b *Folder) int { return cmp.Compare(a.Name, b.Name) })
+			var landing []*Folder
+			for _, f := range fs {
+				if f.Parent != into {
+					landing = append(landing, f)
+				}
+			}
+			for _, exact := range []bool{false, true} {
+				held := slices.Clone(there)
+				for _, f := range landing {
+					for _, g := range held {
+						switch {
+						case !exact && g.Name != f.Name && strings.EqualFold(g.Name, f.Name):
+							return core.Conflict(core.RuleCaseMismatch, []int64{g.ID}, []string{at + f.Name, at + g.Name},
+								"%s differs from %s only in case", at+f.Name, at+g.Name)
+						case exact && g.Name == f.Name:
+							return core.Conflict(core.RuleExists, nil, []string{at + f.Name}, "%s is taken", at+f.Name)
+						}
+					}
+					held = append(held, f)
+				}
+			}
+			for _, f := range landing {
+				f.Parent = into
+			}
+			moved = landing
+		}
+		out.Moved = []FolderAt{}
+		var claimed []int64
+		for _, f := range moved {
+			out.Moved = append(out.Moved, FolderAt{ID: f.ID, Path: c.Path(f.ID)})
+			for id := range c.Claims {
+				if c.Under(id, f.ID) {
+					claimed = append(claimed, id)
+				}
+			}
+		}
+		if claimed != nil {
+			slices.Sort(claimed)
+			out.Warnings = []Warning{{Kind: "moved-claimed", IDs: claimed}}
 		}
 		return nil
 	})
 	return out, err
 }
 
+// newPath finds where a rename puts a folder: the folder its new path's
+// parent names, which must exist, and the new name. A bare ID names a
+// folder that exists, so its path is the new one. Walking the parent
+// through the folder itself, or anchoring inside it, is into-itself.
+func (c *Tree) newPath(ref core.Ref, self int64, pointer string) (int64, string, error) {
+	inside := func(at int64) error {
+		if at == self || c.Under(at, self) {
+			return core.Conflict(core.RuleIntoItself, []int64{self}, []string{ref.TargetString()},
+				"@%d would land inside itself at %s", self, ref.TargetString())
+		}
+		return nil
+	}
+	if ref.Kind == core.TargetID {
+		r, err := core.Resolve(c, ref, core.WantFolder, nil)
+		if err != nil {
+			return 0, "", pointAt(err, pointer, false)
+		}
+		g := c.Folders[r.ID]
+		if g.ID == self {
+			return g.Parent, g.Name, nil
+		}
+		return g.Parent, g.Name, inside(g.Parent)
+	}
+	at, given := core.RootID, ""
+	if ref.Kind == core.TargetAnchored {
+		anchor := ref
+		anchor.Names = nil
+		r, err := core.Resolve(c, anchor, core.WantFolder, nil)
+		if err != nil {
+			return 0, "", pointAt(err, pointer, false)
+		}
+		at, given = r.ID, strings.SplitN(ref.Raw, "/", 2)[0]
+	}
+	n := len(ref.Names)
+	for _, name := range ref.Names[:n-1] {
+		if err := inside(at); err != nil {
+			return 0, "", err
+		}
+		given += "/" + name
+		if id, ok := c.Child(at, name); ok {
+			at = id
+			continue
+		}
+		if id, spelled, ok := c.ChildFold(at, name); ok {
+			is := strings.TrimSuffix(c.Path(at), "/") + "/" + spelled
+			return 0, "", core.Conflict(core.RuleCaseMismatch, []int64{id}, []string{given, is},
+				"%s matches %s only ignoring case", given, is)
+		}
+		return 0, "", core.NotFound(nil, []string{given}, "no folder at %s", given)
+	}
+	return at, ref.Names[n-1], inside(at)
+}
+
 // respells reports whether a destination only respells its subject's own
-// name: the same path but for the case of its last name.
+// name: the same path from the same start but for the case of its last
+// name.
 func respells(subject, dest core.Ref) bool {
 	n := len(subject.Names)
-	return subject.Kind == core.TargetPath && dest.Kind == core.TargetPath && n > 0 && len(dest.Names) == n &&
+	return subject.Kind == dest.Kind && subject.ID == dest.ID && n > 0 && len(dest.Names) == n &&
+		(subject.Kind == core.TargetPath || subject.Kind == core.TargetAnchored) &&
 		slices.Equal(subject.Names[:n-1], dest.Names[:n-1]) && strings.EqualFold(subject.Names[n-1], dest.Names[n-1])
 }
 
@@ -941,25 +1077,37 @@ func (t *Tree) DeleteTask(tasks ...string) (out Removed, err error) {
 	return out, err
 }
 
-// subjectFolders resolves a list of folders to delete, in order: the root
-// can't be one, a folder named twice is invalid-input at its later
-// occurrence, and one inside another named at the one inside.
+// subjectFolders resolves a list of folders to delete.
 func (c *Tree) subjectFolders(folders []string) ([]*Folder, error) {
 	var s shape
+	refs := folderRefs(&s, folders, "deleted")
+	if err := s.done(nil); err != nil {
+		return nil, err
+	}
+	return c.resolveFolders(refs, "deleted")
+}
+
+// folderRefs reads a list of folders to change into s, at /folders/0 on;
+// the root can't be one. verb says what is done to them.
+func folderRefs(s *shape, folders []string, verb string) []core.Ref {
 	refs := make([]core.Ref, len(folders))
 	for i, folder := range folders {
 		at := fmt.Sprintf("/folders/%d", i)
 		refs[i] = s.ref(at, folder, core.WantFolder, false)
 		if refs[i].IsRoot() {
-			s.faultf(at, "the root can't be deleted")
+			s.faultf(at, "the root can't be %s", verb)
 		}
 	}
 	if len(folders) == 0 {
 		s.faultf("/folders", "at least one folder is needed")
 	}
-	if err := s.done(nil); err != nil {
-		return nil, err
-	}
+	return refs
+}
+
+// resolveFolders resolves a list of folders read by folderRefs, in order:
+// a folder named twice is invalid-input at its later occurrence, and one
+// inside another named at the one inside.
+func (c *Tree) resolveFolders(refs []core.Ref, verb string) ([]*Folder, error) {
 	var out []*Folder
 	for i, ref := range refs {
 		at := fmt.Sprintf("/folders/%d", i)
@@ -968,7 +1116,7 @@ func (c *Tree) subjectFolders(folders []string) ([]*Folder, error) {
 			return nil, pointAt(err, at, false)
 		}
 		if r.Kind == core.ResolvedRoot {
-			return nil, problem(invalid("the root can't be deleted"), "%s", at)
+			return nil, problem(invalid("the root can't be %s", verb), "%s", at)
 		}
 		f := c.Folders[r.ID]
 		if slices.Contains(out, f) {

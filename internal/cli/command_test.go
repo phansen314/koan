@@ -53,6 +53,19 @@ var move = &Command{
 	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 }
 
+// rename is move with -T as well, which makes the subject one word and
+// can't go with -t.
+var rename = &Command{
+	Name:    "folder mv",
+	Subject: &Option{Field: "folders", Kind: List, Arg: "folder", Required: true},
+	Object:  &Option{Field: "dest", Required: true},
+	Instead: "into",
+	Single:  "rename",
+	Apart:   []string{"into", "rename"},
+	Options: []Option{{Field: "into", Short: "t"}, {Field: "rename", Short: "T", Kind: Bool}},
+	Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
+}
+
 // bind takes a subject, then a directory it can do without.
 var bind = &Command{
 	Name:    "marker bind",
@@ -147,6 +160,13 @@ func TestParseLines(t *testing.T) {
 		{move, []string{"-t", "/w", "42"}, `{"tasks":["42"],"into":"/w"}`},
 		{move, []string{"--into", "/w", "41", "42"}, `{"tasks":["41","42"],"into":"/w"}`},
 		{move, []string{"41", "-t=/w", "42,43"}, `{"tasks":["41","42","43"],"into":"/w"}`},
+		{rename, []string{"/a", "/b"}, `{"folders":["/a"],"dest":"/b"}`},
+		{rename, []string{"/a", "/b,/c", "/d"}, `{"folders":["/a","/b","/c"],"dest":"/d"}`},
+		{rename, []string{"-t", "/d", "/a", "/b"}, `{"folders":["/a","/b"],"into":"/d"}`},
+		{rename, []string{"-T", "/a", "/b"}, `{"folders":["/a"],"dest":"/b","rename":true}`},
+		{rename, []string{"/a", "--rename", "/b,c"}, `{"folders":["/a"],"dest":"/b,c","rename":true}`},
+		{rename, []string{"-T", "/a,/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":true}`},
+		{rename, []string{"--rename=false", "/a", "/b", "/c"}, `{"folders":["/a","/b"],"dest":"/c","rename":false}`},
 		{bind, []string{"@41"}, `{"folder":"@41"}`},
 		{bind, []string{"@41", "/d"}, `{"folder":"@41","dir":"/d"}`},
 		{bind, []string{"@41", "/d,e"}, `{"folder":"@41","dir":"/d,e"}`},
@@ -247,6 +267,12 @@ func TestParseUsage(t *testing.T) {
 		{move, []string{"-t", "/w", "-t", "/x", "42"}, "--into"},
 		{move, []string{"-i", "f", "42", "/w"}, "42"},
 		{move, []string{"-i", "f", "-t", "/w"}, "--into"},
+		{rename, []string{"/a"}, ""},
+		{rename, []string{"-T", "/a"}, ""},
+		{rename, []string{"-T", "/a", "/b", "/c"}, "/c"},
+		{rename, []string{"-T", "-t", "/c", "/a"}, ""},
+		{rename, []string{"-t", "/c", "/a", "-T"}, ""},
+		{rename, []string{"/a", "/b", "--to", "/c"}, "--to"},
 		{bind, nil, ""},
 		{bind, []string{"@41", "/d", "/e"}, "/e"},
 		{bind, []string{"@41", "--dir", "/d"}, "--dir"},

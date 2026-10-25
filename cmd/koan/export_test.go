@@ -210,7 +210,7 @@ func TestExportMarkers(t *testing.T) {
 		t.Errorf("working directory in the tree: %v", id)
 	}
 
-	ok(t, home, "folder", "move", "/work/api", "--to", "/work/web")
+	ok(t, home, "folder", "mv", "-T", "/work/api", "/work/web")
 	r := koan(t, home, "export", "--file", wt)
 	ws := r.Envelope["warnings"].([]any)
 	if r.Exit != 0 || len(ws) != 1 || ws[0].(map[string]any)["kind"] != "stale-marker" || r.Stderr != "koan: 1 warning\n" {

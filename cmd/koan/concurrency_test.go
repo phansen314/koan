@@ -98,6 +98,7 @@ func TestConcurrency(t *testing.T) {
 	for i := range completers {
 		tasks = append(tasks, map[string]any{"title": fmt.Sprint("c ", i), "folder": "/c"})
 	}
+	folders = append(folders, map[string]any{"path": "/moved"})
 	for i := range movers {
 		folders = append(folders, map[string]any{"path": fmt.Sprintf("/m%d", i)})
 		tasks = append(tasks, map[string]any{"title": "m", "folder": fmt.Sprintf("/m%d", i)})
@@ -136,7 +137,7 @@ func TestConcurrency(t *testing.T) {
 		add("", "task", "claim-next", "/pool")
 	}
 	for i := range movers {
-		add("", "folder", "move", fmt.Sprintf("/m%d", i), "--to", fmt.Sprintf("/moved/m%d", i))
+		add("", "folder", "mv", "-T", fmt.Sprintf("/m%d", i), fmt.Sprintf("/moved/m%d", i))
 	}
 	for i := range deleters {
 		add("", "folder", "delete", fmt.Sprintf("/d%d", i), "--contents")

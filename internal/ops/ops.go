@@ -28,7 +28,7 @@ func Commands() []*cli.Command {
 		FolderShow(),
 		FolderList(),
 		FolderUpdate(),
-		FolderMove(),
+		FolderMv(),
 		FolderJoin(),
 		FolderUnjoin(),
 		FolderDelete(),

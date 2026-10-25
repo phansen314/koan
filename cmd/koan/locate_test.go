@@ -405,7 +405,7 @@ func TestStaleMarker(t *testing.T) {
 	ok(t, home, "folder", "create", "/work/api")
 	wt := mkdir(t, home, "wt")
 	ok(t, home, "marker", "bind", "/work/api", wt)
-	ok(t, home, "folder", "move", "/work/api", "--to", "/work/web")
+	ok(t, home, "folder", "mv", "-T", "/work/api", "/work/web")
 	r := koan(t, home, "where", "--file", wt)
 	if r.Exit != 0 || r.Stderr != "koan: 1 warning\n" || r.Result()["ref"] != "@2 (/work/web)" {
 		t.Fatalf("exit %d, stderr %q: %s", r.Exit, r.Stderr, r.Line())

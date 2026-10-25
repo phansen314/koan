@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "conflict",
+    "rule": "exists",
+    "message": "/d/q is taken by @8",
+    "ids": [],
+    "paths": [
+      "/d/q"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}

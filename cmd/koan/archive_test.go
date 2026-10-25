@@ -378,7 +378,7 @@ func TestArchiveCase(t *testing.T) {
 	ok(t, home, "task", "complete", "2")
 	ok(t, home, "task", "complete", "3")
 	ok(t, home, "task", "archive", "2")
-	ok(t, home, "folder", "move", "/Work", "--to", "/work")
+	ok(t, home, "folder", "mv", "-T", "/Work", "/work")
 	r := ok(t, home, "task", "archive", "3")
 	if r.Result()["archive"] != archivePath(home, "Work/@3.md") {
 		t.Errorf("on disk: %s", r.Line())
@@ -412,7 +412,7 @@ func TestArchiveCasePending(t *testing.T) {
 		t.Errorf("pending: %s", r.Line())
 	}
 	// The rename waits behind the archive step, its paths overlapping.
-	warned(t, home, pending, "folder", "move", "/Work", "--to", "/work")
+	warned(t, home, pending, "folder", "mv", "-T", "/Work", "/work")
 	warned(t, home, pending, "task", "create", "u", "--folder", "/work") // 3
 	warned(t, home, pending, "task", "complete", "3")
 	// Its notes are still to be written, so they aren't there when the
