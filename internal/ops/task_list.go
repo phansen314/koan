@@ -20,9 +20,9 @@ type TaskListResult struct {
 // order, as its filters say.
 func TaskList() *cli.Command {
 	return &cli.Command{
-		Name: "task list",
+		Name:    "task list",
+		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},

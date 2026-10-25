@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "task mv needs a subject: task",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "task mv needs a subject: task"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

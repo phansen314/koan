@@ -3,21 +3,22 @@
   "$id": "task-reopen",
   "$defs": {
     "input": {
-      "$ref": "task-show#/$defs/input"
+      "$ref": "task-complete#/$defs/input"
     },
     "result": {
       "type": "object",
       "required": [
-        "id",
-        "changed",
+        "reopened",
         "reblocked"
       ],
       "properties": {
-        "id": {
-          "$ref": "types#/$defs/id"
-        },
-        "changed": {
-          "type": "boolean"
+        "reopened": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The tasks it reopened. Input order."
         },
         "reblocked": {
           "$ref": "types#/$defs/ids",

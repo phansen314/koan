@@ -646,157 +646,361 @@ func (t *Tree) Unblock(task string, blockedBy, blocks []string) (out EdgeResult,
 
 // CompleteResult is what complete and reopen return.
 type CompleteResult struct {
-	ID        int64
-	Changed   bool
+	Changed   []int64 // the tasks completed or reopened, in input order
 	Released  []int64 // complete only
 	Reblocked []int64 // reopen only
 	Warnings  []Warning
 }
 
-// Complete marks a task complete and ends its claim.
-func (t *Tree) Complete(task string) (out CompleteResult, err error) {
+// subjectTasks resolves a list of tasks, in order: a task named twice is
+// invalid-input at its later occurrence.
+func (c *Tree) subjectTasks(tasks []string) ([]*Task, error) {
+	var s shape
+	refs := taskRefs(&s, tasks)
+	if err := s.done(nil); err != nil {
+		return nil, err
+	}
+	return c.resolveTasks(refs)
+}
+
+// taskRefs reads a list of tasks into s, at /tasks/0 on.
+func taskRefs(s *shape, tasks []string) []core.Ref {
+	refs := make([]core.Ref, len(tasks))
+	for i, task := range tasks {
+		refs[i] = s.ref(fmt.Sprintf("/tasks/%d", i), task, core.WantTask, false)
+	}
+	if len(tasks) == 0 {
+		s.faultf("/tasks", "at least one task is needed")
+	}
+	return refs
+}
+
+// resolveTasks resolves a list of tasks read by taskRefs, in order.
+func (c *Tree) resolveTasks(refs []core.Ref) ([]*Task, error) {
+	var out []*Task
+	for i, ref := range refs {
+		at := fmt.Sprintf("/tasks/%d", i)
+		r, err := core.Resolve(c, ref, core.WantTask, nil)
+		if err != nil {
+			return nil, pointAt(err, at, false)
+		}
+		x := c.Tasks[r.ID]
+		if slices.Contains(out, x) {
+			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d given twice", x.ID)}, "%s", at)
+		}
+		out = append(out, x)
+	}
+	return out, nil
+}
+
+// Complete marks tasks complete and ends their claims, as one change.
+func (t *Tree) Complete(tasks ...string) (out CompleteResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
-		out.ID = x.ID
-		if !x.Open() {
-			return nil
-		}
 		before, existed := c.readySet(), c.taskIDs()
 		now := c.now
-		x.CompletedAt, x.UpdatedAt = &now, now
-		delete(c.Claims, x.ID)
-		out.Changed, out.Released = true, c.released(before, existed)
+		out.Changed = []int64{}
+		for _, x := range xs {
+			if !x.Open() {
+				continue
+			}
+			x.CompletedAt, x.UpdatedAt = &now, now
+			delete(c.Claims, x.ID)
+			out.Changed = append(out.Changed, x.ID)
+		}
+		out.Released = c.released(before, existed)
 		return nil
 	})
 	return out, err
 }
 
-// Reopen marks a task open again; whatever waits on it waits again.
-func (t *Tree) Reopen(task string) (out CompleteResult, err error) {
+// Reopen marks tasks open again, as one change; whatever waits on them
+// waits again.
+func (t *Tree) Reopen(tasks ...string) (out CompleteResult, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
-		out.ID = x.ID
-		if x.Open() {
-			return nil
-		}
 		before := c.readySet()
-		x.CompletedAt, x.UpdatedAt = nil, c.now
-		out.Changed, out.Reblocked = true, c.reblocked(before)
+		out.Changed = []int64{}
+		for _, x := range xs {
+			if x.Open() {
+				continue
+			}
+			x.CompletedAt, x.UpdatedAt = nil, c.now
+			out.Changed = append(out.Changed, x.ID)
+		}
+		out.Reblocked = c.reblocked(before)
 		out.Warnings = c.claimedBlocked(out.Reblocked)
 		return nil
 	})
 	return out, err
 }
 
-// MoveTask puts a task in another folder or the root. No edge changes.
-func (t *Tree) MoveTask(task, to string) (changed bool, warnings []Warning, err error) {
-	err = t.change(func(c *Tree) error {
-		var s shape
-		tref := s.ref("/task", task, core.WantTask, false)
-		dest := s.ref("/to", to, core.WantFolder, false)
-		if err := s.done(nil); err != nil {
-			return err
-		}
-		x, err := c.resolveTask(tref)
-		if err != nil {
-			return err
-		}
-		folder, err := c.resolveFolder(dest, "/to")
-		if err != nil {
-			return err
-		}
-		if x.Gate != core.EndNone {
-			return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
-		}
-		if folder == x.Folder {
-			return nil
-		}
-		x.Folder, changed = folder, true
-		if c.claimed(x.ID) {
-			warnings = []Warning{{Kind: "moved-claimed", IDs: []int64{x.ID}}}
-		}
-		return nil
-	})
-	return changed, warnings, err
-}
-
-// FolderMoved is what folder move returns.
-type FolderMoved struct {
-	ID       int64
-	Changed  bool
-	Path     string
-	Created  []FolderAt
+// TaskMoved is what task mv returns.
+type TaskMoved struct {
+	Moved    []int64 // the tasks that moved, in input order
 	Warnings []Warning
 }
 
-// MoveFolder moves or renames a folder to its whole new path, everything
-// under it included. Missing parents are made. A case-only rename is a
-// move, and the one input allowed to name both spellings, and only of the
-// folder's own name.
-func (t *Tree) MoveFolder(folder, to string) (out FolderMoved, err error) {
+// MoveTask puts tasks in a folder or the root, as one change. No edge
+// changes. A task already in the folder doesn't move.
+func (t *Tree) MoveTask(into string, tasks ...string) (out TaskMoved, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
-		subject := s.ref("/folder", folder, core.WantFolder, false)
-		dest := s.path("/to", to)
-		if err := s.done(respells); err != nil {
+		refs := taskRefs(&s, tasks)
+		dest := s.ref("/into", into, core.WantFolder, false)
+		if err := s.done(nil); err != nil {
 			return err
 		}
-		f, err := c.resolveSubjectFolder(subject)
+		xs, err := c.resolveTasks(refs)
 		if err != nil {
 			return err
 		}
-		n := len(dest.Names)
-		parent, made, err := c.parents(dest.Names[:n-1], f.ID)
-		if e, ok := err.(*core.Error); ok && e.Rule == core.RuleIntoItself {
-			// The rule's paths are the destination.
-			e.Paths = []string{dest.TargetString()}
-		}
+		folder, err := c.resolveFolder(dest, "/into")
 		if err != nil {
 			return err
 		}
-		name, path := dest.Names[n-1], dest.TargetString()
-		out.ID, out.Created = f.ID, made
-		if id, ok := c.Child(parent, name); ok {
-			if id != f.ID {
-				return core.Conflict(core.RuleExists, nil, []string{path}, "%s is taken", path)
+		for _, x := range xs {
+			if x.Gate != core.EndNone {
+				return core.Conflict(core.RuleGate, []int64{x.ID}, nil, "@%d is a gate, and stays in its folder", x.ID)
 			}
-		} else if id, spelled, ok := c.ChildFold(parent, name); ok && id != f.ID {
-			is := strings.TrimSuffix(c.Path(parent), "/") + "/" + spelled
-			return core.Conflict(core.RuleCaseMismatch, []int64{id}, []string{path, is},
-				"%s differs from %s only in case", path, is)
 		}
-		if f.Parent != parent || f.Name != name {
-			f.Parent, f.Name, out.Changed = parent, name, true
+		out.Moved = []int64{}
+		var claimed []int64
+		for _, x := range xs {
+			if folder == x.Folder {
+				continue
+			}
+			x.Folder = folder
+			out.Moved = append(out.Moved, x.ID)
+			if c.claimed(x.ID) {
+				claimed = append(claimed, x.ID)
+			}
 		}
-		out.Path = c.Path(f.ID)
-		if out.Changed {
-			var ids []int64
-			for id := range c.Claims {
-				if c.Under(id, f.ID) {
-					ids = append(ids, id)
-				}
-			}
-			if ids != nil {
-				slices.Sort(ids)
-				out.Warnings = []Warning{{Kind: "moved-claimed", IDs: ids}}
-			}
+		if len(claimed) > 0 {
+			out.Warnings = []Warning{{Kind: "moved-claimed", IDs: claimed}}
 		}
 		return nil
 	})
 	return out, err
 }
 
+// FolderMoved is what folder mv returns.
+type FolderMoved struct {
+	Moved    []FolderAt // the folders that moved, in input order, at their new paths
+	Warnings []Warning
+}
+
+// Mv is how folder mv reads its destination.
+type Mv int
+
+const (
+	// MvDest is a folder that exists, to move into; otherwise the one
+	// folder's new path.
+	MvDest Mv = iota
+	// MvInto is the folder to move into: -t.
+	MvInto
+	// MvRename is the one folder's new path, whatever exists: -T.
+	MvRename
+)
+
+// MoveFolder moves folders into a folder that exists, or renames one to a
+// new path whose parent exists, everything under each included, as one
+// change. Nothing is replaced and no parent is made. A case-only rename
+// is the one input allowed to name both spellings, and only of the
+// folder's own name.
+func (t *Tree) MoveFolder(mv Mv, dest string, folders ...string) (out FolderMoved, err error) {
+	err = t.change(func(c *Tree) error {
+		var s shape
+		refs := folderRefs(&s, folders, "moved")
+		pointer := "/dest"
+		if mv == MvInto {
+			pointer = "/into"
+		}
+		if mv == MvRename && len(folders) > 1 {
+			s.faultf("/folders/1", "a rename takes one folder")
+		}
+		to := s.ref(pointer, dest, core.WantFolder, false)
+		if mv == MvRename && to.IsRoot() {
+			s.faultf(pointer, "the root can't be a new path")
+		}
+		one := len(folders) == 1 && mv != MvInto
+		if err := s.done(func(a, b core.Ref) bool { return one && respells(a, b) }); err != nil {
+			return err
+		}
+		fs, err := c.resolveFolders(refs, "moved")
+		if err != nil {
+			return err
+		}
+		into, rename := core.RootID, mv == MvRename
+		switch mv {
+		case MvInto:
+			if into, err = c.resolveFolder(to, pointer); err != nil {
+				return err
+			}
+		case MvDest:
+			r, err := core.Resolve(c, to, core.WantFolder, nil)
+			switch {
+			case err == nil:
+				into = r.ID
+			case len(fs) > 1 || to.Kind == core.TargetID:
+				return pointAt(err, pointer, false)
+			default:
+				rename = true
+			}
+		}
+		var moved []*Folder
+		if rename {
+			f := fs[0]
+			parent, name, err := c.newPath(to, f.ID, pointer)
+			if err != nil {
+				return err
+			}
+			path := strings.TrimSuffix(c.Path(parent), "/") + "/" + name
+			if id, ok := c.Child(parent, name); ok {
+				if id != f.ID {
+					return core.Conflict(core.RuleExists, nil, []string{path}, "%s is taken", path)
+				}
+			} else if id, spelled, ok := c.ChildFold(parent, name); ok && id != f.ID {
+				is := strings.TrimSuffix(c.Path(parent), "/") + "/" + spelled
+				return core.Conflict(core.RuleCaseMismatch, []int64{id}, []string{path, is},
+					"%s differs from %s only in case", path, is)
+			}
+			if f.Parent != parent || f.Name != name {
+				f.Parent, f.Name = parent, name
+				moved = append(moved, f)
+			}
+		} else {
+			at := strings.TrimSuffix(c.Path(into), "/") + "/"
+			for _, f := range fs {
+				if into == f.ID || c.Under(into, f.ID) {
+					return core.Conflict(core.RuleIntoItself, []int64{f.ID}, []string{at + f.Name},
+						"@%d would land inside itself at %s", f.ID, at+f.Name)
+				}
+			}
+			// What the folder holds once the move is made: what is there,
+			// and each folder that lands, in input order.
+			var there []*Folder
+			for _, g := range c.Folders {
+				if g.Parent == into {
+					there = append(there, g)
+				}
+			}
+			slices.SortFunc(there, func(a, b *Folder) int { return cmp.Compare(a.Name, b.Name) })
+			var landing []*Folder
+			for _, f := range fs {
+				if f.Parent != into {
+					landing = append(landing, f)
+				}
+			}
+			for _, exact := range []bool{false, true} {
+				held := slices.Clone(there)
+				for _, f := range landing {
+					for _, g := range held {
+						switch {
+						case !exact && g.Name != f.Name && strings.EqualFold(g.Name, f.Name):
+							return core.Conflict(core.RuleCaseMismatch, []int64{g.ID}, []string{at + f.Name, at + g.Name},
+								"%s differs from %s only in case", at+f.Name, at+g.Name)
+						case exact && g.Name == f.Name:
+							return core.Conflict(core.RuleExists, nil, []string{at + f.Name}, "%s is taken", at+f.Name)
+						}
+					}
+					held = append(held, f)
+				}
+			}
+			for _, f := range landing {
+				f.Parent = into
+			}
+			moved = landing
+		}
+		out.Moved = []FolderAt{}
+		var claimed []int64
+		for _, f := range moved {
+			out.Moved = append(out.Moved, FolderAt{ID: f.ID, Path: c.Path(f.ID)})
+			for id := range c.Claims {
+				if c.Under(id, f.ID) {
+					claimed = append(claimed, id)
+				}
+			}
+		}
+		if claimed != nil {
+			slices.Sort(claimed)
+			out.Warnings = []Warning{{Kind: "moved-claimed", IDs: claimed}}
+		}
+		return nil
+	})
+	return out, err
+}
+
+// newPath finds where a rename puts a folder: the folder its new path's
+// parent names, which must exist, and the new name. A bare ID names a
+// folder that exists, so its path is the new one. Walking the parent
+// through the folder itself, or anchoring inside it, is into-itself, at
+// the new path from the root.
+func (c *Tree) newPath(ref core.Ref, self int64, pointer string) (int64, string, error) {
+	dest := ""
+	inside := func(at int64) error {
+		if at == self || c.Under(at, self) {
+			return core.Conflict(core.RuleIntoItself, []int64{self}, []string{dest},
+				"@%d would land inside itself at %s", self, dest)
+		}
+		return nil
+	}
+	if ref.Kind == core.TargetID {
+		r, err := core.Resolve(c, ref, core.WantFolder, nil)
+		if err != nil {
+			return 0, "", pointAt(err, pointer, false)
+		}
+		g := c.Folders[r.ID]
+		if g.ID == self {
+			return g.Parent, g.Name, nil
+		}
+		dest = c.Path(g.ID)
+		return g.Parent, g.Name, inside(g.Parent)
+	}
+	at, given := core.RootID, ""
+	if ref.Kind == core.TargetAnchored {
+		anchor := ref
+		anchor.Names = nil
+		r, err := core.Resolve(c, anchor, core.WantFolder, nil)
+		if err != nil {
+			return 0, "", pointAt(err, pointer, false)
+		}
+		at, given = r.ID, strings.SplitN(ref.Raw, "/", 2)[0]
+	}
+	dest = strings.TrimSuffix(c.Path(at), "/") + "/" + strings.Join(ref.Names, "/")
+	n := len(ref.Names)
+	for _, name := range ref.Names[:n-1] {
+		if err := inside(at); err != nil {
+			return 0, "", err
+		}
+		given += "/" + name
+		if id, ok := c.Child(at, name); ok {
+			at = id
+			continue
+		}
+		if id, spelled, ok := c.ChildFold(at, name); ok {
+			is := strings.TrimSuffix(c.Path(at), "/") + "/" + spelled
+			return 0, "", core.Conflict(core.RuleCaseMismatch, []int64{id}, []string{given, is},
+				"%s matches %s only ignoring case", given, is)
+		}
+		return 0, "", core.NotFound(nil, []string{given}, "no folder at %s", given)
+	}
+	return at, ref.Names[n-1], inside(at)
+}
+
 // respells reports whether a destination only respells its subject's own
-// name: the same path but for the case of its last name.
+// name: the same path from the same start but for the case of its last
+// name.
 func respells(subject, dest core.Ref) bool {
 	n := len(subject.Names)
-	return subject.Kind == core.TargetPath && dest.Kind == core.TargetPath && n > 0 && len(dest.Names) == n &&
+	return subject.Kind == dest.Kind && subject.ID == dest.ID && n > 0 && len(dest.Names) == n &&
+		(subject.Kind == core.TargetPath || subject.Kind == core.TargetAnchored) &&
 		slices.Equal(subject.Names[:n-1], dest.Names[:n-1]) && strings.EqualFold(subject.Names[n-1], dest.Names[n-1])
 }
 
@@ -856,72 +1060,151 @@ type Removed struct {
 	Released []int64
 }
 
-// DeleteTask removes a task, its claim and every edge to and from it. It
-// never splices: what waited on it isn't passed its blockers.
-func (t *Tree) DeleteTask(task string) (out Removed, err error) {
+// DeleteTask removes tasks, their claims and every edge to and from
+// them, as one change. It never splices: what waited on them isn't passed
+// their blockers.
+func (t *Tree) DeleteTask(tasks ...string) (out Removed, err error) {
 	err = t.change(func(c *Tree) error {
-		x, err := c.subjectTask(task)
+		xs, err := c.subjectTasks(tasks)
 		if err != nil {
 			return err
 		}
+		var ids []int64
+		for _, x := range xs {
+			ids = append(ids, x.ID)
+		}
 		before, existed := c.readySet(), c.taskIDs()
-		c.remove([]int64{x.ID}, nil)
-		out = Removed{Removed: []int64{x.ID}, Released: c.released(before, existed)}
+		c.remove(ids, nil)
+		out = Removed{Removed: slices.Sorted(slices.Values(ids)), Released: c.released(before, existed)}
 		return nil
 	})
 	return out, err
 }
 
-// DeleteFolder removes a folder and everything under it, gates included.
-func (t *Tree) DeleteFolder(folder string, contents, force bool) (out Removed, err error) {
+// subjectFolders resolves a list of folders to delete.
+func (c *Tree) subjectFolders(folders []string) ([]*Folder, error) {
+	var s shape
+	refs := folderRefs(&s, folders, "deleted")
+	if err := s.done(nil); err != nil {
+		return nil, err
+	}
+	return c.resolveFolders(refs, "deleted")
+}
+
+// folderRefs reads a list of folders to change into s, at /folders/0 on;
+// the root can't be one. verb says what is done to them.
+func folderRefs(s *shape, folders []string, verb string) []core.Ref {
+	refs := make([]core.Ref, len(folders))
+	for i, folder := range folders {
+		at := fmt.Sprintf("/folders/%d", i)
+		refs[i] = s.ref(at, folder, core.WantFolder, false)
+		if refs[i].IsRoot() {
+			s.faultf(at, "the root can't be %s", verb)
+		}
+	}
+	if len(folders) == 0 {
+		s.faultf("/folders", "at least one folder is needed")
+	}
+	return refs
+}
+
+// resolveFolders resolves a list of folders read by folderRefs, in order:
+// a folder named twice is invalid-input at its later occurrence, and one
+// inside another named at the one inside.
+func (c *Tree) resolveFolders(refs []core.Ref, verb string) ([]*Folder, error) {
+	var out []*Folder
+	for i, ref := range refs {
+		at := fmt.Sprintf("/folders/%d", i)
+		r, err := core.Resolve(c, ref, core.WantFolder, nil)
+		if err != nil {
+			return nil, pointAt(err, at, false)
+		}
+		if r.Kind == core.ResolvedRoot {
+			return nil, problem(invalid("the root can't be %s", verb), "%s", at)
+		}
+		f := c.Folders[r.ID]
+		if slices.Contains(out, f) {
+			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d is given twice", f.ID)}, "%s", at)
+		}
+		out = append(out, f)
+	}
+	var inside *core.Error
+	for i, f := range out {
+		for _, g := range out {
+			if c.Under(f.ID, g.ID) {
+				reason := fmt.Sprintf("@%d is inside @%d, also given", f.ID, g.ID)
+				if inside == nil {
+					inside = &core.Error{Kind: core.KindInvalidInput, Message: reason}
+				}
+				problem(inside, "/folders/%d", i)
+				break
+			}
+		}
+	}
+	if inside != nil {
+		return nil, inside
+	}
+	return out, nil
+}
+
+// DeleteFolder removes folders and everything under them, gates included,
+// as one change.
+func (t *Tree) DeleteFolder(folders []string, contents, material bool) (out Removed, err error) {
 	err = t.change(func(c *Tree) error {
-		f, err := c.subjectFolder(folder)
+		fs, err := c.subjectFolders(folders)
 		if err != nil {
 			return err
 		}
 		if !contents {
-			var direct []int64
-			for _, x := range c.Tasks {
-				if x.Folder == f.ID && x.Gate == core.EndNone {
-					direct = append(direct, x.ID)
+			for _, f := range fs {
+				var direct []int64
+				for _, x := range c.Tasks {
+					if x.Folder == f.ID && x.Gate == core.EndNone {
+						direct = append(direct, x.ID)
+					}
 				}
-			}
-			for _, g := range c.Folders {
-				if g.Parent == f.ID {
-					direct = append(direct, g.ID)
+				for _, g := range c.Folders {
+					if g.Parent == f.ID {
+						direct = append(direct, g.ID)
+					}
 				}
-			}
-			if direct != nil {
-				slices.Sort(direct)
-				return core.Conflict(core.RuleNotEmpty, direct, nil, "@%d holds %s", f.ID, core.FormatIDs(direct))
+				if direct != nil {
+					slices.Sort(direct)
+					return core.Conflict(core.RuleNotEmpty, direct, nil, "@%d holds %s", f.ID, core.FormatIDs(direct))
+				}
 			}
 		}
-		tasks, folders := c.under(f.ID)
-		if !force {
+		var tasks, gone []int64
+		var found []string
+		for _, f := range fs {
+			ts, under := c.under(f.ID)
+			tasks, gone = append(tasks, ts...), append(gone, under...)
+			if material {
+				continue
+			}
 			// In tree order: each folder's own entries, byte for byte,
 			// before those of the folders under it. .DS_Store is never
 			// material to the check.
-			under := map[int64]bool{}
-			for _, id := range folders {
-				under[id] = true
+			in := map[int64]bool{}
+			for _, id := range under {
+				in[id] = true
 			}
-			var material []string
 			for _, id := range c.TreeOrder() {
-				if under[id] {
+				if in[id] {
 					for _, name := range sortedKeys(c.Folders[id].Material) {
 						if name != ".DS_Store" {
-							material = append(material, c.Path(id)+":"+name)
+							found = append(found, c.Path(id)+":"+name)
 						}
 					}
 				}
 			}
-			if material != nil {
-				return core.Conflict(core.RuleHasMaterial, nil, material, "@%d holds material", f.ID)
-			}
+		}
+		if found != nil {
+			return core.Conflict(core.RuleHasMaterial, nil, found, "the folders hold material")
 		}
 		before, existed := c.readySet(), c.taskIDs()
-		c.remove(tasks, folders)
-		out = Removed{Removed: slices.Sorted(slices.Values(slices.Concat(tasks, folders))), Released: c.released(before, existed)}
+		c.remove(tasks, gone)
+		out = Removed{Removed: slices.Sorted(slices.Values(slices.Concat(tasks, gone))), Released: c.released(before, existed)}
 		return nil
 	})
 	return out, err

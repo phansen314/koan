@@ -17,7 +17,8 @@
           "items": {
             "$ref": "types#/$defs/edge-ref"
           },
-          "default": []
+          "default": [],
+          "description": "Object: what it waits on, the words after the subject."
         },
         "blocks": {
           "type": "array",

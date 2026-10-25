@@ -34,6 +34,8 @@ eval "$(koan pick --bash)"
 bind -x '"\ek": __koan_pick_widget'     # Alt-K
 ```
 
+koan paths are never globbed: a shell expands `/work/old/*` against your disk before koan runs, so it never means the folders under `/work/old`. Name each folder, completing it with Tab, or pick them with `$(koan pick)`.
+
 ### Choosing a key
 
 - **Alt-K on Linux**, in the default emacs editing mode, works as above.
@@ -104,7 +106,7 @@ Edges are only ever between tasks: where a task sits never orders it. To order w
 
 ```sh
 koan task create 'Announce it' --folder /work --blocked-by /work/api    # @5 waits on /work/api's done gate, made as @6
-koan task block /work/api.done --blocked-by 3,4                         # the done gate waits on the folder's work
+koan task block /work/api.done 3,4                                      # the done gate waits on the folder's work
 koan task why 5                                                         # .result.ready: [4], what to finish to move @5
 koan export /work/api | jq '.result.external[].ref'                     # the tasks outside /work/api at the other end of an edge: @5
 ```

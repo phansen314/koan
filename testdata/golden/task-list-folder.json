@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown flag: --folder",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "--folder",
+        "reason": "unknown flag: --folder"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

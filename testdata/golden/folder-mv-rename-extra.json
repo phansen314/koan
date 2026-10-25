@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "a word past the object: folder mv takes one dest",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/c",
+        "reason": "a word past the object: folder mv takes one dest"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

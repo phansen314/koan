@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "result": {
+    "moved": [
+      {
+        "id": 2,
+        "path": "/c/p2",
+        "dir": "$HOME/koan-root/tree/@c/@p2"
+      }
+    ]
+  },
+  "warnings": []
+}

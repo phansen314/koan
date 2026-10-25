@@ -9,7 +9,7 @@ import (
 // gives them.
 func gatesIn(t *testing.T, home, folder string) string {
 	t.Helper()
-	r := ok(t, home, "task", "list", "--folder", folder, "--recursive=false", "--fields", "id", "--state", "open,complete")
+	r := ok(t, home, "task", "list", folder, "--recursive=false", "--fields", "id", "--state", "open,complete")
 	return fmt.Sprint(r.Result()["tasks"])
 }
 

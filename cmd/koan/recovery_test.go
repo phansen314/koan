@@ -446,9 +446,9 @@ func TestDoctorTakesNoLock(t *testing.T) {
 func TestDoctorClean(t *testing.T) {
 	home := base(t)
 	ok(t, home, "folder", "create", "/home/x/y")
-	ok(t, home, "folder", "move", "/home/x", "--to", "/work/X")
-	ok(t, home, "folder", "move", "/work/X", "--to", "/work/x")
-	ok(t, home, "task", "move", "4", "--to", "/work/x/y")
+	ok(t, home, "folder", "mv", "-T", "/home/x", "/work/X")
+	ok(t, home, "folder", "mv", "-T", "/work/X", "/work/x")
+	ok(t, home, "task", "mv", "4", "/work/x/y")
 	ok(t, home, "task", "complete", "3")
 	ok(t, home, "task", "archive", "3")
 	ok(t, home, "folder", "delete", "/home")

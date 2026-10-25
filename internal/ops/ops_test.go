@@ -24,7 +24,7 @@ func TestCommandsMatchSchemas(t *testing.T) {
 			t.Errorf("%s: no schema %s with an input", c.Name, id)
 			continue
 		}
-		var want, subjects []string
+		var want, subjects, objects []string
 		// An input's fields are its own and those of the fragments it
 		// builds on through allOf, such as task list's filter, or of the
 		// input it is through $ref, such as task why's.
@@ -53,8 +53,11 @@ func TestCommandsMatchSchemas(t *testing.T) {
 			}
 			want = append(want, props.Keys...)
 			for _, k := range props.Keys {
-				if strings.HasPrefix(props.Get(k).Str("description"), "Subject.") {
+				switch d := props.Get(k).Str("description"); {
+				case strings.HasPrefix(d, "Subject.") || strings.HasPrefix(d, "Subject:"):
 					subjects = append(subjects, k)
+				case strings.HasPrefix(d, "Object.") || strings.HasPrefix(d, "Object:"):
+					objects = append(objects, k)
 				}
 			}
 		}
@@ -62,8 +65,8 @@ func TestCommandsMatchSchemas(t *testing.T) {
 		if c.Subject != nil {
 			got = append(got, c.Subject.Field)
 		}
-		if c.Rest != nil {
-			got = append(got, c.Rest.Field)
+		if c.Object != nil && c.Object.Field != c.Instead {
+			got = append(got, c.Object.Field)
 		}
 		for _, o := range c.Options {
 			got = append(got, o.Field)
@@ -80,6 +83,13 @@ func TestCommandsMatchSchemas(t *testing.T) {
 		}
 		if strings.Join(subject, ",") != strings.Join(subjects, ",") {
 			t.Errorf("%s: subject %v, schema %v", c.Name, subject, subjects)
+		}
+		var object []string
+		if c.Object != nil {
+			object = []string{c.Object.Field}
+		}
+		if strings.Join(object, ",") != strings.Join(objects, ",") {
+			t.Errorf("%s: object %v, schema %v", c.Name, object, objects)
 		}
 		if c.Run == nil {
 			t.Errorf("%s: no Run", c.Name)

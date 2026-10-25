@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command task move",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "move",
+        "reason": "unknown command task move"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

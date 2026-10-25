@@ -486,13 +486,12 @@ func TestIDsRunOut(t *testing.T) {
 	r := fails(t, home, "conflict", "no-ids", "task", "create", "one more")
 	golden(t, r, "no-ids")
 	fails(t, home, "conflict", "no-ids", "folder", "create", "/web")
-	fails(t, home, "conflict", "no-ids", "folder", "move", "/work", "--to", "/a/work")
-	fails(t, home, "conflict", "no-ids", "task", "block", "999999999999999", "--blocked-by", "/work.start")
+	fails(t, home, "conflict", "no-ids", "task", "block", "999999999999999", "/work.start")
 	if r := batch(t, home, `{"tasks":[{"title":"t"}]}`); r.Kind() != "conflict" || r.Error()["rule"] != "no-ids" {
 		t.Errorf("batch: %s", r.Line())
 	}
 	ok(t, home, "task", "update", "999999999999999", "--title", "still")
-	ok(t, home, "folder", "move", "/work", "--to", "/Work")
+	ok(t, home, "folder", "mv", "-T", "/work", "/Work")
 	ok(t, home, "task", "complete", "999999999999999")
 	r = ok(t, home, "info")
 	if r.Result()["next_id"] != nil || r.Result()["tasks"] != json.Number("1") || r.Result()["folders"] != json.Number("1") {

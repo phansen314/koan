@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-mv",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "tasks",
+        "into"
+      ],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/task-ref"
+          },
+          "minItems": 1,
+          "description": "Subject."
+        },
+        "into": {
+          "$ref": "types#/$defs/folder-ref",
+          "description": "Object: the folder they go into; -t, --into."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "moved"
+      ],
+      "properties": {
+        "moved": {
+          "type": "array",
+          "description": "The tasks that moved. Input order.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "notes_path"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "types#/$defs/id"
+              },
+              "notes_path": {
+                "$ref": "types#/$defs/abs-path"
+              }
+            },
+            "unevaluatedProperties": false
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

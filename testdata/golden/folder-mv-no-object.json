@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "folder mv needs a dest after the subject",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "folder mv needs a dest after the subject"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

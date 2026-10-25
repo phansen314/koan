@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"/a/c.start\": an end isn't taken where a folder is",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/dest",
+        "reason": "\"/a/c.start\": an end isn't taken where a folder is"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

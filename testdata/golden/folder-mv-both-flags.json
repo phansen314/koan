@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "-t and -T can't go together",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "-t and -T can't go together"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"/w\": a path names a task only as a folder's gate, ending .start or .done",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/tasks/1",
+        "reason": "\"/w\": a path names a task only as a folder's gate, ending .start or .done"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

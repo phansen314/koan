@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "unknown command folder move",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "move",
+        "reason": "unknown command folder move"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

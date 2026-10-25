@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "dest and into can't both be given",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "",
+        "reason": "dest and into can't both be given"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

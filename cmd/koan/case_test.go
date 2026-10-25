@@ -71,7 +71,7 @@ func TestCaseTable(t *testing.T) {
 			{args: []string{"folder", "create", "/Work"}, kind: "conflict", rule: "case-mismatch", paths: "[/Work /work]"},
 			{args: []string{"folder", "create", "/work/API"}, kind: "conflict", rule: "case-mismatch", paths: "[/work/API /work/api]"},
 			{args: []string{"folder", "create", "/web"}},
-			{args: []string{"folder", "move", "/web", "--to", "/WORK"}, kind: "conflict", rule: "case-mismatch"},
+			{args: []string{"folder", "mv", "/web", "/WORK"}, kind: "conflict", rule: "case-mismatch"},
 			{args: []string{"batch", "-i", "-"}, stdin: `{"folders":[{"path":"/web/Api"},{"path":"/work/Api"}]}`, kind: "conflict", rule: "case-mismatch"},
 			{args: []string{"folder", "list", "--fields", "path"}, check: listed("", "@web", "@work")},
 		}},
@@ -87,14 +87,14 @@ func TestCaseTable(t *testing.T) {
 		{"One input never names two paths that differ only in case", []caseRow{
 			{args: []string{"folder", "create", "/proj/a"}},
 			{args: []string{"task", "create", "t", "--folder", "/proj/a", "--blocks", "/Proj/a.done"}, kind: "invalid-input", prob: "/folder /blocks/0"},
-			{args: []string{"folder", "move", "/proj/a", "--to", "/Proj/b"}, kind: "invalid-input"},
+			{args: []string{"folder", "mv", "/proj/a", "/Proj/b"}, kind: "invalid-input"},
 			{args: []string{"batch", "-i", "-"}, stdin: `{"folders":[{"path":"/Proj/a"},{"path":"/proj/b"}]}`, kind: "invalid-input"},
 			// From different starts, they are compared as they resolve.
 			{args: []string{"task", "create", "t", "--folder", "/proj/a", "--blocks", "@3/A.done"}, kind: "conflict", rule: "case-mismatch"},
 		}},
-		{"Changing a folder's case is a move", []caseRow{
+		{"Changing a folder's case is a rename", []caseRow{
 			{args: []string{"task", "create", "t", "--folder", "/work/api", "--notes", "kept"}},
-			{args: []string{"folder", "move", "/work/api", "--to", "/work/API"}, check: listed("@work", "@API", "@notes.md")},
+			{args: []string{"folder", "mv", "/work/api", "/work/API"}, check: listed("@work", "@API", "@notes.md")},
 			{args: []string{"folder", "show", "/work/API"}},
 			{args: []string{"task", "show", "3"}, check: func(t *testing.T, home string, r *testrun.Result) {
 				b, err := os.ReadFile(treePath(home, "@work/@API/@3.md"))
@@ -102,9 +102,9 @@ func TestCaseTable(t *testing.T) {
 					t.Errorf("notes after the respell: %q, %v", b, err)
 				}
 			}},
-			{args: []string{"folder", "move", "/work", "--to", "/Work"}, check: listed("", "@Work")},
-			{args: []string{"folder", "move", "/Work/API", "--to", "/work/b"}, kind: "invalid-input"},
-			{args: []string{"folder", "move", "/Work/API", "--to", "/WORK/API"}, kind: "invalid-input"},
+			{args: []string{"folder", "mv", "/work", "/Work"}, check: listed("", "@Work")},
+			{args: []string{"folder", "mv", "/Work/API", "/work/b"}, kind: "invalid-input"},
+			{args: []string{"folder", "mv", "/Work/API", "/WORK/API"}, kind: "invalid-input"},
 			{args: []string{"doctor"}, check: func(t *testing.T, home string, r *testrun.Result) {
 				if len(r.Result()["findings"].([]any)) != 0 {
 					t.Errorf("doctor: %s", r.Line())

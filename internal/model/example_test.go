@@ -171,10 +171,10 @@ func TestExampleChanges(t *testing.T) {
 		blockedBy string
 		cycle     []int64
 	}{
-		{"task block 8 --blocked-by 10", "8", "10", []int64{8, 10, start9, done7}},
-		{"task block @7.start --blocked-by @9", "@7.start", "@9", []int64{start7, done9, 10, start9, done7, 8}},
-		{"task block 8 --blocked-by @7", "8", "@7", []int64{8, done7}},
-		{"task block 4 --blocked-by @1", "4", "@1", nil},
+		{"task block 8 10", "8", "10", []int64{8, 10, start9, done7}},
+		{"task block @7.start @9", "@7.start", "@9", []int64{start7, done9, 10, start9, done7, 8}},
+		{"task block 8 @7", "8", "@7", []int64{8, done7}},
+		{"task block 4 @1", "4", "@1", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.change, func(t *testing.T) {

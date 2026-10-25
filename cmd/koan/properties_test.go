@@ -35,7 +35,7 @@ var (
 func TestProperties(t *testing.T) {
 	t.Parallel()
 	// The first seed alone makes every command succeed, for -short.
-	seeds := []int64{59, 11, 1, 2}
+	seeds := []int64{1, 59, 11, 2}
 	steps := 200
 	switch {
 	case *seedFlag != 0:
@@ -73,8 +73,8 @@ func TestProperties(t *testing.T) {
 		return
 	}
 	for _, cmd := range []string{"task create", "task update", "task block", "task unblock", "task complete", "task reopen",
-		"task claim", "task claim-next", "task release", "task move", "task delete", "task archive", "folder create",
-		"folder update", "folder move", "folder move case", "folder delete", "folder delete force", "folder archive", "batch"} {
+		"task claim", "task claim-next", "task release", "task mv", "task delete", "task archive", "folder create",
+		"folder update", "folder mv", "folder mv case", "folder delete", "folder delete material", "folder archive", "batch"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -122,6 +122,28 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		return pick([]string{"/a.start", "/c.done", "@2.start"})
 	}
+	// subjects is a list of one to three references, the first x and the
+	// rest from more, now and then with one given twice, and the words
+	// that give it: each its own word, or joined to the one before by a
+	// comma.
+	subjects := func(x string, more func() string) (xs, words []string) {
+		xs = []string{x}
+		for range rng.Intn(3) {
+			if rng.Intn(6) == 0 {
+				xs = append(xs, xs[rng.Intn(len(xs))])
+			} else {
+				xs = append(xs, more())
+			}
+		}
+		for i, x := range xs {
+			if i > 0 && rng.Intn(2) == 0 {
+				words[len(words)-1] += "," + x
+			} else {
+				words = append(words, x)
+			}
+		}
+		return xs, words
+	}
 	edgeList := func() []string {
 		var out []string
 		for range rng.Intn(3) {
@@ -129,9 +151,13 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		return out
 	}
+	// On task create, what it waits on is --blocked-by; on task block and
+	// unblock, the word after the subject.
 	edgeArgs := func(args []string, bb, bl []string) []string {
-		if len(bb) > 0 {
+		if len(bb) > 0 && args[1] == "create" {
 			args = append(args, "--blocked-by", strings.Join(bb, ","))
+		} else if len(bb) > 0 {
+			args = append(args, strings.Join(bb, ","))
 		}
 		if len(bl) > 0 {
 			args = append(args, "--blocks", strings.Join(bl, ","))
@@ -400,15 +426,18 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			if rng.Intn(2) == 0 {
 				x = m.Path(id)
 			}
+			mv, args := model.MvDest, []string{"folder", "mv", x, string(p)}
+			if rng.Intn(2) == 0 {
+				mv, args = model.MvRename, []string{"folder", "mv", "-T", x, string(p)}
+			}
 			var out model.FolderMoved
-			out, err = m.MoveFolder(x, string(p))
-			return []string{"folder", "move", x, "--to", string(p)}, "folder move case",
-				fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, out.Path, madeAt(out.Created), warnings(out.Warnings)), err
+			out, err = m.MoveFolder(mv, string(p), x)
+			return args, "folder mv case", fmt.Sprintf("%v %s", madeAt(out.Moved), warnings(out.Warnings)), err
 		case op == 7:
-			x := folderRef()
+			xs, words := subjects(folderRef(), folderRef)
 			var out model.Removed
-			out, err = m.DeleteFolder(x, true, true)
-			return []string{"folder", "delete", x, "--contents", "--force"}, "folder delete force",
+			out, err = m.DeleteFolder(xs, true, true)
+			return append(append([]string{"folder", "delete"}, words...), "--contents", "--material"), "folder delete material",
 				fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released)), err
 		case op == 8:
 			// Material, by hand, in a folder or the root.
@@ -509,17 +538,20 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			args = edgeArgs([]string{"task", "unblock", x}, bb, bl)
 			want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
 		case op == 13:
-			x, to := subject(), folderRef()
-			var changed bool
-			var ws []model.Warning
-			changed, ws, err = m.MoveTask(x, to)
-			args = []string{"task", "move", x, "--to", to}
-			want = fmt.Sprintf("%v %s", changed, warnings(ws))
+			xs, words := subjects(subject(), subject)
+			into := folderRef()
+			var out model.TaskMoved
+			out, err = m.MoveTask(into, xs...)
+			args = append(append([]string{"task", "mv"}, words...), into)
+			if rng.Intn(2) == 0 {
+				args = append([]string{"task", "mv", "-t", into}, words...)
+			}
+			want = fmt.Sprintf("%v %s", nonNil(out.Moved), warnings(out.Warnings))
 		case op == 14:
-			x := subject()
+			xs, words := subjects(subject(), subject)
 			var out model.Removed
-			out, err = m.DeleteTask(x)
-			args = []string{"task", "delete", x}
+			out, err = m.DeleteTask(xs...)
+			args = append([]string{"task", "delete"}, words...)
 			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
 		case op >= 18:
 			var left []int64
@@ -543,30 +575,47 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				args = []string{"folder", "create", to}
 				want = fmt.Sprint(madeAt(made))
 			case 4, 5, 6:
+				// Into a folder, renamed, or as the destination says; now
+				// and then the destination is any folder reference.
+				if rng.Intn(4) == 0 {
+					to = folderRef()
+				}
 				var out model.FolderMoved
-				out, err = m.MoveFolder(x, to)
-				args = []string{"folder", "move", x, "--to", to}
-				want = fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, out.Path, madeAt(out.Created), warnings(out.Warnings))
+				switch xs, words := subjects(x, folderRef); rng.Intn(3) {
+				case 0:
+					out, err = m.MoveFolder(model.MvRename, to, x)
+					args = []string{"folder", "mv", "-T", x, to}
+				case 1:
+					out, err = m.MoveFolder(model.MvInto, to, xs...)
+					args = append([]string{"folder", "mv", "-t", to}, words...)
+				default:
+					out, err = m.MoveFolder(model.MvDest, to, xs...)
+					args = append(append([]string{"folder", "mv"}, words...), to)
+				}
+				want = fmt.Sprintf("%v %s", madeAt(out.Moved), warnings(out.Warnings))
 			default:
 				contents := rng.Intn(3) == 0
 				var out model.Removed
-				out, err = m.DeleteFolder(x, contents, false)
-				args = []string{"folder", "delete", x, fmt.Sprintf("--contents=%v", contents)}
+				xs, words := subjects(x, folderRef)
+				out, err = m.DeleteFolder(xs, contents, false)
+				args = append(append([]string{"folder", "delete"}, words...), fmt.Sprintf("--contents=%v", contents))
 				want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
 			}
 		default:
 			x := subject()
 			switch rng.Intn(5) {
 			case 0:
+				xs, words := subjects(x, subject)
 				var out model.CompleteResult
-				out, err = m.Complete(x)
-				args = []string{"task", "complete", x}
-				want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
+				out, err = m.Complete(xs...)
+				args = append([]string{"task", "complete"}, words...)
+				want = fmt.Sprintf("%v %v", nonNil(out.Changed), nonNil(out.Released))
 			case 1:
+				xs, words := subjects(x, subject)
 				var out model.CompleteResult
-				out, err = m.Reopen(x)
-				args = []string{"task", "reopen", x}
-				want = fmt.Sprintf("%d %v %v %s", out.ID, out.Changed, nonNil(out.Reblocked), warnings(out.Warnings))
+				out, err = m.Reopen(xs...)
+				args = append([]string{"task", "reopen"}, words...)
+				want = fmt.Sprintf("%v %v %s", nonNil(out.Changed), nonNil(out.Reblocked), warnings(out.Warnings))
 			case 2:
 				var c model.Claim
 				c, err = m.ClaimTask(x, nil)
@@ -581,7 +630,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				sc := model.Scope{Folder: pick([]string{"/", "/a", "/a/b", "/c"}), Recursive: rng.Intn(2) == 0}
 				var c *model.Claim
 				c, err = m.ClaimNext(sc, nil)
-				args = []string{"task", "claim-next", "--folder", sc.Folder, fmt.Sprintf("--recursive=%v", sc.Recursive)}
+				args = []string{"task", "claim-next", sc.Folder, fmt.Sprintf("--recursive=%v", sc.Recursive)}
 				want = "<nil>"
 				if c != nil {
 					want = fmt.Sprint(c.Task)
@@ -631,10 +680,12 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					got = fmt.Sprintf("%v %v %s %v %s", res["id"], res["changed"], koanGates(r), res["reblocked"], koanWarnings(r))
 				case "update":
 					got = fmt.Sprint(res["changed"])
-				case "unblock", "complete":
+				case "unblock":
 					got = fmt.Sprintf("%v %v %v", res["id"], res["changed"], res["released"])
+				case "complete":
+					got = fmt.Sprintf("%v %v", res["completed"], res["released"])
 				case "reopen":
-					got = fmt.Sprintf("%v %v %v %s", res["id"], res["changed"], res["reblocked"], koanWarnings(r))
+					got = fmt.Sprintf("%v %v %s", res["reopened"], res["reblocked"], koanWarnings(r))
 				case "claim":
 					got = fmt.Sprint(res["claim"].(map[string]any)["task"])
 				case "release":
@@ -644,12 +695,12 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					if c, _ := res["claim"].(map[string]any); c != nil {
 						got = fmt.Sprint(c["task"])
 					}
-				case "move":
-					if args[0] == "task" {
-						got = fmt.Sprintf("%v %s", res["changed"], koanWarnings(r))
-					} else {
-						got = fmt.Sprintf("%v %v %v %v %s", res["id"], res["changed"], res["path"], koanMade(res["created"]), koanWarnings(r))
+				case "mv":
+					if args[0] == "folder" {
+						got = fmt.Sprintf("%v %s", koanMade(res["moved"]), koanWarnings(r))
+						break
 					}
+					got = fmt.Sprintf("%v %s", ids(res["moved"]), koanWarnings(r))
 				case "delete":
 					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
 				case "archive":

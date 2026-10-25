@@ -20,7 +20,7 @@ func joinCommand(name string, subject cli.Option, want core.Want, ends joinEnds,
 	return &cli.Command{
 		Name:    name,
 		Subject: &subject,
-		Rest:    &cli.Option{Field: "join", Kind: cli.List, Arg: "folder", Complete: foldersOnly.complete()},
+		Object:  &cli.Option{Field: "join", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			at := cli.Pointer(subject.Field)

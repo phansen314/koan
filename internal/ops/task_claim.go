@@ -65,9 +65,9 @@ func TaskClaim() *cli.Command {
 // task frontier finds it. The record it returns shows the new claim.
 func TaskClaimNext() *cli.Command {
 	return &cli.Command{
-		Name: "task claim-next",
+		Name:    "task claim-next",
+		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},

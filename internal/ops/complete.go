@@ -28,18 +28,19 @@ type offers struct {
 var (
 	yes, no = true, false
 
-	tasksAndGates = offers{kinds: []string{"task", "gate"}}
-	openOnes      = offers{kinds: []string{"task", "gate"}, states: []string{"open"}}
-	completeOnes  = offers{kinds: []string{"task", "gate"}, states: []string{"complete"}}
-	claimable     = offers{kinds: []string{"task", "gate"}, states: []string{"open"}, claimed: &no}
-	claimedOnes   = offers{kinds: []string{"task", "gate"}, claimed: &yes}
-	tasksOnly     = offers{kinds: []string{"task"}}
-	blockable     = offers{kinds: []string{"task", "gate"}, unmade: true}
-	edgeEnds      = offers{kinds: []string{"task", "gate", "folder"}, unmade: true}
-	foldersOnly   = offers{kinds: []string{"folder"}}
-	finishedOnes  = offers{kinds: []string{"folder"}, finished: true}
-	newPaths      = offers{steps: true}
-	anyRef        = offers{kinds: []string{"task", "gate", "folder"}}
+	tasksAndGates   = offers{kinds: []string{"task", "gate"}}
+	openOnes        = offers{kinds: []string{"task", "gate"}, states: []string{"open"}}
+	completeOnes    = offers{kinds: []string{"task", "gate"}, states: []string{"complete"}}
+	claimable       = offers{kinds: []string{"task", "gate"}, states: []string{"open"}, claimed: &no}
+	claimedOnes     = offers{kinds: []string{"task", "gate"}, claimed: &yes}
+	tasksOnly       = offers{kinds: []string{"task"}}
+	blockable       = offers{kinds: []string{"task", "gate"}, unmade: true}
+	edgeEnds        = offers{kinds: []string{"task", "gate", "folder"}, unmade: true}
+	foldersOnly     = offers{kinds: []string{"folder"}}
+	tasksAndFolders = offers{kinds: []string{"task", "folder"}}
+	finishedOnes    = offers{kinds: []string{"folder"}, finished: true}
+	newPaths        = offers{steps: true}
+	anyRef          = offers{kinds: []string{"task", "gate", "folder"}}
 )
 
 // idWord is a word completed as an ID: empty, @, or an optional @ then

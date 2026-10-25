@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "result": {
+    "marker": {
+      "schema": 1,
+      "id": 1,
+      "path": "/work",
+      "dir": "$HOME/wt"
+    },
+    "file": "$HOME/wt/.koan/marker.json",
+    "replaced": true
+  },
+  "warnings": []
+}

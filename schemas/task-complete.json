@@ -3,21 +3,36 @@
   "$id": "task-complete",
   "$defs": {
     "input": {
-      "$ref": "task-show#/$defs/input"
+      "type": "object",
+      "required": [
+        "tasks"
+      ],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/task-ref"
+          },
+          "minItems": 1,
+          "description": "Subject."
+        }
+      },
+      "unevaluatedProperties": false
     },
     "result": {
       "type": "object",
       "required": [
-        "id",
-        "changed",
+        "completed",
         "released"
       ],
       "properties": {
-        "id": {
-          "$ref": "types#/$defs/id"
-        },
-        "changed": {
-          "type": "boolean"
+        "completed": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/id"
+          },
+          "uniqueItems": true,
+          "description": "The tasks it completed. Input order."
         },
         "released": {
           "$ref": "types#/$defs/ids",

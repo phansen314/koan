@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "invalid argument \"/\" for \"-t, --into\" flag: given twice",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "--into",
+        "reason": "invalid argument \"/\" for \"-t, --into\" flag: given twice"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

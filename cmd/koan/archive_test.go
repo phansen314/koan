@@ -153,7 +153,7 @@ func TestTaskArchive(t *testing.T) {
 	if got := archivedTo(t, home, "task", "archive", "@3"); got != archivePath(home, "work/HOME-777/@3.md") {
 		t.Errorf("archived to %s", got)
 	}
-	r = fails(t, home, "not-found", "", "task", "block", "4", "--blocked-by", "3")
+	r = fails(t, home, "not-found", "", "task", "block", "4", "3")
 	if fmt.Sprint(r.Error()["archived"]) != fmt.Sprintf("[map[archive:%s id:3]]", archivePath(home, "work/HOME-777/@3.md")) {
 		t.Errorf("an edge to it: %s", r.Line())
 	}
@@ -238,7 +238,7 @@ func TestTaskArchiveGate(t *testing.T) {
 	// The folder lacks it now; the next start gate is made afresh, with
 	// notes of its own in the tree.
 	fails(t, home, "not-found", "", "task", "show", "/work/api.start")
-	ok(t, home, "task", "block", "3", "--blocked-by", "/work/api.start") // 5
+	ok(t, home, "task", "block", "3", "/work/api.start") // 5
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=", "@work/@api/@start.md=", "@3.md=")
 	ok(t, home, "task", "complete", "5")
 	ok(t, home, "task", "archive", "5")
@@ -257,7 +257,7 @@ func TestFolderArchive(t *testing.T) {
 	ok(t, home, "task", "create", "u", "--folder", "/work/HOME-12345/api", "--blocked-by", "/work/HOME-12345.start,4") // 5, 6
 	ok(t, home, "task", "create", "outside", "--blocked-by", "/work/HOME-12345.done")                                  // 7, 8
 	ok(t, home, "task", "create", "before")                                                                            // 9
-	ok(t, home, "task", "block", "4", "--blocked-by", "9")
+	ok(t, home, "task", "block", "4", "9")
 	for rel, content := range map[string]string{
 		"@work/@HOME-12345/docs/x.md":      "x",
 		"@work/@HOME-12345/.hidden":        "h",
@@ -378,7 +378,7 @@ func TestArchiveCase(t *testing.T) {
 	ok(t, home, "task", "complete", "2")
 	ok(t, home, "task", "complete", "3")
 	ok(t, home, "task", "archive", "2")
-	ok(t, home, "folder", "move", "/Work", "--to", "/work")
+	ok(t, home, "folder", "mv", "-T", "/Work", "/work")
 	r := ok(t, home, "task", "archive", "3")
 	if r.Result()["archive"] != archivePath(home, "Work/@3.md") {
 		t.Errorf("on disk: %s", r.Line())
@@ -412,7 +412,7 @@ func TestArchiveCasePending(t *testing.T) {
 		t.Errorf("pending: %s", r.Line())
 	}
 	// The rename waits behind the archive step, its paths overlapping.
-	warned(t, home, pending, "folder", "move", "/Work", "--to", "/work")
+	warned(t, home, pending, "folder", "mv", "-T", "/Work", "/work")
 	warned(t, home, pending, "task", "create", "u", "--folder", "/work") // 3
 	warned(t, home, pending, "task", "complete", "3")
 	// Its notes are still to be written, so they aren't there when the

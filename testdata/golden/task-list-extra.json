@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "usage",
+    "rule": null,
+    "message": "a second subject: task list takes one",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/Zeta",
+        "reason": "a second subject: task list takes one"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

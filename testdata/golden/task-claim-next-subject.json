@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "result": {
+    "task": {
+      "id": 4,
+      "ref": "@4 (/a/b)",
+      "gate": null,
+      "title": "b1",
+      "priority": null,
+      "folder": {
+        "id": 2,
+        "path": "/a/b"
+      },
+      "created_at": "$NOW",
+      "completed_at": null,
+      "updated_at": "$NOW",
+      "state": "open",
+      "readiness": "ready",
+      "blocked_by": [],
+      "blocks": [],
+      "tags": [],
+      "extra": {},
+      "claim": {
+        "task": 4,
+        "claimed_at": "$NOW",
+        "extra": {}
+      },
+      "notes_path": "$HOME/koan-root/tree/@a/@b/@4.md"
+    },
+    "claim": {
+      "task": 4,
+      "claimed_at": "$NOW",
+      "extra": {}
+    }
+  },
+  "warnings": []
+}

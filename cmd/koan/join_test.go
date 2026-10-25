@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+
+	"github.com/phansen314/koan/internal/testrun"
 )
 
 // waitsOn is the IDs a task waits on, as task show gives them, sorted.
@@ -23,12 +25,13 @@ func waitsOn(t *testing.T, home, ref string) []int64 {
 
 // usageAt runs a command line that must be usage, exit 2, with its
 // problem at field.
-func usageAt(t *testing.T, home, field string, args ...string) {
+func usageAt(t *testing.T, home, field string, args ...string) *testrun.Result {
 	t.Helper()
 	r := koan(t, home, args...)
 	if r.Exit != 2 || r.Kind() != "usage" || problemFields(r) != field {
 		t.Errorf("koan %q: exit %d, want usage at %q: %s", args, r.Exit, field, r.Line())
 	}
+	return r
 }
 
 // The join rows of the rules doc's "Changes, in the example above", each
@@ -358,6 +361,7 @@ func TestJoinUsage(t *testing.T) {
 		usageAt(t, home, "--join", append(args, "42", "--join", "/a")...)
 		usageAt(t, home, "--join", append(args, "42", "/a", "--join", "/b")...)
 	}
+	golden(t, usageAt(t, home, "--join", "task", "join", "42", "/a", "--join", "/b"), "task-join-join")
 }
 
 // A gate is never task join's or task unjoin's subject, made or not,
@@ -398,7 +402,7 @@ func TestJoinRefused(t *testing.T) {
 		t.Errorf("folder join /b /b: %s", r.Line())
 	}
 	// Nothing refused made a gate: /b has none.
-	r = ok(t, home, "task", "list", "--folder", "/b", "--fields", "id", "--state", "open,complete")
+	r = ok(t, home, "task", "list", "/b", "--fields", "id", "--state", "open,complete")
 	if fmt.Sprint(r.Result()["tasks"]) != "[]" {
 		t.Errorf("a refused change made a gate: %s", r.Line())
 	}
@@ -432,7 +436,7 @@ func TestTaskUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2 4]]" {
 		t.Errorf("both: %s", r.Line())
 	}
-	ok(t, home, "task", "block", "2", "--blocked-by", "/a.start")
+	ok(t, home, "task", "block", "2", "/a.start")
 	r = ok(t, home, "task", "unjoin", "2", "/a")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2]]" {
 		t.Errorf("one: %s", r.Line())
@@ -448,7 +452,7 @@ func TestTaskUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:false id:2 released:[]]" {
 		t.Errorf("no gates: %s", r.Line())
 	}
-	r = ok(t, home, "task", "list", "--folder", "/b", "--fields", "id", "--state", "open,complete")
+	r = ok(t, home, "task", "list", "/b", "--fields", "id", "--state", "open,complete")
 	if fmt.Sprint(r.Result()["tasks"]) != "[]" {
 		t.Errorf("unjoin made a gate: %s", r.Line())
 	}
@@ -467,7 +471,7 @@ func TestFolderUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3 6]]" {
 		t.Errorf("both: %s", r.Line())
 	}
-	ok(t, home, "task", "block", "/g.start", "--blocked-by", "/h.start")
+	ok(t, home, "task", "block", "/g.start", "/h.start")
 	r = ok(t, home, "folder", "unjoin", "/g", "/h")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:1 released:[3]]" {
 		t.Errorf("one: %s", r.Line())
@@ -493,7 +497,7 @@ func TestFolderUnjoin(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[changed:false id:7 released:[]]" {
 		t.Errorf("no gates: %s", r.Line())
 	}
-	r = ok(t, home, "task", "list", "--folder", "/k", "--fields", "id", "--state", "open,complete")
+	r = ok(t, home, "task", "list", "/k", "--fields", "id", "--state", "open,complete")
 	if fmt.Sprint(r.Result()["tasks"]) != "[]" {
 		t.Errorf("unjoin made a gate: %s", r.Line())
 	}

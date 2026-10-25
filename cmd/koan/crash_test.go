@@ -246,11 +246,11 @@ var crashCases = []crashCase{
 	{name: "task complete", prep: func(t *testing.T, home string) { ok(t, home, "task", "claim", "1") },
 		args: []string{"task", "complete", "1"}},
 	{name: "task block", prep: func(t *testing.T, home string) { ok(t, home, "folder", "create", "/a") },
-		args: []string{"task", "block", "1", "--blocked-by", "/a.done", "--blocks", "/a.start"}},
-	{name: "task move", prep: func(t *testing.T, home string) {
+		args: []string{"task", "block", "1", "/a.done", "--blocks", "/a.start"}},
+	{name: "task mv", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "m", "--notes", "m notes")
-	}, args: []string{"task", "move", "4", "--to", "/a/b"}},
+	}, args: []string{"task", "mv", "4", "/a/b"}},
 	{name: "task delete", prep: func(t *testing.T, home string) {
 		ok(t, home, "task", "create", "d", "--notes", "d notes", "--blocks", "1")
 	}, args: []string{"task", "delete", "2"}},
@@ -259,27 +259,28 @@ var crashCases = []crashCase{
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
 		ok(t, home, "task", "complete", "4")
 	}, args: []string{"task", "archive", "4"}},
-	{name: "folder move", prep: func(t *testing.T, home string) {
+	{name: "folder mv", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b", "--notes", "b notes")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes")
+		ok(t, home, "folder", "create", "/x/y")
 		writeTree(t, home, "@a/@b/src/main.go", "package main")
-	}, args: []string{"folder", "move", "/a", "--to", "/x/y/z"}},
-	{name: "folder move case-only", prep: func(t *testing.T, home string) {
+	}, args: []string{"folder", "mv", "-T", "/a", "/x/y/z"}},
+	{name: "folder mv case-only", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/work/api", "--notes", "api notes")
 		ok(t, home, "task", "create", "x", "--folder", "/work/api", "--notes", "x notes", "--blocked-by", "/work/api.start")
 		writeTree(t, home, "@work/@api/docs/readme", "material")
-	}, args: []string{"folder", "move", "/work/api", "--to", "/work/API"}},
+	}, args: []string{"folder", "mv", "-T", "/work/api", "/work/API"}},
 	{name: "folder delete", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
-		ok(t, home, "task", "block", "1", "--blocked-by", "/a.done")
+		ok(t, home, "task", "block", "1", "/a.done")
 	}, args: []string{"folder", "delete", "/a", "--contents"}},
 	{name: "folder delete force", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes")
 		writeTree(t, home, "@a/@b/src/main.go", "package main")
 		writeTree(t, home, "@a/.DS_Store", "")
-	}, args: []string{"folder", "delete", "/a", "--contents", "--force"}},
+	}, args: []string{"folder", "delete", "/a", "--contents", "--material"}},
 	{name: "folder archive", prep: func(t *testing.T, home string) {
 		ok(t, home, "folder", "create", "/a/b")
 		ok(t, home, "task", "create", "x", "--folder", "/a/b", "--notes", "x notes", "--blocks", "1")
@@ -312,11 +313,11 @@ var crashCases = []crashCase{
 // the database is as it was before or as it is after, never between, and
 // a read reports steps left pending. The next write, or repair, then
 // brings the tree back to T1 to T6, as it would be had nothing crashed.
-// -short runs the case-only folder move and the case-differs repair, at
+// -short runs the case-only folder mv and the case-differs repair, at
 // every third point.
 func TestCrashPoints(t *testing.T) {
 	for _, c := range crashCases {
-		if testing.Short() && c.name != "folder move case-only" && c.name != "repair case-differs" {
+		if testing.Short() && c.name != "folder mv case-only" && c.name != "repair case-differs" {
 			continue
 		}
 		t.Run(c.name, func(t *testing.T) {

@@ -18,9 +18,9 @@ type FolderListResult struct {
 // order.
 func FolderList() *cli.Command {
 	return &cli.Command{
-		Name: "folder list",
+		Name:    "folder list",
+		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
-			{Field: "folder", Kind: cli.String, Complete: foldersOnly.complete()},
 			{Field: "recursive", Kind: cli.Bool},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},

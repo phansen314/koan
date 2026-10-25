@@ -3,7 +3,7 @@
   "$id": "task-delete",
   "$defs": {
     "input": {
-      "$ref": "task-show#/$defs/input"
+      "$ref": "task-complete#/$defs/input"
     },
     "result": {
       "type": "object",

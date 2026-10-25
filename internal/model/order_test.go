@@ -46,7 +46,7 @@ func TestShapeBeforeReferences(t *testing.T) {
 		{"a path with no end where a task is taken", func() error {
 			_, err := tr.Complete("/nope/x")
 			return err
-		}, []string{"/task"}},
+		}, []string{"/tasks/0"}},
 		{"two spellings point at both references", func() error {
 			_, err := tr.CreateTask(TaskInput{Title: "t", Folder: "/work", BlockedBy: []string{"/Work.start"}})
 			return err
@@ -88,28 +88,37 @@ func TestMoveTaskResolvesFirst(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
-	_, _, err := tr.MoveTask("/a.done", "/nope")
+	_, err := tr.MoveTask("/nope", "/a.done")
 	wantErr(t, err, core.KindNotFound, "")
-	_, _, err = tr.MoveTask("/a.done", "/")
+	_, err = tr.MoveTask("/", "/a.done")
 	wantErr(t, err, core.KindConflict, core.RuleGate)
 }
 
-// A folder move may name both spellings only to respell the folder's own
+// A folder mv may name both spellings only to respell the folder's own
 // name.
 func TestMoveFolderSpellings(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/work/a", nil, nil))
-	_, err := tr.MoveFolder("/work/a", "/Work/b")
+	_, err := tr.MoveFolder(MvDest, "/Work/b", "/work/a")
 	e := wantErr(t, err, core.KindInvalidInput, "")
-	if !reflect.DeepEqual(e.Problems, []string{"/folder", "/to"}) {
+	if !reflect.DeepEqual(e.Problems, []string{"/folders/0", "/dest"}) {
 		t.Errorf("problems %q", e.Problems)
 	}
-	_, err = tr.MoveFolder("/work/a", "/Work/A")
+	_, err = tr.MoveFolder(MvRename, "/Work/A", "/work/a")
 	wantErr(t, err, core.KindInvalidInput, "")
-	if r := must[FolderMoved](t)(tr.MoveFolder("/work/a", "/work/A")); r.Path != "/work/A" {
+	// Of several, or into a folder, no pair is its own name respelled.
+	must[[]FolderAt](t)(tr.CreateFolder("/work/b", nil, nil))
+	_, err = tr.MoveFolder(MvDest, "/work/A", "/work/a", "/work/b")
+	wantErr(t, err, core.KindInvalidInput, "")
+	_, err = tr.MoveFolder(MvInto, "/work/A", "/work/a")
+	wantErr(t, err, core.KindInvalidInput, "")
+	if r := must[FolderMoved](t)(tr.MoveFolder(MvRename, "/work/A", "/work/a")); r.Moved[0].Path != "/work/A" {
 		t.Errorf("respelled: %+v", r)
 	}
-	if r := must[FolderMoved](t)(tr.MoveFolder("/work", "/Work")); r.Path != "/Work" {
+	if r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "@1/B", "@1/b")); r.Moved[0].Path != "/work/B" {
+		t.Errorf("respelled, anchored: %+v", r)
+	}
+	if r := must[FolderMoved](t)(tr.MoveFolder(MvDest, "/Work", "/work")); r.Moved[0].Path != "/Work" {
 		t.Errorf("respelled: %+v", r)
 	}
 	checked(t, tr)

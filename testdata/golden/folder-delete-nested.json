@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "@2 is inside @1, also given",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/folders/0",
+        "reason": "@2 is inside @1, also given"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

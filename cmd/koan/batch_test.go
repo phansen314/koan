@@ -166,10 +166,10 @@ func TestBatchCycle(t *testing.T) {
   { "label": "$c", "title": "c", "blocked_by": ["$a"], "blocks": ["$b"] }
 ]}`)
 	golden(t, r, "batch-cycle")
-	ok(t, home, "task", "create", "x")                            // 1
-	ok(t, home, "task", "create", "y", "--blocked-by", "1")       // 2
-	ok(t, home, "folder", "create", "/w")                         // 3
-	ok(t, home, "task", "block", "/w.start", "--blocked-by", "2") // 4
+	ok(t, home, "task", "create", "x")                      // 1
+	ok(t, home, "task", "create", "y", "--blocked-by", "1") // 2
+	ok(t, home, "folder", "create", "/w")                   // 3
+	ok(t, home, "task", "block", "/w.start", "2")           // 4
 	r = batchFails(t, home, "conflict", "cycle", "/tasks/1/blocks/0 /tasks/1/blocked_by/0 /tasks/0/blocks/0",
 		`{"tasks": [{"label": "$a", "title": "a", "blocks": [1]}, {"title": "b", "blocked_by": ["/w.start"], "blocks": ["$a"]}]}`)
 	if fmt.Sprint(r.Error()["ids"]) != "[5 6 4 2 1]" {

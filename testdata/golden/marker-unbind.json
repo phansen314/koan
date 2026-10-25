@@ -2,7 +2,7 @@
   "ok": true,
   "result": {
     "dir": "$HOME/wt",
-    "removed": true
+    "changed": true
   },
   "warnings": []
 }

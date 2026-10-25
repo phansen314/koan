@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "the root can't be moved",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/folders/0",
+        "reason": "the root can't be moved"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

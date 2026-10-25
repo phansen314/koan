@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "not-found",
+    "rule": null,
+    "message": "no folder at /nothing",
+    "ids": [],
+    "paths": [
+      "/nothing"
+    ],
+    "problems": [],
+    "archived": []
+  },
+  "warnings": []
+}
