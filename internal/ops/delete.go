@@ -13,8 +13,10 @@ import (
 
 // DeleteResult is delete's result, in its schema's order.
 type DeleteResult struct {
-	Removed  []int64 `json:"removed"`
-	Released []int64 `json:"released"`
+	Deleted   []int64 `json:"deleted"`
+	Removed   []int64 `json:"removed"`
+	Unclaimed []int64 `json:"unclaimed"`
+	Released  []int64 `json:"released"`
 }
 
 // Delete removes tasks and folders, mixed, as one change: a task with its
@@ -173,6 +175,17 @@ func Delete() *cli.Command {
 					return nil, nil, core.Conflict(core.RuleHasMaterial, nil, found,
 						"%s %s material; give material to delete it with %s", core.FormatIDs(holders), hold, with)
 				}
+				unclaimed := []int64{}
+				for _, id := range tasks {
+					claimed, err := tx.Claimed(id)
+					if err != nil {
+						return nil, nil, err
+					}
+					if claimed {
+						unclaimed = append(unclaimed, id)
+					}
+				}
+				slices.Sort(unclaimed)
 				released, err := tx.RemoveTasks(tasks, nil)
 				if err != nil {
 					return nil, nil, err
@@ -190,7 +203,11 @@ func Delete() *cli.Command {
 				}
 				removed := slices.Concat(tasks, fs)
 				slices.Sort(removed)
-				return DeleteResult{Removed: removed, Released: nonNil(released)}, nil, nil
+				deleted := []int64{}
+				for _, sub := range subs {
+					deleted = append(deleted, sub.id)
+				}
+				return DeleteResult{Deleted: deleted, Removed: removed, Unclaimed: unclaimed, Released: nonNil(released)}, nil, nil
 			})
 		},
 	}

@@ -122,6 +122,8 @@
         "notes_path": "$HOME/koan-root/tree/@work/@api/@start.md"
       }
     ],
+    "total": 3,
+    "truncated": false,
     "marker": null
   },
   "warnings": []

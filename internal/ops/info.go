@@ -11,7 +11,7 @@ import (
 type InfoResult struct {
 	Root     string      `json:"root"`
 	Tree     string      `json:"tree"`
-	Archive  string      `json:"archive"`
+	Archived string      `json:"archived"`
 	Database string      `json:"database"`
 	State    string      `json:"state"`
 	Format   *int        `json:"format"`
@@ -46,7 +46,7 @@ func Info() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			r := InfoResult{Root: root.Path, Tree: root.Tree, Archive: root.Archive, Database: root.Database}
+			r := InfoResult{Root: root.Path, Tree: root.Tree, Archived: root.Archive, Database: root.Database}
 			if !exists {
 				return r.failed(store.NotInitialized(root.Path), -1), nil, nil
 			}

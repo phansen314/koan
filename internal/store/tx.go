@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/core"
 )
 
@@ -130,6 +131,23 @@ func (t *Tx) ArchivedAt(id int64) string {
 	var rel string
 	t.QueryRow("SELECT archive FROM issued WHERE id = ?", id).Scan(&rel)
 	return filepath.Join(t.root, filepath.FromSlash(rel))
+}
+
+// ArchivedEntry is where an archived ID went, from the index, as a
+// not-found error gives it: a folder's directory, with its @notes.md, or
+// a task's notes. A lone task archived without notes is indexed by its
+// JSON; its notes would have gone beside it.
+func (t *Tx) ArchivedEntry(id int64) cli.Archived {
+	var kind string
+	t.QueryRow("SELECT kind FROM issued WHERE id = ?", id).Scan(&kind)
+	at := t.ArchivedAt(id)
+	if kind == "folder" {
+		return cli.Archived{ID: id, NotesPath: filepath.Join(at, "@notes.md"), Dir: &at}
+	}
+	if base, ok := strings.CutSuffix(at, ".json"); ok {
+		at = base + ".md"
+	}
+	return cli.Archived{ID: id, NotesPath: at}
 }
 
 // Open reports whether a task exists and is open.

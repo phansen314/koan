@@ -17,7 +17,7 @@ import (
 const (
 	MadeRoot     = "root"
 	MadeTree     = "tree"
-	MadeArchive  = "archive"
+	MadeArchive  = "archived"
 	MadeDatabase = "database"
 )
 

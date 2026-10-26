@@ -39,7 +39,7 @@ func busy(message string) *cli.Error {
 
 // asError turns whatever a change returned into the one error it reports.
 // archive gives where an archived ID went, for not-found.
-func asError(err error, database string, archive func(id int64) string) *cli.Error {
+func asError(err error, database string, archive func(id int64) cli.Archived) *cli.Error {
 	var w wrapError
 	var ce *core.Error
 	switch {
@@ -48,7 +48,7 @@ func asError(err error, database string, archive func(id int64) string) *cli.Err
 	case errors.As(err, &ce):
 		out := FromCore(ce)
 		for _, id := range ce.Archived {
-			out.Archived = append(out.Archived, cli.Archived{ID: id, Archive: archive(id)})
+			out.Archived = append(out.Archived, archive(id))
 		}
 		return out
 	}

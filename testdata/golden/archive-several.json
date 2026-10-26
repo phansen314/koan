@@ -4,17 +4,23 @@
     "archived": [
       {
         "id": 6,
-        "archive": "$HOME/koan-root/archived/@6.md",
+        "ref": "@6 (/)",
+        "notes_path": "$HOME/koan-root/archived/@6.md",
+        "dir": null,
         "json": "$HOME/koan-root/archived/@6.json"
       },
       {
         "id": 2,
-        "archive": "$HOME/koan-root/archived/work/@2_a",
+        "ref": "@2 (/work/a)",
+        "notes_path": "$HOME/koan-root/archived/work/@2_a/@notes.md",
+        "dir": "$HOME/koan-root/archived/work/@2_a",
         "json": "$HOME/koan-root/archived/work/@2_a.json"
       },
       {
         "id": 3,
-        "archive": "$HOME/koan-root/archived/work/@3.md",
+        "ref": "@3 (/work)",
+        "notes_path": "$HOME/koan-root/archived/work/@3.md",
+        "dir": null,
         "json": "$HOME/koan-root/archived/work/@3.json"
       }
     ],

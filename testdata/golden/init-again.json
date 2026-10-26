@@ -3,7 +3,7 @@
   "result": {
     "root": "$HOME/koan-root",
     "tree": "$HOME/koan-root/tree",
-    "archive": "$HOME/koan-root/archived",
+    "archived": "$HOME/koan-root/archived",
     "database": "$HOME/koan-root/koan.db",
     "made": [],
     "first_id": 1

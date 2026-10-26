@@ -82,16 +82,19 @@ func TestShapeBeforeReferences(t *testing.T) {
 	checked(t, tr)
 }
 
-// References resolve before the change is judged: a gate moved to a
-// folder that names nothing is not-found, not invalid-input.
-func TestMoveTaskResolvesFirst(t *testing.T) {
+// A gate is refused with the subjects, before the destination resolves:
+// a gate moved to a folder that names nothing is invalid-input at the
+// gate, not not-found.
+func TestMoveGateBeforeDestination(t *testing.T) {
 	tr := newTree()
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
-	_, err := tr.Move(MvInto, "/nope", "/a.done")
-	wantErr(t, err, core.KindNotFound, "")
-	_, err = tr.Move(MvInto, "/", "/a.done")
-	wantErr(t, err, core.KindInvalidInput, "")
+	for _, into := range []string{"/nope", "/"} {
+		_, err := tr.Move(MvInto, into, "/a.done")
+		if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, []string{"/refs/0"}) {
+			t.Errorf("into %s: problems %q", into, e.Problems)
+		}
+	}
 }
 
 // An mv may name both spellings only to respell the folder's own

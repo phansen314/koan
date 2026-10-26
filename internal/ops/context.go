@@ -15,21 +15,27 @@ type Brief struct {
 	Ancestors []Folder `json:"ancestors"`
 	Notes     *string  `json:"notes"`
 	Tasks     []Task   `json:"tasks"`
+	Total     int      `json:"total"`
+	Truncated bool     `json:"truncated"`
 	Marker    *string  `json:"marker"`
 }
 
 // Context briefs an agent on a folder, found by reference or by a path
 // on disk as where finds one: its record, the folders above it, its notes
-// and its own open tasks.
+// and its own open tasks, the first limit of them.
 func Context() *cli.Command {
 	return &cli.Command{
 		Name:    "context",
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
-		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
-		Here:    &cli.Here{Field: "file", Flag: "--here"},
+		Options: []cli.Option{
+			{Field: "file", Kind: cli.Path},
+			{Field: "limit", Kind: cli.Integer, Nullable: true},
+		},
+		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in}
 			q := r.foldering("folder")
+			limit := r.limit("limit", 100)
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}
@@ -59,13 +65,21 @@ func Context() *cli.Command {
 				for _, a := range res.Ancestors {
 					paths = append(paths, recordPaths(Cut[Folder]{Record: a})...)
 				}
-				res.Tasks = []Task{}
+				var open []int64
 				for _, tid := range t.order {
 					if t.rows[tid].Folder == id && t.Open(tid) {
-						rec := t.record(tid)
-						res.Tasks = append(res.Tasks, rec)
-						paths = append(paths, taskPaths(Cut[Task]{Record: rec})...)
+						open = append(open, tid)
 					}
+				}
+				res.Total = len(open)
+				if limit != nil && int64(len(open)) > *limit {
+					open, res.Truncated = open[:*limit], true
+				}
+				res.Tasks = []Task{}
+				for _, tid := range open {
+					rec := t.record(tid)
+					res.Tasks = append(res.Tasks, rec)
+					paths = append(paths, taskPaths(Cut[Task]{Record: rec})...)
 				}
 				if id != core.RootID {
 					if making, err = fsstep.Makes(tx, fsstep.FolderNotesPath(res.Folder.Path)); err != nil {

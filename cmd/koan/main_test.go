@@ -511,7 +511,7 @@ func TestInitRace(t *testing.T) {
 			made[c.(string)]++
 		}
 	}
-	for _, c := range []string{"root", "tree", "archive", "database"} {
+	for _, c := range []string{"root", "tree", "archived", "database"} {
 		if made[c] != 1 {
 			t.Errorf("%s made %d times", c, made[c])
 		}

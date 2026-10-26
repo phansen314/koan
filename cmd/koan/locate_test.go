@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -234,7 +235,7 @@ func TestWhereRootPath(t *testing.T) {
 		r := fails(t, home, "not-found", "", "where", "--file", c.file)
 		a := r.Error()["archived"].([]any)
 		if p := errorPaths(r); len(p) != 1 || p[0] != c.file || len(a) != 1 ||
-			fmt.Sprint(a[0].(map[string]any)["id"]) != fmt.Sprint(c.id) || a[0].(map[string]any)["archive"] != c.at {
+			fmt.Sprint(a[0].(map[string]any)["id"]) != fmt.Sprint(c.id) || archivedAt(t, a[0]) != c.at {
 			t.Errorf("where --file %s: %s", c.file, r.Line())
 		}
 	}
@@ -385,7 +386,7 @@ func TestWhereMarkerBindsNothing(t *testing.T) {
 	r = fails(t, home, "not-found", "", "where", "--file", dir+"/x")
 	golden(t, r, "where-marker-archived")
 	a := r.Error()["archived"].([]any)
-	if fmt.Sprint(r.Error()["ids"]) != "[4]" || len(a) != 1 || a[0].(map[string]any)["archive"] != filepath.Join(home, "koan-root", "archived", "@4_archive") {
+	if fmt.Sprint(r.Error()["ids"]) != "[4]" || len(a) != 1 || archivedAt(t, a[0]) != filepath.Join(home, "koan-root", "archived", "@4_archive") {
 		t.Errorf("archived: %s", r.Line())
 	}
 	// Reads never write a marker.
@@ -460,7 +461,8 @@ func TestWhereRealPath(t *testing.T) {
 }
 
 // context briefs an agent on a folder: its record, the folders above it,
-// its notes and its own open tasks, gates included, in tree order.
+// its notes and its own open tasks, gates included, in tree order, the
+// first --limit of them, with total and truncated.
 func TestContext(t *testing.T) {
 	home := realRoot(t)
 	ok(t, home, "folder", "create", "/work/api", "--notes", "API notes")
@@ -478,8 +480,22 @@ func TestContext(t *testing.T) {
 	if b["notes"] != "API notes" || b["marker"] != nil {
 		t.Errorf("brief: %s", r.Line())
 	}
-	if got := ids(b["tasks"]); got != "[3 4 5]" {
+	if got := ids(b["tasks"]); got != "[3 4 5]" || b["total"] != json.Number("3") || b["truncated"] != false {
 		t.Errorf("tasks %s", got)
+	}
+	for _, c := range []struct{ limit, want, truncated string }{
+		{"2", "[3 4]", "true"}, {"3", "[3 4 5]", "false"}, {"null", "[3 4 5]", "false"},
+	} {
+		b := ok(t, home, "context", "/work/api", "--limit", c.limit).Result()
+		if got := ids(b["tasks"]); got != c.want || b["total"] != json.Number("3") || fmt.Sprint(b["truncated"]) != c.truncated {
+			t.Errorf("--limit %s: %v", c.limit, b)
+		}
+	}
+	if b := input(t, home, "context", `{"folder":"/work/api","limit":1}`).Result(); ids(b["tasks"]) != "[3]" || b["truncated"] != true {
+		t.Errorf("limit through --input: %v", b)
+	}
+	for _, limit := range []string{"0", "-1"} {
+		invalidAt(t, home, "/limit", "context", "/work/api", "--limit", limit)
 	}
 	if got := ids(b["ancestors"]); got != "[1]" {
 		t.Errorf("ancestors %s", got)

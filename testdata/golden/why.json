@@ -11,7 +11,11 @@
       }
     ],
     "ready": [
-      11
+      {
+        "id": 11,
+        "ref": "@11 (/work/phase1.start)",
+        "claimed": false
+      }
     ]
   },
   "warnings": []

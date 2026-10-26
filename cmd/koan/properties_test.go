@@ -462,7 +462,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			yes := true
 			out, err = m.Delete(xs, &yes, &yes)
 			return append(append([]string{"delete"}, words...), "--contents", "--material"), "delete material",
-				fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released)), err
+				fmt.Sprintf("%v %v %v %v", out.Deleted, nonNil(out.Removed), out.Unclaimed, nonNil(out.Released)), err
 		case op == 8:
 			// Material, by hand, in a folder or the root.
 			id := core.RootID
@@ -579,7 +579,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			out, err = m.Delete(xs, nil, nil)
 			args = append([]string{"delete"}, words...)
 			name = "delete task"
-			want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
+			want = fmt.Sprintf("%v %v %v %v", out.Deleted, nonNil(out.Removed), out.Unclaimed, nonNil(out.Released))
 		case op >= 18:
 			var archived, left []int64
 			var xs, words []string
@@ -590,9 +590,22 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				xs, words = subjects(folderRef(), pick2(folderRef, subject))
 				name = "archive folder"
 			}
+			// Each item archived is named by its kept text, with the
+			// path it had.
+			kept := map[int64]string{}
+			for id, x := range m.Tasks {
+				kept[id] = core.Kept(id, m.Path(x.Folder), x.Gate)
+			}
+			for id := range m.Folders {
+				kept[id] = core.Kept(id, m.Path(id), core.EndNone)
+			}
 			archived, left, err = m.Archive(xs...)
 			args = append([]string{"archive"}, words...)
-			want = fmt.Sprintf("%v %v", nonNil(archived), nonNil(left))
+			refs := []string{}
+			for _, id := range archived {
+				refs = append(refs, kept[id])
+			}
+			want = fmt.Sprintf("%v %v", refs, nonNil(left))
 		case op >= 15:
 			// Creates come most often and deletes least, so the folders
 			// the other parts name come back.
@@ -629,7 +642,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				out, err = m.Delete(xs, &contents, nil)
 				args = append(append([]string{"delete"}, words...), fmt.Sprintf("--contents=%v", contents))
 				name = "delete folder"
-				want = fmt.Sprintf("%v %v", nonNil(out.Removed), nonNil(out.Released))
+				want = fmt.Sprintf("%v %v %v %v", out.Deleted, nonNil(out.Removed), out.Unclaimed, nonNil(out.Released))
 			}
 		default:
 			x := subject()
@@ -639,7 +652,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				var out model.CompleteResult
 				out, err = m.Complete(xs...)
 				args = append([]string{"complete"}, words...)
-				want = fmt.Sprintf("%v %v", nonNil(out.Changed), nonNil(out.Released))
+				want = fmt.Sprintf("%v %v %v", nonNil(out.Changed), out.Unclaimed, nonNil(out.Released))
 			case 1:
 				xs, words := subjects(x, subject)
 				var out model.CompleteResult
@@ -716,7 +729,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				case "unblock":
 					got = fmt.Sprintf("%v %v %v", res["id"], res["changed"], res["released"])
 				case "complete":
-					got = fmt.Sprintf("%v %v", res["completed"], res["released"])
+					got = fmt.Sprintf("%v %v %v", res["completed"], res["unclaimed"], res["released"])
 				case "reopen":
 					got = fmt.Sprintf("%v %v %s", res["reopened"], res["reblocked"], koanWarnings(r))
 				case "claim":
@@ -731,13 +744,9 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				case "mv":
 					got = fmt.Sprintf("%v %s", koanMoved(res["moved"]), koanWarnings(r))
 				case "delete":
-					got = fmt.Sprintf("%v %v", res["removed"], res["released"])
+					got = fmt.Sprintf("%v %v %v %v", res["deleted"], res["removed"], res["unclaimed"], res["released"])
 				case "archive":
-					ids := []any{}
-					for _, a := range res["archived"].([]any) {
-						ids = append(ids, a.(map[string]any)["id"])
-					}
-					got = fmt.Sprintf("%v %v", ids, res["removed"])
+					got = fmt.Sprintf("%v %v", koanMoved(res["archived"]), res["removed"])
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)

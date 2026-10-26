@@ -54,7 +54,8 @@ func TestErrorsPassSchema(t *testing.T) {
 		errs = append(errs, e)
 	}
 	nf := NewError(KindNotFound, "m")
-	nf.Archived = []Archived{{ID: 4, Archive: "/h/koan-root/archived/@4.md"}}
+	dir := "/h/koan-root/archived/@5_f"
+	nf.Archived = []Archived{{ID: 4, NotesPath: "/h/koan-root/archived/@4.md"}, {ID: 5, NotesPath: dir + "/@notes.md", Dir: &dir}}
 	errs = append(errs, nf, Usage("--x", "unknown option --x"), InvalidInput("m", Problem{"/a", "r"}))
 	warnings := []Warning{{Kind: "stuck-step", Message: "m", Paths: []string{"/a", "/b"}}}
 	for _, e := range errs {

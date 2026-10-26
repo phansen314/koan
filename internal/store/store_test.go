@@ -150,7 +150,7 @@ func TestOpenStates(t *testing.T) {
 func TestInit(t *testing.T) {
 	home := t.TempDir()
 	r, created, first, e := Init(home, nil)
-	if e != nil || first != 1 || !slices.Equal(created, []string{"root", "tree", "archive", "database"}) {
+	if e != nil || first != 1 || !slices.Equal(created, []string{"root", "tree", "archived", "database"}) {
 		t.Fatalf("first init: %v %d %+v", created, first, e)
 	}
 	for _, d := range []string{r.Tree, r.Archive} {
@@ -161,7 +161,7 @@ func TestInit(t *testing.T) {
 	// Run again, it changes nothing, and finds what is missing.
 	os.Remove(r.Archive)
 	_, created, first, e = Init(home, nil)
-	if e != nil || first != 1 || !slices.Equal(created, []string{"archive"}) {
+	if e != nil || first != 1 || !slices.Equal(created, []string{"archived"}) {
 		t.Errorf("second init: %v %d %+v", created, first, e)
 	}
 	_, _, _, e = Init(home, ptr(int64(7)))
@@ -219,7 +219,7 @@ func TestUnfinishedInit(t *testing.T) {
 		t.Errorf("before: %+v", e)
 	}
 	_, created, first, e := Init(home, ptr(int64(40)))
-	if e != nil || first != 40 || !slices.Equal(created, []string{"tree", "archive", "database"}) {
+	if e != nil || first != 40 || !slices.Equal(created, []string{"tree", "archived", "database"}) {
 		t.Fatalf("init: %v %d %+v", created, first, e)
 	}
 	s, e := Open(home, idleSteps)
@@ -236,7 +236,7 @@ func TestUnfinishedInit(t *testing.T) {
 	os.Mkdir(root, 0o755)
 	os.WriteFile(filepath.Join(root, "koan.db"), nil, 0o644)
 	os.WriteFile(filepath.Join(root, "koan.db-journal"), nil, 0o644)
-	if _, created, _, e := Init(home, nil); e != nil || !slices.Equal(created, []string{"tree", "archive", "database"}) {
+	if _, created, _, e := Init(home, nil); e != nil || !slices.Equal(created, []string{"tree", "archived", "database"}) {
 		t.Fatalf("init with a journal: %v %+v", created, e)
 	}
 
@@ -612,19 +612,21 @@ func TestRemoveTasks(t *testing.T) {
 		t.Errorf("issued state %s", state)
 	}
 
-	// Archived, each ID is not-found with where it itself went, under the
-	// root as written: the index holds it relative to the root.
+	// Archived, each ID is not-found with where its notes went, under the
+	// root as written: the index holds it relative to the root. A lone
+	// task archived without notes is indexed by its JSON, and its notes
+	// would have gone beside it.
 	write(t, s, func(tx *Tx) error {
-		_, err := tx.RemoveTasks([]int64{d, x}, map[int64]string{d: "archived/@9_f/@d.md", x: "archived/@9_f/@sub/@x.md"})
+		_, err := tx.RemoveTasks([]int64{d, x}, map[int64]string{d: "archived/@9_f/@d.md", x: "archived/sub/@x.json"})
 		return err
 	})
-	for id, want := range map[int64]string{d: "archived/@9_f/@d.md", x: "archived/@9_f/@sub/@x.md"} {
+	for id, want := range map[int64]string{d: "archived/@9_f/@d.md", x: "archived/sub/@x.md"} {
 		want = filepath.Join(s.Root.Path, filepath.FromSlash(want))
 		_, _, er := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
 			_, err := core.ResolveString(tx, "@"+itoa(id), core.WantTask, nil)
 			return nil, nil, err
 		})
-		if er == nil || er.Kind != cli.KindNotFound || len(er.Archived) != 1 || er.Archived[0].Archive != want {
+		if er == nil || er.Kind != cli.KindNotFound || len(er.Archived) != 1 || er.Archived[0].NotesPath != want || er.Archived[0].Dir != nil {
 			t.Errorf("archived @%d: %+v", id, er)
 		}
 	}
@@ -850,14 +852,23 @@ func TestClaims(t *testing.T) {
 	if moved != 0 {
 		t.Errorf("claims moved updated_at on %d tasks", moved)
 	}
-	write(t, s, func(tx *Tx) error { return tx.SetComplete(b, true) })
+	write(t, s, func(tx *Tx) error {
+		unclaimed, err := tx.SetComplete(b, true)
+		if err == nil && !unclaimed {
+			t.Errorf("completing a claimed task says it ended no claim")
+		}
+		return err
+	})
 	var claims int
 	var completed sql.NullString
 	db.QueryRow("SELECT (SELECT count(*) FROM claim), (SELECT completed_at FROM task WHERE id = ?)", b).Scan(&claims, &completed)
 	if claims != 0 || !completed.Valid {
 		t.Errorf("completing left %d claims, completed_at %v", claims, completed)
 	}
-	write(t, s, func(tx *Tx) error { return tx.SetComplete(b, false) })
+	write(t, s, func(tx *Tx) error {
+		_, err := tx.SetComplete(b, false)
+		return err
+	})
 	db.QueryRow("SELECT (SELECT count(*) FROM claim), (SELECT completed_at FROM task WHERE id = ?)", b).Scan(&claims, &completed)
 	if claims != 0 || completed.Valid {
 		t.Errorf("reopening: %d claims, completed_at %v", claims, completed)

@@ -229,7 +229,7 @@ func TestCompleteReopen(t *testing.T) {
 	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil)) // a blocked task can be claimed
 
 	r := must[CompleteResult](t)(tr.Complete("1"))
-	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
+	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Unclaimed, []int64{1}) || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
 		t.Errorf("complete: %+v", r)
 	}
 	if r := must[CompleteResult](t)(tr.Complete("1")); len(r.Changed) != 0 {
@@ -550,7 +550,7 @@ func TestDeleteTask(t *testing.T) {
 	r := must[Removed](t)(tr.Delete([]string{"2"}, nil, nil))
 	// @3 lost its last open blocker; @4 still waits on @1. No splice: @3
 	// doesn't come to wait on @1.
-	if !reflect.DeepEqual(r, Removed{Removed: []int64{2}, Released: []int64{3}}) {
+	if !reflect.DeepEqual(r, Removed{Deleted: []int64{2}, Removed: []int64{2}, Unclaimed: []int64{2}, Released: []int64{3}}) {
 		t.Errorf("delete: %+v", r)
 	}
 	if len(tr.BlockedBy(3)) != 0 || tr.claimed(2) || tr.Tasks[3].UpdatedAt == stamp {
@@ -579,7 +579,7 @@ func TestDeleteFolder(t *testing.T) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
 	r := must[Removed](t)(tr.Delete([]string{"/f"}, ptr(true), ptr(true)))
-	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2, 3, 4}, Released: []int64{5}}) {
+	if !reflect.DeepEqual(r, Removed{Deleted: []int64{1}, Removed: []int64{1, 2, 3, 4}, Unclaimed: []int64{}, Released: []int64{5}}) {
 		t.Errorf("delete: %+v", r)
 	}
 	// A folder holding only its gates is empty.
@@ -606,7 +606,7 @@ func TestDeleteSeveral(t *testing.T) {
 	_, err = tr.Delete([]string{"1", "99"}, nil, nil)
 	wantErr(t, err, core.KindNotFound, "")
 	r := must[Removed](t)(tr.Delete([]string{"2", "1"}, nil, nil))
-	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2}, Released: []int64{3}}) {
+	if !reflect.DeepEqual(r, Removed{Deleted: []int64{2, 1}, Removed: []int64{1, 2}, Unclaimed: []int64{}, Released: []int64{3}}) {
 		t.Errorf("tasks: %+v", r)
 	}
 
@@ -632,7 +632,7 @@ func TestDeleteSeveral(t *testing.T) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
 	r = must[Removed](t)(tr.Delete([]string{"/g", "/f"}, ptr(true), ptr(true)))
-	if !reflect.DeepEqual(r.Removed, []int64{4, 5, 6, 7}) || len(r.Released) != 0 {
+	if !reflect.DeepEqual(r.Deleted, []int64{6, 4}) || !reflect.DeepEqual(r.Removed, []int64{4, 5, 6, 7}) || len(r.Released) != 0 {
 		t.Errorf("folders: %+v", r)
 	}
 	checked(t, tr)

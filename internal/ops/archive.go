@@ -22,11 +22,14 @@ type ArchiveResult struct {
 	Removed  []int64        `json:"removed"`
 }
 
-// ArchivedItem is where one subject of archive went.
+// ArchivedItem is where one subject of archive went, as mv gives where
+// one went, with its JSON beside it.
 type ArchivedItem struct {
-	ID      int64   `json:"id"`
-	Archive *string `json:"archive"`
-	JSON    string  `json:"json"`
+	ID        int64   `json:"id"`
+	Ref       string  `json:"ref"`
+	NotesPath *string `json:"notes_path"`
+	Dir       *string `json:"dir"`
+	JSON      string  `json:"json"`
 }
 
 // archiveFile is the JSON beside an archived item, in the archive-file
@@ -102,7 +105,7 @@ type leaving struct {
 	// index is where each ID that leaves itself sits in the archive.
 	index map[int64]string
 	// missing is a lone task's notes not there when the change is made:
-	// the index names its JSON, and the result no archive.
+	// the index names its JSON, and the result no notes.
 	missing bool
 }
 
@@ -308,9 +311,15 @@ func (t *tasks) archive(tx *store.Tx, l leaving) (ArchivedItem, error) {
 		return ArchivedItem{}, err
 	}
 	item := ArchivedItem{ID: l.id, JSON: fsstep.Abs(t.root, l.file)}
-	if !l.missing {
-		at := fsstep.Abs(t.root, l.to)
-		item.Archive = &at
+	at := fsstep.Abs(t.root, l.to)
+	switch {
+	case l.dir:
+		notes := fsstep.Abs(t.root, path.Join(l.to, fsstep.FolderNotes))
+		item.Ref, item.NotesPath, item.Dir = core.Kept(l.id, l.path, core.EndNone), &notes, &at
+	case l.missing:
+		item.Ref = t.ref(l.id)
+	default:
+		item.Ref, item.NotesPath = t.ref(l.id), &at
 	}
 	return item, nil
 }

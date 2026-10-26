@@ -285,7 +285,7 @@ func TestTaskBlockPositional(t *testing.T) {
 	if fmt.Sprint(r.Result()["changed"]) != "true" {
 		t.Errorf("block: %s", r.Line())
 	}
-	if r := ok(t, home, "why", "1"); fmt.Sprint(r.Result()["ready"]) != "[2 3 4]" {
+	if r := ok(t, home, "why", "1"); ids(r.Result()["ready"]) != "[2 3 4]" {
 		t.Errorf("why: %s", r.Line())
 	}
 	if r := ok(t, home, "unblock", "1", "--blocked-by", "2,3"); fmt.Sprint(r.Result()["changed"], r.Result()["released"]) != "true []" {
@@ -300,7 +300,7 @@ func TestTaskBlockPositional(t *testing.T) {
 	r = testrun.Run{Home: home, Stdin: strings.NewReader(`{"task":1,"blocked_by":[2,"@3"]}`)}.Koan(t, "block", "-i", "-")
 	r.Check(t, "block")
 	golden(t, r, "block-input")
-	if r := ok(t, home, "why", "1"); fmt.Sprint(r.Result()["ready"]) != "[2 3]" {
+	if r := ok(t, home, "why", "1"); ids(r.Result()["ready"]) != "[2 3]" {
 		t.Errorf("why after --input: %s", r.Line())
 	}
 }
@@ -461,8 +461,9 @@ func TestTaskCreateWarnings(t *testing.T) {
 }
 
 // why gives a task's open blockers, and the ready tasks it waits on
-// through open blockers at any depth, in work order; a complete task
-// holds nothing back, so the walk never passes one.
+// through open blockers at any depth, in work order, each with its kept
+// text and whether it is claimed; a complete task holds nothing back, so
+// the walk never passes one.
 func TestTaskWhy(t *testing.T) {
 	home := example(t)
 	golden(t, ok(t, home, "why", "10"), "why")
@@ -486,7 +487,7 @@ func TestTaskWhy(t *testing.T) {
 	db(t, home, "UPDATE task SET completed_at = '2026-10-20T10:00:00Z' WHERE id = 4",
 		`INSERT INTO claim (task, claimed_at, extra) VALUES (6, '2026-10-20T10:00:00Z', '{}')`)
 	r = ok(t, home, "why", "1")
-	if fmt.Sprint(r.Result()) != "map[blockers:[map[id:2 ref:@2 (/) state:open] map[id:3 ref:@3 (/) state:open]] id:1 readiness:blocked ready:[6 2]]" {
+	if fmt.Sprint(r.Result()) != "map[blockers:[map[id:2 ref:@2 (/) state:open] map[id:3 ref:@3 (/) state:open]] id:1 readiness:blocked ready:[map[claimed:true id:6 ref:@6 (/)] map[claimed:false id:2 ref:@2 (/)]]]" {
 		t.Errorf("why 1: %s", r.Line())
 	}
 	r = ok(t, home, "why", "4")

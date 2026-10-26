@@ -466,6 +466,11 @@ func (c *Tree) resolveSubjects(refs []core.Ref, verb string, within bool) ([]sub
 	if !within {
 		return out, nil
 	}
+	return out, c.within(out)
+}
+
+// within refuses a subject inside a folder also given, at the inner one.
+func (c *Tree) within(out []subject) error {
 	var inside *core.Error
 	for i, x := range out {
 		for _, g := range out {
@@ -480,9 +485,9 @@ func (c *Tree) resolveSubjects(refs []core.Ref, verb string, within bool) ([]sub
 		}
 	}
 	if inside != nil {
-		return nil, inside
+		return inside
 	}
-	return out, nil
+	return nil
 }
 
 // firstOf is the first subject of a kind, or false when none is.
@@ -692,6 +697,7 @@ func (t *Tree) Unblock(task string, blockedBy, blocks []string) (out EdgeResult,
 // CompleteResult is what complete and reopen return.
 type CompleteResult struct {
 	Changed   []int64 // the tasks completed or reopened, in input order
+	Unclaimed []int64 // complete only: those completed whose claim it ended, in Changed's order
 	Released  []int64 // complete only
 	Reblocked []int64 // reopen only
 	Warnings  []Warning
@@ -747,13 +753,16 @@ func (t *Tree) Complete(tasks ...string) (out CompleteResult, err error) {
 		}
 		before, existed := c.readySet(), c.taskIDs()
 		now := c.now
-		out.Changed = []int64{}
+		out.Changed, out.Unclaimed = []int64{}, []int64{}
 		for _, x := range xs {
 			if !x.Open() {
 				continue
 			}
 			x.CompletedAt, x.UpdatedAt = &now, now
-			delete(c.Claims, x.ID)
+			if c.claimed(x.ID) {
+				delete(c.Claims, x.ID)
+				out.Unclaimed = append(out.Unclaimed, x.ID)
+			}
 			out.Changed = append(out.Changed, x.ID)
 		}
 		out.Released = c.released(before, existed)
@@ -833,8 +842,19 @@ func (t *Tree) Move(mv Mv, dest string, refs ...string) (out MoveResult, err err
 		if err := s.done(func(a, b core.Ref) bool { return one && respells(a, b) }); err != nil {
 			return err
 		}
-		subs, err := c.resolveSubjects(rs, "moved", true)
+		subs, err := c.resolveSubjects(rs, "moved", false)
 		if err != nil {
+			return err
+		}
+		// A gate is refused with the subjects, before the destination
+		// resolves.
+		for i, sub := range subs {
+			if x := c.Tasks[sub.id]; !sub.folder && x.Gate != core.EndNone {
+				return &core.Error{Kind: core.KindInvalidInput, IDs: []int64{x.ID}, Problems: []string{fmt.Sprintf("/refs/%d", i)},
+					Message: fmt.Sprintf("@%d is a gate, and stays in its folder", x.ID)}
+			}
+		}
+		if err := c.within(subs); err != nil {
 			return err
 		}
 		task, hasTask := firstOf(subs, false)
@@ -859,12 +879,9 @@ func (t *Tree) Move(mv Mv, dest string, refs ...string) (out MoveResult, err err
 			}
 		}
 		var fs []*Folder
-		for i, sub := range subs {
+		for _, sub := range subs {
 			if sub.folder {
 				fs = append(fs, c.Folders[sub.id])
-			} else if x := c.Tasks[sub.id]; x.Gate != core.EndNone {
-				return &core.Error{Kind: core.KindInvalidInput, IDs: []int64{x.ID}, Problems: []string{fmt.Sprintf("/refs/%d", i)},
-					Message: fmt.Sprintf("@%d is a gate, and stays in its folder", x.ID)}
 			}
 		}
 		moved := map[int64]bool{}
@@ -1100,8 +1117,10 @@ func (c *Tree) under(folder int64) (tasks, folders []int64) {
 
 // Removed is what a delete returns.
 type Removed struct {
-	Removed  []int64
-	Released []int64
+	Deleted   []int64 // the subjects, in input order
+	Removed   []int64 // every task and folder removed, ascending
+	Unclaimed []int64 // the tasks removed that had a claim, ascending
+	Released  []int64
 }
 
 // Delete removes tasks and folders, mixed, as one change: a task with
@@ -1187,9 +1206,19 @@ func (t *Tree) Delete(refs []string, contents, material *bool) (out Removed, err
 		if found != nil {
 			return core.Conflict(core.RuleHasMaterial, nil, found, "the folders hold material")
 		}
+		out = Removed{Deleted: []int64{}, Unclaimed: []int64{}}
+		for _, sub := range subs {
+			out.Deleted = append(out.Deleted, sub.id)
+		}
+		for _, id := range tasks {
+			if c.claimed(id) {
+				out.Unclaimed = append(out.Unclaimed, id)
+			}
+		}
+		slices.Sort(out.Unclaimed)
 		before, existed := c.readySet(), c.taskIDs()
 		c.remove(tasks, gone)
-		out = Removed{Removed: slices.Sorted(slices.Values(slices.Concat(tasks, gone))), Released: c.released(before, existed)}
+		out.Removed, out.Released = slices.Sorted(slices.Values(slices.Concat(tasks, gone))), c.released(before, existed)
 		return nil
 	})
 	return out, err

@@ -14,7 +14,8 @@
     "archived": [
       {
         "id": 4,
-        "archive": "$HOME/koan-root/archived/@4_archive"
+        "notes_path": "$HOME/koan-root/archived/@4_archive/@notes.md",
+        "dir": "$HOME/koan-root/archived/@4_archive"
       }
     ]
   },

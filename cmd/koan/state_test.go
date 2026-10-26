@@ -22,8 +22,9 @@ func input(t *testing.T, home, command, in string) *testrun.Result {
 }
 
 // complete marks a task complete, blocked or not, and ends its
-// claim; it reports the open tasks it made ready, and moves updated_at on
-// it alone. Completing a complete task changes nothing.
+// claim, listing it in unclaimed; it reports the open tasks it made
+// ready, and moves updated_at on it alone. Completing a complete task
+// changes nothing.
 func TestTaskComplete(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/w") // 1
@@ -37,7 +38,7 @@ func TestTaskComplete(t *testing.T) {
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r := ok(t, home, "complete", "2")
 	golden(t, r, "complete")
-	if fmt.Sprint(r.Result()) != "map[completed:[2] released:[3]]" {
+	if fmt.Sprint(r.Result()) != "map[completed:[2] released:[3] unclaimed:[2]]" {
 		t.Errorf("complete: %s", r.Line())
 	}
 	rec := ok(t, home, "show", "2").Result()["task"].(map[string]any)
@@ -50,19 +51,19 @@ func TestTaskComplete(t *testing.T) {
 	}
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r = ok(t, home, "complete", "@2")
-	if fmt.Sprint(r.Result()) != "map[completed:[] released:[]]" || field(t, home, "2", "updated_at") != fixed {
+	if fmt.Sprint(r.Result()) != "map[completed:[] released:[] unclaimed:[]]" || field(t, home, "2", "updated_at") != fixed {
 		t.Errorf("again: %s", r.Line())
 	}
 	// A blocked task, and a gate by its path, can be completed; the
 	// gate's completing releases 5, which then releases 4.
-	if r := ok(t, home, "complete", "/w.start"); fmt.Sprint(r.Result()) != "map[completed:[6] released:[5]]" {
+	if r := ok(t, home, "complete", "/w.start"); fmt.Sprint(r.Result()) != "map[completed:[6] released:[5] unclaimed:[]]" {
 		t.Errorf("gate: %s", r.Line())
 	}
-	if r := ok(t, home, "complete", "5"); fmt.Sprint(r.Result()) != "map[completed:[5] released:[4]]" {
+	if r := ok(t, home, "complete", "5"); fmt.Sprint(r.Result()) != "map[completed:[5] released:[4] unclaimed:[]]" {
 		t.Errorf("last blocker: %s", r.Line())
 	}
 	ok(t, home, "block", "3", "--blocked-by", "4")
-	if r := ok(t, home, "complete", "3"); fmt.Sprint(r.Result()) != "map[completed:[3] released:[]]" {
+	if r := ok(t, home, "complete", "3"); fmt.Sprint(r.Result()) != "map[completed:[3] released:[] unclaimed:[]]" {
 		t.Errorf("blocked: %s", r.Line())
 	}
 	golden(t, fails(t, home, "not-found", "", "complete", "99"), "complete-not-found")
@@ -163,7 +164,7 @@ func TestCompleteSeveral(t *testing.T) {
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r = ok(t, home, "complete", "1", "5", "2")
 	golden(t, r, "complete-some-complete")
-	if fmt.Sprint(r.Result()) != "map[completed:[5] released:[]]" {
+	if fmt.Sprint(r.Result()) != "map[completed:[5] released:[] unclaimed:[]]" {
 		t.Errorf("some complete: %s", r.Line())
 	}
 	if field(t, home, "1", "updated_at") != fixed || field(t, home, "2", "updated_at") != fixed {
@@ -177,6 +178,14 @@ func TestCompleteSeveral(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[reblocked:[3] reopened:[1 2 4]]" {
 		t.Errorf("reopen several: %s", r.Line())
 	}
+
+	// unclaimed lists the claims ended, in completed's order.
+	ok(t, home, "claim", "2,4")
+	r = ok(t, home, "complete", "4", "1", "2")
+	if fmt.Sprint(r.Result()) != "map[completed:[4 1 2] released:[3] unclaimed:[4 2]]" {
+		t.Errorf("unclaimed: %s", r.Line())
+	}
+	ok(t, home, "reopen", "1,2")
 
 	// Through --input, a list of references.
 	r = input(t, home, "complete", `{"tasks":[1,"@2","3"]}`)

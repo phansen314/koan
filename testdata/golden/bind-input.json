@@ -1,14 +1,16 @@
 {
   "ok": true,
   "result": {
+    "dir": "$HOME/wt",
     "marker": "$HOME/wt/.koan/marker.json",
+    "changed": false,
     "binding": {
       "schema": 1,
       "id": 1,
       "path": "/work",
       "dir": "$HOME/wt"
     },
-    "replaced": true
+    "replaced": false
   },
   "warnings": []
 }

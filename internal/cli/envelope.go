@@ -83,10 +83,12 @@ type Problem struct {
 	Reason string `json:"reason"`
 }
 
-// Archived says where an archived ID went.
+// Archived says where an archived ID went: its notes, which needn't
+// exist, and a folder's directory, null for a task.
 type Archived struct {
-	ID      int64  `json:"id"`
-	Archive string `json:"archive"`
+	ID        int64   `json:"id"`
+	NotesPath string  `json:"notes_path"`
+	Dir       *string `json:"dir"`
 }
 
 // Error is the one error a failure carries. Rule is set only for a
