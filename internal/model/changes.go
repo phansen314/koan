@@ -89,15 +89,15 @@ func (c *Tree) parents(names []string, self int64) (int64, []FolderAt, error) {
 }
 
 // createFolder makes the folder at ref's path, and any missing parents.
-func (c *Tree) createFolder(ref core.Ref, title *string, extra map[string]any) ([]FolderAt, error) {
+func (c *Tree) createFolder(ref core.Ref, pointer string, title *string, extra map[string]any) ([]FolderAt, error) {
 	n := len(ref.Names)
 	parent, made, err := c.parents(ref.Names[:n-1], 0)
 	if err != nil {
 		return nil, err
 	}
 	name, path := ref.Names[n-1], ref.TargetString()
-	if _, ok := c.Child(parent, name); ok {
-		return nil, core.Conflict(core.RuleExists, nil, []string{path}, "%s is taken", path)
+	if id, ok := c.Child(parent, name); ok {
+		return nil, core.ExistsAt(pointer, id, path, "%s is taken", path)
 	}
 	if id, spelled, ok := c.ChildFold(parent, name); ok {
 		is := strings.TrimSuffix(c.Path(parent), "/") + "/" + spelled
@@ -119,7 +119,7 @@ func (t *Tree) CreateFolder(path string, title *string, extra map[string]any) (m
 		if err := s.done(nil); err != nil {
 			return err
 		}
-		made, err = c.createFolder(ref, title, extra)
+		made, err = c.createFolder(ref, "/path", title, extra)
 		return err
 	})
 	return made, err
@@ -385,10 +385,9 @@ func (u Update) none() bool {
 		u.ExtraMerge == nil && u.ExtraRemove == nil && u.ExtraReplaceAll == nil
 }
 
-// extra checks an update's extra fields: extra_remove holds no key twice,
-// and extra_replace_all goes with neither of the others.
+// extra checks an update's extra fields: extra_replace_all goes with
+// neither of the others, and no key is both merged and removed.
 func (s *shape) extra(u Update) {
-	s.unique("/extra_remove", u.ExtraRemove)
 	if u.ExtraReplaceAll != nil && (u.ExtraMerge != nil || u.ExtraRemove != nil) {
 		s.faultf("", "extra_replace_all can't go with extra_merge or extra_remove")
 	}
@@ -535,18 +534,18 @@ func (t *Tree) Update(refs []string, u Update) (updated []int64, err error) {
 		}
 		var k shape
 		if id, ok := firstOf(subs, false); ok && u.SetTitle && title == nil {
-			k.faultf("/title", "@%d is a task, whose title can't be null", id)
+			k.faultIDs("/title", idsOf(subs, false), "@%d is a task, whose title can't be null", id)
 		}
 		if id, ok := firstOf(subs, true); ok {
 			if u.SetPriority {
-				k.faultf("/priority", "@%d is a folder, which has no priority", id)
+				k.faultIDs("/priority", idsOf(subs, true), "@%d is a folder, which has no priority", id)
 			}
 			for _, f := range []struct {
 				name string
 				tags []string
 			}{{"tags_add", u.TagsAdd}, {"tags_remove", u.TagsRemove}, {"tags_replace_all", u.TagsReplaceAll}} {
 				if f.tags != nil {
-					k.faultf("/"+f.name, "@%d is a folder, which has no tags", id)
+					k.faultIDs("/"+f.name, idsOf(subs, true), "@%d is a folder, which has no tags", id)
 				}
 			}
 		}
@@ -859,7 +858,9 @@ func (t *Tree) Move(mv Mv, dest string, refs ...string) (out MoveResult, err err
 		}
 		task, hasTask := firstOf(subs, false)
 		if mv == MvRename && hasTask {
-			return problem(invalid("@%d is a task, which can't be renamed", task), "/rename")
+			e := invalid("@%d is a task, which can't be renamed", task).(*core.Error)
+			e.IDs = idsOf(subs, false)
+			return problem(e, "/rename")
 		}
 		into, rename := core.RootID, mv == MvRename
 		switch mv {
@@ -889,12 +890,12 @@ func (t *Tree) Move(mv Mv, dest string, refs ...string) (out MoveResult, err err
 			f := fs[0]
 			parent, name, err := c.newPath(to, f.ID, pointer)
 			if err != nil {
-				return err
+				return pointAt(err, pointer, false)
 			}
 			path := strings.TrimSuffix(c.Path(parent), "/") + "/" + name
 			if id, ok := c.Child(parent, name); ok {
 				if id != f.ID {
-					return core.Conflict(core.RuleExists, nil, []string{path}, "%s is taken", path)
+					return core.ExistsAt(pointer, id, path, "%s is taken", path)
 				}
 			} else if id, spelled, ok := c.ChildFold(parent, name); ok && id != f.ID {
 				is := strings.TrimSuffix(c.Path(parent), "/") + "/" + spelled
@@ -937,7 +938,7 @@ func (t *Tree) Move(mv Mv, dest string, refs ...string) (out MoveResult, err err
 							return core.Conflict(core.RuleCaseMismatch, []int64{g.ID}, []string{at + f.Name, at + g.Name},
 								"%s differs from %s only in case", at+f.Name, at+g.Name)
 						case exact && g.Name == f.Name:
-							return core.Conflict(core.RuleExists, nil, []string{at + f.Name}, "%s is taken", at+f.Name)
+							return core.ExistsAt(pointer, g.ID, at+f.Name, "%s is taken", at+f.Name)
 						}
 					}
 					held = append(held, f)
@@ -1142,10 +1143,10 @@ func (t *Tree) Delete(refs []string, contents, material *bool) (out Removed, err
 		if _, ok := firstOf(subs, true); !ok {
 			var k shape
 			if contents != nil {
-				k.faultf("/contents", "contents is for folders, and no folder is given")
+				k.faultIDs("/contents", idsOf(subs, false), "contents is for folders, and no folder is given")
 			}
 			if material != nil {
-				k.faultf("/material", "material is for folders, and no folder is given")
+				k.faultIDs("/material", idsOf(subs, false), "material is for folders, and no folder is given")
 			}
 			if k.err != nil {
 				return k.err
@@ -1435,4 +1436,15 @@ func equalJSON(a, b map[string]any) bool {
 	x, errA := json.Marshal(a)
 	y, errB := json.Marshal(b)
 	return errA == nil && errB == nil && bytes.Equal(x, y)
+}
+
+// idsOf is the IDs of the subjects of a kind, in input order.
+func idsOf(subs []subject, folder bool) []int64 {
+	var out []int64
+	for _, s := range subs {
+		if s.folder == folder {
+			out = append(out, s.id)
+		}
+	}
+	return out
 }

@@ -8,7 +8,12 @@
     "paths": [
       "/w.done"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/task",
+        "reason": "@1 (/w) has no done gate"
+      }
+    ],
     "archived": []
   },
   "warnings": []

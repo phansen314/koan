@@ -10,10 +10,6 @@
       {
         "field": "/kinds/0",
         "reason": "\"stray-entry\" is not one of [pending-step stuck-step stray-directory missing-directory case-differs misplaced-notes orphan-notes]"
-      },
-      {
-        "field": "/kinds/2",
-        "reason": "\"orphan-notes\" given twice"
       }
     ],
     "archived": []

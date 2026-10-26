@@ -110,8 +110,8 @@ func resolveFolder(tx *store.Tx, ref core.Ref, field string) (int64, error) {
 }
 
 // resolve resolves a reference given at field. A refusal that is
-// invalid-input, such as a path anchored at a task, points at the field,
-// as every invalid-input names its faults.
+// invalid-input, such as a path anchored at a task, or not-found points at
+// the field, as every invalid-input names its faults.
 func resolve(tx *store.Tx, ref core.Ref, want core.Want, field string) (core.Resolved, error) {
 	return resolveAt(tx, ref, want, cli.Pointer(field))
 }
@@ -120,10 +120,19 @@ func resolve(tx *store.Tx, ref core.Ref, want core.Want, field string) (core.Res
 // entry of a list.
 func resolveAt(tx *store.Tx, ref core.Ref, want core.Want, at string) (core.Resolved, error) {
 	res, err := core.Resolve(tx, ref, want, nil)
-	if e, ok := err.(*core.Error); ok && e.Kind == core.KindInvalidInput && len(e.Problems) == 0 {
+	if e, ok := err.(*core.Error); ok && (e.Kind == core.KindInvalidInput || e.Kind == core.KindNotFound) && len(e.Problems) == 0 {
 		e.Problems = []string{at}
 	}
 	return res, err
+}
+
+// pointNotFound points a not-found at the field it came from, unless it
+// already points at one.
+func pointNotFound(err error, at string) error {
+	if e, ok := err.(*core.Error); ok && e.Kind == core.KindNotFound && len(e.Problems) == 0 {
+		e.Problems = []string{at}
+	}
+	return err
 }
 
 // missingNotes is the missing-notes warning for notes with no file at

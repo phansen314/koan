@@ -150,16 +150,17 @@ func Update() *cli.Command {
 				// A field one of the subjects doesn't have.
 				k := input{}
 				if id, ok := firstOf(subs, false); ok && setTitle && title == nil {
-					k.fault("/title", "@%d is a task, whose title can't be null", id)
+					k.faultIDs("/title", idsOf(subs, false), "@%d is a task, whose title can't be null", id)
 				}
 				if id, ok := firstOf(subs, true); ok {
+					folders := idsOf(subs, true)
 					if setPriority {
-						k.fault("/priority", "@%d is a folder, which has no priority: a folder's work is ordered through its gates, which are tasks, such as %s.start",
+						k.faultIDs("/priority", folders, "@%d is a folder, which has no priority: a folder's work is ordered through its gates, which are tasks, such as %s.start",
 							id, tx.Path(id))
 					}
 					for _, field := range tagFields {
 						if _, given := r.value(field); given {
-							k.fault(cli.Pointer(field), "@%d is a folder, which has no tags", id)
+							k.faultIDs(cli.Pointer(field), folders, "@%d is a folder, which has no tags", id)
 						}
 					}
 				}

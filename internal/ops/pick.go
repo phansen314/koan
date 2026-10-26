@@ -24,6 +24,7 @@ func Pick() *cli.Command {
 		Plain:   true,
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
+			{Field: "file", Kind: cli.Path},
 			{Field: "direct", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},
@@ -36,9 +37,8 @@ func Pick() *cli.Command {
 			{Field: "bash", Kind: cli.Bool},
 			{Field: "zsh", Kind: cli.Bool},
 		},
-		Here:   &cli.Here{Field: "file", Flag: "--here"},
-		Fields: []string{"file"},
-		Run:    runPick,
+		Here: &cli.Here{Field: "file", Flag: "--here"},
+		Run:  runPick,
 	}
 }
 

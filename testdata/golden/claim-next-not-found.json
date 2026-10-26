@@ -8,7 +8,12 @@
     "paths": [
       "/z"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/folder",
+        "reason": "no folder at /z"
+      }
+    ],
     "archived": []
   },
   "warnings": []

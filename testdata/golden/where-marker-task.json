@@ -10,7 +10,12 @@
     "paths": [
       "$HOME/code/bad/.koan/marker.json"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/code/bad/.koan/marker.json binds nothing: @5 is a task, not a folder"
+      }
+    ],
     "archived": []
   },
   "warnings": []

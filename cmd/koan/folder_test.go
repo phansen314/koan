@@ -420,7 +420,6 @@ func TestFolderList(t *testing.T) {
 		field string
 	}{
 		{[]string{"--fields", "name,nope"}, "/fields/1"},
-		{[]string{"--fields", "name,path,name"}, "/fields/2"},
 		{[]string{"--limit", "0"}, "/limit"},
 		{[]string{"@3.done"}, "/folder"},
 	} {

@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/code/wt/sub/inner/.koan/marker.json"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/code/wt/sub/inner/.koan/marker.json binds nothing: it isn't a JSON object: invalid character 'o' in literal null (expecting 'u')"
+      }
+    ],
     "archived": []
   },
   "warnings": []

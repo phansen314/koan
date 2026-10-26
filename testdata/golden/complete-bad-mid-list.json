@@ -8,7 +8,12 @@
       99
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/tasks/1",
+        "reason": "@99 was never issued"
+      }
+    ],
     "archived": []
   },
   "warnings": []

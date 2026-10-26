@@ -56,7 +56,7 @@ func FolderCreate() *cli.Command {
 			}
 			defer s.Close()
 			return s.Write(func(tx *store.Tx) (any, []cli.Warning, error) {
-				created, err := makeFolders(tx, s.Root, ref, title, extra, notes)
+				created, err := makeFolders(tx, s.Root, ref, "/path", title, extra, notes)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -92,9 +92,10 @@ func FolderCreate() *cli.Command {
 
 // makeFolders makes the folder at a path, with its directory and notes,
 // and any missing parents the same way, with no title and empty notes. It
-// gives every folder made, parents first, this one last.
-func makeFolders(tx *store.Tx, root store.Root, ref core.Ref, title *string, extra json.RawMessage, notes string) ([]FolderAt, error) {
-	parent, missing, err := walkToMake(tx, ref)
+// gives every folder made, parents first, this one last. pointer is the
+// field that gives the path, where a refusal points.
+func makeFolders(tx *store.Tx, root store.Root, ref core.Ref, pointer string, title *string, extra json.RawMessage, notes string) ([]FolderAt, error) {
+	parent, missing, err := walkToMake(tx, ref, pointer)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +113,7 @@ func makeFolders(tx *store.Tx, root store.Root, ref core.Ref, title *string, ext
 		}
 		if taken {
 			at := fsstep.Abs(root, entry)
-			return nil, core.Conflict(core.RuleExists, nil, []string{at}, "%s is taken on disk by %s", path, at)
+			return nil, core.ExistsAt(pointer, 0, at, "%s is taken on disk by %s", path, at)
 		}
 	}
 	created := []FolderAt{}
@@ -142,13 +143,13 @@ func makeFolders(tx *store.Tx, root store.Root, ref core.Ref, title *string, ext
 // time, and gives the last folder there and the names still to make. A
 // part that matches a folder only ignoring case is case-mismatch; the
 // whole path there already is exists.
-func walkToMake(tx *store.Tx, ref core.Ref) (int64, []string, error) {
+func walkToMake(tx *store.Tx, ref core.Ref, pointer string) (int64, []string, error) {
 	at, given := core.RootID, ""
 	for i, name := range ref.Names {
 		given += "/" + name
 		if id, ok := tx.Child(at, name); ok {
 			if i == len(ref.Names)-1 {
-				return 0, nil, core.Conflict(core.RuleExists, nil, []string{given}, "%s is taken by @%d", given, id)
+				return 0, nil, core.ExistsAt(pointer, id, given, "%s is taken by @%d", given, id)
 			}
 			at = id
 			continue

@@ -8,7 +8,12 @@
       3
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "@3 was archived, to $HOME/koan-root/archived/work/HOME-777/@3.md"
+      }
+    ],
     "archived": [
       {
         "id": 3,

@@ -8,7 +8,12 @@
       12
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/folder",
+        "reason": "@12 was archived, to $HOME/koan-root/archived/@12_old"
+      }
+    ],
     "archived": [
       {
         "id": 12,

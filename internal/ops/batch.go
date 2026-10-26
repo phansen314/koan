@@ -90,7 +90,7 @@ func Batch() *cli.Command {
 				ids := make([]int64, len(folders))
 				for _, i := range order {
 					f := folders[i]
-					made, err := makeFolders(tx, s.Root, f.ref, f.title, f.extra, f.notes)
+					made, err := makeFolders(tx, s.Root, f.ref, f.at, f.title, f.extra, f.notes)
 					if err != nil {
 						return nil, nil, pointAt(err, f.at)
 					}

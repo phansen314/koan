@@ -65,7 +65,7 @@ func Delete() *cli.Command {
 						set   bool
 					}{{"contents", contents}, {"material", material}} {
 						if o.set {
-							k.fault(cli.Pointer(o.field), "%s is for folders, and no folder is given", o.field)
+							k.faultIDs(cli.Pointer(o.field), idsOf(subs, false), "%s is for folders, and no folder is given", o.field)
 						}
 					}
 					if e := k.err(); e != nil {

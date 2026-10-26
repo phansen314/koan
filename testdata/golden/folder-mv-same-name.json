@@ -4,11 +4,18 @@
     "kind": "conflict",
     "rule": "exists",
     "message": "/d/q is taken by @8",
-    "ids": [],
+    "ids": [
+      8
+    ],
     "paths": [
       "/d/q"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/dest",
+        "reason": "/d/q is taken by @8"
+      }
+    ],
     "archived": []
   },
   "warnings": []

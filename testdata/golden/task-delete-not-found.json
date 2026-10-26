@@ -8,7 +8,12 @@
       2
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/refs/0",
+        "reason": "@2 was deleted"
+      }
+    ],
     "archived": []
   },
   "warnings": []

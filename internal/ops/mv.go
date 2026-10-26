@@ -75,6 +75,7 @@ func Mv() *cli.Command {
 					r.fault("/dest", "the root can't be a new path")
 				}
 			}
+			destAt := cli.Pointer(field)
 			one := len(refs) == 1 && !hasInto
 			r.sameCase(append(slices.Clone(refs), dest), append(at, cli.Pointer(field)), func(a, b core.Ref) bool {
 				return one && respells(a, b)
@@ -117,7 +118,7 @@ func Mv() *cli.Command {
 				}
 				task, hasTask := firstOf(subs, false)
 				if rename && hasTask {
-					return nil, nil, &core.Error{Kind: core.KindInvalidInput, Problems: []string{"/rename"},
+					return nil, nil, &core.Error{Kind: core.KindInvalidInput, IDs: idsOf(subs, false), Problems: []string{"/rename"},
 						Message: fmt.Sprintf("@%d is a task, which can't be renamed: rename renames a folder", task)}
 				}
 				into := core.RootID
@@ -154,11 +155,11 @@ func Mv() *cli.Command {
 					id, row := ids[0], f.rows[ids[0]]
 					parent, name, err := newPath(tx, f, dest, id)
 					if err != nil {
-						return nil, nil, err
+						return nil, nil, pointNotFound(err, destAt)
 					}
 					path := strings.TrimSuffix(tx.Path(parent), "/") + "/" + name
 					if at, ok := tx.Child(parent, name); ok && at != id {
-						return nil, nil, core.Conflict(core.RuleExists, nil, []string{path}, "%s is taken by @%d", path, at)
+						return nil, nil, core.ExistsAt(destAt, at, path, "%s is taken by @%d", path, at)
 					}
 					if at, spelled, ok := tx.ChildFold(parent, name); ok && at != id {
 						is := strings.TrimSuffix(tx.Path(parent), "/") + "/" + spelled
@@ -200,8 +201,7 @@ func Mv() *cli.Command {
 									return nil, nil, core.Conflict(core.RuleCaseMismatch, []int64{g.id},
 										[]string{above + m.name, above + g.name}, "%s differs from %s only in case", above+m.name, above+g.name)
 								case exact && g.name == m.name:
-									return nil, nil, core.Conflict(core.RuleExists, nil, []string{above + m.name},
-										"%s is taken by @%d", above+m.name, g.id)
+									return nil, nil, core.ExistsAt(destAt, g.id, above+m.name, "%s is taken by @%d", above+m.name, g.id)
 								}
 							}
 							held = append(held, m)
@@ -223,7 +223,7 @@ func Mv() *cli.Command {
 					}
 					if taken {
 						at := fsstep.Abs(s.Root, entry)
-						return nil, nil, core.Conflict(core.RuleExists, nil, []string{at}, "%s is taken on disk by %s", p, at)
+						return nil, nil, core.ExistsAt(destAt, 0, at, "%s is taken on disk by %s", p, at)
 					}
 				}
 				// The moves, made in input order; the claimed tasks whose

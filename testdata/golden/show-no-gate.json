@@ -8,7 +8,12 @@
     "paths": [
       "/work/api.start"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "@2 (/work/api) has no start gate"
+      }
+    ],
     "archived": []
   },
   "warnings": []

@@ -19,6 +19,9 @@ type input struct {
 	in       cli.Input
 	problems []cli.Problem
 	message  string
+	// ids are the IDs the faults name: what a reference of the wrong
+	// kind names, or the subjects a field's kind doesn't take.
+	ids []int64
 	// prefix is the pointer to the object read, "" for the whole input;
 	// a part's faults go to up, the input holding it.
 	prefix string
@@ -32,9 +35,19 @@ func (r *input) at(field string) string { return r.prefix + cli.Pointer(field) }
 
 // fault records a fault at a pointer.
 func (r *input) fault(pointer, format string, args ...any) {
+	r.faultIDs(pointer, nil, format, args...)
+}
+
+// faultIDs records a fault at a pointer that names IDs.
+func (r *input) faultIDs(pointer string, ids []int64, format string, args ...any) {
 	if r.up != nil {
-		r.up.fault(pointer, format, args...)
+		r.up.faultIDs(pointer, ids, format, args...)
 		return
+	}
+	for _, id := range ids {
+		if !slices.Contains(r.ids, id) {
+			r.ids = append(r.ids, id)
+		}
 	}
 	reason := fmt.Sprintf(format, args...)
 	if r.message == "" {
@@ -48,7 +61,9 @@ func (r *input) err() *cli.Error {
 	if len(r.problems) == 0 {
 		return nil
 	}
-	return cli.InvalidInput(r.message, r.problems...)
+	e := cli.InvalidInput(r.message, r.problems...)
+	e.IDs = r.ids
+	return e
 }
 
 // value is a field's value; ok is false when it isn't given.
@@ -340,13 +355,13 @@ func (r *input) list(field string) ([]any, bool) {
 	return list, ok
 }
 
-// tags is a list of tags, each matching the tag pattern, none twice; empty
+// tags is a list of tags, each matching the tag pattern, one for each given; empty
 // when it isn't given.
 func (r *input) tags(field string) []string {
 	return r.strings(field, func(s string) bool { return core.ValidTag(s) }, "is not a tag: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen")
 }
 
-// choices is a list of at least one of allowed, none twice; def when it
+// choices is a list of at least one of allowed, a value given twice once; def when it
 // isn't given.
 func (r *input) choices(field string, allowed, def []string) []string {
 	if _, ok := r.value(field); !ok {
@@ -359,9 +374,9 @@ func (r *input) choices(field string, allowed, def []string) []string {
 	return out
 }
 
-// strings is a list of strings that pass valid, none twice, a duplicate
-// pointing at its later occurrence; bad ends the fault for one that
-// doesn't pass.
+// strings is a list of strings that pass valid, a value given twice once,
+// since a set takes duplicates; bad ends the fault for one that doesn't
+// pass.
 func (r *input) strings(field string, valid func(string) bool, bad string) []string {
 	list, ok := r.list(field)
 	out := []string{}
@@ -374,9 +389,7 @@ func (r *input) strings(field string, valid func(string) bool, bad string) []str
 		switch {
 		case !ok || !valid(s):
 			r.fault(at, "%v %s", printed(item), bad)
-		case slices.Contains(out, s):
-			r.fault(at, "%q given twice", s)
-		default:
+		case !slices.Contains(out, s):
 			out = append(out, s)
 		}
 	}
@@ -428,7 +441,8 @@ func (r *input) path(field string) core.Ref {
 	return ref
 }
 
-// fields is a --fields list: names from the record's fields, none twice.
+// fields is a --fields list: names from the record's fields, a name given
+// twice once.
 // nil means it isn't given: every field.
 func (r *input) fields(field string, names []string) []string {
 	v, ok := r.value(field)
@@ -447,9 +461,7 @@ func (r *input) fields(field string, names []string) []string {
 		switch {
 		case !ok || !slices.Contains(names, s):
 			r.fault(at, "%v is not a field: the fields are %v", item, names)
-		case slices.Contains(out, s):
-			r.fault(at, "%q given twice", s)
-		default:
+		case !slices.Contains(out, s):
 			out = append(out, s)
 		}
 	}

@@ -10,7 +10,12 @@
     "paths": [
       "$HOME/code/bad/.koan/marker.json"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/code/bad/.koan/marker.json binds nothing: @4 was archived, to $HOME/koan-root/archived/@4_archive"
+      }
+    ],
     "archived": [
       {
         "id": 4,

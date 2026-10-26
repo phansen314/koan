@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/other/x"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/other/x is outside the tree, and no marker is at or above it; bind one with koan bind"
+      }
+    ],
     "archived": []
   },
   "warnings": []

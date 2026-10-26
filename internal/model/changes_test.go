@@ -103,7 +103,6 @@ func TestCreateTask(t *testing.T) {
 		{TaskInput{Title: ""}, core.KindInvalidInput, []string{"/title"}},
 		{TaskInput{Title: "a\nb"}, core.KindInvalidInput, []string{"/title"}},
 		{TaskInput{Title: "t", Tags: []string{"Bad"}}, core.KindInvalidInput, []string{"/tags/0"}},
-		{TaskInput{Title: "t", Tags: []string{"a", "a"}}, core.KindInvalidInput, []string{"/tags/1"}},
 		{TaskInput{Title: "t", Priority: ptr(core.MaxInt + 1)}, core.KindInvalidInput, []string{"/priority"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"$a"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"/"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
@@ -891,4 +890,44 @@ func TestDeleteFolderDSStore(t *testing.T) {
 	tr.PutMaterial(1, ".DS_Store")
 	must[Removed](t)(tr.Delete([]string{"/f"}, ptr(true), ptr(false)))
 	checked(t, tr)
+}
+
+// A reference that names nothing points at its field, a wrong-kind one
+// names its ID, and a taken path names the folder that has it and the field
+// that gives it, outside a batch as inside one. A tag given twice counts once.
+func TestErrorFields(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil)) // 1
+	must[[]FolderAt](t)(tr.CreateFolder("/b", nil, nil)) // 2
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t"}))
+
+	_, err := tr.CreateTask(TaskInput{Title: "u", Folder: "/nope"})
+	if e := wantErr(t, err, core.KindNotFound, ""); !reflect.DeepEqual(e.Problems, []string{"/folder"}) {
+		t.Errorf("not-found problems %v", e.Problems)
+	}
+	_, err = tr.Move(MvRename, "/nope/x", "/a")
+	if e := wantErr(t, err, core.KindNotFound, ""); !reflect.DeepEqual(e.Problems, []string{"/dest"}) {
+		t.Errorf("rename not-found problems %v", e.Problems)
+	}
+	_, err = tr.CreateFolder("/a", nil, nil)
+	e := wantErr(t, err, core.KindConflict, core.RuleExists)
+	if !reflect.DeepEqual(e.Problems, []string{"/path"}) || !reflect.DeepEqual(e.IDs, []int64{1}) {
+		t.Errorf("exists problems %v ids %v", e.Problems, e.IDs)
+	}
+	_, err = tr.Move(MvRename, "/a", "/b")
+	e = wantErr(t, err, core.KindConflict, core.RuleExists)
+	if !reflect.DeepEqual(e.Problems, []string{"/dest"}) || !reflect.DeepEqual(e.IDs, []int64{1}) {
+		t.Errorf("rename exists problems %v ids %v", e.Problems, e.IDs)
+	}
+	_, err = tr.CreateTask(TaskInput{Title: "u", Folder: "3"})
+	e = wantErr(t, err, core.KindInvalidInput, "")
+	if !reflect.DeepEqual(e.Problems, []string{"/folder"}) || !reflect.DeepEqual(e.IDs, []int64{3}) {
+		t.Errorf("wrong kind problems %v ids %v", e.Problems, e.IDs)
+	}
+	_, err = tr.Update([]string{"1", "2", "3"}, Update{SetPriority: true, Priority: ptr(int64(1))})
+	e = wantErr(t, err, core.KindInvalidInput, "")
+	if !reflect.DeepEqual(e.IDs, []int64{1, 2}) {
+		t.Errorf("priority on folders: ids %v", e.IDs)
+	}
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "dup", Tags: []string{"a", "a"}}))
 }

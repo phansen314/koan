@@ -104,7 +104,7 @@ func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 		})
 		before := c.readySet()
 		for _, i := range order {
-			made, err := c.createFolder(folderRefs[i], titles[i], in.Folders[i].Extra)
+			made, err := c.createFolder(folderRefs[i], fmt.Sprintf("/folders/%d/path", i), titles[i], in.Folders[i].Extra)
 			if err != nil {
 				return problem(err, "/folders/%d/path", i)
 			}

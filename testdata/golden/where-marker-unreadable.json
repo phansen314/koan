@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/code/bad/.koan/marker.json"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/code/bad/.koan/marker.json binds nothing: it can't be read: open $HOME/code/bad/.koan/marker.json: permission denied"
+      }
+    ],
     "archived": []
   },
   "warnings": []

@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/koan-root/tree/@w"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/path",
+        "reason": "/w is taken on disk by $HOME/koan-root/tree/@w"
+      }
+    ],
     "archived": []
   },
   "warnings": [

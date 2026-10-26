@@ -115,3 +115,14 @@ func firstOf(subs []subject, folder bool) (int64, bool) {
 	}
 	return 0, false
 }
+
+// idsOf is the IDs of the subjects of a kind, in input order.
+func idsOf(subs []subject, folder bool) []int64 {
+	var out []int64
+	for _, s := range subs {
+		if s.folder == folder {
+			out = append(out, s.id)
+		}
+	}
+	return out
+}

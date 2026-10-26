@@ -27,7 +27,7 @@ func TestShapeBeforeReferences(t *testing.T) {
 			_, err := tr.CreateTask(TaskInput{Title: "", Folder: "/nope", Priority: ptr(core.MaxInt + 1),
 				Tags: []string{"Bad", "a", "a"}, BlockedBy: []string{"@999", "/"}, Blocks: []string{"/work.middle"}})
 			return err
-		}, []string{"/title", "/priority", "/tags/0", "/tags/2", "/blocked_by/1", "/blocks/0"}},
+		}, []string{"/title", "/priority", "/tags/0", "/blocked_by/1", "/blocks/0"}},
 		{"an empty title on a task that names nothing", func() error {
 			_, err := tr.Update([]string{"@999"}, Update{SetTitle: true, Title: ptr("")})
 			return err

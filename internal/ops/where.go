@@ -194,7 +194,13 @@ func (q *query) locate(tx *store.Tx, t *tasks, field string) (Location, int64, [
 		loc, err := t.locateRef(tx, q.ref, field)
 		return loc, at(loc), nil, err
 	}
-	p, err := findPlace(t.root, q.file)
+	loc, id, warnings, err := t.locateFile(tx, q.file)
+	return loc, id, warnings, pointNotFound(err, cli.Pointer("file"))
+}
+
+// locateFile is locate for a path on disk.
+func (t *tasks) locateFile(tx *store.Tx, file string) (Location, int64, []cli.Warning, error) {
+	p, err := findPlace(t.root, file)
 	if err != nil {
 		return Location{}, 0, nil, err
 	}

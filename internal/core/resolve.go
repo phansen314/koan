@@ -151,7 +151,7 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 			return Resolved{}, err
 		}
 		if n.Kind != NodeFolder {
-			return Resolved{}, invalid("%q: @%d is a task, and a task holds no folders", ref.Raw, ref.ID)
+			return Resolved{}, invalidAt(n.ID, "%q: @%d is a task, and a task holds no folders", ref.Raw, ref.ID)
 		}
 		id, err := walk(t, ref, n.ID, t.Path(n.ID))
 		if err != nil {
@@ -177,17 +177,17 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 
 	case ResolvedTask:
 		if ref.End != EndNone {
-			return Resolved{}, invalid("%q: @%d is a task, and a task has no gates", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a task, and a task has no gates", ref.Raw, res.ID)
 		}
 		if want == WantFolder {
-			return Resolved{}, invalid("%q: @%d is a task, not a folder", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a task, not a folder", ref.Raw, res.ID)
 		}
 
 	case ResolvedFolder:
 		end := ref.End
 		switch {
 		case want == WantTask && end == EndNone:
-			return Resolved{}, invalid("%q: @%d is a folder, not a task", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a folder, not a task", ref.Raw, res.ID)
 		case want == WantEdge && end == EndNone:
 			end = EndDone
 		}
@@ -205,7 +205,7 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 	// Step 5: the material.
 	if ref.HasMaterial {
 		if res.Kind == ResolvedTask {
-			return Resolved{}, invalid("%q: @%d is a task, and a task has no directory", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a task, and a task has no directory", ref.Raw, res.ID)
 		}
 		res.Material, res.HasMaterial = ref.Material, true
 	}

@@ -97,6 +97,7 @@ func prepare(dir string) *cli.Error {
 	case errors.Is(err, syscall.ENOTDIR) || err == nil && len(entries) > 0:
 		e := cli.Conflict(cli.RuleExists, dir+" is taken: a backup goes into an empty or new directory.")
 		e.Paths = []string{dir}
+		e.Problems = []cli.Problem{{Field: cli.Pointer("dir"), Reason: e.Message}}
 		return e
 	case err != nil:
 		return cli.IO("could not list "+dir+": "+err.Error(), dir)

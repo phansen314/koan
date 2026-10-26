@@ -293,14 +293,13 @@ func TestTaskUpdateInvalid(t *testing.T) {
 		{[]string{"/", "--title", "x"}, "/refs/0"},
 		{[]string{"1", "--title", " "}, "/title"},
 		{[]string{"1", "--priority", "9007199254740992"}, "/priority"},
-		{[]string{"1", "--tags-add", "A,b,b"}, "/tags_add/0 /tags_add/2"},
+		{[]string{"1", "--tags-add", "A,b,b"}, "/tags_add/0"},
 		{[]string{"1", "--tags-replace-all", "a", "--tags-add", "b"}, ""},
 		{[]string{"1", "--tags-replace-all", "a", "--tags-remove", "b"}, ""},
 		{[]string{"1", "--extra-replace-all", "{}", "--extra-merge", "{}"}, ""},
 		{[]string{"1", "--extra-replace-all", "{}", "--extra-remove", "k"}, ""},
 		{[]string{"1", "--extra-merge", "[1]", "--extra-replace-all", "x"}, "/extra_merge /extra_replace_all"},
-		{[]string{"1", "--extra-remove", "k", "--extra-remove", "k"}, "/extra_remove/1"},
-		{[]string{"1", "--tags-add", "x", "--tags-remove", "x,x"}, "/tags_remove/1 /tags_remove/0"},
+		{[]string{"1", "--tags-add", "x", "--tags-remove", "x,x"}, "/tags_remove/0"},
 	} {
 		r := fails(t, home, "invalid-input", "", append([]string{"update"}, c.args...)...)
 		if problemFields(r) != c.fields {

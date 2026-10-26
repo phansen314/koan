@@ -53,6 +53,14 @@ func invalid(format string, args ...any) *Error {
 	return &Error{Kind: KindInvalidInput, Message: fmt.Sprintf(format, args...)}
 }
 
+// invalidAt is invalid-input for a reference that names something of the
+// wrong kind: the ID it names goes in ids.
+func invalidAt(id int64, format string, args ...any) *Error {
+	e := invalid(format, args...)
+	e.IDs = []int64{id}
+	return e
+}
+
 // NotFound reports references that name nothing.
 func NotFound(ids []int64, paths []string, format string, args ...any) *Error {
 	return &Error{Kind: KindNotFound, IDs: ids, Paths: paths, Message: fmt.Sprintf(format, args...)}
@@ -61,6 +69,19 @@ func NotFound(ids []int64, paths []string, format string, args ...any) *Error {
 // Conflict reports a refusal by one of the spec's conflict rules.
 func Conflict(rule string, ids []int64, paths []string, format string, args ...any) *Error {
 	return &Error{Kind: KindConflict, Rule: rule, IDs: ids, Paths: paths, Message: fmt.Sprintf(format, args...)}
+}
+
+// ExistsAt is the exists conflict for a path that is taken: the folder that
+// has it in ids when there is one (id 0 when not), the taken path, and the
+// JSON Pointer of the field that gives the path.
+func ExistsAt(pointer string, id int64, path string, format string, args ...any) *Error {
+	var ids []int64
+	if id != 0 {
+		ids = []int64{id}
+	}
+	e := Conflict(RuleExists, ids, []string{path}, format, args...)
+	e.Problems = []string{pointer}
+	return e
 }
 
 // IsKind reports whether err is a core Error of the given kind and, when rule

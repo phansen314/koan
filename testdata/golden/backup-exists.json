@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/full"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/dir",
+        "reason": "$HOME/full is taken: a backup goes into an empty or new directory."
+      }
+    ],
     "archived": []
   },
   "warnings": []

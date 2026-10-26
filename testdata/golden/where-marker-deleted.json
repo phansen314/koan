@@ -10,7 +10,12 @@
     "paths": [
       "$HOME/code/bad/.koan/marker.json"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/code/bad/.koan/marker.json binds nothing: @3 was deleted"
+      }
+    ],
     "archived": []
   },
   "warnings": []

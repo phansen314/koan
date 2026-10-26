@@ -8,7 +8,12 @@
     "paths": [
       "/Work/web"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/folder",
+        "reason": "no folder at /Work/web"
+      }
+    ],
     "archived": []
   },
   "warnings": []

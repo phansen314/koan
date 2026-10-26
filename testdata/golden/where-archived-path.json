@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/koan-root/archived/work/@2_api/@notes.md"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/koan-root/archived/work/@2_api/@notes.md is in the archive: @2 was archived, to $HOME/koan-root/archived/work/@2_api"
+      }
+    ],
     "archived": [
       {
         "id": 2,
