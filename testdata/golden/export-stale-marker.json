@@ -49,7 +49,7 @@
   "warnings": [
     {
       "kind": "stale-marker",
-      "message": "$HOME/wt/.koan/marker.json was bound to @2 at /work/api, which is now at /work/web. Bind it again to refresh it.",
+      "message": "$HOME/wt/.koan/marker.json was bound to @2 at /work/api, which is now at /work/web; binding it again refreshes it",
       "ids": [
         2
       ],

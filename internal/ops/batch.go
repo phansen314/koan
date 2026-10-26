@@ -67,7 +67,7 @@ func Batch() *cli.Command {
 		Name:   "batch",
 		Fields: []string{"folders", "folder", "join", "tasks"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in, batch: true}
+			r := input{in: in, env: env, batch: true}
 			b := readBatch(&r)
 			folders, tasks := b.folders, b.tasks
 			if e := r.err(); e != nil {
@@ -182,7 +182,11 @@ func readBatch(r *input) batchInput {
 		}
 	}
 	if n < 1 || n > maxParts {
-		r.fault("", "a batch holds 1 to %d parts, folders and tasks together, not %d", maxParts, n)
+		if r.env != nil && r.env.Term != nil {
+			r.fault("", "-i gives the batch, from a file or from standard input as -; a batch holds 1 to %d parts, folders and tasks together", maxParts)
+		} else {
+			r.fault("", "a batch holds 1 to %d parts, folders and tasks together, not %d", maxParts, n)
+		}
 	}
 	var refs []core.Ref
 	var at []string

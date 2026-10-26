@@ -12,7 +12,7 @@
     "error": {
       "kind": "not-initialized",
       "rule": null,
-      "message": "$HOME/koan-root does not exist. Run koan init.",
+      "message": "$HOME/koan-root does not exist; koan init makes it",
       "ids": [],
       "paths": [
         "$HOME/koan-root"

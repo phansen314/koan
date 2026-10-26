@@ -216,7 +216,7 @@ func TestResolveArchived(t *testing.T) {
 // indexedTree knows where each archived ID went.
 type indexedTree struct{ *fakeTree }
 
-func (indexedTree) ArchivedAt(id int64) string { return fmt.Sprintf("/r/archived/@%d.md", id) }
+func (indexedTree) ArchivedNotes(id int64) string { return fmt.Sprintf("/r/archived/@%d.md", id) }
 
 var _ ArchiveIndex = indexedTree{}
 

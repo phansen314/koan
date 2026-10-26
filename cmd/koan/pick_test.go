@@ -509,7 +509,7 @@ func TestPickBash(t *testing.T) {
 			t.Errorf("bash %s defines %q: %v", major, kind, err)
 		}
 	}
-	p.run("--bash", "--query", "x").failed(t, 1, "invalid-input", "bash takes no other field")
+	p.run("--bash", "--query", "x").failed(t, 1, "invalid-input", "--bash takes no other option")
 }
 
 // --zsh prints the widget's script without a root or a terminal, and
@@ -539,8 +539,8 @@ zle -l | grep -qx __koan_pick_widget || echo "no widget"`)
 			t.Errorf("loading the script: %v\n%s", err, out)
 		}
 	}
-	p.run("--zsh", "--query", "x").failed(t, 1, "invalid-input", "zsh takes no other field")
-	p.run("--zsh", "--bash").failed(t, 1, "invalid-input", "takes no other field")
+	p.run("--zsh", "--query", "x").failed(t, 1, "invalid-input", "--zsh takes no other option")
+	p.run("--zsh", "--bash").failed(t, 1, "invalid-input", "takes no other option")
 }
 
 // A real fzf, in a pseudo-terminal: Enter picks the line under the

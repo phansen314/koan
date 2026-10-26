@@ -150,6 +150,9 @@ func (t *Tx) ArchivedEntry(id int64) cli.Archived {
 	return cli.Archived{ID: id, NotesPath: at}
 }
 
+// ArchivedNotes is the notes path ArchivedEntry gives, for a message.
+func (t *Tx) ArchivedNotes(id int64) string { return t.ArchivedEntry(id).NotesPath }
+
 // Open reports whether a task exists and is open.
 func (t *Tx) Open(id int64) bool {
 	var open bool
@@ -200,7 +203,7 @@ func (t *Tx) Issue(kind core.NodeKind) (int64, error) {
 	}
 	if id > core.MaxID {
 		return 0, core.Conflict(core.RuleNoIDs, nil, nil,
-			"This root has issued its last ID, @%d, so nothing more can be made in it.", core.MaxID)
+			"this root has issued its last ID, @%d, so nothing more can be made in it", core.MaxID)
 	}
 	k := "task"
 	if kind == core.NodeFolder {

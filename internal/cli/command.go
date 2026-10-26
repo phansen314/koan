@@ -65,12 +65,27 @@ type Option struct {
 	// field when not set. For an option that takes a reference, it is
 	// what help calls its value, such as folder.
 	Arg string
+	// Holds, for a position, is what it holds in a message in the command
+	// line's terms, such as "the folders to join after the task"; made
+	// from Arg when not set.
+	Holds string
 }
 
 // flag is the option's name without its dashes, as pflag knows it:
 // the field in kebab-case, such as blocked-by.
 func (o Option) flag() string {
 	return strings.ReplaceAll(o.Field, "_", "-")
+}
+
+// holds is what a position holds, in a message.
+func (o Option) holds() string {
+	switch {
+	case o.Holds != "":
+		return o.Holds
+	case o.Kind == List:
+		return "the " + o.arg() + "s"
+	}
+	return "the " + o.arg()
 }
 
 // arg is what help calls each word of a position.
@@ -91,14 +106,13 @@ type File struct {
 }
 
 // Here is a convenience that sets an input field to the working
-// directory when the command line gives neither it nor any of Unless,
-// such as context's file when no folder is given. With Flag, it does so
-// only when that option is given, such as pick's --here.
+// directory: when the command line doesn't give the field, such as
+// bind's dir, or with Flag, only when that option is given, such as
+// context's --here.
 type Here struct {
-	Field  string
-	Unless []string
-	Flag   string // as typed, such as --here
-	Usage  string // the flag's line in help
+	Field string
+	Flag  string // as typed, such as --here
+	Usage string // the flag's line in help
 }
 
 // Input is a command's input: one JSON object, with numbers kept as
@@ -111,6 +125,18 @@ type Env struct {
 	// Stderr is for what a program a command runs writes there, such as
 	// fzf's own complaints; koan's own line is Main's.
 	Stderr io.Writer
+	// Term names an input field in a message, in the terms the input
+	// came in: an option as typed, a position by what it holds. It is
+	// nil for --input, whose messages name the field itself.
+	Term func(field string) string
+}
+
+// Name is the name of field in a message: env's, or the field itself.
+func (e *Env) Name(field string) string {
+	if e == nil || e.Term == nil {
+		return field
+	}
+	return e.Term(field)
 }
 
 // Home is ~, from HOME. A command that uses the root finds it as part of
@@ -168,6 +194,27 @@ type Command struct {
 	Run   func(env *Env, in Input) (result any, warnings []Warning, err *Error)
 }
 
+// term names an input field as the command line gives it: an option as
+// typed, a position by what it holds.
+func (c *Command) term(field string) string {
+	for _, o := range c.Options {
+		if o.Field == field {
+			return "--" + o.flag()
+		}
+	}
+	for _, p := range []*Option{c.Subject, c.Object} {
+		if p != nil && p.Field == field {
+			return p.holds()
+		}
+	}
+	for _, f := range c.Files {
+		if f.Field == field {
+			return f.Name
+		}
+	}
+	return field
+}
+
 // fields is every input field the command takes.
 func (c *Command) fields() map[string]bool {
 	f := map[string]bool{}
@@ -197,6 +244,9 @@ type line struct {
 	paths []string
 	// here is whether a Here convenience's Flag was given true.
 	here bool
+	// boolValues are the hints for positional words that read as a
+	// boolean's value, by the word, for a fault found in the input.
+	boolValues map[string]string
 }
 
 func newLine() *line {
@@ -413,7 +463,7 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 	}
 	if c.Subject == nil {
 		if len(args) > 0 {
-			return Usage(args[0], c.Name+" takes no subject")
+			return Usage(args[0], c.extra(cmd, args[0], c.Name+" takes no words"))
 		}
 		return nil
 	}
@@ -432,11 +482,19 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 		}
 	}
 	subjects, objects := args[:n], args[n:]
+	for _, word := range args {
+		if h := c.boolValue(cmd, word); h != "" {
+			if l.boolValues == nil {
+				l.boolValues = map[string]string{}
+			}
+			l.boolValues[word] = h
+		}
+	}
 	if !list && len(subjects) > 1 {
-		return Usage(subjects[1], "a second subject: "+c.Name+" takes one")
+		return Usage(subjects[1], c.extra(cmd, subjects[1], c.Name+" takes one word for "+c.Subject.holds()))
 	}
 	if object != nil && object.Kind != List && len(objects) > 1 {
-		return Usage(objects[1], "a word past the object: "+c.Name+" takes one "+object.arg())
+		return Usage(objects[1], c.extra(cmd, objects[1], c.Name+" takes one word for "+object.holds()))
 	}
 	for _, p := range []struct {
 		opt   *Option
@@ -450,6 +508,32 @@ func (c *Command) finish(cmd *cobra.Command, l *line, args []string) *Error {
 		}
 	}
 	return nil
+}
+
+// extra is the message for a word past the positions: it says what the
+// positions hold, and, for true, false or null, that a boolean's value
+// goes after =, as the boolean options given are written.
+func (c *Command) extra(cmd *cobra.Command, word, message string) string {
+	return "unexpected word " + word + ": " + message + c.boolValue(cmd, word)
+}
+
+// boolValue is what to add to a fault in a positional word that is true,
+// false or null, when a boolean option was given bare: its value goes
+// after =. It is "" for any other word.
+func (c *Command) boolValue(cmd *cobra.Command, word string) string {
+	if word != "true" && word != "false" && word != "null" {
+		return ""
+	}
+	var given []string
+	for _, o := range c.Options {
+		if o.Kind == Bool && cmd.Flags().Changed(o.flag()) {
+			given = append(given, "--"+o.flag()+"="+word)
+		}
+	}
+	if len(given) == 0 {
+		return ""
+	}
+	return "; a boolean's value goes after =, as " + strings.Join(given, " or ")
 }
 
 // usage is the usage error for what cobra or pflag refused: an option by
@@ -630,8 +714,8 @@ func (c *Command) readFiles(env *Env, l *line) *Error {
 	if h := c.Here; h != nil && h.Flag != "" {
 		if l.here {
 			if _, ok := l.in[h.Field]; ok {
-				return InvalidInput("give at most one of the folder, --file and --here",
-					Problem{Field: "", Reason: "give at most one of the folder, --file and --here"})
+				message := "give at most one of " + c.term(c.Subject.Field) + ", " + c.term(h.Field) + " and " + h.Flag
+				return InvalidInput(message, Problem{Field: "", Reason: message})
 			}
 			wd, e := workingDir()
 			if e != nil {
@@ -640,12 +724,7 @@ func (c *Command) readFiles(env *Env, l *line) *Error {
 			l.in[h.Field] = wd
 		}
 	} else if h != nil {
-		given := false
-		for _, f := range append([]string{h.Field}, h.Unless...) {
-			_, ok := l.in[f]
-			given = given || ok
-		}
-		if !given {
+		if _, ok := l.in[h.Field]; !ok {
 			wd, e := workingDir()
 			if e != nil {
 				return e
@@ -693,7 +772,7 @@ func (c *Command) unknownFields(in Input) *Error {
 	var problems []Problem
 	for k := range in {
 		if !known[k] {
-			problems = append(problems, Problem{Field: Pointer(k), Reason: "unknown field"})
+			problems = append(problems, Problem{Field: Pointer(k), Reason: "unknown field " + k})
 		}
 	}
 	if len(problems) == 0 {
@@ -701,7 +780,7 @@ func (c *Command) unknownFields(in Input) *Error {
 	}
 	byField := func(i, j int) bool { return problems[i].Field < problems[j].Field }
 	sort.Slice(problems, byField)
-	message := c.Name + " takes no field " + strings.TrimPrefix(problems[0].Field, "/")
+	message := problems[0].Reason
 	if c.Subject != nil && c.Subject.Required {
 		if _, ok := in[c.Subject.Field]; !ok {
 			problems = append(problems, Problem{Field: Pointer(c.Subject.Field), Reason: c.Subject.Field + " is required"})

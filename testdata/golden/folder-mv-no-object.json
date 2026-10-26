@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "dest or into is needed",
+    "message": "the destination or --into is needed",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "",
-        "reason": "dest or into is needed"
+        "reason": "the destination or --into is needed"
       }
     ],
     "archived": []

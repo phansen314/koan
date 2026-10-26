@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/phansen314/koan/internal/cli"
@@ -16,7 +17,10 @@ import (
 // its shape at its JSON Pointer, so that invalid-input names them all. The
 // error's message is the first fault's.
 type input struct {
-	in       cli.Input
+	in cli.Input
+	// env says in whose terms a fault is worded: the command line's, or
+	// the field names of --input. It may be nil.
+	env      *cli.Env
 	problems []cli.Problem
 	message  string
 	// ids are the IDs the faults name: what a reference of the wrong
@@ -28,6 +32,27 @@ type input struct {
 	up     *input
 	// batch is whether labels are taken, where an edge names a task.
 	batch bool
+}
+
+// name is a field in a message, in the terms the input came in.
+func (r *input) name(field string) string {
+	for r.up != nil {
+		r = r.up
+	}
+	return r.env.Name(field)
+}
+
+// oneOf is the message for a subject given with a convenience that stands
+// for the same thing: of the subject, --file and --here on the command
+// line, of the subject's field and file through --input.
+func (r *input) oneOf(lead, subject string) string {
+	for r.up != nil {
+		r = r.up
+	}
+	if r.env == nil || r.env.Term == nil {
+		return lead + " " + subject + " and file"
+	}
+	return lead + " " + r.name(subject) + ", " + r.name("file") + " and --here"
 }
 
 // at is the JSON Pointer to a field of the object read.
@@ -109,11 +134,24 @@ func (r *input) label(field string) string {
 	return s
 }
 
+// missing is the fault for a field that isn't given: on the command line,
+// what to name; through --input, the field.
+func (r *input) missing(field string) string {
+	name := r.name(field)
+	switch {
+	case name == field:
+		return field + " is required"
+	case strings.HasPrefix(name, "--"):
+		return "give " + name
+	}
+	return "name " + name
+}
+
 // required is a field's value, or a fault when it isn't given.
 func (r *input) required(field string) (any, bool) {
 	v, ok := r.in[field]
 	if !ok {
-		r.fault(r.at(field), "%s is required", field)
+		r.fault(r.at(field), "%s", r.missing(field))
 	}
 	return v, ok
 }
@@ -127,9 +165,9 @@ func (r *input) text(field, def string) string {
 	s, ok := v.(string)
 	switch {
 	case !ok:
-		r.fault(r.at(field), "%s must be a string", field)
+		r.fault(r.at(field), "%s must be a string", r.name(field))
 	case !utf8.ValidString(s):
-		r.fault(r.at(field), "%s is not UTF-8", field)
+		r.fault(r.at(field), "%s is not UTF-8", r.name(field))
 	}
 	return s
 }
@@ -142,7 +180,7 @@ func (r *input) title(field string) *string {
 	}
 	s, ok := v.(string)
 	if !ok {
-		r.fault(r.at(field), "%s must be a string or null", field)
+		r.fault(r.at(field), "%s must be a string or null", r.name(field))
 		return nil
 	}
 	t, err := core.CheckTitle(s)
@@ -161,12 +199,12 @@ func (r *input) object(field string) json.RawMessage {
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		r.fault(r.at(field), "%s must be a JSON object", field)
+		r.fault(r.at(field), "%s must be a JSON object", r.name(field))
 		return nil
 	}
 	b, err := marshal(m)
 	if err != nil {
-		r.fault(r.at(field), "%s: %v", field, err)
+		r.fault(r.at(field), "%s: %v", r.name(field), err)
 	}
 	return b
 }
@@ -179,7 +217,7 @@ func (r *input) boolean(field string, def bool) bool {
 	}
 	b, ok := v.(bool)
 	if !ok {
-		r.fault(r.at(field), "%s must be true or false", field)
+		r.fault(r.at(field), "%s must be true or false", r.name(field))
 	}
 	return b
 }
@@ -201,7 +239,7 @@ func (r *input) limit(field string, def int64) *int64 {
 		i, err = core.ParseInt(string(n))
 	}
 	if !isNum || err != nil || i < 1 {
-		r.fault(r.at(field), "%s must be an integer of 1 or more, or null", field)
+		r.fault(r.at(field), "%s must be an integer of 1 or more, or null", r.name(field))
 		return nil
 	}
 	return &i
@@ -250,7 +288,7 @@ func (r *input) refAt(at, field string, v any, want core.Want) core.Ref {
 		}
 		s = string(v)
 	default:
-		r.fault(at, "%s must be a reference: a string, or an ID", field)
+		r.fault(at, "%s must be a reference: a string, or an ID", r.name(field))
 		return core.Ref{}
 	}
 	ref, err := core.ParseRef(s)
@@ -285,18 +323,18 @@ func (r *input) absPath(field string, required bool) string {
 	v, ok := r.value(field)
 	if !ok {
 		if required {
-			r.fault(r.at(field), "%s is required", field)
+			r.fault(r.at(field), "%s", r.missing(field))
 		}
 		return ""
 	}
 	s, ok := v.(string)
 	switch {
 	case !ok:
-		r.fault(r.at(field), "%s must be a string", field)
+		r.fault(r.at(field), "%s must be a string", r.name(field))
 	case !utf8.ValidString(s):
-		r.fault(r.at(field), "%s is not UTF-8", field)
+		r.fault(r.at(field), "%s is not UTF-8", r.name(field))
 	case !filepath.IsAbs(s):
-		r.fault(r.at(field), "%s must be an absolute path: %q isn't", field, s)
+		r.fault(r.at(field), "%s must be an absolute path: %q isn't", r.name(field), s)
 	default:
 		return filepath.Clean(s)
 	}
@@ -311,7 +349,7 @@ func (r *input) taskTitle(field string) string {
 	}
 	s, ok := v.(string)
 	if !ok {
-		r.fault(r.at(field), "%s must be a string", field)
+		r.fault(r.at(field), "%s must be a string", r.name(field))
 		return ""
 	}
 	t, err := core.CheckTitle(s)
@@ -330,7 +368,7 @@ func (r *input) priority(field string) *int64 {
 	}
 	n, ok := v.(json.Number)
 	if !ok {
-		r.fault(r.at(field), "%s must be an integer or null", field)
+		r.fault(r.at(field), "%s must be an integer or null", r.name(field))
 		return nil
 	}
 	i, err := core.ParseInt(string(n))
@@ -350,7 +388,7 @@ func (r *input) list(field string) ([]any, bool) {
 	}
 	list, ok := v.([]any)
 	if !ok {
-		r.fault(r.at(field), "%s must be a list", field)
+		r.fault(r.at(field), "%s must be a list", r.name(field))
 	}
 	return list, ok
 }
@@ -367,9 +405,9 @@ func (r *input) choices(field string, allowed, def []string) []string {
 	if _, ok := r.value(field); !ok {
 		return def
 	}
-	out := r.strings(field, func(s string) bool { return slices.Contains(allowed, s) }, fmt.Sprintf("is not one of %v", allowed))
+	out := r.strings(field, func(s string) bool { return slices.Contains(allowed, s) }, "is not one of "+strings.Join(allowed, ", "))
 	if list, ok := r.in[field].([]any); ok && len(list) == 0 {
-		r.fault(r.at(field), "%s must name at least one of %v", field, allowed)
+		r.fault(r.at(field), "%s must name at least one of %s", r.name(field), strings.Join(allowed, ", "))
 	}
 	return out
 }
@@ -414,7 +452,7 @@ func (r *input) nullBool(field string) *bool {
 	}
 	b, ok := v.(bool)
 	if !ok {
-		r.fault(r.at(field), "%s must be true, false or null", field)
+		r.fault(r.at(field), "%s must be true, false or null", r.name(field))
 		return nil
 	}
 	return &b
@@ -428,7 +466,7 @@ func (r *input) path(field string) core.Ref {
 	}
 	s, ok := v.(string)
 	if !ok {
-		r.fault(r.at(field), "%s must be a folder path", field)
+		r.fault(r.at(field), "%s must be a folder path", r.name(field))
 		return core.Ref{}
 	}
 	ref, err := core.ParseRef(s)
@@ -451,7 +489,7 @@ func (r *input) fields(field string, names []string) []string {
 	}
 	list, ok := v.([]any)
 	if !ok {
-		r.fault(r.at(field), "%s must be a list of field names", field)
+		r.fault(r.at(field), "%s must be a list of field names", r.name(field))
 		return nil
 	}
 	out := []string{}
@@ -460,7 +498,7 @@ func (r *input) fields(field string, names []string) []string {
 		s, ok := item.(string)
 		switch {
 		case !ok || !slices.Contains(names, s):
-			r.fault(at, "%v is not a field: the fields are %v", item, names)
+			r.fault(at, "%v is not a field: the fields are %s", printed(item), strings.Join(names, ", "))
 		case !slices.Contains(out, s):
 			out = append(out, s)
 		}

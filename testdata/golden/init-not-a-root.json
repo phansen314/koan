@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "not-a-root",
-    "message": "$HOME/koan-root holds what isn't koan's: $HOME/koan-root/Tree, $HOME/koan-root/todo.md. Move it aside, or make ~/koan-root a symlink to an empty directory.",
+    "message": "$HOME/koan-root holds what isn't koan's: $HOME/koan-root/Tree, $HOME/koan-root/todo.md",
     "ids": [],
     "paths": [
       "$HOME/koan-root/Tree",

@@ -29,11 +29,11 @@ func Bind() *cli.Command {
 	return &cli.Command{
 		Name:    "bind",
 		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
-		Object:  &cli.Option{Field: "dir", Kind: cli.Path},
+		Object:  &cli.Option{Field: "dir", Kind: cli.Path, Holds: "the directory"},
 		Options: []cli.Option{{Field: "force", Kind: cli.Bool}},
 		Here:    &cli.Here{Field: "dir"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			ref := r.ref("folder", core.WantFolder, "")
 			if ref.IsRoot() {
 				r.fault("/folder", "the root can't be bound: it has no ID")
@@ -70,7 +70,7 @@ func Bind() *cli.Command {
 					}
 					if checkout {
 						return nil, core.Conflict(core.RuleCheckout, nil, []string{dir},
-							"%s is a checkout: its .git is a directory, and a marker there would bind every directory under it. Bind a worktree, or use --force", dir)
+							"%s is a checkout: its .git is a directory, and a marker there would bind every directory under it; %s binds it anyway", dir, env.Name("force"))
 					}
 				}
 				if slices.Contains(names, markers.FileName) {
@@ -80,7 +80,7 @@ func Bind() *cli.Command {
 					}
 					if n, ok := tx.Node(m.ID); !force && why == "" && ok && n.Kind == core.NodeFolder && m.ID != id {
 						return nil, core.Conflict(core.RuleBound, []int64{m.ID}, []string{res.Marker},
-							"%s is bound to @%d (%s); use --force to bind it to @%d instead", dir, m.ID, tx.Path(m.ID), id)
+							"%s is bound to @%d (%s); %s would bind it to @%d instead", dir, m.ID, tx.Path(m.ID), env.Name("force"), id)
 					}
 					res.Replaced = true
 				}
@@ -158,7 +158,7 @@ func koanFiles(dir string) (names []string, ok bool, err error) {
 	}
 	if len(foreign) > 0 {
 		return nil, false, core.Conflict(core.RuleForeignFiles, nil, foreign,
-			"%s/%s holds files that aren't koan's: %s. Move them out first", dir, markers.DirName, strings.Join(foreign, ", "))
+			"%s/%s holds files that aren't koan's: %s", dir, markers.DirName, strings.Join(foreign, ", "))
 	}
 	return names, ok, nil
 }

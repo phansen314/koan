@@ -26,7 +26,7 @@ func TaskFrontier() *cli.Command {
 		},
 		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			q, sc := r.scope()
 			limit := r.limit("limit", 100)
 			fields := r.fields("fields", taskFields)

@@ -34,8 +34,8 @@ func TestMainSuccess(t *testing.T) {
 
 func TestMainUsage(t *testing.T) {
 	r := runMain(t, "", []*Command{bare}, "version", "x")
-	want := `{"ok":false,"error":{"kind":"usage","rule":null,"message":"version takes no subject","ids":[],"paths":[],"problems":[{"field":"x","reason":"version takes no subject"}],"archived":[]},"warnings":[]}` + "\n"
-	if r.stdout != want || r.stderr != "koan: usage: version takes no subject\n" || r.code != ExitUsage {
+	want := `{"ok":false,"error":{"kind":"usage","rule":null,"message":"unexpected word x: version takes no words","ids":[],"paths":[],"problems":[{"field":"x","reason":"unexpected word x: version takes no words"}],"archived":[]},"warnings":[]}` + "\n"
+	if r.stdout != want || r.stderr != "koan: usage: unexpected word x: version takes no words\n" || r.code != ExitUsage {
 		t.Errorf("got %q %q %d", r.stdout, r.stderr, r.code)
 	}
 }
@@ -421,14 +421,14 @@ func TestMainFiles(t *testing.T) {
 
 // A Path option is made absolute from the working directory, as the
 // command line becomes an input; Here gives a field the working
-// directory when the command line gives neither it nor what stands in
-// for it. Through --input, neither applies.
+// directory when the command line doesn't give it. Through --input,
+// neither applies.
 func TestMainPaths(t *testing.T) {
 	cmd := &Command{
 		Name:    "where",
 		Subject: &Option{Field: "ref"},
 		Options: []Option{{Field: "file", Kind: Path}},
-		Here:    &Here{Field: "file", Unless: []string{"ref"}},
+		Here:    &Here{Field: "file"},
 		Run:     func(env *Env, in Input) (any, []Warning, *Error) { return in, nil, nil },
 	}
 	t.Chdir(t.TempDir())
@@ -446,7 +446,7 @@ func TestMainPaths(t *testing.T) {
 		{"", []string{"where", "--file=/x//y/"}, `{"file":"/x/y"}`},
 		{"", []string{"where", "--file", ""}, `{"file":""}`},
 		{"", []string{"where"}, `{"file":"` + q(wd) + `"}`},
-		{"", []string{"where", "@1"}, `{"ref":"@1"}`},
+		{"", []string{"where", "@1"}, `{"file":"` + q(wd) + `","ref":"@1"}`},
 		{"", []string{"where", "@1", "--file", "x"}, `{"file":"` + q(filepath.Join(wd, "x")) + `","ref":"@1"}`},
 		{`{"file":"rel"}`, []string{"where", "-i", "-"}, `{"file":"rel"}`},
 		{`{}`, []string{"where", "-i", "-"}, `{}`},

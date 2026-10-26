@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "has-material",
-    "message": "@7, @1 hold material; give material to delete it with them",
+    "message": "@7, @1 hold material; --material would delete it too",
     "ids": [],
     "paths": [
       "/c:docs",

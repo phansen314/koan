@@ -27,7 +27,7 @@ func TaskClaim() *cli.Command {
 		Subject: tasksSubject(claimable),
 		Options: []cli.Option{{Field: "extra", Kind: cli.JSON}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.taskRefs()
 			extra := r.object("extra")
 			if e := r.err(); e != nil {
@@ -78,7 +78,7 @@ func TaskClaimNext() *cli.Command {
 		},
 		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			q, sc := r.scope()
 			extra := r.object("extra")
 			if e := r.err(); e != nil {

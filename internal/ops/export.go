@@ -28,7 +28,7 @@ func Export() *cli.Command {
 		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
 		Here:    &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			q := r.foldering("folder")
 			if e := r.err(); e != nil {
 				return nil, nil, e

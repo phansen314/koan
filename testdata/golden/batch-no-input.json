@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "a batch holds 1 to 1000 parts, folders and tasks together, not 0",
+    "message": "-i gives the batch, from a file or from standard input as -; a batch holds 1 to 1000 parts, folders and tasks together",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "",
-        "reason": "a batch holds 1 to 1000 parts, folders and tasks together, not 0"
+        "reason": "-i gives the batch, from a file or from standard input as -; a batch holds 1 to 1000 parts, folders and tasks together"
       }
     ],
     "archived": []

@@ -34,11 +34,11 @@ func Where() *cli.Command {
 	return &cli.Command{
 		Name:    "where",
 		Uses:    []string{"<ref>", "--file <path>", "--here"},
-		Subject: &cli.Option{Field: "ref", Complete: anyRef.complete()},
+		Subject: &cli.Option{Field: "ref", Holds: "the reference", Complete: anyRef.complete()},
 		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
 		Here:    &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			q := r.locating("ref", core.WantAny)
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -87,7 +87,7 @@ func (r *input) locating(field string, want core.Want) *query {
 	q.file = r.absPath("file", false)
 	_, hasFile := r.value("file")
 	if q.hasRef == hasFile {
-		r.fault("", "give exactly one of the reference, --file and --here")
+		r.fault("", "%s", r.oneOf("give exactly one of", field))
 	}
 	return q
 }
@@ -101,7 +101,7 @@ func (r *input) foldering(field string) *query {
 	q.file = r.absPath("file", false)
 	_, hasFile := r.value("file")
 	if hasFolder && hasFile {
-		r.fault("", "give at most one of the folder, --file and --here")
+		r.fault("", "%s", r.oneOf("give at most one of", field))
 	}
 	q.hasRef = !hasFile
 	if q.hasRef {
@@ -358,7 +358,7 @@ func archivedPath(tx *store.Tx, p place) error {
 		if !tx.Archived(id) {
 			break
 		}
-		e := core.NotFound(nil, []string{p.printed}, "%s is in the archive: @%d was archived, to %s", p.printed, id, tx.ArchivedAt(id))
+		e := core.NotFound(nil, []string{p.printed}, "%s is in the archive: @%d was archived, to %s", p.printed, id, tx.ArchivedNotes(id))
 		e.Archived = []int64{id}
 		return e
 	}
@@ -392,7 +392,7 @@ func (t *tasks) locateMarker(tx *store.Tx, p place) (Location, int64, []cli.Warn
 	if m.Path != t.paths[id] {
 		warnings = append(warnings, cli.Warning{
 			Kind:    "stale-marker",
-			Message: fmt.Sprintf("%s was bound to @%d at %s, which is now at %s. Bind it again to refresh it.", f.File, id, m.Path, t.paths[id]),
+			Message: fmt.Sprintf("%s was bound to @%d at %s, which is now at %s; binding it again refreshes it", f.File, id, m.Path, t.paths[id]),
 			IDs:     []int64{id},
 			Paths:   []string{f.File},
 		})

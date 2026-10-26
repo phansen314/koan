@@ -27,7 +27,7 @@
   "warnings": [
     {
       "kind": "pending-step",
-      "message": "2 filesystem steps are pending with no write carrying them out. The next write, or koan repair, finishes them.",
+      "message": "2 filesystem steps are pending with no write carrying them out; the next write, or koan repair, finishes them",
       "ids": [],
       "paths": [
         "$HOME/koan-root/tree/@1.md",

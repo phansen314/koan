@@ -41,13 +41,16 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 	root.SetArgs(append([]string{}, args...))
 	if cmd, err := root.ExecuteC(); err != nil {
 		c = named[cmd]
-		return out(nil, usage(err), nil)
+		return out(nil, hinted(c, usage(err)), nil)
 	}
 	if c == nil {
 		return ExitOK
 	}
 
 	in := l.in
+	if !l.hasInput {
+		env.Term = c.term
+	}
 	var e *Error
 	if l.hasInput {
 		if in, e = readInput(env, l.input); e != nil {
@@ -60,7 +63,63 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 		return out(nil, e, nil)
 	}
 	result, warnings, e := c.Run(env, in)
-	return out(result, e, warnings)
+	return out(result, c.boolHinted(l, e), warnings)
+}
+
+// siblings are the options a command doesn't take but a sibling does,
+// with what to say about each: an option the command's subject or object
+// stands in for, or another option for it. A spelling an earlier version
+// took has no entry.
+var siblings = map[string]map[string]string{
+	"task list":   {"--folder": "the folder is a word of its own, as in koan task list /work"},
+	"frontier":    {"--folder": "the folder is a word of its own, as in koan frontier /work"},
+	"claim-next":  {"--folder": "the folder is a word of its own, as in koan claim-next /work"},
+	"folder list": {"--folder": "the folder is a word of its own, as in koan folder list /work"},
+	"context":     {"--folder": "the folder is a word of its own, as in koan context /work"},
+	"export":      {"--folder": "the folder is a word of its own, as in koan export /work"},
+	"join":        {"--join": "name the folders to join after the task as words of their own, as in koan join 42 /work/a /work/b"},
+	"update":      {"--tags": "update takes --tags-add, --tags-remove and --tags-replace-all"},
+	"task create": {"--tags-add": "task create takes --tags", "--title": "the title is a word of its own, as in koan task create 'Write it'"},
+}
+
+// boolHinted adds to an invalid-input or not-found whose first problem is
+// at a position what to write when a boolean's value stood in it as a word
+// of its own: --claimed=false. The word is the one the fault quotes.
+func (c *Command) boolHinted(l *line, e *Error) *Error {
+	if e == nil || l == nil || len(l.boolValues) == 0 || len(e.Problems) == 0 ||
+		(e.Kind != KindInvalidInput && e.Kind != KindNotFound) {
+		return e
+	}
+	at := e.Problems[0].Field
+	for _, p := range []*Option{c.Subject, c.Object} {
+		if p == nil || at != Pointer(p.Field) && !strings.HasPrefix(at, Pointer(p.Field)+"/") {
+			continue
+		}
+		for word, hint := range l.boolValues {
+			if strings.Contains(e.Problems[0].Reason, `"`+word+`"`) {
+				e.Message += hint
+				e.Problems[0].Reason += hint
+				return e
+			}
+		}
+	}
+	return e
+}
+
+// hinted adds to the usage error for an unknown option what a sibling
+// command's option of that name does here, if the command has an entry
+// for it.
+func hinted(c *Command, e *Error) *Error {
+	if c == nil || e.Kind != KindUsage || len(e.Problems) != 1 {
+		return e
+	}
+	hint, ok := siblings[c.Name][e.Problems[0].Field]
+	if !ok || !strings.HasPrefix(e.Message, "unknown flag") {
+		return e
+	}
+	e.Message += "; " + hint
+	e.Problems[0].Reason = e.Message
+	return e
 }
 
 // tree is the cobra command tree: a command of two words sits under a

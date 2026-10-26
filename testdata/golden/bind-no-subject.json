@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "folder is required",
+    "message": "name the folder",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "/folder",
-        "reason": "folder is required"
+        "reason": "name the folder"
       }
     ],
     "archived": []

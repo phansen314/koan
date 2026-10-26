@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "not-finished",
-    "message": "@4, @5, @6, @8 under @2 are open; complete them before archiving it",
+    "message": "@4, @5, @6, @8 under @2 are still open; only finished work is archived",
     "ids": [
       4,
       5,

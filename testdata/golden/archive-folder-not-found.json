@@ -3,7 +3,7 @@
   "error": {
     "kind": "not-found",
     "rule": null,
-    "message": "@2 was archived, to $HOME/koan-root/archived/work/@2_HOME-12345",
+    "message": "@2 was archived, to $HOME/koan-root/archived/work/@2_HOME-12345/@notes.md",
     "ids": [
       2
     ],
@@ -11,7 +11,7 @@
     "problems": [
       {
         "field": "/ref",
-        "reason": "@2 was archived, to $HOME/koan-root/archived/work/@2_HOME-12345"
+        "reason": "@2 was archived, to $HOME/koan-root/archived/work/@2_HOME-12345/@notes.md"
       }
     ],
     "archived": [

@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "bound",
-    "message": "$HOME/wt is bound to @2 (/work/web); use --force to bind it to @3 instead",
+    "message": "$HOME/wt is bound to @2 (/work/web); --force would bind it to @3 instead",
     "ids": [
       2
     ],

@@ -30,7 +30,7 @@ func tasksCommand(name string, subject offers, change func(tx *store.Tx, ids []i
 		Name:    name,
 		Subject: tasksSubject(subject),
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.taskRefs()
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -53,7 +53,7 @@ func tasksCommand(name string, subject offers, change func(tx *store.Tx, ids []i
 
 // tasksSubject is a list of tasks as a command's subject.
 func tasksSubject(subject offers) *cli.Option {
-	return &cli.Option{Field: "tasks", Kind: cli.List, Arg: "task", Required: true, Complete: subject.complete()}
+	return &cli.Option{Field: "tasks", Kind: cli.List, Arg: "task", Holds: "the tasks", Required: true, Complete: subject.complete()}
 }
 
 // taskRefs reads tasks, the list of tasks a command acts on, with each

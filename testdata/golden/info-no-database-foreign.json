@@ -12,7 +12,7 @@
     "error": {
       "kind": "not-initialized",
       "rule": null,
-      "message": "$HOME/koan-root/koan.db does not exist, and $HOME/koan-root holds what isn't koan's: $HOME/koan-root/KOAN.DB. Move it aside, or make ~/koan-root a symlink to an empty directory, then run koan init.",
+      "message": "$HOME/koan-root/koan.db does not exist, and $HOME/koan-root holds what isn't koan's: $HOME/koan-root/KOAN.DB; koan init refuses a root that holds them",
       "ids": [],
       "paths": [
         "$HOME/koan-root/koan.db"

@@ -37,7 +37,7 @@ func TaskCreate() *cli.Command {
 		},
 		Files: []cli.File{{Name: "--notes-file", Field: "notes"}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			title := r.taskTitle("title")
 			folderRef := r.ref("folder", core.WantFolder, "/")
 			priority := r.priority("priority")

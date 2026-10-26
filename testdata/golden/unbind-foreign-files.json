@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "foreign-files",
-    "message": "$HOME/wt/.koan holds files that aren't koan's: $HOME/wt/.koan/mine. Move them out first",
+    "message": "$HOME/wt/.koan holds files that aren't koan's: $HOME/wt/.koan/mine",
     "ids": [],
     "paths": [
       "$HOME/wt/.koan/mine"

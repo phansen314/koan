@@ -119,7 +119,7 @@ func TestTaskReopen(t *testing.T) {
 	ok(t, home, "claim", "3")
 	r = warned(t, home, []string{"claimed-blocked"}, "reopen", "1")
 	w := r.Envelope["warnings"].([]any)[0].(map[string]any)
-	if fmt.Sprint(w["ids"]) != "[2 3]" || w["message"] != "@2, @3 are claimed, and wait again; their claims stay." {
+	if fmt.Sprint(w["ids"]) != "[2 3]" || w["message"] != "@2, @3 are claimed, and wait again; their claims stay" {
 		t.Errorf("plural: %s", r.Line())
 	}
 	fails(t, home, "not-found", "", "reopen", "99")

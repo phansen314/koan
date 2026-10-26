@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "unknown flag: --folder",
+    "message": "unknown flag: --folder; the folder is a word of its own, as in koan task list /work",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "--folder",
-        "reason": "unknown flag: --folder"
+        "reason": "unknown flag: --folder; the folder is a word of its own, as in koan task list /work"
       }
     ],
     "archived": []

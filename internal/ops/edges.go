@@ -282,9 +282,9 @@ func (w *edges) add(es []edge) (changed bool, reblocked []int64, warnings []cli.
 		}
 	}
 	if len(complete) > 0 {
-		message := core.FormatIDs(complete) + " is complete: an edge added to its blocked_by doesn't reopen it, so what waits on it isn't held back."
+		message := core.FormatIDs(complete) + " is complete: an edge added to what it waits on doesn't reopen it, so what waits on it isn't held back"
 		if len(complete) > 1 {
-			message = core.FormatIDs(complete) + " are complete: edges added to their blocked_by don't reopen them, so what waits on them isn't held back."
+			message = core.FormatIDs(complete) + " are complete: edges added to what they wait on don't reopen them, so what waits on them isn't held back"
 		}
 		warnings = append(warnings, cli.Warning{Kind: "complete-blocker", Message: message, IDs: complete})
 	}
@@ -367,9 +367,9 @@ func (w *watched) reblocked() ([]int64, []cli.Warning, error) {
 	if len(claimed) == 0 {
 		return nonNil(out), nil, nil
 	}
-	message := core.FormatIDs(claimed) + " is claimed, and waits again; its claim stays."
+	message := core.FormatIDs(claimed) + " is claimed, and waits again; its claim stays"
 	if len(claimed) > 1 {
-		message = core.FormatIDs(claimed) + " are claimed, and wait again; their claims stay."
+		message = core.FormatIDs(claimed) + " are claimed, and wait again; their claims stay"
 	}
 	return out, []cli.Warning{{Kind: "claimed-blocked", Message: message, IDs: claimed}}, nil
 }

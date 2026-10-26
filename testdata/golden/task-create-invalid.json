@@ -33,7 +33,7 @@
       },
       {
         "field": "/extra",
-        "reason": "extra must be a JSON object"
+        "reason": "--extra must be a JSON object"
       }
     ],
     "archived": []

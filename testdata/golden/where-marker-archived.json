@@ -3,7 +3,7 @@
   "error": {
     "kind": "not-found",
     "rule": null,
-    "message": "$HOME/code/bad/.koan/marker.json binds nothing: @4 was archived, to $HOME/koan-root/archived/@4_archive",
+    "message": "$HOME/code/bad/.koan/marker.json binds nothing: @4 was archived, to $HOME/koan-root/archived/@4_archive/@notes.md",
     "ids": [
       4
     ],
@@ -13,7 +13,7 @@
     "problems": [
       {
         "field": "/file",
-        "reason": "$HOME/code/bad/.koan/marker.json binds nothing: @4 was archived, to $HOME/koan-root/archived/@4_archive"
+        "reason": "$HOME/code/bad/.koan/marker.json binds nothing: @4 was archived, to $HOME/koan-root/archived/@4_archive/@notes.md"
       }
     ],
     "archived": [

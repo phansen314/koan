@@ -34,7 +34,7 @@ func sqliteError(err error, database string) *cli.Error {
 }
 
 func busy(message string) *cli.Error {
-	return cli.NewError(cli.KindBusy, message+". It is safe to retry.")
+	return cli.NewError(cli.KindBusy, message+"; it is safe to retry")
 }
 
 // asError turns whatever a change returned into the one error it reports.

@@ -3,7 +3,7 @@
   "error": {
     "kind": "busy",
     "rule": null,
-    "message": "another write held the lock on $HOME/koan-root for 5 seconds. It is safe to retry.",
+    "message": "another write held the lock on $HOME/koan-root for 5 seconds; it is safe to retry",
     "ids": [],
     "paths": [],
     "problems": [],

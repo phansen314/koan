@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "a second subject: block takes one",
+    "message": "unexpected word 2: block takes one word for the task",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "2",
-        "reason": "a second subject: block takes one"
+        "reason": "unexpected word 2: block takes one word for the task"
       }
     ],
     "archived": []

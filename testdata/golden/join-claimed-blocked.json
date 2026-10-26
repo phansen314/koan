@@ -28,7 +28,7 @@
   "warnings": [
     {
       "kind": "claimed-blocked",
-      "message": "@2 is claimed, and waits again; its claim stays.",
+      "message": "@2 is claimed, and waits again; its claim stays",
       "ids": [
         2
       ],

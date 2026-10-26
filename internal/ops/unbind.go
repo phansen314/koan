@@ -19,10 +19,10 @@ type UnbindResult struct {
 func Unbind() *cli.Command {
 	return &cli.Command{
 		Name:    "unbind",
-		Subject: &cli.Option{Field: "dir", Kind: cli.Path},
+		Subject: &cli.Option{Field: "dir", Kind: cli.Path, Holds: "the directory"},
 		Here:    &cli.Here{Field: "dir"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			dir := r.absPath("dir", true)
 			if e := r.err(); e != nil {
 				return nil, nil, e

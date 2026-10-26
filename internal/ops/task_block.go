@@ -33,7 +33,7 @@ func edgeCommand(name string, subject, ends offers, run func(env *cli.Env, task 
 			{Field: "blocks", Kind: cli.List, Complete: ends.complete()},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			task := r.ref("task", core.WantTask, "")
 			n := 0
 			for _, field := range []string{"blocked_by", "blocks"} {
@@ -42,7 +42,7 @@ func edgeCommand(name string, subject, ends offers, run func(env *cli.Env, task 
 				}
 			}
 			if n == 0 {
-				r.fault("", "at least one edge is needed: blocked_by or blocks")
+				r.fault("", "at least one edge is needed: %s or %s", r.name("blocked_by"), r.name("blocks"))
 			}
 			edgesIn := r.edgeRefs()
 			refs, at := []core.Ref{task}, []string{"/task"}

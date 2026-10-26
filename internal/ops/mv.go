@@ -37,8 +37,8 @@ func Mv() *cli.Command {
 	return &cli.Command{
 		Name:          "mv",
 		Uses:          []string{"<ref>... <dest>", "-t <folder> <ref>...", "-T <folder> <path>"},
-		Subject:       &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Required: true, Complete: tasksAndFolders.complete()},
-		Object:        &cli.Option{Field: "dest", Required: true, Complete: tasksAndFolders.complete()},
+		Subject:       &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Holds: "the tasks and folders to move", Required: true, Complete: tasksAndFolders.complete()},
+		Object:        &cli.Option{Field: "dest", Holds: "the destination", Required: true, Complete: tasksAndFolders.complete()},
 		Instead:       "into",
 		Single:        "rename",
 		SingleSubject: foldersOnly.complete(),
@@ -48,7 +48,7 @@ func Mv() *cli.Command {
 			{Field: "rename", Short: "T", Kind: cli.Bool},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.subjectRefs("moved")
 			rename := r.boolean("rename", false)
 			_, hasDest := r.value("dest")
@@ -56,14 +56,14 @@ func Mv() *cli.Command {
 			field := "dest"
 			switch {
 			case hasDest && hasInto:
-				r.fault("", "dest and into can't both be given")
+				r.fault("", "%s and %s can't both be given", r.name("dest"), r.name("into"))
 			case !hasDest && !hasInto:
-				r.fault("", "dest or into is needed")
+				r.fault("", "%s or %s is needed", r.name("dest"), r.name("into"))
 			case hasInto:
 				field = "into"
 			}
 			if rename && hasInto {
-				r.fault("", "rename takes dest, not into")
+				r.fault("", "%s takes %s, not %s", r.name("rename"), r.name("dest"), r.name("into"))
 			}
 			if rename && len(refs) > 1 {
 				r.fault(at[1], "a rename takes one folder")
@@ -307,9 +307,9 @@ func movedClaimed(claimed []int64, at []string) ([]cli.Warning, error) {
 	if len(claimed) == 0 {
 		return nil, nil
 	}
-	message := core.FormatIDs(claimed) + " is claimed, and its notes moved; whoever holds it should read them at the new path."
+	message := core.FormatIDs(claimed) + " is claimed, and its notes moved to the new path"
 	if len(claimed) > 1 {
-		message = core.FormatIDs(claimed) + " are claimed, and their notes moved; whoever holds them should read them at the new paths."
+		message = core.FormatIDs(claimed) + " are claimed, and their notes moved to the new paths"
 	}
 	return []cli.Warning{{Kind: "moved-claimed", Message: message, IDs: claimed, Paths: at}}, nil
 }

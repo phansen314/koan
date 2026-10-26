@@ -29,7 +29,7 @@ func TaskWhy() *cli.Command {
 		Name:    "why",
 		Subject: &cli.Option{Field: "task", Required: true, Complete: tasksAndGates.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			ref := r.ref("task", core.WantTask, "")
 			if e := r.err(); e != nil {
 				return nil, nil, e

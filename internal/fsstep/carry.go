@@ -185,7 +185,7 @@ func (c *Steps) Warnings(live, stuck []store.Pending) []cli.Warning {
 	if len(paths) > 0 {
 		out = append(out, cli.Warning{
 			Kind:    "stuck-step",
-			Message: "A filesystem step found both its source and its destination holding content, or neither, or a remove found material, and is set aside with the rest of its change. Keep one copy, or move the material out, then run koan repair.",
+			Message: "a filesystem step found both its source and its destination holding content, or neither, or a remove found material, and is set aside with the rest of its change; koan repair retries it",
 			Paths:   paths,
 		})
 	}
@@ -212,9 +212,9 @@ func (c *Steps) pendingStep(live []store.Pending) (cli.Warning, bool) {
 			}
 		}
 	}
-	message := fmt.Sprintf("%d filesystem steps are pending with no write carrying them out. The next write, or koan repair, finishes them.", len(live))
+	message := fmt.Sprintf("%d filesystem steps are pending with no write carrying them out; the next write, or koan repair, finishes them", len(live))
 	if len(live) == 1 {
-		message = "1 filesystem step is pending with no write carrying it out. The next write, or koan repair, finishes it."
+		message = "1 filesystem step is pending with no write carrying it out; the next write, or koan repair, finishes it"
 	}
 	return cli.Warning{
 		Kind:    "pending-step",

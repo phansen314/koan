@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "a second subject: task list takes one",
+    "message": "unexpected word /Zeta: task list takes one word for the folder",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "/Zeta",
-        "reason": "a second subject: task list takes one"
+        "reason": "unexpected word /Zeta: task list takes one word for the folder"
       }
     ],
     "archived": []

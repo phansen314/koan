@@ -20,9 +20,9 @@ type ShowResult struct {
 func Show() *cli.Command {
 	return &cli.Command{
 		Name:    "show",
-		Subject: &cli.Option{Field: "ref", Required: true, Complete: anyRef.complete()},
+		Subject: &cli.Option{Field: "ref", Holds: "the reference", Required: true, Complete: anyRef.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			ref := r.ref("ref", core.WantRef, "")
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -149,7 +149,7 @@ func missingNotes(root store.Root, id int64, rel string) ([]cli.Warning, *cli.Er
 	}
 	return []cli.Warning{{
 		Kind:    "missing-notes",
-		Message: "There is no file at " + at + ". It reads as empty notes.",
+		Message: "there is no file at " + at + "; it reads as empty notes",
 		IDs:     []int64{id},
 		Paths:   []string{at},
 	}}, nil

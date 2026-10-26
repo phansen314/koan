@@ -33,7 +33,7 @@ func (r *input) extraChange() extraChange {
 	x.replace = r.objectMap("extra_replace_all")
 	_, removing := r.value("extra_remove")
 	if x.replace != nil && (x.merge != nil || removing) {
-		r.fault("", "extra_replace_all can't go with extra_merge or extra_remove")
+		r.fault("", "%s can't go with %s or %s", r.name("extra_replace_all"), r.name("extra_merge"), r.name("extra_remove"))
 	}
 	r.both("extra_remove", "merged", func(k string) bool { _, ok := x.merge[k]; return ok })
 	return x
@@ -65,7 +65,7 @@ func (r *input) objectMap(field string) map[string]any {
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		r.fault(r.at(field), "%s must be a JSON object", field)
+		r.fault(r.at(field), "%s must be a JSON object", r.name(field))
 		return nil
 	}
 	return m
@@ -90,7 +90,11 @@ func (r *input) changes(subject string) {
 			return
 		}
 	}
-	r.fault("", "nothing to change: give at least one field to change")
+	what := "field"
+	if r.env != nil && r.env.Term != nil {
+		what = "option"
+	}
+	r.fault("", "nothing to change: give at least one %s to change", what)
 }
 
 // tagFields are update's fields that only a task has, besides priority.
@@ -103,7 +107,7 @@ var tagFields = []string{"tags_add", "tags_remove", "tags_replace_all"}
 func Update() *cli.Command {
 	return &cli.Command{
 		Name:    "update",
-		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Required: true, Complete: anyRef.complete()},
+		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Holds: "the tasks and folders to update", Required: true, Complete: anyRef.complete()},
 		Options: []cli.Option{
 			{Field: "title", Kind: cli.String, Nullable: true},
 			{Field: "priority", Kind: cli.Integer, Nullable: true},
@@ -115,7 +119,7 @@ func Update() *cli.Command {
 			{Field: "extra_replace_all", Kind: cli.JSON},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.subjectRefs("updated")
 			r.changes("refs")
 			_, setTitle := r.value("title")
@@ -129,7 +133,7 @@ func Update() *cli.Command {
 			_, adding := r.value("tags_add")
 			_, removing := r.value("tags_remove")
 			if replacing && (adding || removing) {
-				r.fault("", "tags_replace_all can't go with tags_add or tags_remove")
+				r.fault("", "%s can't go with %s or %s", r.name("tags_replace_all"), r.name("tags_add"), r.name("tags_remove"))
 			}
 			r.both("tags_remove", "added", func(tag string) bool { return slices.Contains(add, tag) })
 			extra := r.extraChange()
@@ -148,7 +152,7 @@ func Update() *cli.Command {
 					return nil, nil, err
 				}
 				// A field one of the subjects doesn't have.
-				k := input{}
+				k := input{env: env}
 				if id, ok := firstOf(subs, false); ok && setTitle && title == nil {
 					k.faultIDs("/title", idsOf(subs, false), "@%d is a task, whose title can't be null", id)
 				}

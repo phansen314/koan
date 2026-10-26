@@ -18,7 +18,7 @@ func Repair() *cli.Command {
 		Name:    "repair",
 		Options: []cli.Option{{Field: "kinds", Kind: cli.List}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			kinds := r.choices("kinds", doctor.RepairKinds, doctor.RepairKinds)
 			if e := r.err(); e != nil {
 				return nil, nil, e

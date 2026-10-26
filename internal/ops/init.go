@@ -31,7 +31,7 @@ func Init() *cli.Command {
 				n, ok := v.(json.Number)
 				id, err := strconv.ParseInt(string(n), 10, 64)
 				if !ok || err != nil || !core.ValidID(id) {
-					return nil, nil, cli.InvalidInput("ids_from must be an ID, an integer from 1 to "+strconv.FormatInt(core.MaxID, 10),
+					return nil, nil, cli.InvalidInput(env.Name("ids_from")+" must be an ID, an integer from 1 to "+strconv.FormatInt(core.MaxID, 10),
 						cli.Problem{Field: "/ids_from", Reason: "not an ID"})
 				}
 				idsFrom = &id

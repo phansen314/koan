@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "not-empty",
-    "message": "@2, @4 held by the folders given; give contents to delete them with it",
+    "message": "@2, @4 are held by the folders given; --contents would delete them too",
     "ids": [
       2,
       4

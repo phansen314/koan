@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "exists",
-    "message": "$HOME/koan-root/koan.db already exists, so --ids-from can't set where it issues IDs from.",
+    "message": "$HOME/koan-root/koan.db already exists, so a first ID can't be set for it",
     "ids": [],
     "paths": [
       "$HOME/koan-root/koan.db"

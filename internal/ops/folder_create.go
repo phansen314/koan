@@ -36,7 +36,7 @@ func FolderCreate() *cli.Command {
 		},
 		Files: []cli.File{{Name: "--notes-file", Field: "notes"}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			ref := r.path("path")
 			title := r.title("title")
 			joins := r.joinRefs("join")

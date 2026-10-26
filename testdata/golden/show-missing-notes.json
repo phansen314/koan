@@ -27,7 +27,7 @@
   "warnings": [
     {
       "kind": "missing-notes",
-      "message": "There is no file at $HOME/koan-root/tree/@work/@2.md. It reads as empty notes.",
+      "message": "there is no file at $HOME/koan-root/tree/@work/@2.md; it reads as empty notes",
       "ids": [
         2
       ],

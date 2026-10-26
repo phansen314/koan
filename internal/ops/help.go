@@ -5,7 +5,7 @@ import "github.com/phansen314/koan/internal/cli"
 // shorts are each command's line in help.
 var shorts = map[string]string{
 	"task create":   "Make a task, with its notes file",
-	"show":          "Show one task, a gate included, or one folder",
+	"show":          "Show one task, a gate included, or one folder or the root",
 	"task list":     "List tasks in tree order",
 	"frontier":      "List ready, unclaimed tasks in work order",
 	"why":           "Show what a task waits on, and what to finish to move it",
@@ -21,7 +21,7 @@ var shorts = map[string]string{
 	"archive":       "Move complete tasks and finished folders out of the tree, into the archive",
 	"claim":         "Reserve tasks",
 	"claim-next":    "Claim the first task of the frontier",
-	"unclaim":       "Give up the claims of tasks",
+	"unclaim":       "End the claims of tasks, whoever holds them",
 	"folder create": "Make a folder, and any missing parents",
 	"folder list":   "List folders in tree order",
 	"batch":         "Make folders and tasks, with their edges, in one change",
@@ -73,7 +73,7 @@ var usages = map[string]string{
 	"mv/into":             "the folder to move them into, in place of the last word",
 	"mv/rename":           "the last word is the folder's new path, never a folder to move into",
 	"contents":            "delete the folders' tasks and folders too; for folders only",
-	"delete/material":     "delete the files of yours in the folders too; for folders only",
+	"delete/material":     "delete the folders' material too; for folders only",
 	"bind/force":          "bind a checkout, or a directory bound to another folder",
 	"where/file":          "find the folder this file is in",
 	"context/file":        "brief the folder this file is in",
@@ -97,15 +97,19 @@ var fileUsages = map[string]string{
 // hereUsages are each working-directory option's line in help, by
 // command.
 var hereUsages = map[string]string{
-	"pick":        "pick from the folder the working directory is in",
-	"task list":   "look under the folder the working directory is in",
-	"frontier":    "look under the folder the working directory is in",
-	"claim-next":  "look under the folder the working directory is in",
-	"folder list": "look under the folder the working directory is in",
-	"context":     "brief on the folder the working directory is in",
-	"export":      "export the folder the working directory is in",
-	"where":       "name the working directory",
+	"pick":        "the folder the working directory is in",
+	"task list":   "the folder the working directory is in",
+	"frontier":    "the folder the working directory is in",
+	"claim-next":  "the folder the working directory is in",
+	"folder list": "the folder the working directory is in",
+	"context":     "the folder the working directory is in",
+	"export":      "the folder the working directory is in",
+	"where":       "the folder the working directory is in",
 }
+
+// exclusiveFolder is the usage of a command whose folder, --file and
+// --here are alternatives.
+const exclusiveFolder = "[<folder> | --file <path> | --here]"
 
 // describe gives every command its line in help, and each option its own.
 func describe(commands []*cli.Command) []*cli.Command {
@@ -125,6 +129,15 @@ func describe(commands []*cli.Command) []*cli.Command {
 		}
 		if c.Here != nil && c.Here.Flag != "" {
 			c.Here.Usage = hereUsages[c.Name]
+			if len(c.Uses) == 0 {
+				c.Uses = []string{exclusiveFolder}
+			}
+		}
+		switch c.Name {
+		case "pick":
+			c.Uses = []string{exclusiveFolder, "--bash", "--zsh"}
+		case "batch":
+			c.Uses = []string{"-i <file>"}
 		}
 	}
 	return commands
