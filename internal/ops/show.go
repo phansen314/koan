@@ -20,9 +20,9 @@ type ShowResult struct {
 func Show() *cli.Command {
 	return &cli.Command{
 		Name:    "show",
-		Subject: &cli.Option{Field: "ref", Required: true, Complete: anyRef.complete()},
+		Subject: &cli.Option{Field: "ref", Holds: "the reference", Required: true, Complete: anyRef.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			ref := r.ref("ref", core.WantRef, "")
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -110,8 +110,8 @@ func resolveFolder(tx *store.Tx, ref core.Ref, field string) (int64, error) {
 }
 
 // resolve resolves a reference given at field. A refusal that is
-// invalid-input, such as a path anchored at a task, points at the field,
-// as every invalid-input names its faults.
+// invalid-input, such as a path anchored at a task, or not-found points at
+// the field, as every invalid-input names its faults.
 func resolve(tx *store.Tx, ref core.Ref, want core.Want, field string) (core.Resolved, error) {
 	return resolveAt(tx, ref, want, cli.Pointer(field))
 }
@@ -120,10 +120,19 @@ func resolve(tx *store.Tx, ref core.Ref, want core.Want, field string) (core.Res
 // entry of a list.
 func resolveAt(tx *store.Tx, ref core.Ref, want core.Want, at string) (core.Resolved, error) {
 	res, err := core.Resolve(tx, ref, want, nil)
-	if e, ok := err.(*core.Error); ok && e.Kind == core.KindInvalidInput && len(e.Problems) == 0 {
+	if e, ok := err.(*core.Error); ok && (e.Kind == core.KindInvalidInput || e.Kind == core.KindNotFound) && len(e.Problems) == 0 {
 		e.Problems = []string{at}
 	}
 	return res, err
+}
+
+// pointNotFound points a not-found at the field it came from, unless it
+// already points at one.
+func pointNotFound(err error, at string) error {
+	if e, ok := err.(*core.Error); ok && e.Kind == core.KindNotFound && len(e.Problems) == 0 {
+		e.Problems = []string{at}
+	}
+	return err
 }
 
 // missingNotes is the missing-notes warning for notes with no file at
@@ -140,7 +149,7 @@ func missingNotes(root store.Root, id int64, rel string) ([]cli.Warning, *cli.Er
 	}
 	return []cli.Warning{{
 		Kind:    "missing-notes",
-		Message: "There is no file at " + at + ". It reads as empty notes.",
+		Message: "there is no file at " + at + "; it reads as empty notes",
 		IDs:     []int64{id},
 		Paths:   []string{at},
 	}}, nil

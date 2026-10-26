@@ -1,14 +1,19 @@
 {
   "ok": false,
   "error": {
-    "kind": "conflict",
-    "rule": "gate",
+    "kind": "invalid-input",
+    "rule": null,
     "message": "@3 is a gate, and stays in its folder",
     "ids": [
       3
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/refs/0",
+        "reason": "@3 is a gate, and stays in its folder"
+      }
+    ],
     "archived": []
   },
   "warnings": []

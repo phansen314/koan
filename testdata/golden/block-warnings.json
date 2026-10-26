@@ -12,7 +12,7 @@
   "warnings": [
     {
       "kind": "complete-blocker",
-      "message": "@1, @2 are complete: edges added to their blocked_by don't reopen them, so what waits on them isn't held back.",
+      "message": "@1, @2 are complete: edges added to what they wait on don't reopen them, so what waits on them isn't held back",
       "ids": [
         1,
         2
@@ -21,7 +21,7 @@
     },
     {
       "kind": "claimed-blocked",
-      "message": "@4, @6 are claimed, and wait again; their claims stay.",
+      "message": "@4, @6 are claimed, and wait again; their claims stay",
       "ids": [
         4,
         6

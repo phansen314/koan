@@ -4,7 +4,9 @@
     "archived": [
       {
         "id": 4,
-        "archive": "$HOME/koan-root/archived/work/api/@4_start.md",
+        "ref": "@4 (/work/api.start)",
+        "notes_path": "$HOME/koan-root/archived/work/api/@4_start.md",
+        "dir": null,
         "json": "$HOME/koan-root/archived/work/api/@4_start.json"
       }
     ],

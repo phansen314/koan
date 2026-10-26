@@ -27,7 +27,7 @@ func TaskClaim() *cli.Command {
 		Subject: tasksSubject(claimable),
 		Options: []cli.Option{{Field: "extra", Kind: cli.JSON}},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.taskRefs()
 			extra := r.object("extra")
 			if e := r.err(); e != nil {
@@ -51,7 +51,7 @@ func TaskClaim() *cli.Command {
 					case claimed:
 						return nil, nil, core.Conflict(core.RuleClaimed, []int64{id}, nil, "@%d is already claimed", id)
 					case !tx.Open(id):
-						return nil, nil, core.Conflict(core.RuleComplete, []int64{id}, nil, "@%d is complete; only an open task can be claimed", id)
+						return nil, nil, core.Conflict(core.RuleAlreadyComplete, []int64{id}, nil, "@%d is complete; only an open task can be claimed", id)
 					}
 					if _, err := tx.InsertClaim(id, extra); err != nil {
 						return nil, nil, err
@@ -78,7 +78,7 @@ func TaskClaimNext() *cli.Command {
 		},
 		Here: &cli.Here{Field: "file", Flag: "--here"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			q, sc := r.scope()
 			extra := r.object("extra")
 			if e := r.err(); e != nil {

@@ -12,6 +12,7 @@ import (
 // TaskCompleteResult is complete's result, in its schema's order.
 type TaskCompleteResult struct {
 	Completed []int64 `json:"completed"`
+	Unclaimed []int64 `json:"unclaimed"`
 	Released  []int64 `json:"released"`
 }
 
@@ -29,7 +30,7 @@ func tasksCommand(name string, subject offers, change func(tx *store.Tx, ids []i
 		Name:    name,
 		Subject: tasksSubject(subject),
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.taskRefs()
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -52,7 +53,7 @@ func tasksCommand(name string, subject offers, change func(tx *store.Tx, ids []i
 
 // tasksSubject is a list of tasks as a command's subject.
 func tasksSubject(subject offers) *cli.Option {
-	return &cli.Option{Field: "tasks", Kind: cli.List, Arg: "task", Required: true, Complete: subject.complete()}
+	return &cli.Option{Field: "tasks", Kind: cli.List, Arg: "task", Holds: "the tasks", Required: true, Complete: subject.complete()}
 }
 
 // taskRefs reads tasks, the list of tasks a command acts on, with each
@@ -105,17 +106,21 @@ func waiting(tx *store.Tx, ids []int64) []int64 {
 func TaskComplete() *cli.Command {
 	return tasksCommand("complete", openOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
 		watched := watch(tx, waiting(tx, ids))
-		completed := []int64{}
+		completed, unclaimed := []int64{}, []int64{}
 		for _, id := range ids {
 			if !tx.Open(id) {
 				continue
 			}
-			if err := tx.SetComplete(id, true); err != nil {
+			ended, err := tx.SetComplete(id, true)
+			if err != nil {
 				return nil, nil, err
 			}
 			completed = append(completed, id)
+			if ended {
+				unclaimed = append(unclaimed, id)
+			}
 		}
-		return TaskCompleteResult{Completed: completed, Released: watched.released()}, nil, nil
+		return TaskCompleteResult{Completed: completed, Unclaimed: unclaimed, Released: watched.released()}, nil, nil
 	})
 }
 
@@ -130,7 +135,7 @@ func TaskReopen() *cli.Command {
 			if tx.Open(id) {
 				continue
 			}
-			if err := tx.SetComplete(id, false); err != nil {
+			if _, err := tx.SetComplete(id, false); err != nil {
 				return nil, nil, err
 			}
 			reopened = append(reopened, id)

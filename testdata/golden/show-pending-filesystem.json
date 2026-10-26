@@ -27,7 +27,7 @@
   "warnings": [
     {
       "kind": "pending-filesystem",
-      "message": "Filesystem steps are still being carried out for these paths. Each path given is where the file is going.",
+      "message": "filesystem steps are still being carried out for these paths; each path given is where the file is going",
       "ids": [
         2
       ],

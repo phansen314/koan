@@ -221,20 +221,19 @@ func (t *Tx) SetTaskFields(r TaskRow, tags []string) error {
 }
 
 // SetComplete marks a task complete now, or open again, and gives it a new
-// updated_at. Completing ends its claim.
-func (t *Tx) SetComplete(id int64, complete bool) error {
+// updated_at. Completing ends its claim, and reports whether it had one.
+func (t *Tx) SetComplete(id int64, complete bool) (unclaimed bool, err error) {
 	var at any
 	if complete {
 		at = t.Now
 	}
 	if _, err := t.Exec("UPDATE task SET completed_at = ?, updated_at = ? WHERE id = ?", at, t.Now, id); err != nil {
-		return err
+		return false, err
 	}
 	if complete {
-		_, err := t.EndClaim(id)
-		return err
+		return t.EndClaim(id)
 	}
-	return nil
+	return false, nil
 }
 
 // Blocks is the tasks that wait on a task, lowest ID first.

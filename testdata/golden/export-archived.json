@@ -3,16 +3,22 @@
   "error": {
     "kind": "not-found",
     "rule": null,
-    "message": "@12 was archived, to $HOME/koan-root/archived/@12_old",
+    "message": "@12 was archived, to $HOME/koan-root/archived/@12_old/@notes.md",
     "ids": [
       12
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/folder",
+        "reason": "@12 was archived, to $HOME/koan-root/archived/@12_old/@notes.md"
+      }
+    ],
     "archived": [
       {
         "id": 12,
-        "archive": "$HOME/koan-root/archived/@12_old"
+        "notes_path": "$HOME/koan-root/archived/@12_old/@notes.md",
+        "dir": "$HOME/koan-root/archived/@12_old"
       }
     ]
   },

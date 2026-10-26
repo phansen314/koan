@@ -9,10 +9,17 @@ import (
 
 // TaskWhyResult is why's result, in its schema's order.
 type TaskWhyResult struct {
-	ID        int64     `json:"id"`
-	Readiness *string   `json:"readiness"`
-	Blockers  []EdgeEnd `json:"blockers"`
-	Ready     []int64   `json:"ready"`
+	ID        int64       `json:"id"`
+	Readiness *string     `json:"readiness"`
+	Blockers  []EdgeEnd   `json:"blockers"`
+	Ready     []ReadyTask `json:"ready"`
+}
+
+// ReadyTask is a ready task why names, and whether it is claimed.
+type ReadyTask struct {
+	ID      int64  `json:"id"`
+	Ref     string `json:"ref"`
+	Claimed bool   `json:"claimed"`
 }
 
 // TaskWhy says what a task waits on: its open blockers, and the ready
@@ -22,7 +29,7 @@ func TaskWhy() *cli.Command {
 		Name:    "why",
 		Subject: &cli.Option{Field: "task", Required: true, Complete: tasksAndGates.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			ref := r.ref("task", core.WantTask, "")
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -32,7 +39,7 @@ func TaskWhy() *cli.Command {
 				return nil, nil, e
 			}
 			defer s.Close()
-			res := TaskWhyResult{Blockers: []EdgeEnd{}, Ready: []int64{}}
+			res := TaskWhyResult{Blockers: []EdgeEnd{}, Ready: []ReadyTask{}}
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
 				got, err := resolve(tx, ref, core.WantTask, "task")
 				if err != nil {
@@ -77,7 +84,8 @@ func TaskWhy() *cli.Command {
 				}
 				core.SortWorkOrder(ready)
 				for _, x := range ready {
-					res.Ready = append(res.Ready, x.ID)
+					_, claimed := t.claims[x.ID]
+					res.Ready = append(res.Ready, ReadyTask{ID: x.ID, Ref: t.ref(x.ID), Claimed: claimed})
 				}
 				return nil, nil
 			})

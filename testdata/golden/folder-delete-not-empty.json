@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "not-empty",
-    "message": "@1 holds @2; give contents to delete them with it",
+    "message": "@1 holds @2; --contents would delete it too",
     "ids": [
       2
     ],

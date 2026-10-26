@@ -117,7 +117,7 @@ func ParseRef(s string) (Ref, error) {
 		digits, rest, anchored := strings.Cut(strings.TrimPrefix(target, "@"), "/")
 		id, ok := ParseID(digits)
 		if !ok {
-			return Ref{}, invalid("%q is not an ID, a path or a label", s)
+			return Ref{}, invalid("%q is not an ID or a path", s)
 		}
 		ref.Kind, ref.ID = TargetID, id
 		if anchored {

@@ -27,14 +27,23 @@
     "result": {
       "type": "object",
       "required": [
+        "dir",
         "marker",
+        "changed",
         "binding",
         "replaced"
       ],
       "properties": {
+        "dir": {
+          "$ref": "types#/$defs/abs-path"
+        },
         "marker": {
           "$ref": "types#/$defs/abs-path",
-          "description": "The marker.json written."
+          "description": "The marker.json."
+        },
+        "changed": {
+          "type": "boolean",
+          "description": "false when the marker there already held this binding, which is left as it is."
         },
         "binding": {
           "$ref": "marker-file",
@@ -42,7 +51,7 @@
         },
         "replaced": {
           "type": "boolean",
-          "description": "Whether a marker was there before."
+          "description": "Whether it replaced a marker holding another binding."
         }
       },
       "unevaluatedProperties": false

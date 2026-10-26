@@ -14,23 +14,26 @@ import (
 
 // BindResult is bind's result, in its schema's order.
 type BindResult struct {
+	Dir      string         `json:"dir"`
 	Marker   string         `json:"marker"`
+	Changed  bool           `json:"changed"`
 	Binding  markers.Marker `json:"binding"`
 	Replaced bool           `json:"replaced"`
 }
 
 // Bind binds a directory outside the tree to a folder. It writes
 // no row and nothing in the tree, so it takes no lock: it reads the
-// database as a read does, then writes the marker whole.
+// database as a read does, then writes the marker whole, unless it
+// already holds this very binding.
 func Bind() *cli.Command {
 	return &cli.Command{
 		Name:    "bind",
 		Subject: &cli.Option{Field: "folder", Required: true, Complete: foldersOnly.complete()},
-		Object:  &cli.Option{Field: "dir", Kind: cli.Path},
+		Object:  &cli.Option{Field: "dir", Kind: cli.Path, Holds: "the directory"},
 		Options: []cli.Option{{Field: "force", Kind: cli.Bool}},
 		Here:    &cli.Here{Field: "dir"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			ref := r.ref("folder", core.WantFolder, "")
 			if ref.IsRoot() {
 				r.fault("/folder", "the root can't be bound: it has no ID")
@@ -49,7 +52,8 @@ func Bind() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			res := BindResult{Marker: markers.File(dir)}
+			res := BindResult{Dir: dir, Marker: markers.File(dir)}
+			var held *markers.Marker
 			warnings, e := fsstep.Read(s, func(tx *store.Tx) ([]fsstep.Path, error) {
 				id, err := resolveFolder(tx, ref, "folder")
 				if err != nil {
@@ -66,16 +70,19 @@ func Bind() *cli.Command {
 					}
 					if checkout {
 						return nil, core.Conflict(core.RuleCheckout, nil, []string{dir},
-							"%s is a checkout: its .git is a directory, and a marker there would bind every directory under it. Bind a worktree, or use --force", dir)
+							"%s is a checkout: its .git is a directory, and a marker there would bind every directory under it; %s binds it anyway", dir, env.Name("force"))
 					}
 				}
-				res.Replaced = slices.Contains(names, markers.FileName)
-				if res.Replaced && !force {
+				if slices.Contains(names, markers.FileName) {
 					m, why := markers.Read(res.Marker, real)
-					if n, ok := tx.Node(m.ID); why == "" && ok && n.Kind == core.NodeFolder && m.ID != id {
-						return nil, core.Conflict(core.RuleBound, []int64{m.ID}, []string{res.Marker},
-							"%s is bound to @%d (%s); use --force to bind it to @%d instead", dir, m.ID, tx.Path(m.ID), id)
+					if why == "" {
+						held = &m
 					}
+					if n, ok := tx.Node(m.ID); !force && why == "" && ok && n.Kind == core.NodeFolder && m.ID != id {
+						return nil, core.Conflict(core.RuleBound, []int64{m.ID}, []string{res.Marker},
+							"%s is bound to @%d (%s); %s would bind it to @%d instead", dir, m.ID, tx.Path(m.ID), env.Name("force"), id)
+					}
+					res.Replaced = true
 				}
 				res.Binding = markers.Marker{Schema: markers.Schema, ID: id, Path: tx.Path(id), Dir: real}
 				return nil, nil
@@ -83,6 +90,11 @@ func Bind() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
+			if held != nil && *held == res.Binding {
+				res.Replaced = false
+				return res, warnings, nil
+			}
+			res.Changed = true
 			if notDir, err := markers.NotDir(dir); err != nil || notDir {
 				at := dir + "/" + markers.DirName
 				return nil, nil, cli.IO("could not write the marker: "+at+" is not a directory", at)
@@ -146,7 +158,7 @@ func koanFiles(dir string) (names []string, ok bool, err error) {
 	}
 	if len(foreign) > 0 {
 		return nil, false, core.Conflict(core.RuleForeignFiles, nil, foreign,
-			"%s/%s holds files that aren't koan's: %s. Move them out first", dir, markers.DirName, strings.Join(foreign, ", "))
+			"%s/%s holds files that aren't koan's: %s", dir, markers.DirName, strings.Join(foreign, ", "))
 	}
 	return names, ok, nil
 }

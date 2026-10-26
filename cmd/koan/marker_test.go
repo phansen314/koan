@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/phansen314/koan/internal/testrun"
 )
@@ -56,7 +57,8 @@ func checkMarker(t *testing.T, dir string) map[string]any {
 
 // bind writes .koan/ with .gitignore and marker.json, binding the
 // directory to the folder by its ID, its path as a hint and its own real
-// path.
+// path. A marker already holding that very binding is left as it is,
+// with changed false; replaced says it replaced another binding.
 func TestMarkerBind(t *testing.T) {
 	home := realRoot(t)
 	ok(t, home, "folder", "create", "/work/api")
@@ -64,7 +66,7 @@ func TestMarkerBind(t *testing.T) {
 	wt := mkdir(t, home, "wt")
 	r := ok(t, home, "bind", "/work/api", wt)
 	golden(t, r, "bind")
-	if r.Result()["replaced"] != false || r.Result()["marker"] != markerFile(wt) {
+	if r.Result()["replaced"] != false || r.Result()["changed"] != true || r.Result()["marker"] != markerFile(wt) || r.Result()["dir"] != wt {
 		t.Errorf("bind: %s", r.Line())
 	}
 	m := checkMarker(t, wt)
@@ -76,11 +78,24 @@ func TestMarkerBind(t *testing.T) {
 		t.Errorf(".koan/:\n got %q\nwant %q", got, want)
 	}
 
-	// The same folder again replaces it, refreshing its path; another
-	// live folder needs --force.
+	// The same binding again changes nothing, and leaves the marker as
+	// it is.
+	old := time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+	hand(t, os.Chtimes(markerFile(wt), old, old))
+	r = ok(t, home, "bind", "@2", wt)
+	golden(t, r, "bind-unchanged")
+	if r.Result()["changed"] != false || r.Result()["replaced"] != false {
+		t.Errorf("same binding: %s", r.Line())
+	}
+	if fi, err := os.Stat(markerFile(wt)); err != nil || !fi.ModTime().Equal(old) {
+		t.Errorf("same binding wrote the marker")
+	}
+
+	// The same folder again, renamed, replaces it, refreshing its path;
+	// another live folder needs --force.
 	ok(t, home, "mv", "-T", "/work/api", "/work/web")
 	r = ok(t, home, "bind", "2", wt)
-	if r.Result()["replaced"] != true || checkMarker(t, wt)["path"] != "/work/web" {
+	if r.Result()["replaced"] != true || r.Result()["changed"] != true || checkMarker(t, wt)["path"] != "/work/web" {
 		t.Errorf("rebind: %s", r.Line())
 	}
 	r = fails(t, home, "conflict", "bound", "bind", "/home", wt)
@@ -89,7 +104,7 @@ func TestMarkerBind(t *testing.T) {
 		t.Errorf("refused bind changed the marker")
 	}
 	r = ok(t, home, "bind", "/home", wt, "--force")
-	if r.Result()["replaced"] != true || checkMarker(t, wt)["id"] != 3.0 {
+	if r.Result()["replaced"] != true || r.Result()["changed"] != true || checkMarker(t, wt)["id"] != 3.0 {
 		t.Errorf("force: %s", r.Line())
 	}
 
@@ -102,14 +117,13 @@ func TestMarkerBind(t *testing.T) {
 		`{"schema":1,"id":99,"path":"/work/web","dir":"` + wt + `"}`,
 	} {
 		os.WriteFile(markerFile(wt), []byte(content), 0o644)
-		if r := ok(t, home, "bind", "/work/web", wt); r.Result()["replaced"] != true {
+		if r := ok(t, home, "bind", "/work/web", wt); r.Result()["replaced"] != true || r.Result()["changed"] != true {
 			t.Errorf("over %s: %s", content, r.Line())
 		}
 	}
 	ok(t, home, "folder", "create", "/gone")
 	ok(t, home, "bind", "/gone", wt, "--force")
 	ok(t, home, "delete", "/gone")
-	ok(t, home, "bind", "/home", wt)
 
 	// A temp file left by a crash is koan's own, and written over.
 	os.WriteFile(filepath.Join(wt, ".koan", "marker.json.tmp"), []byte("partial"), 0o644)
@@ -258,12 +272,12 @@ func TestMarkerUnbind(t *testing.T) {
 	ok(t, home, "bind", "/work", wt)
 	r := ok(t, home, "unbind", wt)
 	golden(t, r, "unbind")
-	if r.Result()["changed"] != true || koanDir(t, wt) != nil {
+	if r.Result()["changed"] != true || r.Result()["dir"] != wt || r.Result()["marker"] != markerFile(wt) || koanDir(t, wt) != nil {
 		t.Errorf("unbind: %s %q", r.Line(), koanDir(t, wt))
 	}
 	r = ok(t, home, "unbind", wt)
 	golden(t, r, "unbind-none")
-	if r.Result()["changed"] != false {
+	if r.Result()["changed"] != false || r.Result()["marker"] != markerFile(wt) {
 		t.Errorf("again: %s", r.Line())
 	}
 

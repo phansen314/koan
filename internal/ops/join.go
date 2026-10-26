@@ -11,12 +11,16 @@ import (
 // it. With add set, it writes the edges of joining each folder, making
 // any gate named; else it removes them, never making a gate.
 func joinCommand(name string, add bool) *cli.Command {
+	holds := "the folders to join after the task"
+	if !add {
+		holds = "the folders to unjoin"
+	}
 	return &cli.Command{
 		Name:    name,
-		Subject: &cli.Option{Field: "ref", Required: true, Complete: tasksAndFolders.complete()},
-		Object:  &cli.Option{Field: "join", Kind: cli.List, Arg: "folder", Required: true, Complete: foldersOnly.complete()},
+		Subject: &cli.Option{Field: "ref", Holds: "the task or folder", Required: true, Complete: tasksAndFolders.complete()},
+		Object:  &cli.Option{Field: "join", Kind: cli.List, Arg: "folder", Holds: holds, Required: true, Complete: foldersOnly.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			// A gate, made or not, or the root: the shape check
 			// refuses material.
 			ref := r.ref("ref", core.WantRef, "")

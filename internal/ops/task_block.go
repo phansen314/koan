@@ -22,18 +22,18 @@ type UnblockResult struct {
 }
 
 // edgeCommand is the shape block and unblock share: a task,
-// then what it waits on, and at least one edge. ends is what the edges'
+// then at least one edge, by --blocked-by or --blocks. ends is what the edges'
 // other ends complete to.
 func edgeCommand(name string, subject, ends offers, run func(env *cli.Env, task core.Ref, in []edgeIn) (any, []cli.Warning, *cli.Error)) *cli.Command {
 	return &cli.Command{
 		Name:    name,
 		Subject: &cli.Option{Field: "task", Required: true, Complete: subject.complete()},
-		Object:  &cli.Option{Field: "blocked_by", Kind: cli.List, Arg: "blocker", Complete: ends.complete()},
 		Options: []cli.Option{
+			{Field: "blocked_by", Kind: cli.List, Complete: ends.complete()},
 			{Field: "blocks", Kind: cli.List, Complete: ends.complete()},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			task := r.ref("task", core.WantTask, "")
 			n := 0
 			for _, field := range []string{"blocked_by", "blocks"} {
@@ -42,7 +42,7 @@ func edgeCommand(name string, subject, ends offers, run func(env *cli.Env, task 
 				}
 			}
 			if n == 0 {
-				r.fault("", "at least one edge is needed: what it waits on, after the task, or --blocks")
+				r.fault("", "at least one edge is needed: %s or %s", r.name("blocked_by"), r.name("blocks"))
 			}
 			edgesIn := r.edgeRefs()
 			refs, at := []core.Ref{task}, []string{"/task"}

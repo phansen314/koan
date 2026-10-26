@@ -22,8 +22,9 @@ func input(t *testing.T, home, command, in string) *testrun.Result {
 }
 
 // complete marks a task complete, blocked or not, and ends its
-// claim; it reports the open tasks it made ready, and moves updated_at on
-// it alone. Completing a complete task changes nothing.
+// claim, listing it in unclaimed; it reports the open tasks it made
+// ready, and moves updated_at on it alone. Completing a complete task
+// changes nothing.
 func TestTaskComplete(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/w") // 1
@@ -32,12 +33,12 @@ func TestTaskComplete(t *testing.T) {
 	}
 	// 3 waits on 2; 4 on 2 and 5; 5 on /w.start, made 6.
 	ok(t, home, "block", "2", "--blocks", "3,4")
-	ok(t, home, "block", "5", "/w.start", "--blocks", "4")
+	ok(t, home, "block", "5", "--blocked-by", "/w.start", "--blocks", "4")
 	ok(t, home, "claim", "2")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r := ok(t, home, "complete", "2")
 	golden(t, r, "complete")
-	if fmt.Sprint(r.Result()) != "map[completed:[2] released:[3]]" {
+	if fmt.Sprint(r.Result()) != "map[completed:[2] released:[3] unclaimed:[2]]" {
 		t.Errorf("complete: %s", r.Line())
 	}
 	rec := ok(t, home, "show", "2").Result()["task"].(map[string]any)
@@ -50,19 +51,19 @@ func TestTaskComplete(t *testing.T) {
 	}
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r = ok(t, home, "complete", "@2")
-	if fmt.Sprint(r.Result()) != "map[completed:[] released:[]]" || field(t, home, "2", "updated_at") != fixed {
+	if fmt.Sprint(r.Result()) != "map[completed:[] released:[] unclaimed:[]]" || field(t, home, "2", "updated_at") != fixed {
 		t.Errorf("again: %s", r.Line())
 	}
 	// A blocked task, and a gate by its path, can be completed; the
 	// gate's completing releases 5, which then releases 4.
-	if r := ok(t, home, "complete", "/w.start"); fmt.Sprint(r.Result()) != "map[completed:[6] released:[5]]" {
+	if r := ok(t, home, "complete", "/w.start"); fmt.Sprint(r.Result()) != "map[completed:[6] released:[5] unclaimed:[]]" {
 		t.Errorf("gate: %s", r.Line())
 	}
-	if r := ok(t, home, "complete", "5"); fmt.Sprint(r.Result()) != "map[completed:[5] released:[4]]" {
+	if r := ok(t, home, "complete", "5"); fmt.Sprint(r.Result()) != "map[completed:[5] released:[4] unclaimed:[]]" {
 		t.Errorf("last blocker: %s", r.Line())
 	}
-	ok(t, home, "block", "3", "4")
-	if r := ok(t, home, "complete", "3"); fmt.Sprint(r.Result()) != "map[completed:[3] released:[]]" {
+	ok(t, home, "block", "3", "--blocked-by", "4")
+	if r := ok(t, home, "complete", "3"); fmt.Sprint(r.Result()) != "map[completed:[3] released:[] unclaimed:[]]" {
 		t.Errorf("blocked: %s", r.Line())
 	}
 	golden(t, fails(t, home, "not-found", "", "complete", "99"), "complete-not-found")
@@ -83,7 +84,7 @@ func TestTaskReopen(t *testing.T) {
 	}
 	// 2, 3 and 4 wait on 1; 4 on 5 too.
 	ok(t, home, "block", "1", "--blocks", "2,3,4")
-	ok(t, home, "block", "4", "5")
+	ok(t, home, "block", "4", "--blocked-by", "5")
 	ok(t, home, "claim", "1")
 	ok(t, home, "complete", "1")
 	ok(t, home, "claim", "2")
@@ -118,7 +119,7 @@ func TestTaskReopen(t *testing.T) {
 	ok(t, home, "claim", "3")
 	r = warned(t, home, []string{"claimed-blocked"}, "reopen", "1")
 	w := r.Envelope["warnings"].([]any)[0].(map[string]any)
-	if fmt.Sprint(w["ids"]) != "[2 3]" || w["message"] != "@2, @3 are claimed, and wait again; their claims stay." {
+	if fmt.Sprint(w["ids"]) != "[2 3]" || w["message"] != "@2, @3 are claimed, and wait again; their claims stay" {
 		t.Errorf("plural: %s", r.Line())
 	}
 	fails(t, home, "not-found", "", "reopen", "99")
@@ -137,7 +138,7 @@ func TestCompleteSeveral(t *testing.T) {
 	}
 	// 2 and 3 wait on 1; 5 on 4.
 	ok(t, home, "block", "1", "--blocks", "2,3")
-	ok(t, home, "block", "5", "4")
+	ok(t, home, "block", "5", "--blocked-by", "4")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 
 	// A bad entry mid-list changes nothing.
@@ -163,7 +164,7 @@ func TestCompleteSeveral(t *testing.T) {
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r = ok(t, home, "complete", "1", "5", "2")
 	golden(t, r, "complete-some-complete")
-	if fmt.Sprint(r.Result()) != "map[completed:[5] released:[]]" {
+	if fmt.Sprint(r.Result()) != "map[completed:[5] released:[] unclaimed:[]]" {
 		t.Errorf("some complete: %s", r.Line())
 	}
 	if field(t, home, "1", "updated_at") != fixed || field(t, home, "2", "updated_at") != fixed {
@@ -177,6 +178,14 @@ func TestCompleteSeveral(t *testing.T) {
 	if fmt.Sprint(r.Result()) != "map[reblocked:[3] reopened:[1 2 4]]" {
 		t.Errorf("reopen several: %s", r.Line())
 	}
+
+	// unclaimed lists the claims ended, in completed's order.
+	ok(t, home, "claim", "2,4")
+	r = ok(t, home, "complete", "4", "1", "2")
+	if fmt.Sprint(r.Result()) != "map[completed:[4 1 2] released:[3] unclaimed:[4 2]]" {
+		t.Errorf("unclaimed: %s", r.Line())
+	}
+	ok(t, home, "reopen", "1,2")
 
 	// Through --input, a list of references.
 	r = input(t, home, "complete", `{"tasks":[1,"@2","3"]}`)
@@ -256,8 +265,8 @@ func TestTaskUpdate(t *testing.T) {
 		t.Errorf("extra as spelled: %s", r.Line())
 	}
 	// A gate's fields change like any task's.
-	ok(t, home, "folder", "create", "/w") // 2
-	ok(t, home, "block", "1", "/w.start") // 3
+	ok(t, home, "folder", "create", "/w")                 // 2
+	ok(t, home, "block", "1", "--blocked-by", "/w.start") // 3
 	if r := ok(t, home, "update", "/w.start", "--title", "Begin"); fmt.Sprint(r.Result()) != "map[updated:[3]]" || field(t, home, "3", "title") != "Begin" {
 		t.Errorf("gate: %s", r.Line())
 	}
@@ -284,14 +293,13 @@ func TestTaskUpdateInvalid(t *testing.T) {
 		{[]string{"/", "--title", "x"}, "/refs/0"},
 		{[]string{"1", "--title", " "}, "/title"},
 		{[]string{"1", "--priority", "9007199254740992"}, "/priority"},
-		{[]string{"1", "--tags-add", "A,b,b"}, "/tags_add/0 /tags_add/2"},
+		{[]string{"1", "--tags-add", "A,b,b"}, "/tags_add/0"},
 		{[]string{"1", "--tags-replace-all", "a", "--tags-add", "b"}, ""},
 		{[]string{"1", "--tags-replace-all", "a", "--tags-remove", "b"}, ""},
 		{[]string{"1", "--extra-replace-all", "{}", "--extra-merge", "{}"}, ""},
 		{[]string{"1", "--extra-replace-all", "{}", "--extra-remove", "k"}, ""},
 		{[]string{"1", "--extra-merge", "[1]", "--extra-replace-all", "x"}, "/extra_merge /extra_replace_all"},
-		{[]string{"1", "--extra-remove", "k", "--extra-remove", "k"}, "/extra_remove/1"},
-		{[]string{"1", "--tags-add", "x", "--tags-remove", "x,x"}, "/tags_remove/1 /tags_remove/0"},
+		{[]string{"1", "--tags-add", "x", "--tags-remove", "x,x"}, "/tags_remove/0"},
 	} {
 		r := fails(t, home, "invalid-input", "", append([]string{"update"}, c.args...)...)
 		if problemFields(r) != c.fields {
@@ -432,7 +440,7 @@ func TestTaskClaim(t *testing.T) {
 	}
 	golden(t, fails(t, home, "conflict", "claimed", "claim", "@2"), "claim-claimed")
 	ok(t, home, "complete", "1")
-	golden(t, fails(t, home, "conflict", "complete", "claim", "1"), "claim-complete")
+	golden(t, fails(t, home, "conflict", "already-complete", "claim", "1"), "claim-complete")
 	fails(t, home, "not-found", "", "claim", "99")
 	if r := input(t, home, "claim", `{"tasks":[1],"extra":[]}`); r.Kind() != "invalid-input" || problemFields(r) != "/extra" {
 		t.Errorf("extra: %s", r.Line())
@@ -461,7 +469,7 @@ func TestClaimSeveral(t *testing.T) {
 	for range 5 {
 		ok(t, home, "task", "create", "t") // 1 to 5
 	}
-	ok(t, home, "block", "4", "5")
+	ok(t, home, "block", "4", "--blocked-by", "5")
 	ok(t, home, "claim", "3")
 	ok(t, home, "complete", "5")
 
@@ -471,7 +479,7 @@ func TestClaimSeveral(t *testing.T) {
 		rule, ids string
 	}{
 		{[]string{"4", "1", "3"}, "claimed", "[3]"},
-		{[]string{"4,5", "3"}, "complete", "[5]"},
+		{[]string{"4,5", "3"}, "already-complete", "[5]"},
 	} {
 		r := fails(t, home, "conflict", c.rule, append([]string{"claim"}, c.args...)...)
 		if fmt.Sprint(r.Error()["ids"]) != c.ids {

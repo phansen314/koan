@@ -8,7 +8,12 @@
       99
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "@99 was never issued"
+      }
+    ],
     "archived": []
   },
   "warnings": []

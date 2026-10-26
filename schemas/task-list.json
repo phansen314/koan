@@ -24,7 +24,6 @@
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true,
           "default": [],
           "description": "Only tasks holding at least one of these tags; empty filters nothing."
         },
@@ -33,7 +32,6 @@
           "items": {
             "$ref": "types#/$defs/tag"
           },
-          "uniqueItems": true,
           "default": [],
           "description": "Only tasks holding every one of these tags; empty filters nothing. Given with tags_any, a task must pass both."
         }
@@ -52,7 +50,6 @@
           "items": {
             "$ref": "types#/$defs/state"
           },
-          "uniqueItems": true,
           "minItems": 1,
           "default": [
             "open"
@@ -66,7 +63,6 @@
               "blocked"
             ]
           },
-          "uniqueItems": true,
           "minItems": 1,
           "default": [
             "ready",
@@ -96,7 +92,6 @@
           "items": {
             "$ref": "task#/$defs/field"
           },
-          "uniqueItems": true,
           "description": "Left out: every field."
         }
       },

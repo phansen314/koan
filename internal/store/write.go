@@ -121,7 +121,7 @@ func (s *Store) change(change Change) (any, []cli.Warning, *cli.Error) {
 		err = tx.err
 	}
 	if err != nil {
-		e := asError(err, s.Root.Database, tx.ArchivedAt)
+		e := asError(err, s.Root.Database, tx.ArchivedEntry)
 		tx.exec("ROLLBACK")
 		return nil, nil, e
 	}
@@ -280,7 +280,7 @@ func (s *Store) Read(fn func(tx *Tx) error) *cli.Error {
 		err = tx.err
 	}
 	if err != nil {
-		return asError(err, s.Root.Database, tx.ArchivedAt)
+		return asError(err, s.Root.Database, tx.ArchivedEntry)
 	}
 	return nil
 }

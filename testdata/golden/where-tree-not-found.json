@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/koan-root/tree/@work/@Notes.md"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/koan-root/tree/@work/@Notes.md is in the tree, but names nothing koan keeps there"
+      }
+    ],
     "archived": []
   },
   "warnings": []

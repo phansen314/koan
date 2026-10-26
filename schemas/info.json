@@ -11,7 +11,7 @@
       "required": [
         "root",
         "tree",
-        "archive",
+        "archived",
         "database",
         "state",
         "format",
@@ -26,8 +26,9 @@
         "tree": {
           "$ref": "types#/$defs/abs-path"
         },
-        "archive": {
-          "$ref": "types#/$defs/abs-path"
+        "archived": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "The archive's directory, archived/."
         },
         "database": {
           "$ref": "types#/$defs/abs-path"

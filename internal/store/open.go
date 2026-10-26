@@ -97,7 +97,7 @@ func (r Root) HasDatabase() (bool, *cli.Error) {
 // NotInitialized is the error for a root with something missing: the root
 // itself, or its database.
 func NotInitialized(missing string) *cli.Error {
-	e := cli.NewError(cli.KindNotInitialized, missing+" does not exist. Run koan init.")
+	e := cli.NewError(cli.KindNotInitialized, missing+" does not exist; koan init makes it")
 	e.Paths = []string{missing}
 	return e
 }
@@ -115,7 +115,7 @@ func (r Root) NoDatabase() *cli.Error {
 		return NotInitialized(r.Database)
 	}
 	e = cli.NewError(cli.KindNotInitialized, r.Database+" does not exist, and "+r.Path+" holds what isn't koan's: "+
-		strings.Join(foreign, ", ")+". Move it aside, or make ~/koan-root a symlink to an empty directory, then run koan init.")
+		strings.Join(foreign, ", ")+"; koan init refuses a root that holds them")
 	e.Paths = []string{r.Database}
 	return e
 }
@@ -124,7 +124,7 @@ func (r Root) NoDatabase() *cli.Error {
 // doesn't read.
 func UnsupportedFormat(database string, format int) *cli.Error {
 	return cli.NewError(cli.KindUnsupportedFormat,
-		fmt.Sprintf("%s is in format %d, and this koan reads only format %d.", database, format, Format))
+		fmt.Sprintf("%s is in format %d, and this koan reads only format %d", database, format, Format))
 }
 
 // pragmas are set on every open, since SQLite doesn't store them;

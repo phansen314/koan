@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "rename takes dest, not into",
+    "message": "--rename takes the destination, not --into",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "",
-        "reason": "rename takes dest, not into"
+        "reason": "--rename takes the destination, not --into"
       }
     ],
     "archived": []

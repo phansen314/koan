@@ -3,7 +3,7 @@
   "error": {
     "kind": "conflict",
     "rule": "no-ids",
-    "message": "This root has issued its last ID, @999999999999999, so nothing more can be made in it.",
+    "message": "this root has issued its last ID, @999999999999999, so nothing more can be made in it",
     "ids": [],
     "paths": [],
     "problems": [],

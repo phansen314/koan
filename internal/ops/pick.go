@@ -24,6 +24,7 @@ func Pick() *cli.Command {
 		Plain:   true,
 		Subject: &cli.Option{Field: "folder", Complete: foldersOnly.complete()},
 		Options: []cli.Option{
+			{Field: "file", Kind: cli.Path},
 			{Field: "direct", Kind: cli.Bool},
 			{Field: "state", Kind: cli.List},
 			{Field: "readiness", Kind: cli.List},
@@ -36,9 +37,8 @@ func Pick() *cli.Command {
 			{Field: "bash", Kind: cli.Bool},
 			{Field: "zsh", Kind: cli.Bool},
 		},
-		Here:   &cli.Here{Field: "file", Flag: "--here"},
-		Fields: []string{"file"},
-		Run:    runPick,
+		Here: &cli.Here{Field: "file", Flag: "--here"},
+		Run:  runPick,
 	}
 }
 
@@ -72,13 +72,13 @@ func (p *pickIn) wants(kind string) bool { return slices.Contains(p.kinds, kind)
 
 // readPick reads pick's input, and the keybinding script to print
 // instead of picking, if --bash or --zsh asked for one.
-func readPick(in cli.Input) (*pickIn, string, *cli.Error) {
-	r := input{in: in}
+func readPick(env *cli.Env, in cli.Input) (*pickIn, string, *cli.Error) {
+	r := input{in: in, env: env}
 	script := ""
 	for _, sh := range []struct{ field, script string }{{"bash", bashScript}, {"zsh", zshScript}} {
 		if r.boolean(sh.field, false) {
 			if len(in) > 1 {
-				r.fault("", "%s takes no other field", sh.field)
+				r.fault("", "%s takes no other option", r.name(sh.field))
 				break
 			}
 			script = sh.script
@@ -100,12 +100,12 @@ func readPick(in cli.Input) (*pickIn, string, *cli.Error) {
 	_, p.hasFile = r.value("file")
 	_, hasFolder := r.value("folder")
 	if p.hasFile && hasFolder {
-		r.fault("", "give at most one of the folder, --file and --here")
+		r.fault("", "%s", r.oneOf("give at most one of", "folder"))
 	}
 	if p.frontier {
 		for _, f := range []string{"state", "readiness", "claimed"} {
 			if _, ok := r.value(f); ok {
-				r.fault("", "frontier can't go with %s: the frontier is open, ready and unclaimed tasks", f)
+				r.fault("", "%s can't go with %s: the frontier is open, ready and unclaimed tasks", r.name("frontier"), r.name(f))
 				break
 			}
 		}
@@ -114,7 +114,7 @@ func readPick(in cli.Input) (*pickIn, string, *cli.Error) {
 }
 
 func runPick(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-	p, script, e := readPick(in)
+	p, script, e := readPick(env, in)
 	if e != nil {
 		return nil, nil, e
 	}

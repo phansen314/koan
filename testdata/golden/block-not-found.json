@@ -8,7 +8,12 @@
       99
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/blocked_by/0",
+        "reason": "@99 was never issued"
+      }
+    ],
     "archived": []
   },
   "warnings": []

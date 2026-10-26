@@ -37,27 +37,26 @@ var Kinds = []string{
 
 // Conflict rules, as the spec's error schema lists them.
 const (
-	RuleCaseMismatch = "case-mismatch"
-	RuleCycle        = "cycle"
-	RuleClaimed      = "claimed"
-	RuleNotFinished  = "not-finished"
-	RuleNotEmpty     = "not-empty"
-	RuleHasMaterial  = "has-material"
-	RuleGate         = "gate"
-	RuleIntoItself   = "into-itself"
-	RuleExists       = "exists"
-	RuleNotARoot     = "not-a-root"
-	RuleCheckout     = "checkout"
-	RuleForeignFiles = "foreign-files"
-	RuleComplete     = "complete"
-	RuleBound        = "bound"
-	RuleNoIDs        = "no-ids"
+	RuleCaseMismatch    = "case-mismatch"
+	RuleCycle           = "cycle"
+	RuleClaimed         = "claimed"
+	RuleNotFinished     = "not-finished"
+	RuleNotEmpty        = "not-empty"
+	RuleHasMaterial     = "has-material"
+	RuleIntoItself      = "into-itself"
+	RuleExists          = "exists"
+	RuleNotARoot        = "not-a-root"
+	RuleCheckout        = "checkout"
+	RuleForeignFiles    = "foreign-files"
+	RuleAlreadyComplete = "already-complete"
+	RuleBound           = "bound"
+	RuleNoIDs           = "no-ids"
 )
 
 // Rules is every conflict rule, in the spec's order.
 var Rules = []string{
-	RuleCaseMismatch, RuleCycle, RuleClaimed, RuleNotFinished, RuleNotEmpty, RuleHasMaterial, RuleGate,
-	RuleIntoItself, RuleExists, RuleNotARoot, RuleCheckout, RuleForeignFiles, RuleComplete, RuleBound,
+	RuleCaseMismatch, RuleCycle, RuleClaimed, RuleNotFinished, RuleNotEmpty, RuleHasMaterial,
+	RuleIntoItself, RuleExists, RuleNotARoot, RuleCheckout, RuleForeignFiles, RuleAlreadyComplete, RuleBound,
 	RuleNoIDs,
 }
 
@@ -84,10 +83,12 @@ type Problem struct {
 	Reason string `json:"reason"`
 }
 
-// Archived says where an archived ID went.
+// Archived says where an archived ID went: its notes, which needn't
+// exist, and a folder's directory, null for a task.
 type Archived struct {
-	ID      int64  `json:"id"`
-	Archive string `json:"archive"`
+	ID        int64   `json:"id"`
+	NotesPath string  `json:"notes_path"`
+	Dir       *string `json:"dir"`
 }
 
 // Error is the one error a failure carries. Rule is set only for a

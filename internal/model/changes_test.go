@@ -103,7 +103,6 @@ func TestCreateTask(t *testing.T) {
 		{TaskInput{Title: ""}, core.KindInvalidInput, []string{"/title"}},
 		{TaskInput{Title: "a\nb"}, core.KindInvalidInput, []string{"/title"}},
 		{TaskInput{Title: "t", Tags: []string{"Bad"}}, core.KindInvalidInput, []string{"/tags/0"}},
-		{TaskInput{Title: "t", Tags: []string{"a", "a"}}, core.KindInvalidInput, []string{"/tags/1"}},
 		{TaskInput{Title: "t", Priority: ptr(core.MaxInt + 1)}, core.KindInvalidInput, []string{"/priority"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"$a"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
 		{TaskInput{Title: "t", BlockedBy: []string{"/"}}, core.KindInvalidInput, []string{"/blocked_by/0"}},
@@ -206,8 +205,9 @@ func TestBlockUnblock(t *testing.T) {
 
 	// Unblock never makes a gate.
 	must[[]FolderAt](t)(tr.CreateFolder("/f", nil, nil))
-	_, err = tr.Unblock("1", []string{"/f"}, nil)
-	wantErr(t, err, core.KindNotFound, "")
+	if r := must[EdgeResult](t)(tr.Unblock("1", []string{"/f"}, nil)); r.Changed {
+		t.Errorf("unblock of an unmade gate changed something: %+v", r)
+	}
 	if _, ok := tr.Gate(4, core.EndDone); ok {
 		t.Error("unblock made a gate")
 	}
@@ -228,7 +228,7 @@ func TestCompleteReopen(t *testing.T) {
 	must[[]int64](t)(tr.ClaimTask([]string{"2"}, nil)) // a blocked task can be claimed
 
 	r := must[CompleteResult](t)(tr.Complete("1"))
-	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
+	if !reflect.DeepEqual(r.Changed, []int64{1}) || !reflect.DeepEqual(r.Unclaimed, []int64{1}) || !reflect.DeepEqual(r.Released, []int64{2}) || tr.claimed(1) {
 		t.Errorf("complete: %+v", r)
 	}
 	if r := must[CompleteResult](t)(tr.Complete("1")); len(r.Changed) != 0 {
@@ -387,7 +387,7 @@ func TestMoveTask(t *testing.T) {
 		t.Error("a move changed edges or readiness")
 	}
 	_, err = tr.Move(MvInto, "/b", "@1.done")
-	if e := wantErr(t, err, core.KindConflict, core.RuleGate); !reflect.DeepEqual(e.IDs, []int64{4}) {
+	if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.IDs, []int64{4}) {
 		t.Errorf("ids %v", e.IDs)
 	}
 	if out, _ := tr.Move(MvInto, "@2", "3"); len(out.Moved) != 0 {
@@ -404,7 +404,7 @@ func TestMoveTask(t *testing.T) {
 	}
 	// One refused, none moves.
 	_, err = tr.Move(MvInto, "/b", "5", "/a.done")
-	wantErr(t, err, core.KindConflict, core.RuleGate)
+	wantErr(t, err, core.KindInvalidInput, "")
 	_, err = tr.Move(MvInto, "/b", "5", "99")
 	wantErr(t, err, core.KindNotFound, "")
 	if tr.Tasks[5].Folder != 1 {
@@ -549,7 +549,7 @@ func TestDeleteTask(t *testing.T) {
 	r := must[Removed](t)(tr.Delete([]string{"2"}, nil, nil))
 	// @3 lost its last open blocker; @4 still waits on @1. No splice: @3
 	// doesn't come to wait on @1.
-	if !reflect.DeepEqual(r, Removed{Removed: []int64{2}, Released: []int64{3}}) {
+	if !reflect.DeepEqual(r, Removed{Deleted: []int64{2}, Removed: []int64{2}, Unclaimed: []int64{2}, Released: []int64{3}}) {
 		t.Errorf("delete: %+v", r)
 	}
 	if len(tr.BlockedBy(3)) != 0 || tr.claimed(2) || tr.Tasks[3].UpdatedAt == stamp {
@@ -578,7 +578,7 @@ func TestDeleteFolder(t *testing.T) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
 	r := must[Removed](t)(tr.Delete([]string{"/f"}, ptr(true), ptr(true)))
-	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2, 3, 4}, Released: []int64{5}}) {
+	if !reflect.DeepEqual(r, Removed{Deleted: []int64{1}, Removed: []int64{1, 2, 3, 4}, Unclaimed: []int64{}, Released: []int64{5}}) {
 		t.Errorf("delete: %+v", r)
 	}
 	// A folder holding only its gates is empty.
@@ -605,7 +605,7 @@ func TestDeleteSeveral(t *testing.T) {
 	_, err = tr.Delete([]string{"1", "99"}, nil, nil)
 	wantErr(t, err, core.KindNotFound, "")
 	r := must[Removed](t)(tr.Delete([]string{"2", "1"}, nil, nil))
-	if !reflect.DeepEqual(r, Removed{Removed: []int64{1, 2}, Released: []int64{3}}) {
+	if !reflect.DeepEqual(r, Removed{Deleted: []int64{2, 1}, Removed: []int64{1, 2}, Unclaimed: []int64{}, Released: []int64{3}}) {
 		t.Errorf("tasks: %+v", r)
 	}
 
@@ -631,7 +631,7 @@ func TestDeleteSeveral(t *testing.T) {
 		t.Errorf("has-material paths %v", e.Paths)
 	}
 	r = must[Removed](t)(tr.Delete([]string{"/g", "/f"}, ptr(true), ptr(true)))
-	if !reflect.DeepEqual(r.Removed, []int64{4, 5, 6, 7}) || len(r.Released) != 0 {
+	if !reflect.DeepEqual(r.Deleted, []int64{6, 4}) || !reflect.DeepEqual(r.Removed, []int64{4, 5, 6, 7}) || len(r.Released) != 0 {
 		t.Errorf("folders: %+v", r)
 	}
 	checked(t, tr)
@@ -774,7 +774,7 @@ func TestClaims(t *testing.T) {
 	}
 	must[CompleteResult](t)(tr.Complete("4"))
 	_, err = tr.ClaimTask([]string{"4"}, nil)
-	wantErr(t, err, core.KindConflict, core.RuleComplete)
+	wantErr(t, err, core.KindConflict, core.RuleAlreadyComplete)
 	checked(t, tr)
 }
 
@@ -847,7 +847,7 @@ func TestMoveGateToItsFolder(t *testing.T) {
 	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil))
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Blocks: []string{"/a"}}))
 	_, err := tr.Move(MvInto, "/a", "/a.done")
-	wantErr(t, err, core.KindConflict, core.RuleGate)
+	wantErr(t, err, core.KindInvalidInput, "")
 }
 
 // mv checks into-itself, then case-mismatch, then exists. A path
@@ -890,4 +890,44 @@ func TestDeleteFolderDSStore(t *testing.T) {
 	tr.PutMaterial(1, ".DS_Store")
 	must[Removed](t)(tr.Delete([]string{"/f"}, ptr(true), ptr(false)))
 	checked(t, tr)
+}
+
+// A reference that names nothing points at its field, a wrong-kind one
+// names its ID, and a taken path names the folder that has it and the field
+// that gives it, outside a batch as inside one. A tag given twice counts once.
+func TestErrorFields(t *testing.T) {
+	tr := newTree()
+	must[[]FolderAt](t)(tr.CreateFolder("/a", nil, nil)) // 1
+	must[[]FolderAt](t)(tr.CreateFolder("/b", nil, nil)) // 2
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t"}))
+
+	_, err := tr.CreateTask(TaskInput{Title: "u", Folder: "/nope"})
+	if e := wantErr(t, err, core.KindNotFound, ""); !reflect.DeepEqual(e.Problems, []string{"/folder"}) {
+		t.Errorf("not-found problems %v", e.Problems)
+	}
+	_, err = tr.Move(MvRename, "/nope/x", "/a")
+	if e := wantErr(t, err, core.KindNotFound, ""); !reflect.DeepEqual(e.Problems, []string{"/dest"}) {
+		t.Errorf("rename not-found problems %v", e.Problems)
+	}
+	_, err = tr.CreateFolder("/a", nil, nil)
+	e := wantErr(t, err, core.KindConflict, core.RuleExists)
+	if !reflect.DeepEqual(e.Problems, []string{"/path"}) || !reflect.DeepEqual(e.IDs, []int64{1}) {
+		t.Errorf("exists problems %v ids %v", e.Problems, e.IDs)
+	}
+	_, err = tr.Move(MvRename, "/a", "/b")
+	e = wantErr(t, err, core.KindConflict, core.RuleExists)
+	if !reflect.DeepEqual(e.Problems, []string{"/dest"}) || !reflect.DeepEqual(e.IDs, []int64{1}) {
+		t.Errorf("rename exists problems %v ids %v", e.Problems, e.IDs)
+	}
+	_, err = tr.CreateTask(TaskInput{Title: "u", Folder: "3"})
+	e = wantErr(t, err, core.KindInvalidInput, "")
+	if !reflect.DeepEqual(e.Problems, []string{"/folder"}) || !reflect.DeepEqual(e.IDs, []int64{3}) {
+		t.Errorf("wrong kind problems %v ids %v", e.Problems, e.IDs)
+	}
+	_, err = tr.Update([]string{"1", "2", "3"}, Update{SetPriority: true, Priority: ptr(int64(1))})
+	e = wantErr(t, err, core.KindInvalidInput, "")
+	if !reflect.DeepEqual(e.IDs, []int64{1, 2}) {
+		t.Errorf("priority on folders: ids %v", e.IDs)
+	}
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "dup", Tags: []string{"a", "a"}}))
 }

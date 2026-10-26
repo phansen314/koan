@@ -13,8 +13,10 @@ import (
 
 // DeleteResult is delete's result, in its schema's order.
 type DeleteResult struct {
-	Removed  []int64 `json:"removed"`
-	Released []int64 `json:"released"`
+	Deleted   []int64 `json:"deleted"`
+	Removed   []int64 `json:"removed"`
+	Unclaimed []int64 `json:"unclaimed"`
+	Released  []int64 `json:"released"`
 }
 
 // Delete removes tasks and folders, mixed, as one change: a task with its
@@ -26,13 +28,13 @@ type DeleteResult struct {
 func Delete() *cli.Command {
 	return &cli.Command{
 		Name:    "delete",
-		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Required: true, Complete: anyRef.complete()},
+		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Holds: "the tasks and folders to delete", Required: true, Complete: anyRef.complete()},
 		Options: []cli.Option{
 			{Field: "contents", Kind: cli.Bool},
 			{Field: "material", Kind: cli.Bool},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.subjectRefs("deleted")
 			r.sameCase(refs, at)
 			contents := r.boolean("contents", false)
@@ -55,7 +57,7 @@ func Delete() *cli.Command {
 				}
 				// Options only a folder takes.
 				if _, ok := firstOf(subs, true); !ok {
-					k := input{}
+					k := input{env: env}
 					// Given only when it does something: false is
 					// what leaving it out does.
 					for _, o := range []struct {
@@ -63,7 +65,7 @@ func Delete() *cli.Command {
 						set   bool
 					}{{"contents", contents}, {"material", material}} {
 						if o.set {
-							k.fault(cli.Pointer(o.field), "%s is for folders, and no folder is given", o.field)
+							k.faultIDs(cli.Pointer(o.field), idsOf(subs, false), "%s is for folders, and no folder is given", env.Name(o.field))
 						}
 					}
 					if e := k.err(); e != nil {
@@ -106,9 +108,9 @@ func Delete() *cli.Command {
 					if len(all) > 0 {
 						slices.Sort(all)
 						all = slices.Compact(all)
-						msg := fmt.Sprintf("%s held by the folders given; give contents to delete them with it", core.FormatIDs(all))
+						msg := fmt.Sprintf("%s %s held by the folders given; %s would delete %s too", core.FormatIDs(all), isAre(len(all)), env.Name("contents"), themOrIt(len(all)))
 						if len(ids) == 1 {
-							msg = fmt.Sprintf("@%d holds %s; give contents to delete them with it", ids[0], core.FormatIDs(all))
+							msg = fmt.Sprintf("@%d holds %s; %s would delete %s too", ids[0], core.FormatIDs(all), env.Name("contents"), themOrIt(len(all)))
 						}
 						return nil, nil, core.Conflict(core.RuleNotEmpty, all, nil, "%s", msg)
 					}
@@ -166,13 +168,24 @@ func Delete() *cli.Command {
 					steps = append(steps, fsstep.Step{Op: fsstep.OpRemove, From: fsstep.FolderDir(t.paths[id]), Dir: true, Force: material, Owns: owns})
 				}
 				if len(found) > 0 {
-					hold, with := "holds", "the folder"
+					hold, with := "holds", "it"
 					if len(holders) > 1 {
-						hold, with = "hold", "them"
+						hold, with = "hold", "it"
 					}
 					return nil, nil, core.Conflict(core.RuleHasMaterial, nil, found,
-						"%s %s material; give material to delete it with %s", core.FormatIDs(holders), hold, with)
+						"%s %s material; %s would delete %s too", core.FormatIDs(holders), hold, env.Name("material"), with)
 				}
+				unclaimed := []int64{}
+				for _, id := range tasks {
+					claimed, err := tx.Claimed(id)
+					if err != nil {
+						return nil, nil, err
+					}
+					if claimed {
+						unclaimed = append(unclaimed, id)
+					}
+				}
+				slices.Sort(unclaimed)
 				released, err := tx.RemoveTasks(tasks, nil)
 				if err != nil {
 					return nil, nil, err
@@ -190,7 +203,11 @@ func Delete() *cli.Command {
 				}
 				removed := slices.Concat(tasks, fs)
 				slices.Sort(removed)
-				return DeleteResult{Removed: removed, Released: nonNil(released)}, nil, nil
+				deleted := []int64{}
+				for _, sub := range subs {
+					deleted = append(deleted, sub.id)
+				}
+				return DeleteResult{Deleted: deleted, Removed: removed, Unclaimed: unclaimed, Released: nonNil(released)}, nil, nil
 			})
 		},
 	}

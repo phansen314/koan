@@ -4,11 +4,18 @@
     "kind": "conflict",
     "rule": "exists",
     "message": "/work is taken by @1",
-    "ids": [],
+    "ids": [
+      1
+    ],
     "paths": [
       "/work"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/path",
+        "reason": "/work is taken by @1"
+      }
+    ],
     "archived": []
   },
   "warnings": []

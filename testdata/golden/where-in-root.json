@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/koan-root/koan.db"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/koan-root/koan.db is in $HOME/koan-root but not in its tree, and names nothing koan keeps"
+      }
+    ],
     "archived": []
   },
   "warnings": []

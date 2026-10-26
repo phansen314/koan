@@ -19,11 +19,16 @@
       "type": "object",
       "required": [
         "dir",
+        "marker",
         "changed"
       ],
       "properties": {
         "dir": {
           "$ref": "types#/$defs/abs-path"
+        },
+        "marker": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "The marker.json, removed or not there."
         },
         "changed": {
           "type": "boolean",

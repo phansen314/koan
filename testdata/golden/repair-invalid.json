@@ -3,17 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "\"stray-entry\" is not one of [pending-step stuck-step stray-directory missing-directory case-differs misplaced-notes orphan-notes]",
+    "message": "\"stray-entry\" is not one of pending-step, stuck-step, stray-directory, missing-directory, case-differs, misplaced-notes, orphan-notes",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "/kinds/0",
-        "reason": "\"stray-entry\" is not one of [pending-step stuck-step stray-directory missing-directory case-differs misplaced-notes orphan-notes]"
-      },
-      {
-        "field": "/kinds/2",
-        "reason": "\"orphan-notes\" given twice"
+        "reason": "\"stray-entry\" is not one of pending-step, stuck-step, stray-directory, missing-directory, case-differs, misplaced-notes, orphan-notes"
       }
     ],
     "archived": []

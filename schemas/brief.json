@@ -7,6 +7,8 @@
     "ancestors",
     "notes",
     "tasks",
+    "total",
+    "truncated",
     "marker"
   ],
   "properties": {
@@ -32,7 +34,16 @@
       "items": {
         "$ref": "task"
       },
-      "description": "Its own open tasks, gates included, in tree order."
+      "description": "Its own open tasks, gates included, in tree order: the first limit of them."
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many open tasks it has."
+    },
+    "truncated": {
+      "type": "boolean",
+      "description": "Whether tasks holds fewer than total."
     },
     "marker": {
       "anyOf": [

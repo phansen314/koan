@@ -378,14 +378,14 @@ func TestUnknownFields(t *testing.T) {
 	if e == nil || e.Kind != KindInvalidInput {
 		t.Fatalf("got %+v, want invalid-input", e)
 	}
-	want := []Problem{{"/a~1b", "unknown field"}, {"/b", "unknown field"}}
+	want := []Problem{{"/a~1b", "unknown field a/b"}, {"/b", "unknown field b"}}
 	if !reflect.DeepEqual(e.Problems, want) {
 		t.Errorf("problems %+v, want %+v", e.Problems, want)
 	}
 	// An old field name in the subject's place: both faults are found.
 	e = fake.unknownFields(Input{"task": 1})
-	want = []Problem{{"/task", "unknown field"}, {"/title", "title is required"}}
-	if e == nil || !reflect.DeepEqual(e.Problems, want) || e.Message != "thing make takes no field task" {
+	want = []Problem{{"/task", "unknown field task"}, {"/title", "title is required"}}
+	if e == nil || !reflect.DeepEqual(e.Problems, want) || e.Message != "unknown field task" {
 		t.Errorf("got %+v, want problems %+v", e, want)
 	}
 }

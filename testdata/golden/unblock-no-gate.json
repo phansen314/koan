@@ -1,15 +1,9 @@
 {
-  "ok": false,
-  "error": {
-    "kind": "not-found",
-    "rule": null,
-    "message": "@1 (/w) has no done gate",
-    "ids": [],
-    "paths": [
-      "/w.done"
-    ],
-    "problems": [],
-    "archived": []
+  "ok": true,
+  "result": {
+    "id": 2,
+    "changed": false,
+    "released": []
   },
   "warnings": []
 }

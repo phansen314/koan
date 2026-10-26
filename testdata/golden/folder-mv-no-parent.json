@@ -8,7 +8,12 @@
     "paths": [
       "/stray"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/dest",
+        "reason": "no folder at /stray"
+      }
+    ],
     "archived": []
   },
   "warnings": []

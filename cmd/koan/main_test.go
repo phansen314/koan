@@ -383,15 +383,15 @@ func TestInitNotARoot(t *testing.T) {
 	os.Mkdir(root, 0o755)
 	os.WriteFile(filepath.Join(root, "todo.md"), nil, 0o644)
 	os.Mkdir(filepath.Join(root, "Tree"), 0o755)
-	// Until then, not-initialized says to move it aside, not just to run
-	// init, which would refuse it.
+	// Until then, not-initialized says init would refuse it, not just
+	// that init makes the root.
 	r := testrun.Run{Home: home}.Koan(t, "info")
 	r.Check(t, "info")
-	if e, _ := r.Result()["error"].(map[string]any); e["kind"] != "not-initialized" || !strings.Contains(e["message"].(string), "Move it aside") {
+	if e, _ := r.Result()["error"].(map[string]any); e["kind"] != "not-initialized" || !strings.Contains(e["message"].(string), "koan init refuses a root that holds them") {
 		t.Errorf("info: %s", r.Line())
 	}
 	r = testrun.Run{Home: home}.Koan(t, "task", "list")
-	if msg, _ := r.Error()["message"].(string); r.Kind() != "not-initialized" || !strings.Contains(msg, "Move it aside") {
+	if msg, _ := r.Error()["message"].(string); r.Kind() != "not-initialized" || !strings.Contains(msg, "koan init refuses a root that holds them") {
 		t.Errorf("task list: %s", r.Line())
 	}
 	r = testrun.Run{Home: home}.Koan(t, "init")
@@ -511,7 +511,7 @@ func TestInitRace(t *testing.T) {
 			made[c.(string)]++
 		}
 	}
-	for _, c := range []string{"root", "tree", "archive", "database"} {
+	for _, c := range []string{"root", "tree", "archived", "database"} {
 		if made[c] != 1 {
 			t.Errorf("%s made %d times", c, made[c])
 		}
@@ -529,7 +529,7 @@ func TestIDsRunOut(t *testing.T) {
 	r := fails(t, home, "conflict", "no-ids", "task", "create", "one more")
 	golden(t, r, "no-ids")
 	fails(t, home, "conflict", "no-ids", "folder", "create", "/web")
-	fails(t, home, "conflict", "no-ids", "block", "999999999999999", "/work.start")
+	fails(t, home, "conflict", "no-ids", "block", "999999999999999", "--blocked-by", "/work.start")
 	if r := batch(t, home, `{"tasks":[{"title":"t"}]}`); r.Kind() != "conflict" || r.Error()["rule"] != "no-ids" {
 		t.Errorf("batch: %s", r.Line())
 	}

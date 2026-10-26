@@ -3,12 +3,17 @@
   "error": {
     "kind": "conflict",
     "rule": "exists",
-    "message": "$HOME/full is taken: a backup goes into an empty or new directory.",
+    "message": "$HOME/full is taken: a backup goes into an empty or new directory",
     "ids": [],
     "paths": [
       "$HOME/full"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/dir",
+        "reason": "$HOME/full is taken: a backup goes into an empty or new directory"
+      }
+    ],
     "archived": []
   },
   "warnings": []

@@ -8,7 +8,7 @@ import (
 )
 
 // delete removes a task, its notes, its claim and every edge to and
-// from it. What it was the last open blocker of is released, and every
+// from it; deleted lists it, and unclaimed the claim it ended. What it was the last open blocker of is released, and every
 // task that lost an edge to it gets a new updated_at. It never splices.
 // Its ID is never issued again.
 func TestTaskDelete(t *testing.T) {
@@ -17,13 +17,13 @@ func TestTaskDelete(t *testing.T) {
 		ok(t, home, "task", "create", "t") // 1 to 4
 	}
 	// 2 waits on 1; 3 on 2; 4 on 2 and 1.
-	ok(t, home, "block", "2", "1", "--blocks", "3,4")
-	ok(t, home, "block", "4", "1")
+	ok(t, home, "block", "2", "--blocked-by", "1", "--blocks", "3,4")
+	ok(t, home, "block", "4", "--blocked-by", "1")
 	ok(t, home, "claim", "2")
 	db(t, home, "UPDATE task SET updated_at = '"+fixed+"'")
 	r := ok(t, home, "delete", "2")
 	golden(t, r, "task-delete")
-	if fmt.Sprint(r.Result()) != "map[released:[3] removed:[2]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[2] released:[3] removed:[2] unclaimed:[2]]" {
 		t.Errorf("delete: %s", r.Line())
 	}
 	checkTree(t, home, "@1.md=", "@3.md=", "@4.md=")
@@ -47,7 +47,7 @@ func TestTaskDelete(t *testing.T) {
 	// A task with nothing waiting releases nothing; notes already gone
 	// are no failure.
 	os.Remove(treePath(home, "@5.md"))
-	if r := ok(t, home, "delete", "@5"); fmt.Sprint(r.Result()) != "map[released:[] removed:[5]]" {
+	if r := ok(t, home, "delete", "@5"); fmt.Sprint(r.Result()) != "map[deleted:[5] released:[] removed:[5] unclaimed:[]]" {
 		t.Errorf("alone: %s", r.Line())
 	}
 	golden(t, fails(t, home, "not-found", "", "delete", "2"), "task-delete-not-found")
@@ -64,7 +64,7 @@ func TestTaskDeleteGate(t *testing.T) {
 	ok(t, home, "task", "create", "t", "--blocked-by", "/w.start") // 2, 3
 	writeTree(t, home, "@w/@start.md", "gate notes")
 	r := ok(t, home, "delete", "/w.start")
-	if fmt.Sprint(r.Result()) != "map[released:[2] removed:[3]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[3] released:[2] removed:[3] unclaimed:[]]" {
 		t.Errorf("gate: %s", r.Line())
 	}
 	checkTree(t, home, "@w/", "@w/@notes.md=", "@2.md=")
@@ -84,7 +84,7 @@ func TestFolderDelete(t *testing.T) {
 	ok(t, home, "task", "create", "t", "--folder", "/w/a", "--notes", "notes") // 3
 	ok(t, home, "task", "create", "u", "--blocked-by", "/w.done,3")            // 4, 5
 	ok(t, home, "task", "create", "v", "--blocked-by", "5")                    // 6
-	ok(t, home, "block", "5", "3")
+	ok(t, home, "block", "5", "--blocked-by", "3")
 	ok(t, home, "claim", "3")
 	ok(t, home, "folder", "create", "/k") // 7
 	writeTree(t, home, "@w/.DS_Store", "finder")
@@ -94,7 +94,7 @@ func TestFolderDelete(t *testing.T) {
 	golden(t, fails(t, home, "conflict", "not-empty", "delete", "/w"), "folder-delete-not-empty")
 	r := ok(t, home, "delete", "/w", "--contents")
 	golden(t, r, "folder-delete")
-	if fmt.Sprint(r.Result()) != "map[released:[4 6] removed:[1 2 3 5]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[1] released:[4 6] removed:[1 2 3 5] unclaimed:[3]]" {
 		t.Errorf("delete: %s", r.Line())
 	}
 	checkTree(t, home, "@4.md=", "@6.md=", "@k/", "@k/@notes.md=")
@@ -111,9 +111,9 @@ func TestFolderDelete(t *testing.T) {
 		t.Errorf("folders left: %s", r.Line())
 	}
 	// A folder holding only its gates is empty.
-	ok(t, home, "block", "4", "/k.start,/k.done") // 8, 9
+	ok(t, home, "block", "4", "--blocked-by", "/k.start,/k.done") // 8, 9
 	r = ok(t, home, "delete", "/k")
-	if fmt.Sprint(r.Result()) != "map[released:[4] removed:[7 8 9]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[7] released:[4] removed:[7 8 9] unclaimed:[]]" {
 		t.Errorf("gates only: %s", r.Line())
 	}
 	checkTree(t, home, "@4.md=", "@6.md=")
@@ -162,7 +162,7 @@ func TestFolderDeleteMaterial(t *testing.T) {
 	ok(t, home, "folder", "create", "/w/a")                                   // 3
 	ok(t, home, "task", "create", "t", "--folder", "/w/a", "--notes", "mine") // 4
 	ok(t, home, "task", "create", "u")                                        // 5
-	ok(t, home, "block", "5", "/w/a.done")                                    // 6
+	ok(t, home, "block", "5", "--blocked-by", "/w/a.done")                    // 6
 	for rel, content := range map[string]string{
 		"@w/docs/x.md":        "x",
 		"@w/.DS_Store":        "finder",
@@ -185,15 +185,15 @@ func TestFolderDeleteMaterial(t *testing.T) {
 		t.Errorf("material: %s", r.Line())
 	}
 	r = ok(t, home, "delete", "/w", "--contents", "--material")
-	if fmt.Sprint(r.Result()) != "map[released:[5] removed:[1 2 3 4 6]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[1] released:[5] removed:[1 2 3 4 6] unclaimed:[]]" {
 		t.Errorf("forced: %s", r.Line())
 	}
 	checkTree(t, home, "@5.md=")
 	// With only what isn't material, --material isn't needed, and what isn't
 	// material goes with it: a gate's notes, and a @start.md or @done.md
 	// with no gate that is empty.
-	ok(t, home, "folder", "create", "/v") // 7
-	ok(t, home, "block", "5", "/v.start") // 8
+	ok(t, home, "folder", "create", "/v")                 // 7
+	ok(t, home, "block", "5", "--blocked-by", "/v.start") // 8
 	writeTree(t, home, "@v/.DS_Store", "finder")
 	writeTree(t, home, "@v/@hollow/@y.md", "")
 	writeTree(t, home, "@v/@start.md", "its gate's")
@@ -218,7 +218,7 @@ func TestFolderDeleteStuck(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
 	r := warned(t, home, []string{"pending-step"}, "delete", "/w")
 	golden(t, r, "folder-delete-pending-step")
-	if fmt.Sprint(r.Result()) != "map[released:[] removed:[1]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[1] released:[] removed:[1] unclaimed:[]]" {
 		t.Errorf("delete: %s", r.Line())
 	}
 	os.Chmod(dir, 0o755)
@@ -246,8 +246,8 @@ func TestTaskDeleteSeveral(t *testing.T) {
 		ok(t, home, "task", "create", "t") // 1 to 5
 	}
 	// 2 waits on 1; 3 on 2; 5 on 4.
-	ok(t, home, "block", "2", "1", "--blocks", "3")
-	ok(t, home, "block", "5", "4")
+	ok(t, home, "block", "2", "--blocked-by", "1", "--blocks", "3")
+	ok(t, home, "block", "5", "--blocked-by", "4")
 
 	// A bad entry mid-list removes nothing.
 	fails(t, home, "not-found", "", "delete", "4", "99", "1")
@@ -263,9 +263,11 @@ func TestTaskDeleteSeveral(t *testing.T) {
 		t.Errorf("none: %s", r.Line())
 	}
 	// 2 is deleted with 1, so only 3 and 5 are released.
+	// unclaimed lists the claims it ended, ascending.
+	ok(t, home, "claim", "4,2")
 	r := ok(t, home, "delete", "2,1", "4")
 	golden(t, r, "task-delete-several")
-	if fmt.Sprint(r.Result()) != "map[released:[3 5] removed:[1 2 4]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[2 1 4] released:[3 5] removed:[1 2 4] unclaimed:[2 4]]" {
 		t.Errorf("several: %s", r.Line())
 	}
 	checkTree(t, home, "@3.md=", "@5.md=")
@@ -273,7 +275,7 @@ func TestTaskDeleteSeveral(t *testing.T) {
 		fails(t, home, "not-found", "", "show", id)
 	}
 	// Through --input.
-	if r := input(t, home, "delete", `{"refs":[3,"@5"]}`); !r.OK() || fmt.Sprint(r.Result()) != "map[released:[] removed:[3 5]]" {
+	if r := input(t, home, "delete", `{"refs":[3,"@5"]}`); !r.OK() || fmt.Sprint(r.Result()) != "map[deleted:[3 5] released:[] removed:[3 5] unclaimed:[]]" {
 		t.Errorf("input: %s", r.Line())
 	}
 	checkTree(t, home)
@@ -343,7 +345,7 @@ func TestFolderDeleteSeveral(t *testing.T) {
 	// 4, deleted in /b.
 	r = ok(t, home, "delete", "/c,/a", "/b", "--contents", "--material")
 	golden(t, r, "folder-delete-several")
-	if fmt.Sprint(r.Result()) != "map[released:[5 8] removed:[1 2 3 4 6 7]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[7 1 3] released:[5 8] removed:[1 2 3 4 6 7] unclaimed:[]]" {
 		t.Errorf("several: %s", r.Line())
 	}
 	checkTree(t, home, "@5.md=", "@8.md=")
@@ -357,7 +359,7 @@ func TestFolderDeleteSeveral(t *testing.T) {
 	writeTree(t, home, "@e/notes.txt", "kept by hand")
 	r = input(t, home, "delete", `{"refs":["/d",10],"material":true}`)
 	golden(t, r, "folder-delete-input")
-	if !r.OK() || fmt.Sprint(r.Result()) != "map[released:[] removed:[9 10]]" {
+	if !r.OK() || fmt.Sprint(r.Result()) != "map[deleted:[9 10] released:[] removed:[9 10] unclaimed:[]]" {
 		t.Errorf("input: %s", r.Line())
 	}
 	checkTree(t, home, "@5.md=", "@8.md=")
@@ -379,11 +381,11 @@ func TestDeleteSeveralPending(t *testing.T) {
 	os.Chmod(dir, 0o555)
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
 	r := warned(t, home, []string{"pending-step"}, "delete", "/w", "/k")
-	if fmt.Sprint(r.Result()) != "map[released:[] removed:[1 2]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[1 2] released:[] removed:[1 2] unclaimed:[]]" {
 		t.Errorf("folder delete: %s", r.Line())
 	}
 	r = warned(t, home, []string{"pending-step"}, "delete", "3", "4")
-	if fmt.Sprint(r.Result()) != "map[released:[] removed:[3 4]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[3 4] released:[] removed:[3 4] unclaimed:[]]" {
 		t.Errorf("task delete: %s", r.Line())
 	}
 	// @w's notes went before its rmdir was refused; the rest of the change
@@ -437,7 +439,7 @@ func TestDeleteMixed(t *testing.T) {
 	// 4 goes with the tasks of /w; 5 waited only on 4.
 	r = ok(t, home, "delete", "4", "/w", "--contents")
 	golden(t, r, "delete-mixed")
-	if fmt.Sprint(r.Result()) != "map[released:[5] removed:[1 2 3 4]]" {
+	if fmt.Sprint(r.Result()) != "map[deleted:[4 1] released:[5] removed:[1 2 3 4] unclaimed:[]]" {
 		t.Errorf("mixed: %s", r.Line())
 	}
 	checkTree(t, home, "@5.md=", "@k/", "@k/@notes.md=", "@k/@7.md=", "@k/docs/", "@k/docs/x.md=x")

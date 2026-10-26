@@ -1,15 +1,19 @@
 {
   "ok": true,
   "result": {
+    "deleted": [
+      1
+    ],
     "removed": [
       1
     ],
+    "unclaimed": [],
     "released": []
   },
   "warnings": [
     {
       "kind": "pending-step",
-      "message": "1 filesystem step is pending with no write carrying it out. The next write, or koan repair, finishes it.",
+      "message": "1 filesystem step is pending with no write carrying it out; the next write, or koan repair, finishes it",
       "ids": [],
       "paths": [
         "$HOME/koan-root/tree/@w"

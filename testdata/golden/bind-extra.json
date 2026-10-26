@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "a word past the object: bind takes one dir",
+    "message": "unexpected word $HOME/wt/sub: bind takes one word for the directory",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "$HOME/wt/sub",
-        "reason": "a word past the object: bind takes one dir"
+        "reason": "unexpected word $HOME/wt/sub: bind takes one word for the directory"
       }
     ],
     "archived": []

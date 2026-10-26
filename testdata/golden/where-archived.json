@@ -8,11 +8,17 @@
       6
     ],
     "paths": [],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/ref",
+        "reason": "@6 was archived, to $HOME/koan-root/archived/@6.md"
+      }
+    ],
     "archived": [
       {
         "id": 6,
-        "archive": "$HOME/koan-root/archived/@6.md"
+        "notes_path": "$HOME/koan-root/archived/@6.md",
+        "dir": null
       }
     ]
   },

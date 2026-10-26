@@ -1,6 +1,9 @@
 package ops
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Every command, option and convenience has its line in help, and every
 // entry of the tables is used.
@@ -43,6 +46,37 @@ func TestDescribed(t *testing.T) {
 	for key := range usages {
 		if !used[key] {
 			t.Errorf("usages: %s is never used", key)
+		}
+	}
+}
+
+// --here has one wording everywhere, a folder's material is "material",
+// unclaim ends claims whoever holds them, batch's usage shows -i, and a
+// folder, --file and --here that exclude each other show so.
+func TestHelpWording(t *testing.T) {
+	for _, c := range Commands() {
+		if h := c.Here; h != nil && h.Flag != "" && h.Usage != "the folder the working directory is in" {
+			t.Errorf("%s %s: %q", c.Name, h.Flag, h.Usage)
+		}
+		for _, o := range c.Options {
+			if strings.Contains(o.Usage, "of yours") {
+				t.Errorf("%s --%s: %q", c.Name, o.Field, o.Usage)
+			}
+		}
+		exclusive := c.Here != nil && c.Here.Flag != "" && c.Name != "where"
+		shown := len(c.Uses) > 0 && c.Uses[0] == exclusiveFolder
+		if exclusive != shown {
+			t.Errorf("%s: usage lines %q", c.Name, c.Uses)
+		}
+		switch c.Name {
+		case "unclaim":
+			if !strings.Contains(c.Short, "whoever holds them") {
+				t.Errorf("unclaim: %q", c.Short)
+			}
+		case "batch":
+			if len(c.Uses) != 1 || !strings.HasPrefix(c.Uses[0], "-i ") {
+				t.Errorf("batch: %q", c.Uses)
+			}
 		}
 	}
 }

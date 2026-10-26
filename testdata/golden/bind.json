@@ -1,7 +1,9 @@
 {
   "ok": true,
   "result": {
+    "dir": "$HOME/wt",
     "marker": "$HOME/wt/.koan/marker.json",
+    "changed": true,
     "binding": {
       "schema": 1,
       "id": 2,

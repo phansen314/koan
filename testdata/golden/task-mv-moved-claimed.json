@@ -13,7 +13,7 @@
   "warnings": [
     {
       "kind": "moved-claimed",
-      "message": "@2 is claimed, and its notes moved; whoever holds it should read them at the new path.",
+      "message": "@2 is claimed, and its notes moved to the new path",
       "ids": [
         2
       ],

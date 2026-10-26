@@ -8,7 +8,12 @@
     "paths": [
       "$HOME/code/bad/.koan/marker.json"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/code/bad/.koan/marker.json binds nothing: it is in schema 2, which this koan doesn't read"
+      }
+    ],
     "archived": []
   },
   "warnings": []

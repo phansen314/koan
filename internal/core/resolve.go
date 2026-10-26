@@ -47,9 +47,10 @@ type Archive interface {
 }
 
 // ArchiveIndex is implemented by an Archive that knows, from the index,
-// where in the archive each archived ID went.
+// where in the archive each archived ID went: the path error.archived
+// gives as its notes_path.
 type ArchiveIndex interface {
-	ArchivedAt(id int64) string
+	ArchivedNotes(id int64) string
 }
 
 // Deletions is implemented by a Tree that can tell a deleted ID from one
@@ -151,7 +152,7 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 			return Resolved{}, err
 		}
 		if n.Kind != NodeFolder {
-			return Resolved{}, invalid("%q: @%d is a task, and a task holds no folders", ref.Raw, ref.ID)
+			return Resolved{}, invalidAt(n.ID, "%q: @%d is a task, and a task holds no folders", ref.Raw, ref.ID)
 		}
 		id, err := walk(t, ref, n.ID, t.Path(n.ID))
 		if err != nil {
@@ -177,17 +178,17 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 
 	case ResolvedTask:
 		if ref.End != EndNone {
-			return Resolved{}, invalid("%q: @%d is a task, and a task has no gates", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a task, and a task has no gates", ref.Raw, res.ID)
 		}
 		if want == WantFolder {
-			return Resolved{}, invalid("%q: @%d is a task, not a folder", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a task, not a folder", ref.Raw, res.ID)
 		}
 
 	case ResolvedFolder:
 		end := ref.End
 		switch {
 		case want == WantTask && end == EndNone:
-			return Resolved{}, invalid("%q: @%d is a folder, not a task", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a folder, not a task", ref.Raw, res.ID)
 		case want == WantEdge && end == EndNone:
 			end = EndDone
 		}
@@ -205,7 +206,7 @@ func Resolve(t Tree, ref Ref, want Want, labels map[string]int64) (Resolved, err
 	// Step 5: the material.
 	if ref.HasMaterial {
 		if res.Kind == ResolvedTask {
-			return Resolved{}, invalid("%q: @%d is a task, and a task has no directory", ref.Raw, res.ID)
+			return Resolved{}, invalidAt(res.ID, "%q: @%d is a task, and a task has no directory", ref.Raw, res.ID)
 		}
 		res.Material, res.HasMaterial = ref.Material, true
 	}
@@ -255,7 +256,7 @@ func lookup(t Tree, id int64) (Node, error) {
 	if a, ok := t.(Archive); ok && a.Archived(id) {
 		e := NotFound([]int64{id}, nil, "@%d was archived", id)
 		if x, ok := t.(ArchiveIndex); ok {
-			e.Message = fmt.Sprintf("@%d was archived, to %s", id, x.ArchivedAt(id))
+			e.Message = fmt.Sprintf("@%d was archived, to %s", id, x.ArchivedNotes(id))
 		}
 		e.Archived = []int64{id}
 		return Node{}, e

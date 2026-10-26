@@ -34,13 +34,12 @@
         "not-finished",
         "not-empty",
         "has-material",
-        "gate",
         "into-itself",
         "exists",
         "not-a-root",
         "checkout",
         "foreign-files",
-        "complete",
+        "already-complete",
         "bound",
         "no-ids",
         null
@@ -92,14 +91,27 @@
         "type": "object",
         "required": [
           "id",
-          "archive"
+          "notes_path",
+          "dir"
         ],
         "properties": {
           "id": {
             "$ref": "types#/$defs/id"
           },
-          "archive": {
-            "$ref": "types#/$defs/abs-path"
+          "notes_path": {
+            "$ref": "types#/$defs/abs-path",
+            "description": "Where its notes went, which needn't exist; a folder's @notes.md."
+          },
+          "dir": {
+            "anyOf": [
+              {
+                "$ref": "types#/$defs/abs-path"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A folder's archived directory; null for a task."
           }
         },
         "unevaluatedProperties": false

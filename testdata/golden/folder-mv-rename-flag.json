@@ -4,11 +4,18 @@
     "kind": "conflict",
     "rule": "exists",
     "message": "/c is taken by @3",
-    "ids": [],
+    "ids": [
+      3
+    ],
     "paths": [
       "/c"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/dest",
+        "reason": "/c is taken by @3"
+      }
+    ],
     "archived": []
   },
   "warnings": []

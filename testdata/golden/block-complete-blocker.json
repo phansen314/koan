@@ -9,7 +9,7 @@
   "warnings": [
     {
       "kind": "complete-blocker",
-      "message": "@1 is complete: an edge added to its blocked_by doesn't reopen it, so what waits on it isn't held back.",
+      "message": "@1 is complete: an edge added to what it waits on doesn't reopen it, so what waits on it isn't held back",
       "ids": [
         1
       ],

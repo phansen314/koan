@@ -89,7 +89,7 @@ func warned(t *testing.T, home string, kinds []string, args ...string) *testrun.
 // and one allowed.
 func TestTaskBlockExamples(t *testing.T) {
 	home := example(t)
-	r := fails(t, home, "conflict", "cycle", "block", "8", "10")
+	r := fails(t, home, "conflict", "cycle", "block", "8", "--blocked-by", "10")
 	golden(t, r, "block-cycle")
 	for _, c := range []struct {
 		args []string
@@ -99,7 +99,7 @@ func TestTaskBlockExamples(t *testing.T) {
 		{[]string{"@7.start", "@9"}, "[11 14 10 13 12 8]"},
 		{[]string{"8", "@7"}, "[8 12]"},
 	} {
-		r := fails(t, home, "conflict", "cycle", append([]string{"block"}, c.args...)...)
+		r := fails(t, home, "conflict", "cycle", blockArgs(c.args)...)
 		if fmt.Sprint(r.Error()["ids"]) != c.ids || problemFields(r) != "/blocked_by/0" {
 			t.Errorf("%q: %s", c.args, r.Line())
 		}
@@ -107,7 +107,7 @@ func TestTaskBlockExamples(t *testing.T) {
 	if fmt.Sprint(field(t, home, "8", "blocked_by")) != "[map[id:11 ref:@11 (/work/phase1.start) state:open]]" {
 		t.Errorf("a refused block wrote an edge")
 	}
-	r = ok(t, home, "block", "4", "@1")
+	r = ok(t, home, "block", "4", "--blocked-by", "@1")
 	if fmt.Sprint(r.Result()) != "map[changed:true gates_made:[] id:4 reblocked:[]]" {
 		t.Errorf("allowed: %s", r.Line())
 	}
@@ -128,13 +128,13 @@ func TestTaskBlock(t *testing.T) {
 	ok(t, home, "task", "create", "a")           // 3
 	ok(t, home, "task", "create", "b", "--folder", "/work")
 	db(t, home, "UPDATE task SET updated_at = '2026-10-20T10:00:00Z'")
-	r := ok(t, home, "block", "3", "4")
+	r := ok(t, home, "block", "3", "--blocked-by", "4")
 	golden(t, r, "block")
 	if field(t, home, "3", "updated_at") == "2026-10-20T10:00:00Z" || field(t, home, "4", "updated_at") != "2026-10-20T10:00:00Z" {
 		t.Errorf("updated_at moves on the task whose blocked_by gains the edge, and only there")
 	}
 	db(t, home, "UPDATE task SET updated_at = '2026-10-20T10:00:00Z'")
-	r = ok(t, home, "block", "3", "@4,4")
+	r = ok(t, home, "block", "3", "--blocked-by", "@4,4")
 	if fmt.Sprint(r.Result()) != "map[changed:false gates_made:[] id:3 reblocked:[]]" || field(t, home, "3", "updated_at") != "2026-10-20T10:00:00Z" {
 		t.Errorf("again: %s", r.Line())
 	}
@@ -163,7 +163,7 @@ func TestTaskBlockGates(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/work/api") // 1, 2
 	ok(t, home, "task", "create", "a")           // 3
-	r := ok(t, home, "block", "/work/api.start", "/work.start,@1.start", "--blocks", "3")
+	r := ok(t, home, "block", "/work/api.start", "--blocked-by", "/work.start,@1.start", "--blocks", "3")
 	golden(t, r, "block-gates")
 	rec := ok(t, home, "show", "4").Result()["task"].(map[string]any)
 	if rec["gate"] != "start" || rec["title"] != "Start" || rec["priority"] != nil || fmt.Sprint(rec["tags"]) != "[]" ||
@@ -177,7 +177,7 @@ func TestTaskBlockGates(t *testing.T) {
 	// The done gate by the folder alone, its notes made by hand first.
 	os.WriteFile(filepath.Join(home, "koan-root", "tree", "@work", "@done.md"), []byte("by hand"), 0o644)
 	ok(t, home, "folder", "create", "/web") // 6
-	r = ok(t, home, "block", "3", "/web", "--blocks", "/web.start,/work")
+	r = ok(t, home, "block", "3", "--blocked-by", "/web", "--blocks", "/web.start,/work")
 	ids := func(r *testrun.Result) string {
 		var out []string
 		for _, g := range r.Result()["gates_made"].([]any) {
@@ -195,7 +195,7 @@ func TestTaskBlockGates(t *testing.T) {
 		t.Errorf("hand-made notes are the gate's")
 	}
 	// Naming a gate that is there makes nothing.
-	r = ok(t, home, "block", "/web.start", "@2.start")
+	r = ok(t, home, "block", "/web.start", "--blocked-by", "@2.start")
 	if ids(r) != "" || r.Result()["changed"] != true {
 		t.Errorf("no gate to make: %s", r.Line())
 	}
@@ -220,7 +220,7 @@ func TestTaskBlockInvalid(t *testing.T) {
 		{[]string{"/", "1"}, "/task"},
 		{[]string{"/w:x"}, "/task "},
 	} {
-		r := fails(t, home, "invalid-input", "", append([]string{"block"}, c.args...)...)
+		r := fails(t, home, "invalid-input", "", blockArgs(c.args)...)
 		if problemFields(r) != c.fields {
 			t.Errorf("%q: %s", c.args, r.Line())
 		}
@@ -240,13 +240,13 @@ func TestTaskBlockInvalid(t *testing.T) {
 			}
 		}
 	}
-	fails(t, home, "not-initialized", "", "block", "1", "2")
+	fails(t, home, "not-initialized", "", "block", "1", "--blocked-by", "2")
 
 	home = root(t)
 	ok(t, home, "folder", "create", "/w") // 1
 	ok(t, home, "task", "create", "a")    // 2
 	ok(t, home, "task", "create", "b")    // 3
-	golden(t, fails(t, home, "invalid-input", "", "block", "2", "3,@2"), "block-itself")
+	golden(t, fails(t, home, "invalid-input", "", "block", "2", "--blocked-by", "3,@2"), "block-itself")
 	// Its own gate, made and then refused: nothing is made.
 	r := fails(t, home, "invalid-input", "", "block", "/w.start", "--blocks", "@1.start")
 	if problemFields(r) != "/blocks/0" {
@@ -261,7 +261,7 @@ func TestTaskBlockInvalid(t *testing.T) {
 		{[]string{"2", "1,@3/x"}, "/blocked_by/1"},
 		{[]string{"2", "--blocks", "@3.done"}, "/blocks/0"},
 	} {
-		r := fails(t, home, "invalid-input", "", append([]string{"block"}, c.args...)...)
+		r := fails(t, home, "invalid-input", "", blockArgs(c.args)...)
 		if problemFields(r) != c.field {
 			t.Errorf("%q: %s", c.args, r.Line())
 		}
@@ -272,35 +272,35 @@ func TestTaskBlockInvalid(t *testing.T) {
 	}
 }
 
-// What a task waits on is the words after it, a list given as more
-// words or comma-separated, and --blocked-by is gone from block and
-// unblock; through --input it is blocked_by.
+// What a task waits on is --blocked-by, a list given repeated or
+// comma-separated, and block and unblock take no object; through --input
+// it is blocked_by.
 func TestTaskBlockPositional(t *testing.T) {
 	home := root(t)
 	ok(t, home, "task", "create", "a") // 1
 	ok(t, home, "task", "create", "b") // 2
 	ok(t, home, "task", "create", "c") // 3
 	ok(t, home, "task", "create", "d") // 4
-	r := ok(t, home, "block", "1", "2", "3,@4")
+	r := ok(t, home, "block", "1", "--blocked-by", "2", "--blocked-by", "3,@4")
 	if fmt.Sprint(r.Result()["changed"]) != "true" {
 		t.Errorf("block: %s", r.Line())
 	}
-	if r := ok(t, home, "why", "1"); fmt.Sprint(r.Result()["ready"]) != "[2 3 4]" {
+	if r := ok(t, home, "why", "1"); ids(r.Result()["ready"]) != "[2 3 4]" {
 		t.Errorf("why: %s", r.Line())
 	}
-	if r := ok(t, home, "unblock", "1", "2", "3"); fmt.Sprint(r.Result()["changed"], r.Result()["released"]) != "true []" {
+	if r := ok(t, home, "unblock", "1", "--blocked-by", "2,3"); fmt.Sprint(r.Result()["changed"], r.Result()["released"]) != "true []" {
 		t.Errorf("unblock: %s", r.Line())
 	}
-	if r := ok(t, home, "unblock", "1", "4", "--blocks", "2"); fmt.Sprint(r.Result()["changed"], r.Result()["released"]) != "true [1]" {
+	if r := ok(t, home, "unblock", "1", "--blocked-by", "4", "--blocks", "2"); fmt.Sprint(r.Result()["changed"], r.Result()["released"]) != "true [1]" {
 		t.Errorf("unblock with --blocks: %s", r.Line())
 	}
-	golden(t, usageAt(t, home, "--blocked-by", "block", "1", "--blocked-by", "2"), "block-blocked-by")
-	usageAt(t, home, "--blocked-by", "unblock", "1", "--blocked-by", "2")
-	usageAt(t, home, "1", "block", "1", "2", "-i", "-")
+	golden(t, usageAt(t, home, "2", "block", "1", "2"), "block-object")
+	usageAt(t, home, "2", "unblock", "1", "2")
+	usageAt(t, home, "1", "block", "1", "--blocked-by", "2", "-i", "-")
 	r = testrun.Run{Home: home, Stdin: strings.NewReader(`{"task":1,"blocked_by":[2,"@3"]}`)}.Koan(t, "block", "-i", "-")
 	r.Check(t, "block")
 	golden(t, r, "block-input")
-	if r := ok(t, home, "why", "1"); fmt.Sprint(r.Result()["ready"]) != "[2 3]" {
+	if r := ok(t, home, "why", "1"); ids(r.Result()["ready"]) != "[2 3]" {
 		t.Errorf("why after --input: %s", r.Line())
 	}
 }
@@ -311,23 +311,23 @@ func TestTaskBlockRefused(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/Work") // 1
 	ok(t, home, "task", "create", "a")       // 2
-	golden(t, fails(t, home, "not-found", "", "block", "2", "99"), "block-not-found")
+	golden(t, fails(t, home, "not-found", "", "block", "2", "--blocked-by", "99"), "block-not-found")
 	// Only the first reference that names nothing, in input order.
-	r := fails(t, home, "not-found", "", "block", "2", "/nope,99", "--blocks", "98")
+	r := fails(t, home, "not-found", "", "block", "2", "--blocked-by", "/nope,99", "--blocks", "98")
 	if fmt.Sprint(r.Error()["ids"], r.Error()["paths"]) != "[] [/nope]" {
 		t.Errorf("first only: %s", r.Line())
 	}
-	r = fails(t, home, "not-found", "", "block", "97", "99")
+	r = fails(t, home, "not-found", "", "block", "97", "--blocked-by", "99")
 	if fmt.Sprint(r.Error()["ids"], r.Error()["paths"]) != "[97] []" {
 		t.Errorf("subject first: %s", r.Line())
 	}
-	fails(t, home, "not-found", "", "block", "99", "2")
-	fails(t, home, "invalid-input", "", "block", "@1", "2")
+	fails(t, home, "not-found", "", "block", "99", "--blocked-by", "2")
+	fails(t, home, "invalid-input", "", "block", "@1", "--blocked-by", "2")
 	fails(t, home, "not-found", "", "block", "2", "--blocks", "/Work/api")
-	golden(t, fails(t, home, "conflict", "case-mismatch", "block", "2", "/work.start"), "block-case-mismatch")
-	fails(t, home, "conflict", "case-mismatch", "block", "/WORK.done", "2")
+	golden(t, fails(t, home, "conflict", "case-mismatch", "block", "2", "--blocked-by", "/work.start"), "block-case-mismatch")
+	fails(t, home, "conflict", "case-mismatch", "block", "/WORK.done", "--blocked-by", "2")
 	// A later edge's refusal undoes the gate an earlier one made.
-	fails(t, home, "not-found", "", "block", "2", "/Work.start,98")
+	fails(t, home, "not-found", "", "block", "2", "--blocked-by", "/Work.start,98")
 	checkTree(t, home, "@Work/", "@Work/@notes.md=", "@2.md=")
 	if r := ok(t, home, "task", "create", "b"); r.Result()["id"] != json.Number("3") {
 		t.Errorf("a refused block issued an ID: %s", r.Line())
@@ -344,8 +344,8 @@ func TestTaskBlockWarnings(t *testing.T) {
 	}
 	db(t, home, "UPDATE task SET completed_at = '2026-10-20T10:00:00Z' WHERE id IN (1, 2)",
 		`INSERT INTO claim (task, claimed_at, extra) VALUES (3, '2026-10-20T10:00:00Z', '{}'), (4, '2026-10-20T10:00:00Z', '{}'), (6, '2026-10-20T10:00:00Z', '{}')`)
-	golden(t, warned(t, home, []string{"complete-blocker"}, "block", "1", "6"), "block-complete-blocker")
-	golden(t, warned(t, home, []string{"claimed-blocked"}, "block", "3", "5"), "block-claimed-blocked")
+	golden(t, warned(t, home, []string{"complete-blocker"}, "block", "1", "--blocked-by", "6"), "block-complete-blocker")
+	golden(t, warned(t, home, []string{"claimed-blocked"}, "block", "3", "--blocked-by", "5"), "block-claimed-blocked")
 	if field(t, home, "3", "claim") == nil || field(t, home, "1", "state") != "complete" {
 		t.Errorf("the claim stays, and nothing reopens")
 	}
@@ -355,7 +355,7 @@ func TestTaskBlockWarnings(t *testing.T) {
 	golden(t, r, "block-warnings")
 	// A claimed task already waiting isn't made to wait again.
 	ok(t, home, "task", "create", "t") // 7
-	r = ok(t, home, "block", "4", "7")
+	r = ok(t, home, "block", "4", "--blocked-by", "7")
 	if fmt.Sprint(r.Result()["reblocked"]) != "[]" {
 		t.Errorf("already blocked: %s", r.Line())
 	}
@@ -374,7 +374,7 @@ func TestTaskBlockStepRefused(t *testing.T) {
 	dir := filepath.Join(home, "koan-root", "tree", "@work")
 	os.Chmod(dir, 0o555)
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
-	golden(t, warned(t, home, []string{"pending-step"}, "block", "2", "/work.start"), "block-pending-step")
+	golden(t, warned(t, home, []string{"pending-step"}, "block", "2", "--blocked-by", "/work.start"), "block-pending-step")
 	os.Chmod(dir, 0o755)
 	ok(t, home, "task", "create", "u")
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@start.md=", "@2.md=", "@4.md=")
@@ -390,22 +390,30 @@ func TestTaskUnblock(t *testing.T) {
 	for range 3 {
 		ok(t, home, "task", "create", "t") // 2, 3, 4
 	}
-	ok(t, home, "block", "2", "4,/w.start") // 5
+	ok(t, home, "block", "2", "--blocked-by", "4,/w.start") // 5
 	ok(t, home, "block", "2", "--blocks", "3")
 	db(t, home, "UPDATE task SET updated_at = '2026-10-20T10:00:00Z'")
-	r := ok(t, home, "unblock", "2", "4,@1.start", "--blocks", "3")
+	r := ok(t, home, "unblock", "2", "--blocked-by", "4,@1.start", "--blocks", "3")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:2 released:[2 3]]" || field(t, home, "3", "updated_at") == "2026-10-20T10:00:00Z" {
 		t.Errorf("unblock: %s", r.Line())
 	}
 	db(t, home, "UPDATE task SET updated_at = '2026-10-20T10:00:00Z'")
-	r = ok(t, home, "unblock", "2", "4,2", "--blocks", "2")
+	r = ok(t, home, "unblock", "2", "--blocked-by", "4,2", "--blocks", "2")
 	if fmt.Sprint(r.Result()) != "map[changed:false id:2 released:[]]" || field(t, home, "2", "updated_at") != "2026-10-20T10:00:00Z" {
 		t.Errorf("nothing to remove: %s", r.Line())
 	}
-	ok(t, home, "block", "2", "3")
-	r = ok(t, home, "unblock", "@2", "3")
+	ok(t, home, "block", "2", "--blocked-by", "3")
+	r = ok(t, home, "unblock", "@2", "--blocked-by", "3")
 	golden(t, r, "unblock")
-	golden(t, fails(t, home, "not-found", "", "unblock", "2", "--blocks", "/w"), "unblock-no-gate")
+	r = ok(t, home, "unblock", "2", "--blocks", "/w")
+	if fmt.Sprint(r.Result()) != "map[changed:false id:2 released:[]]" {
+		t.Errorf("unblock of an unmade gate: %s", r.Line())
+	}
+	golden(t, r, "unblock-no-gate")
+	r = ok(t, home, "unblock", "2", "--blocked-by", "/w.start,/w.done")
+	if fmt.Sprint(r.Result()) != "map[changed:false id:2 released:[]]" {
+		t.Errorf("unblock of unmade gates: %s", r.Line())
+	}
 	golden(t, fails(t, home, "not-found", "", "unblock", "/w.done", "--blocks", "2"), "unblock-no-subject-gate")
 	fails(t, home, "conflict", "case-mismatch", "unblock", "2", "--blocks", "/W.start")
 	checkTree(t, home, "@w/", "@w/@notes.md=", "@w/@start.md=", "@2.md=", "@3.md=", "@4.md=")
@@ -453,8 +461,9 @@ func TestTaskCreateWarnings(t *testing.T) {
 }
 
 // why gives a task's open blockers, and the ready tasks it waits on
-// through open blockers at any depth, in work order; a complete task
-// holds nothing back, so the walk never passes one.
+// through open blockers at any depth, in work order, each with its kept
+// text and whether it is claimed; a complete task holds nothing back, so
+// the walk never passes one.
 func TestTaskWhy(t *testing.T) {
 	home := example(t)
 	golden(t, ok(t, home, "why", "10"), "why")
@@ -471,14 +480,14 @@ func TestTaskWhy(t *testing.T) {
 	}
 	// 1 waits on 2 and 3; 2 on 4, complete, which waits on 5; 3 on 6,
 	// claimed.
-	ok(t, home, "block", "1", "2,3")
-	ok(t, home, "block", "2", "4")
-	ok(t, home, "block", "4", "5")
-	ok(t, home, "block", "3", "6")
+	ok(t, home, "block", "1", "--blocked-by", "2,3")
+	ok(t, home, "block", "2", "--blocked-by", "4")
+	ok(t, home, "block", "4", "--blocked-by", "5")
+	ok(t, home, "block", "3", "--blocked-by", "6")
 	db(t, home, "UPDATE task SET completed_at = '2026-10-20T10:00:00Z' WHERE id = 4",
 		`INSERT INTO claim (task, claimed_at, extra) VALUES (6, '2026-10-20T10:00:00Z', '{}')`)
 	r = ok(t, home, "why", "1")
-	if fmt.Sprint(r.Result()) != "map[blockers:[map[id:2 ref:@2 (/) state:open] map[id:3 ref:@3 (/) state:open]] id:1 readiness:blocked ready:[6 2]]" {
+	if fmt.Sprint(r.Result()) != "map[blockers:[map[id:2 ref:@2 (/) state:open] map[id:3 ref:@3 (/) state:open]] id:1 readiness:blocked ready:[map[claimed:true id:6 ref:@6 (/)] map[claimed:false id:2 ref:@2 (/)]]]" {
 		t.Errorf("why 1: %s", r.Line())
 	}
 	r = ok(t, home, "why", "4")
@@ -511,7 +520,7 @@ func TestTaskFrontier(t *testing.T) {
 	} {
 		ok(t, home, append([]string{"task", "create"}, c...)...)
 	}
-	ok(t, home, "block", "7", "/c.start") // 12
+	ok(t, home, "block", "7", "--blocked-by", "/c.start") // 12
 	db(t, home, "UPDATE task SET completed_at = '2026-10-20T10:00:00Z' WHERE id = 11",
 		`INSERT INTO claim (task, claimed_at, extra) VALUES (9, '2026-10-20T10:00:00Z', '{}')`)
 	ids := func(r *testrun.Result) string {
@@ -585,7 +594,7 @@ func TestEdgeGivenTwice(t *testing.T) {
 	if fmt.Sprint(field(t, home, "6", "blocked_by")) != "[map[id:5 ref:@5 (/) state:open]]" {
 		t.Errorf("batch: %v", field(t, home, "6", "blocked_by"))
 	}
-	r := ok(t, home, "unblock", "3", "2,@2")
+	r := ok(t, home, "unblock", "3", "--blocked-by", "2,@2")
 	if fmt.Sprint(r.Result()) != "map[changed:true id:3 released:[3]]" {
 		t.Errorf("unblock: %s", r.Line())
 	}
@@ -597,7 +606,7 @@ func TestEdgeGivenTwice(t *testing.T) {
 func TestCaseFromDifferentStarts(t *testing.T) {
 	home := root(t)
 	ok(t, home, "folder", "create", "/work/api") // 1, 2
-	r := fails(t, home, "conflict", "case-mismatch", "block", "/work/api.start", "@1/API.done")
+	r := fails(t, home, "conflict", "case-mismatch", "block", "/work/api.start", "--blocked-by", "@1/API.done")
 	if fmt.Sprint(r.Error()["paths"]) != "[@1/API /work/api]" {
 		t.Errorf("paths: %s", r.Line())
 	}
@@ -613,7 +622,7 @@ func TestCycleClosingEdge(t *testing.T) {
 	home := root(t)
 	ok(t, home, "task", "create", "a") // 1
 	ok(t, home, "task", "create", "b") // 2
-	r := fails(t, home, "conflict", "cycle", "block", "1", "2", "--blocks", "2")
+	r := fails(t, home, "conflict", "cycle", "block", "1", "--blocked-by", "2", "--blocks", "2")
 	if fmt.Sprint(r.Error()["ids"]) != "[2 1]" || problemFields(r) != "/blocks/0 /blocked_by/0" {
 		t.Errorf("closing edge: %s", r.Line())
 	}
@@ -622,5 +631,37 @@ func TestCycleClosingEdge(t *testing.T) {
 		if p.(map[string]any)["reason"] != r.Error()["message"] {
 			t.Errorf("reason: %s", r.Line())
 		}
+	}
+}
+
+// blockArgs is block's command line for a subject and the words after
+// it, which a test table writes as the edges it waits on: they follow
+// --blocked-by.
+func blockArgs(args []string) []string {
+	out := []string{"block", args[0]}
+	if len(args) > 1 && !strings.HasPrefix(args[1], "--") {
+		out = append(out, "--blocked-by")
+	}
+	return append(out, args[1:]...)
+}
+
+// block and unblock take no object: a word after the subject is usage,
+// whichever direction it meant, and both directions are options.
+func TestBlockTakesNoObject(t *testing.T) {
+	home := t.TempDir()
+	ok(t, home, "init")
+	ok(t, home, "task", "create", "a")
+	ok(t, home, "task", "create", "b")
+	for _, cmd := range []string{"block", "unblock"} {
+		usageAt(t, home, "2", cmd, "1", "2")
+	}
+	ok(t, home, "block", "1", "--blocked-by", "2")
+	if r := ok(t, home, "show", "1"); fmt.Sprint(r.Result()["task"].(map[string]any)["readiness"]) != "blocked" {
+		t.Errorf("1 should wait on 2: %s", r.Line())
+	}
+	ok(t, home, "unblock", "1", "--blocked-by", "2")
+	ok(t, home, "block", "1", "--blocks", "2")
+	if r := ok(t, home, "show", "2"); fmt.Sprint(r.Result()["task"].(map[string]any)["readiness"]) != "blocked" {
+		t.Errorf("2 should wait on 1: %s", r.Line())
 	}
 }

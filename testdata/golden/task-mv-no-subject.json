@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "refs is required",
+    "message": "name the tasks and folders to move",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "/refs",
-        "reason": "refs is required"
+        "reason": "name the tasks and folders to move"
       }
     ],
     "archived": []

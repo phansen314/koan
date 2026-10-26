@@ -10,6 +10,7 @@ import (
 // UnbindResult is unbind's result, in its schema's order.
 type UnbindResult struct {
 	Dir     string `json:"dir"`
+	Marker  string `json:"marker"`
 	Changed bool   `json:"changed"`
 }
 
@@ -18,10 +19,10 @@ type UnbindResult struct {
 func Unbind() *cli.Command {
 	return &cli.Command{
 		Name:    "unbind",
-		Subject: &cli.Option{Field: "dir", Kind: cli.Path},
+		Subject: &cli.Option{Field: "dir", Kind: cli.Path, Holds: "the directory"},
 		Here:    &cli.Here{Field: "dir"},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			dir := r.absPath("dir", true)
 			if e := r.err(); e != nil {
 				return nil, nil, e
@@ -44,7 +45,7 @@ func Unbind() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			res := UnbindResult{Dir: dir}
+			res := UnbindResult{Dir: dir, Marker: markers.File(dir)}
 			if there {
 				removed, err := markers.Remove(dir, names)
 				if err != nil {

@@ -2,6 +2,7 @@
   "ok": true,
   "result": {
     "dir": "$HOME/wt",
+    "marker": "$HOME/wt/.koan/marker.json",
     "changed": false
   },
   "warnings": []

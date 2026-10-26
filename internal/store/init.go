@@ -17,7 +17,7 @@ import (
 const (
 	MadeRoot     = "root"
 	MadeTree     = "tree"
-	MadeArchive  = "archive"
+	MadeArchive  = "archived"
 	MadeDatabase = "database"
 )
 
@@ -159,7 +159,7 @@ func foreignIn(r Root, entries []fs.DirEntry) []string {
 }
 
 func notARoot(paths []string, message string) *cli.Error {
-	e := cli.Conflict(cli.RuleNotARoot, message+". Move it aside, or make ~/koan-root a symlink to an empty directory.")
+	e := cli.Conflict(cli.RuleNotARoot, message)
 	e.Paths = paths
 	return e
 }
@@ -191,7 +191,7 @@ func existingDatabase(r Root, idsFrom *int64) (finish bool, firstID int64, e *cl
 		return false, 0, UnsupportedFormat(r.Database, format)
 	}
 	if idsFrom != nil {
-		e := cli.Conflict(cli.RuleExists, r.Database+" already exists, so --ids-from can't set where it issues IDs from.")
+		e := cli.Conflict(cli.RuleExists, r.Database+" already exists, so a first ID can't be set for it")
 		e.Paths = []string{r.Database}
 		return false, 0, e
 	}

@@ -25,8 +25,8 @@ func sameFault(t *testing.T, home, kind, field string, args []string, command, i
 		}
 		if kind == "invalid-input" {
 			e := r.Error()
-			if len(e["ids"].([]any)) != 0 || len(e["paths"].([]any)) != 0 {
-				t.Errorf("%s: invalid-input names ids or paths: %s", how, r.Line())
+			if len(e["paths"].([]any)) != 0 {
+				t.Errorf("%s: invalid-input names paths: %s", how, r.Line())
 			}
 		}
 		return problemFields(r)
@@ -151,7 +151,7 @@ func TestWrongKindIsInvalidInput(t *testing.T) {
 		{[]string{"unclaim", "2", "1"}, "unclaim", `{"tasks":[2,1]}`, "/tasks/1", "folder"},
 		{[]string{"claim", "/w"}, "claim", `{"tasks":["/w"]}`, "/tasks/0", "folder"},
 		{[]string{"update", "1", "--priority", "1"}, "update", `{"refs":[1],"priority":1}`, "/priority", "folder"},
-		{[]string{"block", "1", "2"}, "block", `{"task":1,"blocked_by":[2]}`, "/task", "folder"},
+		{[]string{"block", "1", "--blocked-by", "2"}, "block", `{"task":1,"blocked_by":[2]}`, "/task", "folder"},
 		{[]string{"context", "2"}, "context", `{"folder":2}`, "/folder", "task"},
 		{[]string{"export", "2"}, "export", `{"folder":2}`, "/folder", "task"},
 		{[]string{"task", "list", "2"}, "task list", `{"folder":2}`, "/folder", "task"},
@@ -169,6 +169,13 @@ func TestWrongKindIsInvalidInput(t *testing.T) {
 		t.Run(strings.Join(c.args, " "), func(t *testing.T) {
 			sameFault(t, home, "invalid-input", c.field, c.args, c.command, c.in)
 			r := testrun.Run{Home: home}.Koan(t, c.args...)
+			// What the reference names, or the subjects of the kind the
+			// field isn't taken by, are in ids.
+			// A path where a task is taken is refused as the input is read,
+			// before anything resolves, so names no ID (a doc gap).
+			if ids, _ := r.Error()["ids"].([]any); len(ids) == 0 && !strings.Contains(r.Line(), "a path names a task only") {
+				t.Errorf("no ids: %s", r.Line())
+			}
 			if m, _ := r.Error()["message"].(string); !strings.Contains(m, c.reason) {
 				t.Errorf("message %q doesn't say it is a %s", m, c.reason)
 			}

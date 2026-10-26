@@ -122,7 +122,6 @@ func TestTaskCreateInvalid(t *testing.T) {
 		{[]string{"a b"}, "/title"},
 		{[]string{"t", "--priority", "9007199254740992"}, "/priority"},
 		{[]string{"t", "--priority", "99999999999999999999"}, "/priority"},
-		{[]string{"t", "--tags", "a,b,a"}, "/tags/2"},
 		{[]string{"t", "--tags", ""}, "/tags/0"},
 		{[]string{"t", "--tags", "-a"}, "/tags/0"},
 		{[]string{"t", "--folder", "@3:docs"}, "/folder"},
@@ -393,12 +392,9 @@ func TestTaskList(t *testing.T) {
 		field string
 	}{
 		{[]string{"--state", "done"}, "/state/0"},
-		{[]string{"--state", "open,open"}, "/state/1"},
 		{[]string{"--readiness", "complete"}, "/readiness/0"},
-		{[]string{"--tags-any", "a,a"}, "/tags_any/1"},
 		{[]string{"--tags-all", "A"}, "/tags_all/0"},
 		{[]string{"--fields", "title,nope"}, "/fields/1"},
-		{[]string{"--fields", "id,id"}, "/fields/1"},
 		{[]string{"--limit", "0"}, "/limit"},
 		{[]string{"/alpha.done"}, "/folder"},
 	} {
@@ -598,7 +594,7 @@ func TestNotFoundID(t *testing.T) {
 		{[]string{"show", "@5"}, "@5 is below this root's first ID, 100, so came from an earlier root"},
 		{[]string{"show", "@200"}, "@200 was never issued"},
 		{[]string{"task", "create", "x", "--folder", "@102"}, "@102 was deleted"},
-		{[]string{"block", "101", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
+		{[]string{"block", "101", "--blocked-by", "7"}, "@7 is below this root's first ID, 100, so came from an earlier root"},
 		{[]string{"update", "150", "--title", "x"}, "@150 was never issued"},
 	} {
 		r := fails(t, home, "not-found", "", c.args...)

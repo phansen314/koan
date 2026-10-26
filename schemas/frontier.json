@@ -23,8 +23,7 @@
           "type": "array",
           "items": {
             "$ref": "task#/$defs/field"
-          },
-          "uniqueItems": true
+          }
         }
       },
       "unevaluatedProperties": false

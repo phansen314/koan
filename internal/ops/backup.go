@@ -22,9 +22,9 @@ type BackupResult struct {
 func Backup() *cli.Command {
 	return &cli.Command{
 		Name:    "backup",
-		Subject: &cli.Option{Field: "dir", Kind: cli.Path, Required: true},
+		Subject: &cli.Option{Field: "dir", Kind: cli.Path, Holds: "the directory", Required: true},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			dir := r.absPath("dir", true)
 			if e := r.err(); e != nil {
 				return nil, nil, e

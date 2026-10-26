@@ -3,7 +3,7 @@
   "error": {
     "kind": "unsupported-format",
     "rule": null,
-    "message": "$HOME/koan-root/koan.db is in format 2, and this koan reads only format 1.",
+    "message": "$HOME/koan-root/koan.db is in format 2, and this koan reads only format 1",
     "ids": [],
     "paths": [],
     "problems": [],

@@ -3,16 +3,22 @@
   "error": {
     "kind": "not-found",
     "rule": null,
-    "message": "$HOME/koan-root/archived/work/@2_api/@notes.md is in the archive: @2 was archived, to $HOME/koan-root/archived/work/@2_api",
+    "message": "$HOME/koan-root/archived/work/@2_api/@notes.md is in the archive: @2 was archived, to $HOME/koan-root/archived/work/@2_api/@notes.md",
     "ids": [],
     "paths": [
       "$HOME/koan-root/archived/work/@2_api/@notes.md"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/file",
+        "reason": "$HOME/koan-root/archived/work/@2_api/@notes.md is in the archive: @2 was archived, to $HOME/koan-root/archived/work/@2_api/@notes.md"
+      }
+    ],
     "archived": [
       {
         "id": 2,
-        "archive": "$HOME/koan-root/archived/work/@2_api"
+        "notes_path": "$HOME/koan-root/archived/work/@2_api/@notes.md",
+        "dir": "$HOME/koan-root/archived/work/@2_api"
       }
     ]
   },

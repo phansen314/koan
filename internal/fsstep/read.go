@@ -81,7 +81,7 @@ func (c *Steps) pendingFilesystem(live []store.Pending, paths []Path) (cli.Warni
 	}
 	w := cli.Warning{
 		Kind:    "pending-filesystem",
-		Message: "Filesystem steps are still being carried out for these paths. Each path given is where the file is going.",
+		Message: "filesystem steps are still being carried out for these paths; each path given is where the file is going",
 	}
 	for _, p := range paths {
 		if slices.Contains(w.Paths, p.Path) {

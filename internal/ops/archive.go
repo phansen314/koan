@@ -22,11 +22,14 @@ type ArchiveResult struct {
 	Removed  []int64        `json:"removed"`
 }
 
-// ArchivedItem is where one subject of archive went.
+// ArchivedItem is where one subject of archive went, as mv gives where
+// one went, with its JSON beside it.
 type ArchivedItem struct {
-	ID      int64   `json:"id"`
-	Archive *string `json:"archive"`
-	JSON    string  `json:"json"`
+	ID        int64   `json:"id"`
+	Ref       string  `json:"ref"`
+	NotesPath *string `json:"notes_path"`
+	Dir       *string `json:"dir"`
+	JSON      string  `json:"json"`
 }
 
 // archiveFile is the JSON beside an archived item, in the archive-file
@@ -102,7 +105,7 @@ type leaving struct {
 	// index is where each ID that leaves itself sits in the archive.
 	index map[int64]string
 	// missing is a lone task's notes not there when the change is made:
-	// the index names its JSON, and the result no archive.
+	// the index names its JSON, and the result no notes.
 	missing bool
 }
 
@@ -112,9 +115,9 @@ type leaving struct {
 func Archive() *cli.Command {
 	return &cli.Command{
 		Name:    "archive",
-		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Required: true, Complete: archivable.complete()},
+		Subject: &cli.Option{Field: "refs", Kind: cli.List, Arg: "ref", Holds: "the tasks and folders to archive", Required: true, Complete: archivable.complete()},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
-			r := input{in: in}
+			r := input{in: in, env: env}
 			refs, at := r.subjectRefs("archived")
 			r.sameCase(refs, at)
 			if e := r.err(); e != nil {
@@ -158,7 +161,7 @@ func Archive() *cli.Command {
 					slices.Sort(open)
 					open = slices.Compact(open)
 					return nil, nil, core.Conflict(core.RuleNotFinished, open, nil,
-						"%s %s open; complete them before archiving", core.FormatIDs(open), isAre(len(open)))
+						"%s %s still open; only finished work is archived", core.FormatIDs(open), isAre(len(open)))
 				}
 				res := ArchiveResult{Archived: []ArchivedItem{}, Removed: []int64{}}
 				for _, sub := range subs {
@@ -190,7 +193,7 @@ func Archive() *cli.Command {
 // beside them, under directories named after the folders it was in.
 func (t *tasks) archiveTask(tx *store.Tx, root store.Root, id int64) (leaving, error) {
 	if t.Open(id) {
-		return leaving{}, core.Conflict(core.RuleNotFinished, []int64{id}, nil, "@%d is open; complete it before archiving it", id)
+		return leaving{}, core.Conflict(core.RuleNotFinished, []int64{id}, nil, "@%d is still open; only finished work is archived", id)
 	}
 	row := t.rows[id]
 	above, err := archiveAbove(tx, root, t.paths[row.Folder])
@@ -233,7 +236,7 @@ func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (leaving,
 	if len(open) > 0 {
 		slices.Sort(open)
 		return leaving{}, core.Conflict(core.RuleNotFinished, open, nil,
-			"%s under @%d %s open; complete them before archiving it", core.FormatIDs(open), id, isAre(len(open)))
+			"%s under @%d %s still open; only finished work is archived", core.FormatIDs(open), id, isAre(len(open)))
 	}
 	row := t.folders.rows[id]
 	above, err := archiveAbove(tx, root, t.paths[row.Parent])
@@ -253,6 +256,13 @@ func (t *tasks) archiveFolder(tx *store.Tx, root store.Root, id int64) (leaving,
 		l.index[tid] = l.to + strings.TrimPrefix(t.notesRel(tid), l.from)
 	}
 	return l, nil
+}
+
+func themOrIt(n int) string {
+	if n == 1 {
+		return "it"
+	}
+	return "them"
 }
 
 func isAre(n int) string {
@@ -308,9 +318,15 @@ func (t *tasks) archive(tx *store.Tx, l leaving) (ArchivedItem, error) {
 		return ArchivedItem{}, err
 	}
 	item := ArchivedItem{ID: l.id, JSON: fsstep.Abs(t.root, l.file)}
-	if !l.missing {
-		at := fsstep.Abs(t.root, l.to)
-		item.Archive = &at
+	at := fsstep.Abs(t.root, l.to)
+	switch {
+	case l.dir:
+		notes := fsstep.Abs(t.root, path.Join(l.to, fsstep.FolderNotes))
+		item.Ref, item.NotesPath, item.Dir = core.Kept(l.id, l.path, core.EndNone), &notes, &at
+	case l.missing:
+		item.Ref = t.ref(l.id)
+	default:
+		item.Ref, item.NotesPath = t.ref(l.id), &at
 	}
 	return item, nil
 }

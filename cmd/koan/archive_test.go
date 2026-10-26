@@ -97,7 +97,22 @@ func archivedTo(t *testing.T, home string, args ...string) string {
 	if len(a) != 1 {
 		t.Fatalf("archived: %s", r.Line())
 	}
-	return a[0].(map[string]any)["archive"].(string)
+	return archivedAt(t, a[0])
+}
+
+// archivedAt is where an error's archived item says it went: a task's
+// notes, or a folder's directory, whose notes are its @notes.md.
+func archivedAt(t *testing.T, v any) string {
+	t.Helper()
+	item := v.(map[string]any)
+	notes, _ := item["notes_path"].(string)
+	if dir, ok := item["dir"].(string); ok {
+		if notes != dir+"/@notes.md" {
+			t.Errorf("a folder's notes: %v", item)
+		}
+		return dir
+	}
+	return notes
 }
 
 // archivedItem is the one item an archive of one subject lists.
@@ -134,8 +149,8 @@ func TestTaskArchive(t *testing.T) {
 	}
 	r = ok(t, home, "archive", "3")
 	golden(t, r, "archive")
-	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archived:[map[archive:%s id:3 json:%s]] removed:[3]]",
-		archivePath(home, "work/HOME-777/@3.md"), archivePath(home, "work/HOME-777/@3.json")) {
+	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archived:[map[dir:<nil> id:3 json:%s notes_path:%s ref:@3 (/work/HOME-777)]] removed:[3]]",
+		archivePath(home, "work/HOME-777/@3.json"), archivePath(home, "work/HOME-777/@3.md")) {
 		t.Errorf("archive: %s", r.Line())
 	}
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@HOME-777/", "@work/@HOME-777/@notes.md=", "@4.md=", "@5.md=")
@@ -163,8 +178,8 @@ func TestTaskArchive(t *testing.T) {
 	if got := archivedTo(t, home, "archive", "@3"); got != archivePath(home, "work/HOME-777/@3.md") {
 		t.Errorf("archived to %s", got)
 	}
-	r = fails(t, home, "not-found", "", "block", "4", "3")
-	if fmt.Sprint(r.Error()["archived"]) != fmt.Sprintf("[map[archive:%s id:3]]", archivePath(home, "work/HOME-777/@3.md")) {
+	r = fails(t, home, "not-found", "", "block", "4", "--blocked-by", "3")
+	if fmt.Sprint(r.Error()["archived"]) != fmt.Sprintf("[map[dir:<nil> id:3 notes_path:%s]]", archivePath(home, "work/HOME-777/@3.md")) {
 		t.Errorf("an edge to it: %s", r.Line())
 	}
 	// Its ID is never issued again.
@@ -205,11 +220,12 @@ func TestTaskArchiveNoNotes(t *testing.T) {
 	os.Remove(treePath(home, "@1.md"))
 	r := ok(t, home, "archive", "1")
 	golden(t, r, "archive-no-notes")
-	if archivedItem(t, r)["archive"] != nil || archivedItem(t, r)["json"] != archivePath(home, "@1.json") {
+	if archivedItem(t, r)["notes_path"] != nil || archivedItem(t, r)["json"] != archivePath(home, "@1.json") {
 		t.Errorf("no notes: %s", r.Line())
 	}
 	checkArchive(t, home, "@1.json=task")
-	if got := archivedTo(t, home, "show", "1"); got != archivePath(home, "@1.json") {
+	// Its notes would have gone beside its JSON.
+	if got := archivedTo(t, home, "show", "1"); got != archivePath(home, "@1.md") {
 		t.Errorf("index: %s", got)
 	}
 
@@ -217,7 +233,7 @@ func TestTaskArchiveNoNotes(t *testing.T) {
 	ok(t, home, "task", "create", "u") // 2
 	ok(t, home, "complete", "2")
 	r = ok(t, home, "archive", "2")
-	if archivedItem(t, r)["archive"] != archivePath(home, "@2.md") {
+	if archivedItem(t, r)["notes_path"] != archivePath(home, "@2.md") || archivedItem(t, r)["ref"] != "@2 (/)" {
 		t.Errorf("root: %s", r.Line())
 	}
 	checkArchive(t, home, "@1.json=task", "@2.md=", "@2.json=task")
@@ -236,7 +252,8 @@ func TestTaskArchiveGate(t *testing.T) {
 		"UPDATE task SET completed_at = '"+fixed+"' WHERE completed_at IS NOT NULL")
 	r := ok(t, home, "archive", "/work/api.start")
 	golden(t, r, "archive-gate")
-	if fmt.Sprint(r.Result()["removed"]) != "[4]" || archivedItem(t, r)["archive"] != archivePath(home, "work/api/@4_start.md") ||
+	if fmt.Sprint(r.Result()["removed"]) != "[4]" || archivedItem(t, r)["notes_path"] != archivePath(home, "work/api/@4_start.md") ||
+		archivedItem(t, r)["ref"] != "@4 (/work/api.start)" || archivedItem(t, r)["dir"] != nil ||
 		archivedItem(t, r)["json"] != archivePath(home, "work/api/@4_start.json") {
 		t.Errorf("gate: %s", r.Line())
 	}
@@ -255,7 +272,7 @@ func TestTaskArchiveGate(t *testing.T) {
 	// The folder lacks it now; the next start gate is made afresh, with
 	// notes of its own in the tree.
 	fails(t, home, "not-found", "", "show", "/work/api.start")
-	ok(t, home, "block", "3", "/work/api.start") // 5
+	ok(t, home, "block", "3", "--blocked-by", "/work/api.start") // 5
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@work/@api/", "@work/@api/@notes.md=", "@work/@api/@start.md=", "@3.md=")
 	ok(t, home, "complete", "5")
 	ok(t, home, "archive", "5")
@@ -274,7 +291,7 @@ func TestFolderArchive(t *testing.T) {
 	ok(t, home, "task", "create", "u", "--folder", "/work/HOME-12345/api", "--blocked-by", "/work/HOME-12345.start,4") // 5, 6
 	ok(t, home, "task", "create", "outside", "--blocked-by", "/work/HOME-12345.done")                                  // 7, 8
 	ok(t, home, "task", "create", "before")                                                                            // 9
-	ok(t, home, "block", "4", "9")
+	ok(t, home, "block", "4", "--blocked-by", "9")
 	for rel, content := range map[string]string{
 		"@work/@HOME-12345/docs/x.md":      "x",
 		"@work/@HOME-12345/.hidden":        "h",
@@ -297,7 +314,7 @@ func TestFolderArchive(t *testing.T) {
 	r = ok(t, home, "archive", "/work/HOME-12345")
 	golden(t, r, "archive-folder")
 	dir := archivePath(home, "work/@2_HOME-12345")
-	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archived:[map[archive:%s id:2 json:%s.json]] removed:[2 3 4 5 6 8]]", dir, dir) {
+	if fmt.Sprint(r.Result()) != fmt.Sprintf("map[archived:[map[dir:%s id:2 json:%s.json notes_path:%s/@notes.md ref:@2 (/work/HOME-12345)]] removed:[2 3 4 5 6 8]]", dir, dir, dir) {
 		t.Errorf("archive: %s", r.Line())
 	}
 	checkTree(t, home, "@work/", "@work/@notes.md=", "@7.md=", "@9.md=")
@@ -374,7 +391,7 @@ func TestFolderArchiveEmpty(t *testing.T) {
 	ok(t, home, "complete", "3")
 	os.Remove(treePath(home, "@f/@g/@3.md"))
 	r := ok(t, home, "archive", "/f")
-	if fmt.Sprint(r.Result()["removed"]) != "[1 2 3]" || archivedItem(t, r)["archive"] != archivePath(home, "@1_f") {
+	if fmt.Sprint(r.Result()["removed"]) != "[1 2 3]" || archivedItem(t, r)["dir"] != archivePath(home, "@1_f") {
 		t.Errorf("archive: %s", r.Line())
 	}
 	checkArchive(t, home, "@1_f/", "@1_f.json=folder", "@1_f/@notes.md=", "@1_f/@g/", "@1_f/@g/@notes.md=")
@@ -398,7 +415,7 @@ func TestArchiveCase(t *testing.T) {
 	ok(t, home, "archive", "2")
 	ok(t, home, "mv", "-T", "/Work", "/work")
 	r := ok(t, home, "archive", "3")
-	if archivedItem(t, r)["archive"] != archivePath(home, "Work/@3.md") {
+	if archivedItem(t, r)["notes_path"] != archivePath(home, "Work/@3.md") {
 		t.Errorf("on disk: %s", r.Line())
 	}
 	if got := archivedTo(t, home, "show", "3"); got != archivePath(home, "Work/@3.md") {
@@ -426,7 +443,7 @@ func TestArchiveCasePending(t *testing.T) {
 	pending := []string{"pending-step"}
 	r := warned(t, home, pending, "archive", "2")
 	golden(t, r, "archive-pending-step")
-	if archivedItem(t, r)["archive"] != archivePath(home, "Work/@2.md") {
+	if archivedItem(t, r)["notes_path"] != archivePath(home, "Work/@2.md") {
 		t.Errorf("pending: %s", r.Line())
 	}
 	// The rename waits behind the archive step, its paths overlapping.
@@ -437,12 +454,12 @@ func TestArchiveCasePending(t *testing.T) {
 	// change is made: the index names its JSON. The write runs before the
 	// archive step, so the notes still go into the archive, beside it.
 	r = warned(t, home, pending, "archive", "3")
-	if archivedItem(t, r)["archive"] != nil || archivedItem(t, r)["json"] != archivePath(home, "Work/@3.json") {
+	if archivedItem(t, r)["notes_path"] != nil || archivedItem(t, r)["json"] != archivePath(home, "Work/@3.json") {
 		t.Errorf("after pending: %s", r.Line())
 	}
 	os.Chmod(dir, 0o755)
 	ok(t, home, "task", "create", "v") // 4
-	if got := archivedTo(t, home, "show", "3"); got != archivePath(home, "Work/@3.json") {
+	if got := archivedTo(t, home, "show", "3"); got != archivePath(home, "Work/@3.md") {
 		t.Errorf("index: %s", got)
 	}
 	checkArchive(t, home, "Work/", "Work/@2.md=", "Work/@2.json=task", "Work/@3.md=", "Work/@3.json=task")
@@ -542,10 +559,10 @@ func TestArchiveSeveral(t *testing.T) {
 	ok(t, home, "complete", "4")
 	r = ok(t, home, "archive", "6,/work/a", "3")
 	golden(t, r, "archive-several")
-	want := fmt.Sprintf("map[archived:[map[archive:%s id:6 json:%s] map[archive:%s id:2 json:%s] map[archive:%s id:3 json:%s]] removed:[2 3 4 6]]",
-		archivePath(home, "@6.md"), archivePath(home, "@6.json"),
-		archivePath(home, "work/@2_a"), archivePath(home, "work/@2_a.json"),
-		archivePath(home, "work/@3.md"), archivePath(home, "work/@3.json"))
+	want := fmt.Sprintf("map[archived:[map[dir:<nil> id:6 json:%s notes_path:%s ref:@6 (/)] map[dir:%s id:2 json:%s notes_path:%s ref:@2 (/work/a)] map[dir:<nil> id:3 json:%s notes_path:%s ref:@3 (/work)]] removed:[2 3 4 6]]",
+		archivePath(home, "@6.json"), archivePath(home, "@6.md"),
+		archivePath(home, "work/@2_a"), archivePath(home, "work/@2_a.json"), archivePath(home, "work/@2_a/@notes.md"),
+		archivePath(home, "work/@3.json"), archivePath(home, "work/@3.md"))
 	if fmt.Sprint(r.Result()) != want {
 		t.Errorf("several:\n got %v\nwant %s", r.Result(), want)
 	}

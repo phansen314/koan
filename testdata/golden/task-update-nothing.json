@@ -3,13 +3,13 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "nothing to change: give at least one field to change",
+    "message": "nothing to change: give at least one option to change",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "",
-        "reason": "nothing to change: give at least one field to change"
+        "reason": "nothing to change: give at least one option to change"
       }
     ],
     "archived": []

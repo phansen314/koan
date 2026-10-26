@@ -8,7 +8,12 @@
     "paths": [
       "/nothing"
     ],
-    "problems": [],
+    "problems": [
+      {
+        "field": "/dest",
+        "reason": "no folder at /nothing"
+      }
+    ],
     "archived": []
   },
   "warnings": []

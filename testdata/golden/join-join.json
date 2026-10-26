@@ -3,13 +3,13 @@
   "error": {
     "kind": "usage",
     "rule": null,
-    "message": "unknown flag: --join",
+    "message": "unknown flag: --join; name the folders to join after the task as words of their own, as in koan join 42 /work/a /work/b",
     "ids": [],
     "paths": [],
     "problems": [
       {
         "field": "--join",
-        "reason": "unknown flag: --join"
+        "reason": "unknown flag: --join; name the folders to join after the task as words of their own, as in koan join 42 /work/a /work/b"
       }
     ],
     "archived": []

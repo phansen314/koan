@@ -4,7 +4,9 @@
     "kind": "invalid-input",
     "rule": null,
     "message": "@3 is a task, whose title can't be null",
-    "ids": [],
+    "ids": [
+      3
+    ],
     "paths": [],
     "problems": [
       {

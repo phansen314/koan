@@ -24,10 +24,6 @@
         "reason": "\"Bad\" is not a tag: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen"
       },
       {
-        "field": "/tags/2",
-        "reason": "\"ok\" given twice"
-      },
-      {
         "field": "/blocked_by/0",
         "reason": "\"/a:docs\": material isn't taken here"
       },
@@ -37,7 +33,7 @@
       },
       {
         "field": "/extra",
-        "reason": "extra must be a JSON object"
+        "reason": "--extra must be a JSON object"
       }
     ],
     "archived": []

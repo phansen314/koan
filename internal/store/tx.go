@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/phansen314/koan/internal/cli"
 	"github.com/phansen314/koan/internal/core"
 )
 
@@ -132,6 +133,26 @@ func (t *Tx) ArchivedAt(id int64) string {
 	return filepath.Join(t.root, filepath.FromSlash(rel))
 }
 
+// ArchivedEntry is where an archived ID went, from the index, as a
+// not-found error gives it: a folder's directory, with its @notes.md, or
+// a task's notes. A lone task archived without notes is indexed by its
+// JSON; its notes would have gone beside it.
+func (t *Tx) ArchivedEntry(id int64) cli.Archived {
+	var kind string
+	t.QueryRow("SELECT kind FROM issued WHERE id = ?", id).Scan(&kind)
+	at := t.ArchivedAt(id)
+	if kind == "folder" {
+		return cli.Archived{ID: id, NotesPath: filepath.Join(at, "@notes.md"), Dir: &at}
+	}
+	if base, ok := strings.CutSuffix(at, ".json"); ok {
+		at = base + ".md"
+	}
+	return cli.Archived{ID: id, NotesPath: at}
+}
+
+// ArchivedNotes is the notes path ArchivedEntry gives, for a message.
+func (t *Tx) ArchivedNotes(id int64) string { return t.ArchivedEntry(id).NotesPath }
+
 // Open reports whether a task exists and is open.
 func (t *Tx) Open(id int64) bool {
 	var open bool
@@ -182,7 +203,7 @@ func (t *Tx) Issue(kind core.NodeKind) (int64, error) {
 	}
 	if id > core.MaxID {
 		return 0, core.Conflict(core.RuleNoIDs, nil, nil,
-			"This root has issued its last ID, @%d, so nothing more can be made in it.", core.MaxID)
+			"this root has issued its last ID, @%d, so nothing more can be made in it", core.MaxID)
 	}
 	k := "task"
 	if kind == core.NodeFolder {

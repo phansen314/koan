@@ -169,7 +169,7 @@ func TestBatchCycle(t *testing.T) {
 	ok(t, home, "task", "create", "x")                      // 1
 	ok(t, home, "task", "create", "y", "--blocked-by", "1") // 2
 	ok(t, home, "folder", "create", "/w")                   // 3
-	ok(t, home, "block", "/w.start", "2")                   // 4
+	ok(t, home, "block", "/w.start", "--blocked-by", "2")   // 4
 	r = batchFails(t, home, "conflict", "cycle", "/tasks/1/blocks/0 /tasks/1/blocked_by/0 /tasks/0/blocks/0",
 		`{"tasks": [{"label": "$a", "title": "a", "blocks": [1]}, {"title": "b", "blocked_by": ["/w.start"], "blocks": ["$a"]}]}`)
 	if fmt.Sprint(r.Error()["ids"]) != "[5 6 4 2 1]" {
@@ -291,7 +291,7 @@ func TestBatchInvalid(t *testing.T) {
 		`{"folders": [{"path": "/new/x"}, {"path": "/New/y"}]}`:                                          "/folders/0/path /folders/1/path",
 		`{"folder": "/w", "tasks": [{"title": "a", "blocked_by": ["/W.start"]}]}`:                        "/folder /tasks/0/blocked_by/0",
 		`{"folders": [{"path": "/w"}], "tasks": [{"title": "a"}, {"title": "b", "folder": "/W/x"}]}`:     "/folders/0/path /tasks/1/folder",
-		`{"tasks": [{"title": "a", "priority": 1.5, "tags": ["A", "b", "b"], "extra": [], "notes": 1}]}`: "/tasks/0/priority /tasks/0/tags/0 /tasks/0/tags/2 /tasks/0/extra /tasks/0/notes",
+		`{"tasks": [{"title": "a", "priority": 1.5, "tags": ["A", "b", "b"], "extra": [], "notes": 1}]}`: "/tasks/0/priority /tasks/0/tags/0 /tasks/0/extra /tasks/0/notes",
 		`{"tasks": [{"title": "a", "blocked_by": "x", "blocks": [0]}]}`:                                  "/tasks/0/blocked_by /tasks/0/blocks/0",
 	} {
 		batchFails(t, home, "invalid-input", "", fields, in)

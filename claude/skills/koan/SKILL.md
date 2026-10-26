@@ -19,7 +19,7 @@ Every command prints **exactly one line of JSON** on standard output. The exampl
 
 ```sh
 koan info      # .result.state: usable, not-initialized, unsupported-format or corrupt
-koan version   # .result.version: v0.11.0 or later is this skill's koan
+koan version   # .result.version: v0.12.0 or later is this skill's koan
 ```
 
 Ready when `.result.state` is `usable`. Otherwise `.result.error` is what every other command fails with:
@@ -28,7 +28,7 @@ Ready when `.result.state` is `usable`. Otherwise `.result.error` is what every 
 - `unsupported-format`: the database is in a format this binary doesn't read; the user needs a matching koan.
 - `corrupt`: report it; the user restores from a backup (see below).
 
-`version` printing `v0.11.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. An earlier `v` release lacks commands this skill names, and anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: either way, tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
+`version` printing `v0.12.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. An earlier `v` release lacks commands this skill names, and anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: either way, tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
 
 ## Reading output
 
@@ -43,7 +43,7 @@ Every field is always there; a field with no value is `null` or empty. **Branch 
 |---|---|---|
 | 0 | Success, with or without warnings | Read `.result`, and the warnings |
 | 1 | Failure: `.error.kind` says how | See below |
-| 2 | `usage`: the command line couldn't be read; `.error.problems[0].field` is the argument at fault | Fix the command; `koan --help`, `koan task create --help` |
+| 2 | `usage`: the command line couldn't be read; `.error.problems[0].field` is the argument at fault | Fix the command, taking the hint in `.error.message` when it names a sibling option; `koan --help`, `koan task create --help` |
 | 3, or anything else | The outcome is unknown: koan couldn't print, or was killed | Look before running it again, below |
 
 **After an unknown outcome**, check what landed before you rerun. Most writes are safe to rerun: a second `complete` lists nothing in `completed`, and a second `block` changes nothing (`changed: false`). These aren't:
@@ -55,18 +55,17 @@ Every field is always there; a field with no value is `null` or empty. **Branch 
 
 ### Errors
 
-- `invalid-input`: `.error.problems` lists every bad field, each as a JSON Pointer (`/blocked_by/0`) with a reason. Fix and rerun. A reference to the wrong kind of thing is this too, such as a gate as `join`'s subject, a task where a folder is taken, or a field the subject's kind doesn't take; so is a missing subject, as `koan complete` alone.
-- `not-found`: a reference names nothing; one that names something of the wrong kind is `invalid-input`. `.error.ids` or `.error.paths` is the first one, and the message says whether it was deleted, archived or never issued. When it was archived, `.error.archived` says where it went.
+- `invalid-input`: `.error.problems` lists every bad field, each as a JSON Pointer (`/blocked_by/0`) with a reason. Fix and rerun. A reference to the wrong kind of thing is this too, such as a gate as `join`'s or `mv`'s subject, a task where a folder is taken, or a field the subject's kind doesn't take, with the subject's ID in `.error.ids`; so is a missing subject, as `koan complete` alone, and a subject given twice. The same name twice in a set, such as `--tags-add a,a`, counts once.
+- `not-found`: a reference names nothing; one that names something of the wrong kind is `invalid-input`. `.error.ids` or `.error.paths` is the first one, `.error.problems` points at its option or field, and the message says whether it was deleted, archived or never issued. When it was archived, `.error.archived` says where it went: each item has `id`, `notes_path` and `dir`, as a move's does.
 - `busy`: the lock stayed held for 5 seconds; koan already waited. It is always safe to retry, but not in a loop: retry once, then tell the user something is holding it.
 - `not-initialized`, `unsupported-format`, `corrupt`, `io`, `internal`: stop and report, quoting `.error.message`. Never edit `koan.db` or koan's files to work around them.
 - `conflict`: valid input the tree refuses. `.error.rule` says why:
   - `cycle`: the edge would make a task wait on itself; `.error.ids` is the cycle, in order. Tell the user rather than rearranging their edges.
-  - `claimed`: someone holds a claim on one of the tasks (see Claims). `complete`: claiming a complete task; it needs `reopen` first, if the user wants it worked on again.
+  - `claimed`: someone holds a claim on one of the tasks (see Claims). `already-complete`: claiming a complete task; it needs `reopen` first, if the user wants it worked on again.
   - `case-mismatch`: a path matched a folder only ignoring case; `.error.paths` has the path as given, then as it is. Use the folder's spelling. Don't rename the folder to match unless asked.
-  - `exists`: the destination is taken: a folder path for a create or a move, an entry on disk there, or a non-empty directory for a backup.
+  - `exists`: the destination is taken: a folder path for a create or a move, an entry on disk there, or a non-empty directory for a backup. `.error.problems` points at the option, and `.error.ids` has the folder that holds the path.
   - `not-finished`: archiving work that isn't complete; `.error.ids` is the open tasks. Ask the user; never complete them to get past it.
   - `not-empty`, `has-material`: a `delete` of folders without `--contents` or `--material`. Never add them on your own (see Moving, deleting and archiving).
-  - `gate`: a gate never moves, even into its own folder.
   - `into-itself`: a folder can't move inside itself.
   - `checkout`, `bound`, `foreign-files`: `bind` refused the directory (see Worktrees).
   - `not-a-root`: `init` found files that aren't koan's (above).
@@ -113,7 +112,7 @@ The result names everything by ID: `folders_made`, parents first (`/work` @40, `
 
 ```sh
 koan frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order: only @45, the start gate
-koan why 43                                   # .result.ready: [45], what to finish to move @43
+koan why 43                                   # .result.ready: @45, what to finish to move @43
 koan complete 45                              # .result.released: [42], the tasks it made ready
 koan claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
 koan show 42                                  # the whole task: .result.task, with its notes_path
@@ -121,9 +120,9 @@ koan complete 42                              # ends the claim; .result.released
 ```
 
 - **Work order** is highest `priority` first, `null` last, then lowest ID. Scope the frontier, and `claim-next`, with the folder as the subject, `--direct`, `--tags-any` and `--tags-all`. With no folder they look in the whole tree, the root; every list, `context` and `export` do the same. In a worktree, `--here` looks under its folder: `koan frontier --here`.
-- `why` gives a blocked task's open `blockers`, and in `ready` the ready tasks it waits on at any depth: what to work on to move it. Don't walk `blocked_by` by hand.
+- `why` gives a blocked task's open `blockers`, and in `ready` the ready tasks it waits on at any depth, each with its `id`, `ref` and whether it is `claimed`: what to work on to move it. Don't walk `blocked_by` by hand.
 - **Notes are plain files.** Read and edit a task's at its `notes_path` with your file tools; there is no koan command for notes after creation. A folder's `@notes.md` is where what the work is about goes.
-- `complete` reports in `released` the open tasks it made ready, and `reopen` in `reblocked` the ready tasks it made wait again. Tell the user about both when they matter.
+- `complete` reports in `released` the open tasks it made ready, and in `unclaimed` the claims it ended; `reopen` reports in `reblocked` the ready tasks it made wait again. Tell the user about these when they matter.
 
 ### Claims
 
@@ -133,12 +132,12 @@ Other agents may be working from the same tree. A **claim** reserves a task: no 
 koan claim 43 --extra '{"by":"agent-1"}'      # this task: .result.claimed is [43]
 koan claim 43                                 # a second claim fails: conflict, rule claimed
 koan task list --claimed --limit 20 --fields title,claim   # what is taken, by whom, since when
-koan unclaim 43                               # you won't do it after all
+koan unclaim 43                               # you won't do it after all: .result.unclaimed is [43]
 ```
 
 - **Claim a task before starting it**, whether you picked it or the user named it. `claim-next` picks and claims in one step and returns the task's record in `task`, its `claim` included, so prefer it when the choice is yours. Its `task` is `null` when nothing ready is free. `claim` and `unclaim` take several tasks, as one change.
 - **On `claimed`**, someone else has it: pick another if the choice was yours; tell the user if they named it.
-- **`complete` ends the claim.** If you stop without finishing, `unclaim` it.
+- **`complete` ends the claim**, and says so in `unclaimed`. If you stop without finishing, `unclaim` it.
 - **A claim is a reservation, not a lock.** It refuses other claims and nothing else, never expires, and koan doesn't know who made it: `claim.extra` is whatever the claimer stored. So the rules are yours to keep: never change, move, complete or unclaim a task someone else has claimed, or edit its notes, unless the user says so. Whoever holds the claim edits the notes.
 - **A claimed task can be blocked again** by a new edge or a reopened blocker, and the claim stays: the change warns `claimed-blocked`. A blocked task can be claimed too, to reserve it ahead.
 
@@ -154,14 +153,14 @@ koan task create 'Investigate the flaky test' --notes-file - <<'EOF'
 Seen in CI on 2026-10-19; fails about 1 run in 20.
 EOF
 koan update 48 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'
-koan block 44 48                           # @44 waits on @48 too
-koan unblock 44 48
-koan block 42 43                           # refused: conflict, rule cycle, since @43 waits on @42
+koan block 44 --blocked-by 48              # @44 waits on @48 too
+koan unblock 44 --blocked-by 48
+koan block 42 --blocked-by 43              # refused: conflict, rule cycle, since @43 waits on @42
 ```
 
 - **A write returns identities, not records**: `.result.id`, or the IDs it changed, such as `completed`, `updated`, `claimed`, `moved` and `removed`, and what else it touched, such as `released`, `reblocked` and `gates_made`, or `changed: false` when it changed nothing. `show` it when you need its fields.
 - `task create` puts the task in an existing folder, `--folder`, or the root. It never makes a folder: a path that names none is `not-found`.
-- What the task waits on is `--blocked-by` on `task create`, and the words after the task on `block` and `unblock`; `--blocks` lists what waits on it. Both take tasks (`42`, `@42`), gates (`/work/api.start`, `@41.done`), and folders, which mean their done gate. They make any gate they name, and say so in `gates_made`.
+- What the task waits on is `--blocked-by`, and `--blocks` lists what waits on it, on `task create`, `block` and `unblock`: `block` and `unblock` take the task as one word and at least one of the two, so `koan block 44 48` is `usage`. `unblock` of a gate that was never made changes nothing (`changed: false`). Both take tasks (`42`, `@42`), gates (`/work/api.start`, `@41.done`), and folders, which mean their done gate. They make any gate they name, and say so in `gates_made`.
 - **Titles** are one line, up to 200 characters; quote them with single quotes, and put one starting with `-` after `--`. **Tags** are lowercase letters, digits and hyphens. **Priority** is an integer, higher first; `null` clears it. Option lists are comma-separated or repeated, and `null` is written `null`. Where a command takes several tasks or folders, as `complete`, `update`, `mv` and `delete` do, give them as more words or comma-separated: `koan complete 41 42` is `koan complete 41,42`.
 - `update` changes the title, priority, tags (`--tags-add`, `--tags-remove`, `--tags-replace-all`) and `extra` (`--extra-merge`, top level only; `--extra-remove key`, once per key; `--extra-replace-all`), of one task or folder or several, as one change. Priority and tags are for tasks only: a folder among the subjects refuses them as `invalid-input`. `--title null` clears a folder's title, and a task's is refused. Edges change only through `block` and `unblock`, `join` and `unjoin`, and `--join`; state only through `complete` and `reopen`.
 - Notes: short text with `--notes`, anything longer through a quoted heredoc with `--notes-file -`.
@@ -174,7 +173,7 @@ koan folder create /work/web/client --title 'Web client'    # makes /work/web to
 koan update /work/web/client --extra-merge '{"jira":"WEB-12"}'
 koan show /work/api                                         # .result.folder: gates, open, complete, finished, notes_path
 koan task create 'Port the client' --folder /work/web/client --blocked-by /work/web/client.start --blocks /work/web/client
-koan block /work/web/client.start /work/api                 # the client's work starts once the API is done
+koan block /work/web/client.start --blocked-by /work/api    # the client's work starts once the API is done
 ```
 
 - `folder create` makes any missing parents, and lists every folder made in `folders_made`. It refuses a path that is taken (`exists`) or that differs from a sibling only in case (`case-mismatch`).
@@ -232,24 +231,24 @@ cd ~/code/api-v2 && koan context --here            # the brief: the folder, the 
 koan where --file ~/code/api-v2/src/main.go        # which folder a file is in: .result.ref is @41 (/work/api)
 koan mv -T /work/api /work/api2                    # a rename: the marker still binds @41, by ID
 koan where --file ~/code/api-v2                    # still @41, with a stale-marker warning
-koan bind @41 ~/code/api-v2                        # refreshes the hint: .result.replaced is true
+koan bind @41 ~/code/api-v2                        # refreshes the hint: .result.replaced and .result.changed are true
 koan mv -T /work/api2 /work/api
 ```
 
-- **Starting work in a worktree, run `koan context --here` first**, and print it as is. Without `--here` it briefs the root: `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `koan context <folder>` briefs any folder, and `--file <path>` the folder a file is in. `export` and `where` take `--here` and `--file` too.
+- **Starting work in a worktree, run `koan context --here` first**, and print it as is. Without `--here` it briefs the root: `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `tasks` is limited like a list: `--limit` (100 by default, `null` for all), with `total` and `truncated`. `koan context <folder>` briefs any folder, and `--file <path>` the folder a file is in. `export` and `where` take `--here` and `--file` too.
 - **Check the marker is the worktree's own**: in a git worktree it should be `$(git rev-parse --show-toplevel)/.koan/marker.json`. A marker above the worktree means it was never bound and is borrowing an outer folder: say so, rather than working in that folder.
 - **Bind worktrees from their top, never the checkout that holds them**: a marker binds every directory under it. `bind` refuses a checkout, a directory whose `.git` is a directory (`checkout`), and a directory bound to another live folder (`bound`); `--force` overrides either, so ask the user first. It refuses a `.koan/` holding files that aren't koan's (`foreign-files`), and any directory under `~/koan-root`.
-- A marker copied or moved with its directory, or whose folder was deleted or archived, binds nothing: `where`, `context` and `export` fail `not-found` and say why. Binding again fixes a moved one. `koan unbind <dir>` removes one; removing the worktree removes it too.
+- A marker copied or moved with its directory, or whose folder was deleted or archived, binds nothing: `where`, `context` and `export` fail `not-found` and say why. Binding again fixes a moved one. `koan unbind <dir>` removes one; `bind` and `unbind` both return `dir`, `marker` and `changed`, false when there was nothing to write or remove; removing the worktree removes it too.
 - **As a worker**, run `context` and `where`, never `bind` or `unbind`: report a stale or broken marker to the coordinator.
 
 ## Moving, deleting and archiving
 
 ```sh
-koan mv 48 /work/api                             # its notes move with it; .result.moved[0].notes_path is the new path
+koan mv -t /work/api 48                          # its notes move with it; .result.moved[0].notes_path is the new path
 koan mv -T /work/web/client /work/client         # -T: the new path; -t: the folder to move into
 koan task list /work/client --state open,complete --fields title,state,claim   # before deleting: what goes
 koan delete /work/client                         # refused without --contents: conflict, rule not-empty
-koan delete /work/client --contents              # only once the user said so: .result.removed, .result.released
+koan delete /work/client --contents              # only once the user said so: .result.deleted, .result.removed, .result.released
 ```
 
 - Always pass `-t` or `-T` to `mv`, so what you type never depends on what exists.
@@ -257,7 +256,7 @@ koan delete /work/client --contents              # only once the user said so: .
 - Moving never changes an edge, so it never changes readiness. Don't move a task someone has claimed: its notes path changes under them, and the move warns `moved-claimed`. A gate never moves.
 - **Deleting is permanent**, and there is no undo but a backup. **Always confirm with the user before `delete`**, naming what goes: list the folder's tasks first, complete ones too. Never delete to tidy up on your own initiative. Prefer cancelling (below) when the user means "won't do", and archiving when the work is finished: both keep the record.
 - `delete` of a folder without `--contents` is refused (`not-empty`) when the folder holds tasks or folders beyond its gates, and without `--material` (`has-material`) when it holds the user's files: `.error.paths` lists them, such as `/work/client:docs`. **Never add `--contents` or `--material` on your own**: show the user what would go and ask. `--material` deletes their files for good.
-- A delete removes every edge to what went, so what waited on it may become ready: `released` says which. Tell the user. Deleting a claimed task ends its claim without asking anyone.
+- `deleted` is the subjects, and `removed` everything that left, their contents too. A delete removes every edge to what went, so what waited on it may become ready: `released` says which. Tell the user. Deleting a claimed task ends its claim without asking anyone, and `unclaimed` says which.
 
 ### Archiving finished work
 
@@ -265,12 +264,12 @@ Archiving moves complete work out of the tree into `~/koan-root/archived/`, kept
 
 ```sh
 koan archive /work/api                              # refused while anything under it is open: conflict, rule not-finished
-koan update 48 --tags-add cancelled && koan complete 48 && koan archive 48   # one task: .result.archived[0].archive
+koan update 48 --tags-add cancelled && koan complete 48 && koan archive 48   # one task: .result.archived[0].json
 koan show 48                                        # not-found: .error.archived says where it went
 ```
 
 - **When the last open task in a folder is complete**, or the user says its work has shipped, offer to archive it. Never archive on your own initiative. A folder archives when every task under it is complete, gates included; otherwise `not-finished` lists the open tasks in `.error.ids`: ask the user, don't complete them to get past it.
-- `archive` takes several tasks and folders, as one change. `.result.archived` says where each went, and `.result.removed` is every ID that left the tree. They never resolve again: a command naming one fails `not-found`, saying where it went. A worktree bound to an archived folder binds nothing: mention it, so the user can remove the worktree.
+- `archive` takes several tasks and folders, as one change. `.result.archived` says where each went, in a move's shape plus its `json`, and `.result.removed` is every ID that left the tree. They never resolve again: a command naming one fails `not-found`, saying where it went. A worktree bound to an archived folder binds nothing: mention it, so the user can remove the worktree.
 - **Finding archived work**: search it with `rg '<text>' ~/koan-root/archived`. Each item keeps its ID in its name, such as `archived/work/@41_api/` for a folder or `archived/work/api/@48.md` for a task, with its fields in the `.json` beside it. Read archived files; never change them. To pick the work up again, make new tasks from what you find.
 
 ## When the tree is damaged

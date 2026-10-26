@@ -1,11 +1,17 @@
 {
   "ok": true,
   "result": {
+    "deleted": [
+      1
+    ],
     "removed": [
       1,
       2,
       3,
       5
+    ],
+    "unclaimed": [
+      3
     ],
     "released": [
       4,

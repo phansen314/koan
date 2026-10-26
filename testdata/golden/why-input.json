@@ -11,7 +11,11 @@
       }
     ],
     "ready": [
-      3
+      {
+        "id": 3,
+        "ref": "@3 (/w)",
+        "claimed": false
+      }
     ]
   },
   "warnings": []

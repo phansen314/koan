@@ -3,7 +3,7 @@
   "error": {
     "kind": "invalid-input",
     "rule": null,
-    "message": "show takes no field task",
+    "message": "unknown field task",
     "ids": [],
     "paths": [],
     "problems": [
@@ -13,7 +13,7 @@
       },
       {
         "field": "/task",
-        "reason": "unknown field"
+        "reason": "unknown field task"
       }
     ],
     "archived": []

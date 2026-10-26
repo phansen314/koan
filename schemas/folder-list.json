@@ -31,8 +31,7 @@
           "type": "array",
           "items": {
             "$ref": "folder#/$defs/field"
-          },
-          "uniqueItems": true
+          }
         }
       },
       "unevaluatedProperties": false

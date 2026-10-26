@@ -35,6 +35,16 @@ func (s *shape) faultf(pointer, format string, args ...any) {
 	s.fault(pointer, fmt.Errorf(format, args...))
 }
 
+// faultIDs records a fault that names IDs.
+func (s *shape) faultIDs(pointer string, ids []int64, format string, args ...any) {
+	s.faultf(pointer, format, args...)
+	for _, id := range ids {
+		if !slices.Contains(s.err.IDs, id) {
+			s.err.IDs = append(s.err.IDs, id)
+		}
+	}
+}
+
 // ref parses a reference and checks its shape where want is taken.
 func (s *shape) ref(pointer, raw string, want core.Want, inBatch bool) core.Ref {
 	r, err := core.ParseRef(raw)
@@ -84,30 +94,17 @@ func (s *shape) priority(pointer string, p *int64) {
 	}
 }
 
-// tags checks a list of tags: each its pattern, and a duplicate at its
-// later occurrence.
+// tags checks a list of tags: each its pattern; a tag given twice counts
+// once.
 func (s *shape) tags(pointer string, tags []string) map[string]bool {
 	out := map[string]bool{}
 	for i, tag := range tags {
-		switch {
-		case !core.ValidTag(tag):
+		if !core.ValidTag(tag) {
 			s.faultf(fmt.Sprintf("%s/%d", pointer, i), "%q is not a tag", tag)
-		case out[tag]:
-			s.faultf(fmt.Sprintf("%s/%d", pointer, i), "tag %q given twice", tag)
 		}
 		out[tag] = true
 	}
 	return out
-}
-
-// unique checks a list holds no duplicate, pointing at its later
-// occurrence.
-func (s *shape) unique(pointer string, items []string) {
-	for i, item := range items {
-		if slices.Contains(items[:i], item) {
-			s.faultf(fmt.Sprintf("%s/%d", pointer, i), "%q given twice", item)
-		}
-	}
 }
 
 // done checks that no two references name paths differing only in case,
@@ -129,10 +126,11 @@ func (s *shape) done(exempt func(a, b core.Ref) bool) error {
 }
 
 // pointAt points an error found once the shape is good at the field it came
-// from: invalid-input always, since it names every fault; any other kind
-// only in a batch, where a refusal points at the parts at fault.
+// from: invalid-input and not-found always, since they name the field at
+// fault; any other kind only in a batch, where a refusal points at the
+// parts at fault.
 func pointAt(err error, pointer string, batch bool) error {
-	if e, ok := err.(*core.Error); ok && (batch || e.Kind == core.KindInvalidInput) {
+	if e, ok := err.(*core.Error); ok && (batch || e.Kind == core.KindInvalidInput || e.Kind == core.KindNotFound) {
 		return problem(err, "%s", pointer)
 	}
 	return err
