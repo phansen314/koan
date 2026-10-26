@@ -6,7 +6,7 @@ Task management for one person on one machine, built to be driven by agents such
 
 Linux and macOS only.
 
-**Pre-1.0:** until 1.0, the JSON output may change in a minor release, and its release notes say what changed.
+**Pre-1.0:** until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports `unsupported-format`, its `format` below `koan version`'s. Back the old root up, move it aside and `koan init`.
 
 ## Install
 
@@ -65,9 +65,10 @@ Everything is under `~/koan-root`:
 
 | Path | Holds |
 |---|---|
-| `koan.db` | the database: tasks, folders, the edges between tasks, claims. Only koan writes it |
+| `koan.db` | the database: tasks, folders, the edges between tasks, claims, and the log of every change. Only koan writes it |
 | `tree/` | a directory per folder, named `@<name>`, holding its notes `@notes.md`, each task's notes `@<id>.md`, and anything else you keep there (your *material*, which koan never reads) |
 | `archived/` | finished work that was archived, as files |
+| `log/` | old events of the log, moved out of the database by `koan log rotate`, as JSON Lines files |
 
 Open `~/koan-root/tree` in your editor and edit any notes file. Rename or move folders with koan, not by hand: `koan doctor` finds a hand rename and `koan repair` puts it back.
 
@@ -96,6 +97,10 @@ koan frontier --limit 10 --fields ref,title                              # what 
 koan claim-next --extra '{"by":"me"}'                                    # claims @3 and returns it, so no one else takes it
 koan complete 3                                                          # .result.released: [4], now ready
 koan show 4                                                              # the whole task, with its notes_path
+```
+
+```shell
+koan log list --task 3 | jq -c '[.result.events[].kind]'                # ["created","claimed","completed","unclaimed"]
 ```
 
 `task` and `folder` hold only `create` and `list`; every other command is its verb alone, for tasks and folders both (`koan show 4`, `koan update 4 --priority 1`, `koan mv 4 /work`). A list or an export with no folder looks at the whole tree; in a worktree, `--here` looks under its folder, as in `koan context --here`. A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`; a `usage` error names the sibling option you probably meant.
@@ -160,7 +165,16 @@ cp -R ~/backups/koan-$(date +%F) ~/koan-root   # or whichever backup you want
 koan doctor                                    # .result.findings: what is wrong, if anything
 ```
 
-A backup carries the claims of its moment, and a restore brings them back with it.
+A backup carries the claims and the log of its moment, and a restore brings them back with it. So the IDs and log `seq` numbers issued after the backup will be issued again, and `koan log list --after` a `seq` from after it is `not-found`.
+
+## History
+
+Every change is recorded in the log, in the database: what was made, changed, moved, completed, claimed, deleted or archived, which tasks became ready, and which folders became finished. `koan log list` reads it back, oldest first, filtered by folder path or ID (matched as recorded, so a renamed or deleted folder still finds its history), `--task`, `--kinds`, and `--since`, `--until` or `--after` a `seq`. To keep the table small, move old events out to files in `~/koan-root/log/`:
+
+```shell
+koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed   # what was finished under /work/api this month
+koan log rotate --before 2026-10-01T00:00:00Z                            # move everything older out to ~/koan-root/log/
+```
 
 ## Checking and repairing
 

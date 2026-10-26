@@ -26,6 +26,7 @@
         "root",
         "tree",
         "archived",
+        "log",
         "database",
         "made",
         "first_id"
@@ -41,6 +42,10 @@
           "$ref": "types#/$defs/abs-path",
           "description": "The archive's directory, archived/."
         },
+        "log": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "The rotated log's directory, log/."
+        },
         "database": {
           "$ref": "types#/$defs/abs-path"
         },
@@ -51,6 +56,7 @@
               "root",
               "tree",
               "archived",
+              "log",
               "database"
             ]
           },

@@ -23,7 +23,8 @@
         "bytes",
         "recopied",
         "clean",
-        "findings"
+        "findings",
+        "logged"
       ],
       "properties": {
         "dir": {
@@ -49,6 +50,10 @@
           "items": {
             "$ref": "finding"
           }
+        },
+        "logged": {
+          "type": "boolean",
+          "description": "Whether backed-up was recorded; false when the lock stayed busy after the copy was made."
         }
       },
       "unevaluatedProperties": false

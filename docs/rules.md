@@ -267,6 +267,39 @@ A nested `.git`, or a worktree inside the folder, is material, so it leaves with
 
 **Bringing work back** is not a change koan makes. It means recreating the work from the archive as new tasks and folders, with new IDs; the old IDs stay retired.
 
+## The log
+
+The log is the history of the tree: an event for each thing every change did, in the order the changes were made. It records what changes did and decides nothing: no rule, readiness or refusal reads it, and a change does exactly what it would do without it.
+
+- **Every change is logged, and only what it changes.** A change records its events in the same change (I13): one for each task, gate, folder, edge and claim it actually changes, and one for each change it makes to what the rules derive, below. A subject or an edge it leaves as it was records nothing: `block 44 --blocked-by 42,43`, where `@44` already waits on `@42`, records the edge to `@43` alone, and completing a task that is already complete records nothing for it. So a change that changes nothing records nothing, and neither does a refused one. The operations the PRD makes on the root as a whole, such as `init`, `repair`, `backup`, binding a marker and rotating the log, are logged as the PRD says. Reads are never logged.
+- **Derived state is recorded, never stored.** Readiness and finished are still worked out when read, from the edges and states as they stand (Readiness). The log is history: it records when a change altered them, comparing the state before the change with the state after it, never between, so a state that changes and changes back within one change records nothing.
+- **Notes never appear.** koan never reads them.
+- **An event explains itself.** It names its task or folder by ID, and where it happened by the folder's ID and path as they were at that moment, so it reads the same after moves, renames, deletes and archiving, and after the events before it have been moved out. An update records each field it changes, before and after; a delete or an archive records what left with its kept text and title, since its ID never resolves again.
+- **Rotating moves events, never changes them.** The oldest events can be moved out of the log into files, whole and in order; a change's events always move together.
+
+**What each change records**
+
+| Change | Events |
+| --- | --- |
+| Create a folder | `created` for each folder it makes, missing parents first, with whether it is finished; its joins record what a join does |
+| Create a task | `created` for the task and for each gate it makes, each with its readiness; `blocked` for each edge it writes, joins included |
+| Update | `updated` for each task or folder whose fields change, with each changed field before and after |
+| Block, unblock | `created` for each gate it makes; `blocked` or `unblocked` for each edge it adds or removes |
+| Join, unjoin | `created` for each gate it makes; `blocked` or `unblocked` for each of joining's edges it adds or removes |
+| Complete, reopen | `completed` or `reopened` for each task whose state changes, a reopened one with its readiness; for completing, `unclaimed` for each claim it ends |
+| Batch | `created` for each folder, task and gate it makes; `blocked` for each edge |
+| Move a task, move or rename a folder | `moved` for each task and folder that moves. What is under a moved folder records nothing: its rows don't change, and the folder's `moved` says where it went |
+| Delete | `unblocked` for each edge between what goes and what stays; `unclaimed` for each claim it ends; `deleted` for each task and folder removed, everything under the subjects included. An edge between two things that go records nothing: both ends' `deleted` close it |
+| Archive | `unblocked` for each edge between what stays and what leaves; `archived` for each task and folder that leaves. An edge between two things that leave records nothing: the archive keeps it |
+| Claim, unclaim | `claimed` or `unclaimed` for each claim made or ended |
+
+**What the rules derive**, recorded after the rest of the change:
+
+- **Readiness:** `released` for each open task the change made ready, and `reblocked` for each it made wait, exactly as its result lists them.
+- **Finished:** `finished` for each folder the change made finished, and `unfinished` for each finished folder it made hold open work again. A folder the change makes starts with its state in its `created`, as of the end of the change, and one it deletes or archives ends with its `deleted` or `archived`, so neither records `finished` or `unfinished` in that change. The root records neither: being finished decides archiving, and the root is never archived.
+
+Updating, claiming, unclaiming and archiving never change either: an update touches no edge or state, and archiving takes only complete work, which holds nothing back.
+
 ## Invariants
 
 Every state of a tree that a reader can see satisfies all of these. koan refuses any change that would break one.
@@ -283,6 +316,8 @@ Every state of a tree that a reader can see satisfies all of these. koan refuses
 - **I10. Changes are whole.** A reader sees a change entirely or not at all, never part of one.
 - **I11. Gates stay with their folder.** Each folder has at most one start gate and one done gate, directly in it, and a gate never moves out of its folder. The root has no gates.
 - **I12. The archive index is complete.** Every archived ID is in the index, with where it went, and no ID in the tree is.
+- **I13. The log is true.** Every event records something that happened. A change records its events in the same change (I10), so a reader sees a change and its events together or not at all. An operation outside the database, on the tree's files, a marker or a backup, records its event once what it did is done, so a crash between the two can leave it done and not recorded, never recorded and not done.
+- **I14. Events are fixed.** An event never changes once recorded. Each has its own `seq`, ascending in the order events are recorded, and a `seq` once issued is never issued again, even once its event has been moved out of the log, as an ID is never reissued (I2).
 
 ## The tree on disk
 
