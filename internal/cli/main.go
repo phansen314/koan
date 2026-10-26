@@ -77,7 +77,7 @@ var siblings = map[string]map[string]string{
 	"folder list": {"--folder": "the folder is a word of its own, as in koan folder list /work"},
 	"context":     {"--folder": "the folder is a word of its own, as in koan context /work"},
 	"export":      {"--folder": "the folder is a word of its own, as in koan export /work"},
-	"join":        {"--join": "name the folders to join after the task as words of their own, as in koan join 42 /work/a /work/b"},
+	"join":        {"--join": "name the folders to join after the task or folder as words of their own, as in koan join 42 /work/a /work/b"},
 	"update":      {"--tags": "update takes --tags-add, --tags-remove and --tags-replace-all"},
 	"task create": {"--tags-add": "task create takes --tags", "--title": "the title is a word of its own, as in koan task create 'Write it'"},
 }

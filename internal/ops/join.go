@@ -11,7 +11,7 @@ import (
 // it. With add set, it writes the edges of joining each folder, making
 // any gate named; else it removes them, never making a gate.
 func joinCommand(name string, add bool) *cli.Command {
-	holds := "the folders to join after the task"
+	holds := "the folders to join after the task or folder"
 	if !add {
 		holds = "the folders to unjoin"
 	}
