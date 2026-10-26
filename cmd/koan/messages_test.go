@@ -29,7 +29,7 @@ func TestSiblingHints(t *testing.T) {
 		{[]string{"folder", "list", "--folder", "/w"}, "--folder", "the folder is a word of its own"},
 		{[]string{"context", "--folder", "/w"}, "--folder", "the folder is a word of its own"},
 		{[]string{"export", "--folder", "/w"}, "--folder", "the folder is a word of its own"},
-		{[]string{"join", "1", "--join", "/w"}, "--join", "name the folders to join after the task"},
+		{[]string{"join", "1", "--join", "/w"}, "--join", "name the folders to join after the task or folder"},
 		{[]string{"update", "1", "--tags", "a"}, "--tags", "--tags-add, --tags-remove and --tags-replace-all"},
 		{[]string{"task", "create", "t", "--tags-add", "a"}, "--tags-add", "task create takes --tags"},
 		{[]string{"task", "create", "--title", "t"}, "--title", "the title is a word of its own"},
@@ -100,7 +100,7 @@ func TestMessageTerms(t *testing.T) {
 	}{
 		{[]string{"update", "2", "--extra-merge", "1"}, `{"refs":[2],"extra_merge":1}`, "update", "--extra-merge", "extra_merge"},
 		{[]string{"update", "2", "--extra-replace-all", "{}", "--extra-merge", "{}"}, `{"refs":[2],"extra_replace_all":{},"extra_merge":{}}`, "update", "--extra-replace-all", "extra_replace_all"},
-		{[]string{"join", "2"}, `{"ref":2}`, "join", "name the folders to join after the task", "join is required"},
+		{[]string{"join", "2"}, `{"ref":2}`, "join", "name the folders to join after the task or folder", "join is required"},
 		{[]string{"complete"}, `{}`, "complete", "name the tasks", "tasks is required"},
 		{[]string{"block", "2"}, `{"task":2}`, "block", "--blocked-by or --blocks", "blocked_by or blocks"},
 		{[]string{"task", "list", "/w", "--file", "/x"}, `{"folder":"/w","file":"/x"}`, "task list", "the folder, --file and --here", "folder and file"},
@@ -194,5 +194,22 @@ func TestArchivedMessageNamesNotesPath(t *testing.T) {
 	path = archived["notes_path"].(string)
 	if !strings.HasSuffix(path, "@notes.md") || !strings.HasSuffix(message(r), "archived, to "+path) {
 		t.Errorf("folder: path %s: %s", path, r.Line())
+	}
+}
+
+// where takes exactly one of its reference, --file and --here, and says
+// so; the lists take at most one.
+func TestOneOfCounts(t *testing.T) {
+	home := root(t)
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"where", "--file", "/tmp", "--here"}, "give exactly one of"},
+		{[]string{"task", "list", "--file", "/tmp", "--here"}, "give at most one of"},
+	} {
+		if m := message(invalidAt(t, home, "", c.args...)); !strings.HasPrefix(m, c.want) {
+			t.Errorf("koan %q: %q", c.args, m)
+		}
 	}
 }

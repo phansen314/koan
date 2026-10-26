@@ -36,7 +36,7 @@ func Where() *cli.Command {
 		Uses:    []string{"<ref>", "--file <path>", "--here"},
 		Subject: &cli.Option{Field: "ref", Holds: "the reference", Complete: anyRef.complete()},
 		Options: []cli.Option{{Field: "file", Kind: cli.Path}},
-		Here:    &cli.Here{Field: "file", Flag: "--here"},
+		Here:    &cli.Here{Field: "file", Flag: "--here", One: true},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in, env: env}
 			q := r.locating("ref", core.WantAny)

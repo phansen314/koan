@@ -66,7 +66,7 @@ type Option struct {
 	// what help calls its value, such as folder.
 	Arg string
 	// Holds, for a position, is what it holds in a message in the command
-	// line's terms, such as "the folders to join after the task"; made
+	// line's terms, such as "the folders to join after the task or folder"; made
 	// from Arg when not set.
 	Holds string
 }
@@ -113,6 +113,7 @@ type Here struct {
 	Field string
 	Flag  string // as typed, such as --here
 	Usage string // the flag's line in help
+	One   bool   // the subject, Field and Flag take exactly one, as where's do
 }
 
 // Input is a command's input: one JSON object, with numbers kept as
@@ -714,7 +715,11 @@ func (c *Command) readFiles(env *Env, l *line) *Error {
 	if h := c.Here; h != nil && h.Flag != "" {
 		if l.here {
 			if _, ok := l.in[h.Field]; ok {
-				message := "give at most one of " + c.term(c.Subject.Field) + ", " + c.term(h.Field) + " and " + h.Flag
+				count := "at most"
+				if h.One {
+					count = "exactly"
+				}
+				message := "give " + count + " one of " + c.term(c.Subject.Field) + ", " + c.term(h.Field) + " and " + h.Flag
 				return InvalidInput(message, Problem{Field: "", Reason: message})
 			}
 			wd, e := workingDir()
