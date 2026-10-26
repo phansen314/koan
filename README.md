@@ -98,7 +98,7 @@ koan complete 3                                                          # .resu
 koan show 4                                                              # the whole task, with its notes_path
 ```
 
-`task` and `folder` hold only `create` and `list`; every other command is its verb alone, for tasks and folders both (`koan show 4`, `koan update 4 --priority 1`, `koan mv 4 /work`). A list or an export with no folder looks at the whole tree; in a worktree, `--here` looks under its folder, as in `koan context --here`. A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`.
+`task` and `folder` hold only `create` and `list`; every other command is its verb alone, for tasks and folders both (`koan show 4`, `koan update 4 --priority 1`, `koan mv 4 /work`). A list or an export with no folder looks at the whole tree; in a worktree, `--here` looks under its folder, as in `koan context --here`. A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`; a `usage` error names the sibling option you probably meant.
 
 ### Ordering folders
 
@@ -106,8 +106,8 @@ Edges are only ever between tasks: where a task sits never orders it. To order w
 
 ```sh
 koan task create 'Announce it' --folder /work --blocked-by /work/api    # @5 waits on /work/api's done gate, made as @6
-koan block /work/api.done 3,4                                           # the done gate waits on the folder's work
-koan why 5                                                              # .result.ready: [4], what to finish to move @5
+koan block /work/api.done --blocked-by 3,4                              # the done gate waits on the folder's work
+koan why 5                                                              # .result.ready: @4, what to finish to move @5
 koan export /work/api | jq '.result.external[].ref'                     # the tasks outside /work/api at the other end of an edge: @5
 ```
 
@@ -123,7 +123,7 @@ koan batch -i - <<'EOF'
 EOF
 ```
 
-Several agents can work from one tree: a **claim** reserves a task, so two workers are never handed the same one. It never expires; `complete` or `unclaim` ends it. Finished work leaves the tree with `koan archive`, for a task or a folder, into `~/koan-root/archived`, where `rg` finds it.
+Several agents can work from one tree: a **claim** reserves a task, so two workers are never handed the same one. It never expires; `complete` or `unclaim` ends it, and says which claims it ended. Finished work leaves the tree with `koan archive`, for a task or a folder, into `~/koan-root/archived`, where `rg` finds it.
 
 ## Use it from Claude Code and OpenCode
 
