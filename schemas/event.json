@@ -39,7 +39,7 @@
           "type": "null"
         }
       ],
-      "description": "The task or folder it is about; null for the root or the log."
+      "description": "The task or folder it is about; null for the root or the log, and for a repaired whose finding names no issued ID."
     },
     "folder": {
       "$ref": "types#/$defs/folder-at",
@@ -647,7 +647,7 @@
               "type": "null"
             }
           ],
-          "description": "Where its notes went in the archive; null for a task archived without a notes file."
+          "description": "Where its notes went in the archive; null only for a task archived alone without a notes file."
         },
         "dir": {
           "anyOf": [
