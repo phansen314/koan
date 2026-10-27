@@ -1,4 +1,4 @@
 [
-{"seq":6,"change":6,"at":"$AT","command":"claim","kind":"claimed","id":4,"folder":{"id":null,"path":"/"},"data":{"extra":{"by":"me"}}},
-{"seq":7,"change":6,"at":"$AT","command":"claim","kind":"claimed","id":2,"folder":{"id":1,"path":"/w"},"data":{"extra":{"by":"me"}}}
+{"seq":7,"change":7,"at":"$AT","command":"claim","kind":"claimed","id":4,"folder":{"id":null,"path":"/"},"data":{"extra":{"by":"me"}}},
+{"seq":8,"change":7,"at":"$AT","command":"claim","kind":"claimed","id":2,"folder":{"id":1,"path":"/w"},"data":{"extra":{"by":"me"}}}
 ]

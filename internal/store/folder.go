@@ -131,6 +131,10 @@ func (t *Tx) SetFolderFields(f FolderRow) error {
 
 // SetFolderPlace gives a folder a new parent and name, as a move does.
 func (t *Tx) SetFolderPlace(id, parent int64, name string) error {
+	var from sql.NullInt64
+	t.fail(t.QueryRow("SELECT parent FROM folder WHERE id = ?", id).Scan(&from))
+	t.touch(from.Int64)
+	t.touch(parent)
 	_, err := t.Exec("UPDATE folder SET parent = ?, name = ? WHERE id = ?", parentArg(parent), name, id)
 	return err
 }

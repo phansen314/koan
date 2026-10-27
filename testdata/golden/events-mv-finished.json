@@ -1,0 +1,5 @@
+[
+{"seq":8,"change":8,"at":"$AT","command":"mv","kind":"moved","id":4,"folder":{"id":3,"path":"/p/x"},"data":{"before":{"id":3,"path":"/p/x"},"after":{"id":2,"path":"/p/y"}}},
+{"seq":9,"change":8,"at":"$AT","command":"mv","kind":"unfinished","id":2,"folder":{"id":2,"path":"/p/y"},"data":{}},
+{"seq":10,"change":8,"at":"$AT","command":"mv","kind":"finished","id":3,"folder":{"id":3,"path":"/p/x"},"data":{}}
+]

@@ -19,6 +19,10 @@ type BatchResult struct {
 	Reblocked   []int64          `json:"reblocked"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r BatchResult) Derived() (released, reblocked []int64) { return nil, r.Reblocked }
+
 // maxParts is the most folders and tasks a batch holds between them.
 const maxParts = 1000
 

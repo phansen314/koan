@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -245,5 +246,69 @@ func TestInitLogNotARoot(t *testing.T) {
 		if e == nil || e.Rule == nil || *e.Rule != cli.RuleNotARoot || !slices.Equal(e.Paths, []string{filepath.Join(root, entry.name)}) {
 			t.Errorf("%s: %+v", entry.name, e)
 		}
+	}
+}
+
+// A change asks only the folders above what it touches, each before and
+// after, and never the rest of the tree; an open task under a folder
+// answers for each folder above it before the change. A task completed
+// and reopened in one change leaves every folder as it found it, so
+// nothing derived is recorded.
+func TestDerivedAsksAbove(t *testing.T) {
+	home, s := newRoot(t, 1)
+	s.Command = "task create"
+	var a, b, c, z, y, task int64
+	write(t, s, func(tx *Tx) error {
+		var err error
+		for _, f := range []struct {
+			id     *int64
+			parent *int64
+			name   string
+		}{{&a, ptr(core.RootID), "a"}, {&b, &a, "b"}, {&c, &b, "c"}, {&z, ptr(core.RootID), "z"}, {&y, &z, "y"}} {
+			if *f.id, err = addFolder(tx, *f.parent, f.name); err != nil {
+				return err
+			}
+		}
+		if task, err = addTask(tx, c, "x"); err != nil {
+			return err
+		}
+		_, err = addTask(tx, y, "o")
+		return err
+	})
+	times := map[int64]int{}
+	asked = func(folder int64) { times[folder]++ }
+	t.Cleanup(func() { asked = nil })
+	before := len(events(t, home))
+	s.Command = "complete"
+	write(t, s, func(tx *Tx) error {
+		if _, err := tx.SetComplete(task, true); err != nil {
+			return err
+		}
+		_, err := tx.SetComplete(task, false)
+		return err
+	})
+	if want := map[int64]int{c: 2, b: 1, a: 1}; !maps.Equal(times, want) {
+		t.Errorf("asked %v, want %v", times, want)
+	}
+	if got := events(t, home)[before:]; len(got) != 0 {
+		t.Errorf("a change that changed back recorded %+v", got)
+	}
+	// Completing it asks the same folders, and records each finished,
+	// deepest first, where it is.
+	clear(times)
+	write(t, s, func(tx *Tx) error {
+		_, err := tx.SetComplete(task, true)
+		return err
+	})
+	if want := map[int64]int{c: 2, b: 1, a: 1}; !maps.Equal(times, want) {
+		t.Errorf("asked %v, want %v", times, want)
+	}
+	var got []string
+	for _, e := range events(t, home)[before:] {
+		got = append(got, fmt.Sprintf("%s %d %s %s", e.Kind, e.ID.Int64, e.FolderPath, e.Data))
+	}
+	want := []string{fmt.Sprintf("finished %d /a/b/c {}", c), fmt.Sprintf("finished %d /a/b {}", b), fmt.Sprintf("finished %d /a {}", a)}
+	if !slices.Equal(got, want) {
+		t.Errorf("events %q, want %q", got, want)
 	}
 }

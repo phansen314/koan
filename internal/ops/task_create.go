@@ -18,6 +18,10 @@ type TaskCreateResult struct {
 	Reblocked []int64    `json:"reblocked"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r TaskCreateResult) Derived() (released, reblocked []int64) { return nil, r.Reblocked }
+
 // TaskCreate makes a task in a folder or the root, with its notes file
 // and its edges, those of the folders it joins after the rest, making any
 // gate they name.

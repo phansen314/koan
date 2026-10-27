@@ -1,6 +1,6 @@
 [
-{"seq":11,"change":11,"at":"$AT","command":"join","kind":"created","id":6,"folder":{"id":2,"path":"/g"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
-{"seq":12,"change":11,"at":"$AT","command":"join","kind":"created","id":7,"folder":{"id":2,"path":"/g"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
-{"seq":13,"change":11,"at":"$AT","command":"join","kind":"blocked","id":6,"folder":{"id":2,"path":"/g"},"data":{"blocker":4}},
-{"seq":14,"change":11,"at":"$AT","command":"join","kind":"blocked","id":5,"folder":{"id":1,"path":"/f"},"data":{"blocker":7}}
+{"seq":15,"change":15,"at":"$AT","command":"join","kind":"created","id":6,"folder":{"id":2,"path":"/g"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
+{"seq":16,"change":15,"at":"$AT","command":"join","kind":"created","id":7,"folder":{"id":2,"path":"/g"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":17,"change":15,"at":"$AT","command":"join","kind":"blocked","id":6,"folder":{"id":2,"path":"/g"},"data":{"blocker":4}},
+{"seq":18,"change":15,"at":"$AT","command":"join","kind":"blocked","id":5,"folder":{"id":1,"path":"/f"},"data":{"blocker":7}}
 ]

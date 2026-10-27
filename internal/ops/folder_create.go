@@ -21,6 +21,10 @@ type FolderCreateResult struct {
 	Reblocked   []int64    `json:"reblocked"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r FolderCreateResult) Derived() (released, reblocked []int64) { return nil, r.Reblocked }
+
 // FolderCreate makes a folder at its path, with its directory and notes,
 // and any missing parents the same way, with no title. Joining folders,
 // it makes its own gates, then those of each folder it joins.

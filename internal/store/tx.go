@@ -231,6 +231,7 @@ func (t *Tx) MakeGate(folder int64, end core.End) (int64, error) {
 	if end == core.EndDone {
 		title = "Done"
 	}
+	t.touch(folder)
 	_, err = t.Exec(`INSERT INTO task (id, folder, gate, title, priority, created_at, completed_at, updated_at, extra)
 		VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, '{}')`, id, folder, string(end), title, t.Now, t.Now)
 	if err != nil {
@@ -269,6 +270,11 @@ func (t *Tx) RemoveTasks(ids []int64, archive map[int64]string) (released []int6
 		}
 	}
 	slices.Sort(waiting)
+	for _, id := range ids {
+		if t.Open(id) {
+			t.touch(t.taskFolder(id))
+		}
+	}
 	before := map[int64]bool{}
 	for _, w := range waiting {
 		before[w] = core.Ready(t, w)

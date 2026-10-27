@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/phansen314/koan/internal/core"
 )
@@ -183,12 +184,14 @@ type event struct {
 // recorder holds a change's events until step 5 inserts them, in the
 // order they were recorded. Every event of the change takes its command
 // and time. Made is what the change issued IDs to, in that order, whose
-// created events come first.
+// created events come first. Held is each folder above what the change
+// touches, as the change found it.
 type recorder struct {
 	command string
 	at      string
 	events  []event
 	made    []made
+	held    map[int64]heldOpen
 }
 
 // Record adds an event to the change: its kind, the task or folder it is
@@ -299,9 +302,16 @@ func (t *Tx) recordMade() error {
 	return nil
 }
 
+// asked, when a test sets it, is called with each folder OpenUnder asks
+// about.
+var asked func(folder int64)
+
 // OpenUnder reports whether any open task, a gate included, is under a
 // folder, at any depth, stopping at the first it finds.
 func (t *Tx) OpenUnder(folder int64) bool {
+	if asked != nil {
+		asked(folder)
+	}
 	var open bool
 	t.fail(t.QueryRow(`WITH RECURSIVE under(id) AS (SELECT ? UNION ALL SELECT folder.id FROM folder JOIN under ON folder.parent = under.id)
 		SELECT EXISTS (SELECT 1 FROM task WHERE folder IN under AND completed_at IS NULL)`, folder).Scan(&open))
@@ -316,9 +326,7 @@ func (t *Tx) PlaceOf(id int64) Place {
 	folder := id
 	if id != core.RootID {
 		if n, ok := t.Node(id); ok && n.Kind == core.NodeTask {
-			var f sql.NullInt64
-			t.fail(t.QueryRow("SELECT folder FROM task WHERE id = ?", id).Scan(&f))
-			folder = f.Int64
+			folder = t.taskFolder(id)
 		}
 	}
 	return Place{Folder: folder, Path: t.Path(folder)}
@@ -352,6 +360,106 @@ func (t *Tx) RecordCut(ids []int64) error {
 	})
 	for _, e := range cut {
 		t.Record(EventUnblocked, e.From, t.PlaceOf(e.From), Blocker{Blocker: e.To})
+	}
+	return t.err
+}
+
+// Derived is a result that lists the open tasks its change made ready
+// and made wait.
+type Derived interface {
+	Derived() (released, reblocked []int64)
+}
+
+// heldOpen is a folder above what a change touches, as the change found
+// it: where it was, how deep, the root's folders being 1, and whether an
+// open task was under it.
+type heldOpen struct {
+	place Place
+	depth int
+	open  bool
+}
+
+// touch asks each folder from folder up, the root aside, whether an open
+// task is under it, and keeps where it is and how deep, unless the change
+// has asked already. A change touches a task's folder before it adds,
+// removes, completes, reopens or moves an open task, and a folder's
+// parent before and after it moves the folder, so each is asked before
+// the change alters anything under it. An open task under a folder is
+// under each folder above it, which needs no asking.
+func (t *Tx) touch(folder int64) {
+	type link struct {
+		id   int64
+		name string
+	}
+	var chain []link
+	base := heldOpen{place: Place{Folder: core.RootID, Path: "/"}}
+	for id := folder; id != core.RootID; {
+		if h, ok := t.held[id]; ok {
+			base = h
+			break
+		}
+		var parent sql.NullInt64
+		var name string
+		if t.fail(t.QueryRow("SELECT parent, name FROM folder WHERE id = ?", id).Scan(&parent, &name)) {
+			return
+		}
+		chain = append(chain, link{id: id, name: name})
+		id = parent.Int64
+	}
+	if t.held == nil {
+		t.held = map[int64]heldOpen{}
+	}
+	open := false
+	held := make([]heldOpen, len(chain))
+	for i, l := range chain {
+		open = open || t.OpenUnder(l.id)
+		held[i].open = open
+	}
+	path, depth := strings.TrimSuffix(base.place.Path, "/"), base.depth
+	for i := len(chain) - 1; i >= 0; i-- {
+		path += "/" + chain[i].name
+		depth++
+		held[i].place, held[i].depth = Place{Folder: chain[i].id, Path: path}, depth
+		t.held[chain[i].id] = held[i]
+	}
+}
+
+// recordDerived records what the change did to what the rules derive,
+// after the rest of its events: released and reblocked, in the order its
+// result lists them, then finished and unfinished for each folder it
+// asked before that the change neither made nor removed, asked again,
+// deepest first, then by ID, each where the change found it.
+func (t *Tx) recordDerived(result any) error {
+	if d, ok := result.(Derived); ok {
+		released, reblocked := d.Derived()
+		for _, id := range released {
+			t.Record(EventReleased, id, t.PlaceOf(id), nil)
+		}
+		for _, id := range reblocked {
+			t.Record(EventReblocked, id, t.PlaceOf(id), nil)
+		}
+	}
+	made := map[int64]bool{}
+	for _, m := range t.made {
+		made[m.id] = true
+	}
+	var ids []int64
+	for id := range t.held {
+		if n, ok := t.Node(id); ok && n.Kind == core.NodeFolder && !made[id] {
+			ids = append(ids, id)
+		}
+	}
+	slices.SortFunc(ids, func(a, b int64) int {
+		return cmp.Or(cmp.Compare(t.held[b].depth, t.held[a].depth), cmp.Compare(a, b))
+	})
+	for _, id := range ids {
+		h := t.held[id]
+		switch open := t.OpenUnder(id); {
+		case h.open && !open:
+			t.Record(EventFinished, id, h.place, nil)
+		case !h.open && open:
+			t.Record(EventUnfinished, id, h.place, nil)
+		}
 	}
 	return t.err
 }

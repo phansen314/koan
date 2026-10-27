@@ -19,6 +19,10 @@ type DeleteResult struct {
 	Released  []int64 `json:"released"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r DeleteResult) Derived() (released, reblocked []int64) { return r.Released, nil }
+
 // Delete removes tasks and folders, mixed, as one change: a task with its
 // notes, its claim and every edge to and from it, and a folder with
 // everything under it, gates included. It never splices: what waited on

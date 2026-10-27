@@ -154,20 +154,20 @@ func TestLogListPath(t *testing.T) {
 	}
 
 	// A deleted folder's path finds its history: made, and C made in
-	// it, at the path it had then; both deleted at the path it had after
-	// the rename.
+	// it, which left it unfinished, at the path it had then; both deleted
+	// at the path it had after the rename.
 	made := matches(t, home, where(t, home, func(e eventRecord) bool { return pathUnder(e.Folder.Path, "/work/api-v2") }), "/work/api-v2")
 	deleted := matches(t, home, where(t, home, func(e eventRecord) bool { return pathUnder(e.Folder.Path, "/Work/api-v2") }), "/Work/api-v2")
 	for _, c := range []struct {
-		got  logResult
-		kind string
-	}{{made, "created"}, {deleted, "deleted"}} {
+		got   logResult
+		kinds []string
+	}{{made, []string{"created", "created", "unfinished"}}, {deleted, []string{"deleted", "deleted"}}} {
 		var kinds []string
 		for _, e := range c.got.Events {
 			kinds = append(kinds, e.Kind)
 		}
-		if !slices.Equal(kinds, []string{c.kind, c.kind}) {
-			t.Errorf("kinds %v, want %s for the folder and for C", kinds, c.kind)
+		if !slices.Equal(kinds, c.kinds) {
+			t.Errorf("kinds %v, want %v", kinds, c.kinds)
 		}
 	}
 	matches(t, home, []int64{}, "/nowhere")
@@ -202,8 +202,8 @@ func TestLogListFolderID(t *testing.T) {
 	// A deleted folder's ID: its own events and C's.
 	gone := matches(t, home, where(t, home, func(e eventRecord) bool { return e.Folder.ID != nil && *e.Folder.ID == l.apiV2 }),
 		fmt.Sprint(l.apiV2))
-	if len(gone.Events) != 4 {
-		t.Errorf("@%d: %d events, want made and deleted for it and C", l.apiV2, len(gone.Events))
+	if len(gone.Events) != 5 {
+		t.Errorf("@%d: %d events, want made and deleted for it and C, and its unfinished once C was made", l.apiV2, len(gone.Events))
 	}
 	// An ID never issued matches nothing, and is no error.
 	matches(t, home, []int64{}, "999999")

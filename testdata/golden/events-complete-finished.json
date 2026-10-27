@@ -1,0 +1,7 @@
+[
+{"seq":13,"change":13,"at":"$AT","command":"complete","kind":"completed","id":5,"folder":{"id":3,"path":"/a/b/c"},"data":{}},
+{"seq":14,"change":13,"at":"$AT","command":"complete","kind":"released","id":6,"folder":{"id":null,"path":"/"},"data":{}},
+{"seq":15,"change":13,"at":"$AT","command":"complete","kind":"finished","id":3,"folder":{"id":3,"path":"/a/b/c"},"data":{}},
+{"seq":16,"change":13,"at":"$AT","command":"complete","kind":"finished","id":2,"folder":{"id":2,"path":"/a/b"},"data":{}},
+{"seq":17,"change":13,"at":"$AT","command":"complete","kind":"finished","id":1,"folder":{"id":1,"path":"/a"},"data":{}}
+]

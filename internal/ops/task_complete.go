@@ -16,11 +16,19 @@ type TaskCompleteResult struct {
 	Released  []int64 `json:"released"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r TaskCompleteResult) Derived() (released, reblocked []int64) { return r.Released, nil }
+
 // TaskReopenResult is reopen's result, in its schema's order.
 type TaskReopenResult struct {
 	Reopened  []int64 `json:"reopened"`
 	Reblocked []int64 `json:"reblocked"`
 }
+
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r TaskReopenResult) Derived() (released, reblocked []int64) { return nil, r.Reblocked }
 
 // tasksCommand is the shape of a write over a list of tasks and nothing
 // else, made as one change; subject is what each task completes to.

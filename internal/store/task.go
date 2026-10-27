@@ -24,6 +24,7 @@ type TaskRow struct {
 // InsertTask inserts an ordinary task's row, made now, open, with its
 // tags. The change issues its ID first, and extra is a JSON object.
 func (t *Tx) InsertTask(r TaskRow, tags []string) error {
+	t.touch(r.Folder)
 	_, err := t.Exec(`INSERT INTO task (id, folder, gate, title, priority, created_at, completed_at, updated_at, extra)
 		VALUES (?, ?, NULL, ?, ?, ?, NULL, ?, ?)`, r.ID, parentArg(r.Folder), r.Title, r.Priority, t.Now, t.Now, string(r.Extra))
 	if err != nil {
@@ -227,6 +228,7 @@ func (t *Tx) SetTaskFields(r TaskRow, tags []string) error {
 // SetComplete marks a task complete now, or open again, and gives it a new
 // updated_at. Completing ends its claim, and reports whether it had one.
 func (t *Tx) SetComplete(id int64, complete bool) (unclaimed bool, err error) {
+	t.touch(t.taskFolder(id))
 	var at any
 	if complete {
 		at = t.Now
@@ -279,6 +281,17 @@ func (t *Tx) EndClaim(id int64) (bool, error) {
 // SetTaskFolder puts a task in another folder, or the root, as a move
 // does. Its place isn't a field, so its updated_at stays.
 func (t *Tx) SetTaskFolder(id, folder int64) error {
+	if t.Open(id) {
+		t.touch(t.taskFolder(id))
+		t.touch(folder)
+	}
 	_, err := t.Exec("UPDATE task SET folder = ? WHERE id = ?", parentArg(folder), id)
 	return err
+}
+
+// taskFolder is the folder a task is in, RootID for the root.
+func (t *Tx) taskFolder(id int64) int64 {
+	var f sql.NullInt64
+	t.fail(t.QueryRow("SELECT folder FROM task WHERE id = ?", id).Scan(&f))
+	return f.Int64
 }

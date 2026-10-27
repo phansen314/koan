@@ -1,8 +1,8 @@
 [
-{"seq":17,"change":17,"at":"$AT","command":"folder create","kind":"created","id":12,"folder":{"id":12,"path":"/s"},"data":{"given":false,"name":"s","title":null,"extra":{},"finished":false}},
-{"seq":18,"change":17,"at":"$AT","command":"folder create","kind":"created","id":13,"folder":{"id":13,"path":"/s/impl"},"data":{"given":true,"name":"impl","title":null,"extra":{},"finished":false}},
-{"seq":19,"change":17,"at":"$AT","command":"folder create","kind":"created","id":14,"folder":{"id":13,"path":"/s/impl"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
-{"seq":20,"change":17,"at":"$AT","command":"folder create","kind":"created","id":15,"folder":{"id":13,"path":"/s/impl"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
-{"seq":21,"change":17,"at":"$AT","command":"folder create","kind":"created","id":16,"folder":{"id":12,"path":"/s"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
-{"seq":22,"change":17,"at":"$AT","command":"folder create","kind":"created","id":17,"folder":{"id":12,"path":"/s"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"blocked"}}
+{"seq":21,"change":21,"at":"$AT","command":"folder create","kind":"created","id":12,"folder":{"id":12,"path":"/s"},"data":{"given":false,"name":"s","title":null,"extra":{},"finished":false}},
+{"seq":22,"change":21,"at":"$AT","command":"folder create","kind":"created","id":13,"folder":{"id":13,"path":"/s/impl"},"data":{"given":true,"name":"impl","title":null,"extra":{},"finished":false}},
+{"seq":23,"change":21,"at":"$AT","command":"folder create","kind":"created","id":14,"folder":{"id":13,"path":"/s/impl"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
+{"seq":24,"change":21,"at":"$AT","command":"folder create","kind":"created","id":15,"folder":{"id":13,"path":"/s/impl"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":25,"change":21,"at":"$AT","command":"folder create","kind":"created","id":16,"folder":{"id":12,"path":"/s"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":26,"change":21,"at":"$AT","command":"folder create","kind":"created","id":17,"folder":{"id":12,"path":"/s"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"blocked"}}
 ]
