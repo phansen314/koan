@@ -1,0 +1,4 @@
+[
+{"seq":1,"change":1,"at":"$AT","command":"folder create","kind":"created","id":1,"folder":{"id":1,"path":"/work"},"data":{"given":false,"name":"work","title":null,"extra":{},"finished":true}},
+{"seq":2,"change":1,"at":"$AT","command":"folder create","kind":"created","id":2,"folder":{"id":2,"path":"/work/api"},"data":{"given":true,"name":"api","title":"API","extra":{"k":1},"finished":true}}
+]

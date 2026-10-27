@@ -1,0 +1,650 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "event",
+  "type": "object",
+  "required": [
+    "seq",
+    "change",
+    "at",
+    "command",
+    "kind",
+    "id",
+    "folder",
+    "data"
+  ],
+  "properties": {
+    "seq": {
+      "$ref": "types#/$defs/seq"
+    },
+    "change": {
+      "$ref": "types#/$defs/seq",
+      "description": "The seq of the first event of the same change."
+    },
+    "at": {
+      "$ref": "types#/$defs/timestamp",
+      "description": "When the change was made."
+    },
+    "command": {
+      "$ref": "#/$defs/command"
+    },
+    "kind": {
+      "$ref": "#/$defs/kind"
+    },
+    "id": {
+      "anyOf": [
+        {
+          "$ref": "types#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The task or folder it is about; null for the root or the log."
+    },
+    "folder": {
+      "$ref": "types#/$defs/folder-at",
+      "description": "Where it happened, as it was then: the folder itself, a task's folder, or the root."
+    },
+    "data": {
+      "type": "object",
+      "description": "What its kind carries."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "created"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/task-made"
+              },
+              {
+                "$ref": "#/$defs/folder-made"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "updated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/changes"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "completed",
+              "released",
+              "reblocked",
+              "finished",
+              "unfinished"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "reopened"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/reopened"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "blocked",
+              "unblocked"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "claimed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/claimed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "unclaimed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/unclaimed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "moved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/folder-moved"
+              },
+              {
+                "$ref": "#/$defs/task-moved"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "deleted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/deleted"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "archived"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/archived"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "initialized"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/initialized"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "rotated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/rotated"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "command": {
+      "enum": [
+        "init",
+        "task create",
+        "folder create",
+        "update",
+        "block",
+        "unblock",
+        "join",
+        "unjoin",
+        "complete",
+        "reopen",
+        "claim",
+        "claim-next",
+        "unclaim",
+        "mv",
+        "delete",
+        "archive",
+        "batch",
+        "log rotate"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "created",
+        "updated",
+        "completed",
+        "reopened",
+        "blocked",
+        "unblocked",
+        "claimed",
+        "unclaimed",
+        "moved",
+        "deleted",
+        "archived",
+        "released",
+        "reblocked",
+        "finished",
+        "unfinished",
+        "initialized",
+        "rotated"
+      ]
+    },
+    "task-made": {
+      "type": "object",
+      "required": [
+        "given",
+        "gate",
+        "title",
+        "priority",
+        "tags",
+        "extra",
+        "readiness"
+      ],
+      "properties": {
+        "given": {
+          "type": "boolean",
+          "description": "false for a gate, always: only an edge naming it makes one."
+        },
+        "gate": {
+          "$ref": "types#/$defs/gate"
+        },
+        "title": {
+          "$ref": "types#/$defs/title"
+        },
+        "priority": {
+          "$ref": "types#/$defs/priority"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/tag"
+          },
+          "uniqueItems": true,
+          "description": "Sorted byte for byte."
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        },
+        "readiness": {
+          "enum": [
+            "ready",
+            "blocked"
+          ],
+          "description": "As of the end of the change."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "folder-made": {
+      "type": "object",
+      "required": [
+        "given",
+        "name",
+        "title",
+        "extra",
+        "finished"
+      ],
+      "properties": {
+        "given": {
+          "type": "boolean",
+          "description": "false for a missing parent."
+        },
+        "name": {
+          "$ref": "types#/$defs/name"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/title"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        },
+        "finished": {
+          "type": "boolean",
+          "description": "As of the end of the change."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "changes": {
+      "type": "object",
+      "required": [
+        "changes"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "minItems": 1,
+          "description": "In the record's order: title, priority, tags, extra.",
+          "items": {
+            "type": "object",
+            "required": [
+              "field",
+              "before",
+              "after"
+            ],
+            "properties": {
+              "field": {
+                "enum": [
+                  "title",
+                  "priority",
+                  "tags",
+                  "extra"
+                ]
+              },
+              "before": {
+                "description": "The field's value before the change."
+              },
+              "after": {
+                "description": "The field's value after it."
+              }
+            },
+            "unevaluatedProperties": false
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "reopened": {
+      "type": "object",
+      "required": [
+        "readiness"
+      ],
+      "properties": {
+        "readiness": {
+          "enum": [
+            "ready",
+            "blocked"
+          ],
+          "description": "As of the end of the change."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": [
+        "blocker"
+      ],
+      "properties": {
+        "blocker": {
+          "$ref": "types#/$defs/id",
+          "description": "The task it waits on, or waited on."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "claimed": {
+      "type": "object",
+      "required": [
+        "extra"
+      ],
+      "properties": {
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "unclaimed": {
+      "type": "object",
+      "required": [
+        "claimed_at",
+        "extra"
+      ],
+      "properties": {
+        "claimed_at": {
+          "$ref": "types#/$defs/timestamp"
+        },
+        "extra": {
+          "$ref": "types#/$defs/extra"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "folder-moved": {
+      "type": "object",
+      "required": [
+        "before",
+        "after"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "types#/$defs/path"
+        },
+        "after": {
+          "$ref": "types#/$defs/path"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "task-moved": {
+      "type": "object",
+      "required": [
+        "before",
+        "after"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "types#/$defs/folder-at"
+        },
+        "after": {
+          "$ref": "types#/$defs/folder-at"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "deleted": {
+      "type": "object",
+      "required": [
+        "given",
+        "ref",
+        "title"
+      ],
+      "properties": {
+        "given": {
+          "type": "boolean",
+          "description": "true for a subject; false for what went with one."
+        },
+        "ref": {
+          "$ref": "types#/$defs/kept",
+          "description": "Its kept text, with the path it had."
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/title"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null for a folder with none."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "archived": {
+      "type": "object",
+      "required": [
+        "given",
+        "ref",
+        "title",
+        "notes_path",
+        "dir"
+      ],
+      "properties": {
+        "given": {
+          "type": "boolean"
+        },
+        "ref": {
+          "$ref": "types#/$defs/kept"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/title"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notes_path": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/abs-path"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Where its notes went in the archive; null only for a task given as a subject, archived without a notes file."
+        },
+        "dir": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/abs-path"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A folder's archived directory; null for a task."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "initialized": {
+      "type": "object",
+      "required": [
+        "format",
+        "first_id"
+      ],
+      "properties": {
+        "format": {
+          "type": "integer"
+        },
+        "first_id": {
+          "$ref": "types#/$defs/id"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "rotated": {
+      "type": "object",
+      "required": [
+        "file",
+        "first_seq",
+        "last_seq",
+        "count"
+      ],
+      "properties": {
+        "file": {
+          "$ref": "types#/$defs/abs-path"
+        },
+        "first_seq": {
+          "$ref": "types#/$defs/seq"
+        },
+        "last_seq": {
+          "$ref": "types#/$defs/seq"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

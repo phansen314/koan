@@ -19,6 +19,10 @@ type DeleteResult struct {
 	Released  []int64 `json:"released"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r DeleteResult) Derived() (released, reblocked []int64) { return r.Released, nil }
+
 // Delete removes tasks and folders, mixed, as one change: a task with its
 // notes, its claim and every edge to and from it, and a folder with
 // everything under it, gates included. It never splices: what waited on
@@ -175,17 +179,54 @@ func Delete() *cli.Command {
 					return nil, nil, core.Conflict(core.RuleHasMaterial, nil, found,
 						"%s %s material; %s would delete %s too", core.FormatIDs(holders), hold, env.Name("material"), with)
 				}
-				unclaimed := []int64{}
-				for _, id := range tasks {
-					claimed, err := tx.Claimed(id)
-					if err != nil {
-						return nil, nil, err
-					}
-					if claimed {
-						unclaimed = append(unclaimed, id)
-					}
+				removed := slices.Concat(tasks, fs)
+				slices.Sort(removed)
+				// Each edge out to what stays, then each claim it ends, then
+				// each task and folder it removes, in removed's order, as the
+				// change found them.
+				if err := tx.RecordCut(tasks); err != nil {
+					return nil, nil, err
 				}
-				slices.Sort(unclaimed)
+				unclaimed := []int64{}
+				type removal struct {
+					id   int64
+					at   store.Place
+					data store.Deleted
+				}
+				var goes []removal
+				subject := map[int64]bool{}
+				for _, sub := range subs {
+					subject[sub.id] = true
+				}
+				for _, id := range removed {
+					at := tx.PlaceOf(id)
+					data := store.Deleted{Given: subject[id]}
+					if n, _ := tx.Node(id); n.Kind == core.NodeFolder {
+						f, err := tx.Folder(id)
+						if err != nil {
+							return nil, nil, err
+						}
+						data.Ref, data.Title = core.Kept(id, at.Path, core.EndNone), f.Title
+					} else {
+						row, _, err := tx.Task(id)
+						if err != nil {
+							return nil, nil, err
+						}
+						data.Ref, data.Title = core.Kept(id, at.Path, row.Gate), &row.Title
+						c, claimed, err := tx.Claim(id)
+						if err != nil {
+							return nil, nil, err
+						}
+						if claimed {
+							unclaimed = append(unclaimed, id)
+							tx.Record(store.EventUnclaimed, id, at, store.Unclaimed{ClaimedAt: c.ClaimedAt, Extra: c.Extra})
+						}
+					}
+					goes = append(goes, removal{id, at, data})
+				}
+				for _, g := range goes {
+					tx.Record(store.EventDeleted, g.id, g.at, g.data)
+				}
 				released, err := tx.RemoveTasks(tasks, nil)
 				if err != nil {
 					return nil, nil, err
@@ -201,8 +242,6 @@ func Delete() *cli.Command {
 						return nil, nil, err
 					}
 				}
-				removed := slices.Concat(tasks, fs)
-				slices.Sort(removed)
 				deleted := []int64{}
 				for _, sub := range subs {
 					deleted = append(deleted, sub.id)

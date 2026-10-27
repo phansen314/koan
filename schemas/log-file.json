@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "log-file",
+  "description": "One line of a rotated log file.",
+  "type": "object",
+  "required": [
+    "schema",
+    "seq",
+    "change",
+    "at",
+    "command",
+    "kind",
+    "id",
+    "folder",
+    "data"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "seq": {
+      "$ref": "types#/$defs/seq"
+    },
+    "change": {
+      "$ref": "types#/$defs/seq"
+    },
+    "at": {
+      "$ref": "types#/$defs/timestamp"
+    },
+    "command": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "id": {
+      "anyOf": [
+        {
+          "$ref": "types#/$defs/id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "folder": {
+      "type": "object",
+      "required": [
+        "id",
+        "path"
+      ],
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "$ref": "types#/$defs/path"
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "description": "As the Event record gives it for the kind."
+    }
+  }
+}

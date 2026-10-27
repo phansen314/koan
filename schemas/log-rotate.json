@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "log-rotate",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "required": [
+        "before"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "types#/$defs/timestamp",
+          "description": "The events before it move, oldest first, up to the first at or after it. Never in the future."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "changed",
+        "file",
+        "first_seq",
+        "last_seq",
+        "count"
+      ],
+      "properties": {
+        "changed": {
+          "type": "boolean",
+          "description": "false when nothing was before the cut."
+        },
+        "file": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/abs-path"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The file it wrote."
+        },
+        "first_seq": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/seq"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_seq": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/seq"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many events it moved."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

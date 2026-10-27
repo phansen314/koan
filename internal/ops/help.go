@@ -28,6 +28,8 @@ var shorts = map[string]string{
 	"where":         "Resolve a reference, or find the folder a file is in",
 	"context":       "Brief a folder: the folders above it, its notes, its open tasks",
 	"export":        "Print a folder's whole subtree, with the edges in and out of it, for tools",
+	"log list":      "List the log's events, oldest first",
+	"log rotate":    "Move the log's oldest events out of the database, into a file in log/",
 	"bind":          "Bind a directory outside the tree, such as a worktree, to a folder",
 	"unbind":        "Remove a directory's marker",
 	"init":          "Make the root, ~/koan-root",
@@ -80,6 +82,11 @@ var usages = map[string]string{
 	"export/file":         "export the folder this file is in",
 	"file":                "look under the folder this file is in",
 	"kinds":               "fix only these kinds of finding",
+	"log list/task":       "only the events about the task with this ID, even once it is deleted or archived",
+	"since":               "only the events at or after this time, YYYY-MM-DDTHH:MM:SSZ",
+	"after":               "only the events after this seq, such as the last_seq of the list before",
+	"log list/kinds":      "only these kinds of event",
+	"before":              "move the events before this time, YYYY-MM-DDTHH:MM:SSZ; required, never in the future",
 	"ids_from":            "the first ID the new root issues",
 	"pick/direct":         "only the folder's own tasks and the folders directly in it",
 	"pick/kinds":          "offer only these kinds: task, gate, folder",
@@ -138,6 +145,10 @@ func describe(commands []*cli.Command) []*cli.Command {
 			c.Uses = []string{exclusiveFolder, "--bash", "--zsh"}
 		case "batch":
 			c.Uses = []string{"-i <file>"}
+		case "log list":
+			c.Uses = []string{"[<folder>] [--since <timestamp> | --after <seq>]"}
+		case "log rotate":
+			c.Uses = []string{"--before <timestamp>"}
 		}
 	}
 	return commands

@@ -119,7 +119,7 @@ func TestBackup(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if !slices.Equal(names, []string{"archived", "koan.db", "tree"}) {
+	if !slices.Equal(names, []string{"archived", "koan.db", "log", "tree"}) {
 		t.Errorf("backup holds %q", names)
 	}
 
@@ -211,4 +211,30 @@ func TestBackupRefused(t *testing.T) {
 		t.Errorf("no dir: %s", r.Line())
 	}
 	fails(t, t.TempDir(), "not-initialized", "", "backup", filepath.Join(home, "new"))
+}
+
+// The PRD's Backup and restore test of the log: after a restore, a seq
+// the root issued after the backup, such as a last_seq saved then, is past
+// the last the restored root has issued, so log list --after it is
+// not-found at /after, with that last seq in the message; --after the
+// backup's own last seq reads on from there.
+func TestRestoreAfter(t *testing.T) {
+	home := root(t)
+	ok(t, home, "task", "create", "a")
+	dir := filepath.Join(t.TempDir(), "copy")
+	ok(t, home, "backup", dir)
+	at := lastSeq(t, home)
+	ok(t, home, "task", "create", "b")
+	saved := lastSeq(t, home)
+	if saved <= at {
+		t.Fatalf("task create recorded nothing: %d, then %d", at, saved)
+	}
+	restored := restore(t, dir)
+	r := fails(t, restored, "not-found", "", "log", "list", "--after", fmt.Sprint(saved))
+	if ps := r.Error()["problems"].([]any); len(ps) != 1 || ps[0].(map[string]any)["field"] != "/after" || !strings.Contains(r.Error()["message"].(string), fmt.Sprint(at)) {
+		t.Errorf("--after %d: %s", saved, r.Line())
+	}
+	if got := logList(t, restored, "--after", fmt.Sprint(at)); len(got.Events) != 0 || got.LastSeq == nil || *got.LastSeq != at {
+		t.Errorf("--after %d: %+v", at, got)
+	}
 }

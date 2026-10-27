@@ -18,6 +18,10 @@ type TaskCreateResult struct {
 	Reblocked []int64    `json:"reblocked"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r TaskCreateResult) Derived() (released, reblocked []int64) { return nil, r.Reblocked }
+
 // TaskCreate makes a task in a folder or the root, with its notes file
 // and its edges, those of the folders it joins after the rest, making any
 // gate they name.
@@ -100,7 +104,7 @@ func TaskCreate() *cli.Command {
 // its notes file. It gives the task's ID and its notes path, as a step's
 // path.
 func makeTask(tx *store.Tx, folder int64, title string, priority *int64, tags []string, extra json.RawMessage, notes string) (int64, string, error) {
-	id, err := tx.Issue(core.NodeTask)
+	id, err := tx.Issue(core.NodeTask, true)
 	if err != nil {
 		return 0, "", err
 	}

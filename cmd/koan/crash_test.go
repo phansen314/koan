@@ -115,8 +115,9 @@ func clone(t *testing.T, home string) string {
 var anyStamp = regexp.MustCompile(`[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z`)
 
 // dump is every row of a root's database but its pending steps, in
-// order, with timestamps masked, since a change made again is made at
-// another time.
+// order, the log's events and its last seq included, with timestamps
+// masked, since a change made again is made at another time, and the
+// root an archived event's paths name written $ROOT.
 func dump(t *testing.T, home string) string {
 	t.Helper()
 	d, err := sql.Open("sqlite", "file:"+filepath.Join(home, "koan-root", "koan.db")+"?mode=ro")
@@ -133,6 +134,8 @@ func dump(t *testing.T, home string) string {
 		"SELECT task, tag FROM tag ORDER BY task, tag",
 		"SELECT task, claimed_at, extra FROM claim ORDER BY task",
 		"SELECT first_id FROM root",
+		"SELECT seq, change, at, command, kind, id, folder_id, folder_path, data FROM event ORDER BY seq",
+		"SELECT seq FROM sqlite_sequence WHERE name = 'event'",
 	} {
 		rs, err := d.Query(q)
 		if err != nil {
@@ -152,8 +155,12 @@ func dump(t *testing.T, home string) string {
 		}
 		rs.Close()
 	}
-	return anyStamp.ReplaceAllString(strings.Join(out, "\n"), "T")
+	return anyRoot.ReplaceAllString(anyStamp.ReplaceAllString(strings.Join(out, "\n"), "T"), `"$$ROOT/`)
 }
+
+// anyRoot is the start of an absolute path into a root, as an archived
+// event gives it: the root it was recorded in, which a clone's isn't.
+var anyRoot = regexp.MustCompile(`"/[^"]*/koan-root/`)
 
 // pendingRows is how many filesystem steps a root has pending.
 func pendingRows(t *testing.T, home string) int {
@@ -309,9 +316,10 @@ var crashCases = []crashCase{
 
 // The crash-point matrix: a crash injected before and after the commit,
 // at each filesystem step and each flush, and before the steps' rows are
-// deleted, of every kind of change. Readers never see part of a change:
-// the database is as it was before or as it is after, never between, and
-// a read reports steps left pending. The next write, or repair, then
+// deleted, of every kind of change. Readers never see part of a change,
+// or a change without its events: the database, its log included, is as
+// it was before or as it is after, never between, and a read reports
+// steps left pending. The next write, or repair, then
 // brings the tree back to T1 to T6, as it would be had nothing crashed.
 // -short runs the case-only mv and the case-differs repair, at
 // every third point.
@@ -424,5 +432,52 @@ func crashMatrix(t *testing.T, c crashCase) {
 				}
 			}
 		})
+	}
+}
+
+// A write that crashed after its commit leaves its steps pending and its
+// events recorded. log list then gives pending-step, as every command
+// does, and never pending-filesystem, even with a write holding the
+// lock, when a read giving a path the steps bring about would: its paths
+// are history, not places on disk.
+func TestLogListPending(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/a/b")            // 1, 2
+	ok(t, home, "task", "create", "m", "--notes", "m") // 3
+	c := crashCase{args: []string{"mv", "3", "/a/b"}}
+	points, _ := crashRun(t, clone(t, home), c, -1)
+	before := lastSeq(t, home)
+	if _, code := crashRun(t, home, c, slices.Index(points, "commit")+1); code != crashExit {
+		t.Fatalf("exit %d, not a crash", code)
+	}
+	if pendingRows(t, home) == 0 {
+		t.Fatal("no step pending")
+	}
+	kinds := func(r *testrun.Result) []string {
+		var out []string
+		for _, w := range r.Envelope["warnings"].([]any) {
+			out = append(out, w.(map[string]any)["kind"].(string))
+		}
+		return out
+	}
+	r := koan(t, home, "log", "list", "--after", fmt.Sprint(before))
+	if !r.OK() || fmt.Sprint(kinds(r)) != "[pending-step]" {
+		t.Errorf("steps pending: %s", r.Line())
+	}
+	if evs := r.Result()["events"].([]any); len(evs) == 0 || evs[0].(map[string]any)["kind"] != "moved" {
+		t.Errorf("the crashed change's events: %s", r.Line())
+	}
+	lock, e := store.TakeLock(filepath.Join(home, "koan-root"), filepath.Join(home, "koan-root"))
+	if e != nil {
+		t.Fatal(e.Message)
+	}
+	show := koan(t, home, "show", "3")
+	r = koan(t, home, "log", "list", "--after", fmt.Sprint(before))
+	lock.Release()
+	if fmt.Sprint(kinds(show)) != "[pending-filesystem]" {
+		t.Errorf("show, with the lock held: %s", show.Line())
+	}
+	if !r.OK() || len(kinds(r)) != 0 {
+		t.Errorf("log list, with the lock held: %s", r.Line())
 	}
 }

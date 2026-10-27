@@ -14,12 +14,20 @@ type BlockResult struct {
 	Reblocked []int64    `json:"reblocked"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r BlockResult) Derived() (released, reblocked []int64) { return nil, r.Reblocked }
+
 // UnblockResult is unblock's result, in its schema's order.
 type UnblockResult struct {
 	ID       int64   `json:"id"`
 	Changed  bool    `json:"changed"`
 	Released []int64 `json:"released"`
 }
+
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r UnblockResult) Derived() (released, reblocked []int64) { return r.Released, nil }
 
 // edgeCommand is the shape block and unblock share: a task,
 // then at least one edge, by --blocked-by or --blocks. ends is what the edges'

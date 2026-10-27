@@ -12,10 +12,12 @@
         "root",
         "tree",
         "archived",
+        "log",
         "database",
         "state",
         "format",
         "next_id",
+        "last_seq",
         "counts",
         "error"
       ],
@@ -29,6 +31,10 @@
         "archived": {
           "$ref": "types#/$defs/abs-path",
           "description": "The archive's directory, archived/."
+        },
+        "log": {
+          "$ref": "types#/$defs/abs-path",
+          "description": "The rotated log's directory, log/."
         },
         "database": {
           "$ref": "types#/$defs/abs-path"
@@ -59,6 +65,17 @@
           ],
           "description": "Null unless usable, and once the last ID is issued."
         },
+        "last_seq": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/seq"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The highest seq issued, rotated or not. Null unless usable, and null when the root has issued none."
+        },
         "counts": {
           "anyOf": [
             {
@@ -72,7 +89,8 @@
                 "folders",
                 "claims",
                 "pending",
-                "stuck"
+                "stuck",
+                "events"
               ],
               "properties": {
                 "tasks": {
@@ -96,6 +114,11 @@
                 "stuck": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "events": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Events in the table, those rotated into log/ left out."
                 }
               },
               "unevaluatedProperties": false

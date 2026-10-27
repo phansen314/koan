@@ -152,6 +152,12 @@ func TestCompleteReferences(t *testing.T) {
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"context", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"export", "@"}, offered(byID, as("@", folders...)...)},
+		// log list: folders as its subject, tasks for --task, only what is
+		// live, though both take more.
+		{[]string{"log", "list", "@"}, offered(byID, as("@", folders...)...)},
+		{[]string{"log", "list", "--task", "@"}, offered(byID, as("@", "9", "12", "8", "7", "5", "6")...)},
+		{[]string{"log", "list", "--task", "1"}, offered(byID, as("", "12")...)},
+		{[]string{"log", "list", "/work", "--task", ""}, offered(byID, as("@", "9", "12", "8", "7", "5", "6")...)},
 		{[]string{"bind", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"task", "create", "t", "--join", "@"}, offered(byID, as("@", folders...)...)},
 		{[]string{"folder", "create", "/new", "--join", "@"}, offered(byID, as("@", folders...)...)},

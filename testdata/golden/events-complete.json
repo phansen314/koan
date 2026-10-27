@@ -1,0 +1,6 @@
+[
+{"seq":1,"change":1,"at":"$AT","command":"complete","kind":"completed","id":4,"folder":{"id":null,"path":"/"},"data":{}},
+{"seq":2,"change":1,"at":"$AT","command":"complete","kind":"completed","id":2,"folder":{"id":1,"path":"/w"},"data":{}},
+{"seq":3,"change":1,"at":"$AT","command":"complete","kind":"completed","id":3,"folder":{"id":1,"path":"/w"},"data":{}},
+{"seq":4,"change":1,"at":"$AT","command":"complete","kind":"unclaimed","id":3,"folder":{"id":1,"path":"/w"},"data":{"claimed_at":"$CLAIMED_AT","extra":{"by":"w"}}}
+]

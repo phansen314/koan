@@ -168,10 +168,10 @@ Each sub-slice is its own task.
 
 ## S8. Hardening
 
-**Read:** PRD Goals and non-goals, Testing, Invariants, enforced and tested; rules Changes, Case, Invariants, The tree on disk (where I1–I12 and T1–T6 are defined).
+**Read:** PRD Goals and non-goals, Testing, Invariants, enforced and tested; rules Changes, Case, Invariants, The tree on disk (where I1–I14 and T1–T6 are defined).
 
 **Build** the remaining test suites:
-- **Properties:** random command sequences checked against `internal/model`, with `doctor` clean and I1–I12 and T1–T6 holding after every command.
+- **Properties:** random command sequences checked against `internal/model`, with `doctor` clean and I1–I14 and T1–T6 holding after every command.
 - **The full crash-point matrix.**
 - **Concurrency:** hundreds of processes at once.
 - **Case tests,** written to hold on macOS's case-insensitive filesystem too.

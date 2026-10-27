@@ -45,7 +45,7 @@ func write(t *testing.T, s *Store, fn func(tx *Tx) error) []cli.Warning {
 
 // addTask inserts an ordinary task, issuing its ID.
 func addTask(tx *Tx, folder int64, title string) (int64, error) {
-	id, err := tx.Issue(core.NodeTask)
+	id, err := tx.Issue(core.NodeTask, true)
 	if err != nil {
 		return 0, err
 	}
@@ -56,7 +56,7 @@ func addTask(tx *Tx, folder int64, title string) (int64, error) {
 
 // addFolder inserts a folder, issuing its ID.
 func addFolder(tx *Tx, parent int64, name string) (int64, error) {
-	id, err := tx.Issue(core.NodeFolder)
+	id, err := tx.Issue(core.NodeFolder, true)
 	if err != nil {
 		return 0, err
 	}
@@ -107,7 +107,7 @@ func TestPragmas(t *testing.T) {
 		{"checkpoint_fullfsync", "1"},
 		{"busy_timeout", "5000"},
 		{"foreign_keys", "1"},
-		{"user_version", "1"},
+		{"user_version", "2"},
 	} {
 		var got string
 		if err := s.db.conn.QueryRowContext(t.Context(), "PRAGMA "+p.name).Scan(&got); err != nil {
@@ -131,12 +131,16 @@ func TestOpenStates(t *testing.T) {
 
 	home, s := newRoot(t, 1)
 	s.Close()
-	if _, err := rawDB(t, home).Exec("PRAGMA user_version = 2"); err != nil {
+	// The first format is no longer read: a new format means a fresh init.
+	if _, err := rawDB(t, home).Exec("PRAGMA user_version = 1"); err != nil {
 		t.Fatal(err)
 	}
 	_, e := Open(home, idleSteps)
-	if e == nil || e.Kind != cli.KindUnsupportedFormat || !strings.Contains(e.Message, "format 2") || !strings.Contains(e.Message, "format 1") {
-		t.Errorf("format 2: %+v", e)
+	if e == nil || e.Kind != cli.KindUnsupportedFormat || !strings.Contains(e.Message, "format 1") || !strings.Contains(e.Message, "format 2") {
+		t.Errorf("format 1: %+v", e)
+	}
+	if _, _, _, e := Init(home, nil); e == nil || e.Kind != cli.KindUnsupportedFormat {
+		t.Errorf("init on format 1: %+v", e)
 	}
 
 	home = t.TempDir()
@@ -150,19 +154,32 @@ func TestOpenStates(t *testing.T) {
 func TestInit(t *testing.T) {
 	home := t.TempDir()
 	r, created, first, e := Init(home, nil)
-	if e != nil || first != 1 || !slices.Equal(created, []string{"root", "tree", "archived", "database"}) {
+	if e != nil || first != 1 || !slices.Equal(created, []string{"root", "tree", "archived", "log", "database"}) {
 		t.Fatalf("first init: %v %d %+v", created, first, e)
 	}
-	for _, d := range []string{r.Tree, r.Archive} {
+	for _, d := range []string{r.Tree, r.Archive, r.Log} {
 		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
 			t.Errorf("%s: %v", d, err)
 		}
 	}
-	// Run again, it changes nothing, and finds what is missing.
+	// init records initialized as the log's first event.
+	if got := events(t, home); len(got) != 1 {
+		t.Fatalf("events: %+v", got)
+	}
+	// Run again, it changes nothing, and finds what is missing. It records
+	// nothing, even when it makes a directory.
 	os.Remove(r.Archive)
+	os.Remove(r.Log)
 	_, created, first, e = Init(home, nil)
-	if e != nil || first != 1 || !slices.Equal(created, []string{"archived"}) {
+	if e != nil || first != 1 || !slices.Equal(created, []string{"archived", "log"}) {
 		t.Errorf("second init: %v %d %+v", created, first, e)
+	}
+	_, created, _, e = Init(home, nil)
+	if e != nil || len(created) != 0 {
+		t.Errorf("third init: %v %+v", created, e)
+	}
+	if got := events(t, home); len(got) != 1 {
+		t.Errorf("a rerun recorded events: %+v", got)
 	}
 	_, _, _, e = Init(home, ptr(int64(7)))
 	if e == nil || e.Kind != cli.KindConflict || *e.Rule != cli.RuleExists || !slices.Equal(e.Paths, []string{r.Database}) {
@@ -219,8 +236,11 @@ func TestUnfinishedInit(t *testing.T) {
 		t.Errorf("before: %+v", e)
 	}
 	_, created, first, e := Init(home, ptr(int64(40)))
-	if e != nil || first != 40 || !slices.Equal(created, []string{"tree", "archived", "database"}) {
+	if e != nil || first != 40 || !slices.Equal(created, []string{"tree", "archived", "log", "database"}) {
 		t.Fatalf("init: %v %d %+v", created, first, e)
+	}
+	if got := events(t, home); len(got) != 1 || got[0].Seq != 1 || got[0].Data != `{"format":2,"first_id":40}` {
+		t.Errorf("finished init's events: %+v", got)
 	}
 	s, e := Open(home, idleSteps)
 	if e != nil {
@@ -236,7 +256,7 @@ func TestUnfinishedInit(t *testing.T) {
 	os.Mkdir(root, 0o755)
 	os.WriteFile(filepath.Join(root, "koan.db"), nil, 0o644)
 	os.WriteFile(filepath.Join(root, "koan.db-journal"), nil, 0o644)
-	if _, created, _, e := Init(home, nil); e != nil || !slices.Equal(created, []string{"tree", "archived", "database"}) {
+	if _, created, _, e := Init(home, nil); e != nil || !slices.Equal(created, []string{"tree", "archived", "log", "database"}) {
 		t.Fatalf("init with a journal: %v %+v", created, e)
 	}
 
@@ -757,7 +777,7 @@ func TestInitRefusedMakesNothing(t *testing.T) {
 			os.WriteFile(filepath.Join(home, "koan-root", "koan.db"), []byte(strings.Repeat("not a database ", 100)), 0o644)
 		}, nil, cli.KindCorrupt},
 		{"unsupported-format", func(t *testing.T, home string) {
-			if _, err := rawDB(t, home).Exec("PRAGMA user_version = 2"); err != nil {
+			if _, err := rawDB(t, home).Exec("PRAGMA user_version = 1"); err != nil {
 				t.Fatal(err)
 			}
 		}, nil, cli.KindUnsupportedFormat},
@@ -769,11 +789,12 @@ func TestInitRefusedMakesNothing(t *testing.T) {
 			c.db(t, home)
 			os.Remove(filepath.Join(root, "tree"))
 			os.Remove(filepath.Join(root, "archived"))
+			os.Remove(filepath.Join(root, "log"))
 			_, _, _, e := Init(home, c.idsFrom)
 			if e == nil || e.Kind != c.kind {
 				t.Fatalf("init: %+v", e)
 			}
-			for _, d := range []string{"tree", "archived"} {
+			for _, d := range []string{"tree", "archived", "log"} {
 				if _, err := os.Lstat(filepath.Join(root, d)); err == nil {
 					t.Errorf("a refused init made %s", d)
 				}

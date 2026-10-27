@@ -329,6 +329,9 @@ func TestInit(t *testing.T) {
 	r = testrun.Run{Home: home}.Koan(t, "info")
 	r.Check(t, "info")
 	r.Golden(t, "info-usable", *update, nil)
+	if res := r.Result(); res["last_seq"] != json.Number("1") || res["counts"].(map[string]any)["events"] != json.Number("1") {
+		t.Errorf("info: %s", r.Line())
+	}
 
 	// --ids-from for a root that has a database is refused.
 	r = testrun.Run{Home: home}.Koan(t, "init", "--ids-from", "7")
@@ -337,6 +340,68 @@ func TestInit(t *testing.T) {
 		t.Errorf("exit %d", r.Exit)
 	}
 	r.Golden(t, "init-exists", *update, nil)
+}
+
+// eventRows reads the log's table straight from the database, oldest
+// first, each row as seq, change, command, kind, id, folder_id,
+// folder_path and data.
+func eventRows(t *testing.T, home string) [][]any {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(home, "koan-root", "koan.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query("SELECT seq, change, command, kind, id, folder_id, folder_path, data FROM event ORDER BY seq")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out [][]any
+	for rows.Next() {
+		var seq, change int64
+		var command, kind, path, data string
+		var id, folder sql.NullInt64
+		if err := rows.Scan(&seq, &change, &command, &kind, &id, &folder, &path, &data); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, []any{seq, change, command, kind, id, folder, path, data})
+	}
+	return out
+}
+
+// init records initialized, about the root, as the log's first event; a
+// rerun records nothing, even one that makes a missing log/.
+func TestInitLog(t *testing.T) {
+	home := t.TempDir()
+	r := testrun.Run{Home: home}.Koan(t, "init", "--ids-from", "40")
+	r.Check(t, "init")
+	if made, _ := r.Result()["made"].([]any); r.Exit != 0 || len(made) != 5 || made[3] != "log" {
+		t.Fatalf("init: %s", r.Line())
+	}
+	if fi, err := os.Stat(filepath.Join(home, "koan-root", "log")); err != nil || !fi.IsDir() {
+		t.Errorf("log/: %v", err)
+	}
+	want := fmt.Sprint([][]any{{int64(1), int64(1), "init", "initialized", sql.NullInt64{}, sql.NullInt64{}, "/", `{"format":2,"first_id":40}`}})
+	if got := fmt.Sprint(eventRows(t, home)); got != want {
+		t.Errorf("events: %s", got)
+	}
+	os.Remove(filepath.Join(home, "koan-root", "log"))
+	r = testrun.Run{Home: home}.Koan(t, "init")
+	r.Check(t, "init")
+	if made, _ := r.Result()["made"].([]any); r.Exit != 0 || len(made) != 1 || made[0] != "log" {
+		t.Errorf("rerun: %s", r.Line())
+	}
+	testrun.Run{Home: home}.Koan(t, "init")
+	if got := fmt.Sprint(eventRows(t, home)); got != want {
+		t.Errorf("a rerun recorded events: %s", got)
+	}
+	r = testrun.Run{Home: home}.Koan(t, "info")
+	r.Check(t, "info")
+	if res := r.Result(); res["log"] != filepath.Join(home, "koan-root", "log") || res["last_seq"] != json.Number("1") ||
+		res["counts"].(map[string]any)["events"] != json.Number("1") {
+		t.Errorf("info: %s", r.Line())
+	}
 }
 
 func TestInitIDsFrom(t *testing.T) {
@@ -416,7 +481,7 @@ func TestInitSymlinkRoot(t *testing.T) {
 	r := testrun.Run{Home: home}.Koan(t, "init")
 	r.Check(t, "init")
 	created, _ := r.Result()["made"].([]any)
-	if r.Exit != 0 || len(created) != 3 {
+	if r.Exit != 0 || len(created) != 4 {
 		t.Errorf("exit %d: %s", r.Exit, r.Line())
 	}
 	if _, err := os.Stat(filepath.Join(elsewhere, "koan.db")); err != nil {
@@ -443,10 +508,14 @@ func setFormat(t *testing.T, home string, format int) {
 func TestInfoUnsupportedFormat(t *testing.T) {
 	home := t.TempDir()
 	testrun.Run{Home: home}.Koan(t, "init")
-	setFormat(t, home, 2)
+	// The first format, which had no log.
+	setFormat(t, home, 1)
 	r := testrun.Run{Home: home}.Koan(t, "info")
 	r.Check(t, "info")
 	r.Golden(t, "info-unsupported-format", *update, nil)
+	if res := r.Result(); res["last_seq"] != nil || res["counts"] != nil {
+		t.Errorf("info: %s", r.Line())
+	}
 	// init fails as every command does.
 	r = testrun.Run{Home: home}.Koan(t, "init")
 	r.Check(t, "init")

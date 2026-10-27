@@ -21,6 +21,10 @@ type FolderCreateResult struct {
 	Reblocked   []int64    `json:"reblocked"`
 }
 
+// Derived is what the change made ready and made wait, as the log records
+// them.
+func (r FolderCreateResult) Derived() (released, reblocked []int64) { return nil, r.Reblocked }
+
 // FolderCreate makes a folder at its path, with its directory and notes,
 // and any missing parents the same way, with no title. Joining folders,
 // it makes its own gates, then those of each folder it joins.
@@ -118,7 +122,8 @@ func makeFolders(tx *store.Tx, root store.Root, ref core.Ref, pointer string, ti
 	}
 	created := []FolderAt{}
 	for i, name := range missing {
-		id, err := tx.Issue(core.NodeFolder)
+		// A missing parent is made because the folder given needs it.
+		id, err := tx.Issue(core.NodeFolder, i == len(missing)-1)
 		if err != nil {
 			return nil, err
 		}

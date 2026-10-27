@@ -87,13 +87,18 @@ func Show() *cli.Command {
 }
 
 // openStore opens the store of the root under HOME, checking the root's
-// state.
+// state. Its writes are logged as env's command.
 func openStore(env *cli.Env) (*store.Store, *cli.Error) {
 	home, e := env.Home()
 	if e != nil {
 		return nil, e
 	}
-	return fsstep.Open(home)
+	s, e := fsstep.Open(home)
+	if e != nil {
+		return nil, e
+	}
+	s.Command = env.Command
+	return s, nil
 }
 
 // resolveFolder resolves a folder-ref, given at field, to a folder, or

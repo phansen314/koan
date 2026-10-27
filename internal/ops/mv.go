@@ -238,6 +238,8 @@ func Mv() *cli.Command {
 						}
 						from := fsstep.TaskNotesPath(tx.Path(row.Folder), sub.id, core.EndNone)
 						notes := fsstep.TaskNotesPath(tx.Path(into), sub.id, core.EndNone)
+						tx.Record(store.EventMoved, sub.id, tx.PlaceOf(sub.id),
+							store.TaskMoved{Before: store.At(row.Folder, tx.Path(row.Folder)), After: store.At(into, tx.Path(into))})
 						if err := tx.SetTaskFolder(sub.id, into); err != nil {
 							return nil, nil, err
 						}
@@ -261,10 +263,12 @@ func Mv() *cli.Command {
 					}
 					m := moves[i]
 					was := f.paths[m.id]
+					at := tx.PlaceOf(m.id)
 					if err := tx.SetFolderPlace(m.id, m.parent, m.name); err != nil {
 						return nil, nil, err
 					}
 					path := tx.Path(m.id)
+					tx.Record(store.EventMoved, m.id, at, store.FolderMoved{Before: was, After: path})
 					step := fsstep.Step{Op: fsstep.OpMove, From: fsstep.FolderDir(was), To: fsstep.FolderDir(path), Dir: true}
 					if _, err := fsstep.Add(tx, step); err != nil {
 						return nil, nil, err

@@ -12,10 +12,12 @@ type InfoResult struct {
 	Root     string      `json:"root"`
 	Tree     string      `json:"tree"`
 	Archived string      `json:"archived"`
+	Log      string      `json:"log"`
 	Database string      `json:"database"`
 	State    string      `json:"state"`
 	Format   *int        `json:"format"`
 	NextID   *int64      `json:"next_id"`
+	LastSeq  *int64      `json:"last_seq"`
 	Counts   *InfoCounts `json:"counts"`
 	Error    *cli.Error  `json:"error"`
 }
@@ -27,6 +29,7 @@ type InfoCounts struct {
 	Claims  int64 `json:"claims"`
 	Pending int64 `json:"pending"`
 	Stuck   int64 `json:"stuck"`
+	Events  int64 `json:"events"`
 }
 
 // StateUsable is info's state for a root other commands can use.
@@ -46,7 +49,7 @@ func Info() *cli.Command {
 			if e != nil {
 				return nil, nil, e
 			}
-			r := InfoResult{Root: root.Path, Tree: root.Tree, Archived: root.Archive, Database: root.Database}
+			r := InfoResult{Root: root.Path, Tree: root.Tree, Archived: root.Archive, Log: root.Log, Database: root.Database}
 			if !exists {
 				return r.failed(store.NotInitialized(root.Path), -1), nil, nil
 			}
@@ -77,10 +80,15 @@ func Info() *cli.Command {
 				return nil, nil, e
 			}
 			r.State, r.Format = StateUsable, &format
-			r.Counts = &InfoCounts{Tasks: st.Tasks, Folders: st.Folders, Claims: st.Claims, Pending: st.Pending, Stuck: st.Stuck}
+			r.Counts = &InfoCounts{Tasks: st.Tasks, Folders: st.Folders, Claims: st.Claims, Pending: st.Pending, Stuck: st.Stuck, Events: st.Events}
 			// No --ids-from follows the last ID.
 			if st.NextID <= core.MaxID {
 				r.NextID = &st.NextID
+			}
+			// init issues seq 1, so a usable root has issued one; a table
+			// emptied by hand of its sequence too has none to give.
+			if st.LastSeq >= 1 {
+				r.LastSeq = &st.LastSeq
 			}
 			return r, nil, nil
 		},

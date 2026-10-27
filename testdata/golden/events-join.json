@@ -1,0 +1,4 @@
+[
+{"seq":1,"change":1,"at":"$AT","command":"join","kind":"created","id":10,"folder":{"id":9,"path":"/other"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":2,"change":1,"at":"$AT","command":"join","kind":"created","id":11,"folder":{"id":9,"path":"/other"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"blocked"}}
+]

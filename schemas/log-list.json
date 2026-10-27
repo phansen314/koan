@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "log-list",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/id"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:/|(?:/[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+|@?[1-9][0-9]{0,14})$"
+            }
+          ],
+          "default": "/",
+          "description": "Subject: a path or a plain ID, matched as written, never resolved."
+        },
+        "task": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/id"
+            },
+            {
+              "type": "string",
+              "pattern": "^@?[1-9][0-9]{0,14}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A plain ID, matched as written. null: every task."
+        },
+        "since": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "At or after it."
+        },
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/seq"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "After this seq. Given with since, invalid-input at \"\"."
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "event#/$defs/kind"
+          },
+          "minItems": 1,
+          "description": "Left out: every kind."
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": 100,
+          "description": "null: every match."
+        }
+      },
+      "not": {
+        "required": [
+          "since",
+          "after"
+        ],
+        "properties": {
+          "since": {
+            "type": "string"
+          },
+          "after": {
+            "type": "integer"
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "events",
+        "total",
+        "truncated",
+        "last_seq"
+      ],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "event"
+          },
+          "description": "Oldest first, in seq order: the first limit of the matches."
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "last_seq": {
+          "anyOf": [
+            {
+              "$ref": "types#/$defs/seq"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The highest seq returned; with none, the after given, or null."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -163,7 +163,25 @@ func Archive() *cli.Command {
 					return nil, nil, core.Conflict(core.RuleNotFinished, open, nil,
 						"%s %s still open; only finished work is archived", core.FormatIDs(open), isAre(len(open)))
 				}
+				// Each edge between what leaves, every subject's, and what
+				// stays, as the change found it, before anything leaves.
+				var leaves []int64
+				for _, sub := range subs {
+					if !sub.folder {
+						leaves = append(leaves, sub.id)
+						continue
+					}
+					for _, tid := range t.order {
+						if t.in(tid, sub.id, false) {
+							leaves = append(leaves, tid)
+						}
+					}
+				}
+				if err := tx.RecordCut(leaves); err != nil {
+					return nil, nil, err
+				}
 				res := ArchiveResult{Archived: []ArchivedItem{}, Removed: []int64{}}
+				var events []leftEvent
 				for _, sub := range subs {
 					var l leaving
 					if sub.folder {
@@ -180,8 +198,13 @@ func Archive() *cli.Command {
 					}
 					res.Archived = append(res.Archived, item)
 					res.Removed = append(res.Removed, slices.Concat(l.tasks, l.folders)...)
+					events = append(events, t.archived(l, item)...)
 				}
 				slices.Sort(res.Removed)
+				slices.SortFunc(events, func(a, b leftEvent) int { return cmp.Compare(a.id, b.id) })
+				for _, e := range events {
+					tx.Record(store.EventArchived, e.id, e.at, e.data)
+				}
 				return res, nil, nil
 			})
 		},
@@ -329,6 +352,43 @@ func (t *tasks) archive(tx *store.Tx, l leaving) (ArchivedItem, error) {
 		item.Ref, item.NotesPath = t.ref(l.id), &at
 	}
 	return item, nil
+}
+
+// leftEvent is the archived event of one task or folder that leaves.
+type leftEvent struct {
+	id   int64
+	at   store.Place
+	data store.Archived
+}
+
+// archived is the archived event of everything that leaves with l, each
+// standing where the change found it: the subject where its result says
+// it went, and what goes with a folder where it sits in the folder's
+// archived directory, whether or not it is on disk.
+func (t *tasks) archived(l leaving, item ArchivedItem) []leftEvent {
+	var out []leftEvent
+	for _, id := range l.folders {
+		r := t.folders.rows[id]
+		e := leftEvent{id: id, at: store.Place{Folder: id, Path: t.paths[id]},
+			data: store.Archived{Given: id == l.id, Ref: core.Kept(id, t.paths[id], core.EndNone), Title: r.Title}}
+		dir := fsstep.Abs(t.root, l.index[id])
+		notes := fsstep.Abs(t.root, path.Join(l.index[id], fsstep.FolderNotes))
+		e.data.NotesPath, e.data.Dir = &notes, &dir
+		out = append(out, e)
+	}
+	for _, id := range l.tasks {
+		r := t.rows[id]
+		e := leftEvent{id: id, at: store.Place{Folder: r.Folder, Path: t.paths[r.Folder]},
+			data: store.Archived{Given: id == l.id, Ref: t.ref(id), Title: &r.Title}}
+		if id == l.id {
+			e.data.NotesPath = item.NotesPath
+		} else {
+			notes := fsstep.Abs(t.root, l.index[id])
+			e.data.NotesPath = &notes
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // archiveFile is the JSON of what leaves: its folders and tasks, and

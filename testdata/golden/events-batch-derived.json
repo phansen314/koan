@@ -1,0 +1,7 @@
+[
+{"seq":1,"change":1,"at":"$AT","command":"batch","kind":"created","id":9,"folder":{"id":9,"path":"/b"},"data":{"given":false,"name":"b","title":null,"extra":{},"finished":false}},
+{"seq":2,"change":1,"at":"$AT","command":"batch","kind":"created","id":10,"folder":{"id":10,"path":"/b/c"},"data":{"given":true,"name":"c","title":null,"extra":{},"finished":false}},
+{"seq":3,"change":1,"at":"$AT","command":"batch","kind":"created","id":11,"folder":{"id":10,"path":"/b/c"},"data":{"given":true,"gate":null,"title":"t","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":4,"change":1,"at":"$AT","command":"batch","kind":"created","id":12,"folder":{"id":8,"path":"/e"},"data":{"given":true,"gate":null,"title":"u","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":5,"change":1,"at":"$AT","command":"batch","kind":"unfinished","id":8,"folder":{"id":8,"path":"/e"},"data":{}}
+]

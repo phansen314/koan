@@ -4,7 +4,7 @@ package store
 
 // Format is the one database format this binary reads, kept in
 // PRAGMA user_version.
-const Format = 1
+const Format = 2
 
 // schema is PRD Storage's, statement for statement.
 const schema = `
@@ -59,4 +59,22 @@ CREATE TABLE root (first_id INTEGER NOT NULL CHECK (first_id >= 1));
 CREATE TABLE pending (seq INTEGER PRIMARY KEY, change INTEGER NOT NULL,
                       step TEXT NOT NULL CHECK (json_valid(step)),
                       stuck INTEGER NOT NULL DEFAULT 0 CHECK (stuck IN (0, 1)));
+
+CREATE TABLE event (
+  seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+  change      INTEGER NOT NULL,
+  at          TEXT NOT NULL,
+  command     TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  id          INTEGER,
+  folder_id   INTEGER,
+  folder_path TEXT NOT NULL,
+  data        TEXT NOT NULL CHECK (json_type(data) = 'object')
+);
+CREATE INDEX event_at     ON event(at);
+CREATE INDEX event_id     ON event(id);
+CREATE INDEX event_folder ON event(folder_id);
+CREATE INDEX event_path   ON event(folder_path);
+CREATE TRIGGER event_fixed BEFORE UPDATE ON event
+  BEGIN SELECT RAISE(ABORT, 'events are never changed'); END;
 `

@@ -10,6 +10,7 @@ description: Track and work through the user's tasks with the koan CLI — a loc
 - `koan.db`, a SQLite database, is the truth about tasks, folders, the edges between tasks, and claims. Only koan touches it.
 - `tree/` holds a directory per folder, and a Markdown notes file per task and per folder, which people and agents edit with any editor. Everything else in a folder's directory is the user's **material** (code, docs), which koan never reads.
 - `archived/` holds finished work that was archived.
+- `log/` holds old events of the log, moved out of the database by `koan log rotate`.
 
 Every command prints **exactly one line of JSON** on standard output. The examples below run in order on one tree, whose first ID is @40.
 
@@ -19,16 +20,16 @@ Every command prints **exactly one line of JSON** on standard output. The exampl
 
 ```sh
 koan info      # .result.state: usable, not-initialized, unsupported-format or corrupt
-koan version   # .result.version: v0.12.0 or later is this skill's koan
+koan version   # .result.version: v0.13.0 or later is this skill's koan
 ```
 
 Ready when `.result.state` is `usable`. Otherwise `.result.error` is what every other command fails with:
 
 - `not-initialized`: there is no root, or no database in it. Tell the user and suggest `koan init`. **Never run `init` unasked.** If `init` fails with `conflict`, rule `not-a-root`, `~/koan-root` holds files that aren't this koan's, often a tree from the original koan (an `@koan.json`): the user must move it aside first. Never move it yourself.
-- `unsupported-format`: the database is in a format this binary doesn't read; the user needs a matching koan.
+- `unsupported-format`: the database is in a format this binary doesn't read. When `.result.format` is below `koan version`'s `.result.format`, the root is older than this koan: there is no conversion before 1.0, so the user backs it up and starts a fresh root. Otherwise the user needs a newer koan. Either way, tell the user; never move or replace the root yourself.
 - `corrupt`: report it; the user restores from a backup (see below).
 
-`version` printing `v0.12.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. An earlier `v` release lacks commands this skill names, and anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: either way, tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
+`version` printing `v0.13.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. An earlier `v` release lacks commands this skill names, and anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: either way, tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
 
 ## Reading output
 
@@ -143,7 +144,7 @@ koan unclaim 43                               # you won't do it after all: .resu
 
 ### If a coordinator started you with one task
 
-When another agent started you with a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's reads (`show`, `task list`, `frontier`, `why`, `folder list`, `where`, `context`, `export`, `info`), and put everything you want changed, follow-ups and the task being complete included, in your final report. The coordinator makes those changes.
+When another agent started you with a task's ID and notes path, you are a worker: edit **only that task's notes file**, run only koan's reads (`show`, `task list`, `frontier`, `why`, `folder list`, `where`, `context`, `export`, `log list`, `info`), and put everything you want changed, follow-ups and the task being complete included, in your final report. The coordinator makes those changes.
 
 ## Writing
 
@@ -221,6 +222,23 @@ koan export /work/api > api.json   # the whole subtree, into a file
 jq .ok api.json                     # true; when false, .error says why
 ```
 
+## Catching up: the log
+
+Every change koan makes is recorded in the log as events, oldest first: what was made, changed, moved, completed, claimed, deleted or archived, which tasks became ready or waited again (`released`, `reblocked`), and which folders became finished. Reads are never recorded, nor is anything a change left as it was, nor notes edits.
+
+```sh
+koan log list --after 29 --limit 50                         # what happened since the last event you saw: .result.events, .result.last_seq
+koan log list /work/api --since 2026-10-20T00:00:00Z --kinds completed,reopened   # under a path, as it was then
+koan log list --task 42 | jq -c '[.result.events[].kind]'   # one task's whole history, even once deleted or archived
+```
+
+- **Catching up**: keep `.result.last_seq`, and next time ask `--after` it. When `truncated` is true, ask again `--after` the new `last_seq` until it is false. `--since` (UTC, `YYYY-MM-DDTHH:MM:SSZ`, inclusive) is for questions about time, such as what happened this week.
+- Each event has `seq`, `change` (shared by every event of one command's change), `at`, `command`, `kind`, `id`, `folder` (its ID and path *then*) and `data`. An event is about a folder when `id` is set and `.folder.id` is it, about a task when `id` is set and differs, and about the root or the log when `id` is null. `updated` gives each changed field `before` and `after`; `deleted` and `archived` give the `ref` and `title` of what left.
+- **The folder and `--task` are matched as written**, never resolved: a path finds what happened under it while it had that path, byte for byte, even after a rename; an ID follows a folder through renames and moves. Neither is ever `not-found`: no match is an empty list. `--task` takes a plain ID, never a gate reference.
+- `--after` a `seq` the root never issued is `not-found`: the root was restored from a backup or replaced. Tell the user, and start again from `koan info`'s `.result.last_seq`. This catches a restore only until the root has issued that many events again, so the user tells you when they restore.
+- A `rotated` event means older events were moved to the file in its `data`, under `~/koan-root/log/`. `log list` reads only the table, so it never returns them. Back after a long gap, ask once `koan log list --after <last_seq> --limit 1` with no filter: `seq` has no gap in the table, so a first `seq` above `last_seq` + 1 means rotation moved what lies between, into the files of `log/` whose names cover that range. Then ask your filtered question as usual. Read them with `jq` if you need them; never change or move them.
+- **Rotating is the user's call.** Never run `koan log rotate` unasked: it loses nothing, but how long history stays in the table is theirs to choose.
+
 ## Worktrees: markers and context
 
 A **marker** binds a directory outside the tree, usually a git worktree, to a folder, so koan can tell which folder of work you are in from anywhere inside it. It is a `.koan/` directory there, which git ignores by itself.
@@ -235,7 +253,7 @@ koan bind @41 ~/code/api-v2                        # refreshes the hint: .result
 koan mv -T /work/api2 /work/api
 ```
 
-- **Starting work in a worktree, run `koan context --here` first**, and print it as is. Without `--here` it briefs the root: `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `tasks` is limited like a list: `--limit` (100 by default, `null` for all), with `total` and `truncated`. `koan context <folder>` briefs any folder, and `--file <path>` the folder a file is in. `export` and `where` take `--here` and `--file` too.
+- **Starting work in a worktree, run `koan context --here` first**, and print it as is: a bare `koan context` briefs the root, never the worktree's folder. `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `tasks` is limited like a list: `--limit` (100 by default, `null` for all), with `total` and `truncated`. `koan context <folder>` briefs any folder, and `--file <path>` the folder a file is in. `export` and `where` take `--here` and `--file` too.
 - **Check the marker is the worktree's own**: in a git worktree it should be `$(git rev-parse --show-toplevel)/.koan/marker.json`. A marker above the worktree means it was never bound and is borrowing an outer folder: say so, rather than working in that folder.
 - **Bind worktrees from their top, never the checkout that holds them**: a marker binds every directory under it. `bind` refuses a checkout, a directory whose `.git` is a directory (`checkout`), and a directory bound to another live folder (`bound`); `--force` overrides either, so ask the user first. It refuses a `.koan/` holding files that aren't koan's (`foreign-files`), and any directory under `~/koan-root`.
 - A marker copied or moved with its directory, or whose folder was deleted or archived, binds nothing: `where`, `context` and `export` fail `not-found` and say why. Binding again fixes a moved one. `koan unbind <dir>` removes one; `bind` and `unbind` both return `dir`, `marker` and `changed`, false when there was nothing to write or remove; removing the worktree removes it too.
@@ -291,8 +309,8 @@ koan backup ~/backups/koan-$(date +%F)     # .result.clean is true when the copy
 
 ## Hard rules
 
-- **Never touch koan's entries by hand**: anything in the tree named with `@` (folder directories, `@<id>.md`, `@start.md`, `@done.md`, `@notes.md`) is created, renamed, moved and removed only by koan. Editing the *contents* of notes is fine. Never touch `koan.db`, its `-wal` and `-shm`, or `archived/`. A directory made by hand is material, not a folder: `koan folder create` makes one.
-- **Never run `init`, `repair` or `delete` unasked.** They ask for permission anyway.
+- **Never touch koan's entries by hand**: anything in the tree named with `@` (folder directories, `@<id>.md`, `@start.md`, `@done.md`, `@notes.md`) is created, renamed, moved and removed only by koan. Editing the *contents* of notes is fine. Never touch `koan.db`, its `-wal` and `-shm`, `archived/` or `log/`. A directory made by hand is material, not a folder: `koan folder create` makes one.
+- **Never run `init`, `repair` or `delete` unasked.** They ask for permission anyway. Nor `log rotate`, which doesn't ask.
 - **Don't create tasks the user didn't ask for.** When a follow-up turns up during other work, offer it: "Want me to add a task for X?"
 - Prefer options to `-i`, except for `batch`.
 

@@ -1,0 +1,4 @@
+[
+{"seq":1,"change":1,"at":"$AT","command":"task create","kind":"created","id":5,"folder":{"id":1,"path":"/work"},"data":{"given":true,"gate":null,"title":"b","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
+{"seq":2,"change":1,"at":"$AT","command":"task create","kind":"created","id":6,"folder":{"id":2,"path":"/work/api"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"ready"}}
+]

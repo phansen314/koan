@@ -1,0 +1,6 @@
+[
+{"seq":1,"change":1,"at":"$AT","command":"reopen","kind":"reopened","id":3,"folder":{"id":2,"path":"/a/b"},"data":{"readiness":"ready"}},
+{"seq":2,"change":1,"at":"$AT","command":"reopen","kind":"reblocked","id":5,"folder":{"id":null,"path":"/"},"data":{}},
+{"seq":3,"change":1,"at":"$AT","command":"reopen","kind":"unfinished","id":2,"folder":{"id":2,"path":"/a/b"},"data":{}},
+{"seq":4,"change":1,"at":"$AT","command":"reopen","kind":"unfinished","id":1,"folder":{"id":1,"path":"/a"},"data":{}}
+]

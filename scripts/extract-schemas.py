@@ -23,7 +23,7 @@ SPEC = ROOT / "docs" / "spec.md"
 OUT = ROOT / "schemas"
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
-OPEN_SCHEMAS = {"archive-file", "marker-file"}  # on-disk formats
+OPEN_SCHEMAS = {"archive-file", "log-file", "marker-file"}  # on-disk formats
 FRAGMENTS = {("task-list", "/$defs/filter")}    # used through allOf
 
 

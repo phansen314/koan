@@ -20,6 +20,7 @@ type Root struct {
 	Path     string
 	Tree     string
 	Archive  string
+	Log      string
 	Database string
 	// Dir is the directory the root is, following ~/koan-root when it is
 	// a symlink and no further link.
@@ -31,6 +32,7 @@ const (
 	DatabaseName = "koan.db"
 	TreeName     = "tree"
 	ArchiveName  = "archived"
+	LogName      = "log"
 )
 
 // FindRoot finds the root under home. exists is false when there is none.
@@ -40,6 +42,7 @@ func FindRoot(home string) (r Root, exists bool, e *cli.Error) {
 		Path:     root,
 		Tree:     filepath.Join(root, TreeName),
 		Archive:  filepath.Join(root, ArchiveName),
+		Log:      filepath.Join(root, LogName),
 		Database: filepath.Join(root, DatabaseName),
 		Dir:      root,
 	}
@@ -240,6 +243,10 @@ type Stats struct {
 	Claims  int64
 	Pending int64
 	Stuck   int64
+	// LastSeq is the highest seq the log has issued, rotated or not.
+	LastSeq int64
+	// Events is the events in the table, those rotated out left out.
+	Events int64
 }
 
 // Stats counts the database in one read transaction.
@@ -252,8 +259,10 @@ func (s *Store) Stats() (Stats, *cli.Error) {
 			(SELECT count(*) FROM folder),
 			(SELECT count(*) FROM claim),
 			(SELECT count(*) FROM pending),
-			(SELECT count(*) FROM pending WHERE stuck = 1)`).
-			Scan(&st.NextID, &st.Tasks, &st.Folders, &st.Claims, &st.Pending, &st.Stuck)
+			(SELECT count(*) FROM pending WHERE stuck = 1),
+			`+lastSeq+`,
+			(SELECT count(*) FROM event)`).
+			Scan(&st.NextID, &st.Tasks, &st.Folders, &st.Claims, &st.Pending, &st.Stuck, &st.LastSeq, &st.Events)
 	})
 	return st, e
 }

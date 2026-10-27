@@ -16,12 +16,15 @@ import (
 	"github.com/phansen314/koan/internal/testrun"
 )
 
-// The sizes PRD Testing benchmarks at, in live tasks.
+// The sizes PRD Testing benchmarks at, in live tasks, and the events in
+// the log at each.
 var perfSizes = []int{1000, 10000}
+
+const perfEvents = 100000
 
 // perfRoot is a root of a benchmark's size: folders of chained tasks,
 // a third of each chain complete and some of the rest claimed, under ten
-// top folders.
+// top folders, with perfEvents events in the log.
 type perfRoot struct {
 	tb      testing.TB
 	home    string
@@ -135,8 +138,9 @@ func getPerfRoot(tb testing.TB, n int) *perfRoot {
 	r.moving = num(r.must("folder", "create", "/mv/f")["folders_made"].([]any)[1].(map[string]any)["id"])
 	r.mover = num(r.must("task", "create", "mover", "--folder", "/mv/f")["id"])
 	r.must("folder", "create", "/moved")
+	r.fill()
 	info := r.must("info")
-	tb.Logf("a root of %v live tasks and %v folders, built in %v, in %s", info["counts"].(map[string]any)["tasks"], info["counts"].(map[string]any)["folders"], time.Since(start).Round(time.Millisecond), home)
+	tb.Logf("a root of %v live tasks and %v folders, with %d events, built in %v, in %s", info["counts"].(map[string]any)["tasks"], info["counts"].(map[string]any)["folders"], perfEvents, time.Since(start).Round(time.Millisecond), home)
 	perfRoots[n] = r
 	return r
 }
@@ -185,6 +189,43 @@ func (r *perfRoot) db(stmts ...string) {
 	}
 }
 
+// fill tops the log's table up to perfEvents events, each an update of a
+// chain's task, its own change, from long ago: a hand edit, so that every
+// command runs against a log of the size Goals names, and log rotate has
+// it to move.
+func (r *perfRoot) fill() {
+	r.tb.Helper()
+	d, err := sql.Open("sqlite", filepath.Join(r.home, "koan-root", "koan.db")+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		r.tb.Fatal(err)
+	}
+	defer d.Close()
+	tx, err := d.Begin()
+	if err != nil {
+		r.tb.Fatal(err)
+	}
+	defer tx.Rollback()
+	var n, last int64
+	if err := tx.QueryRow("SELECT count(*), coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'event'), 0) FROM event").Scan(&n, &last); err != nil {
+		r.tb.Fatal(err)
+	}
+	stmt, err := tx.Prepare(`INSERT INTO event (seq, change, at, command, kind, id, folder_id, folder_path, data)
+		VALUES (?, ?, '2026-01-01T00:00:00Z', 'update', 'updated', ?, ?, ?, '{"changes":[{"field":"title","before":"a","after":"b"}]}')`)
+	if err != nil {
+		r.tb.Fatal(err)
+	}
+	for k := range perfEvents - n {
+		f := int(k) % len(r.folders)
+		seq := last + 1 + k
+		if _, err := stmt.Exec(seq, seq, r.tasks[f][int(k)%len(r.tasks[f])], r.folders[f], fmt.Sprintf("/p%d/f%d", f%10, f)); err != nil {
+			r.tb.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		r.tb.Fatal(err)
+	}
+}
+
 // task is the kth task of the chain in folder f, by ID.
 func (r *perfRoot) task(f, k int) string { return fmt.Sprint(r.tasks[f%len(r.tasks)][k]) }
 
@@ -218,8 +259,9 @@ func always(args ...string) func(*perfRoot, int) []string {
 const batchParts = 100
 
 // perfOps is every command, at the PRD's budget: 100 ms each, doctor and
-// repair 1 s, export 200 ms, a batch 100 ms and 1 ms a part, and backup
-// none.
+// repair 1 s, export 200 ms, a batch 100 ms and 1 ms a part, log list
+// --limit null and log rotate 1 s, and backup none. log rotate comes
+// last, and fills the log up again before each run.
 var perfOps = []perfOp{
 	{name: "show", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.task(i, 50)} }},
 	{name: "task list", budget: 100 * ms, args: always("task", "list")},
@@ -237,6 +279,17 @@ var perfOps = []perfOp{
 	{name: "export", budget: 200 * ms, args: func(r *perfRoot, i int) []string { return []string{"export", r.folder(i)} }},
 	{name: "export all", budget: 200 * ms, args: always("export", "/")},
 	{name: "info", budget: 100 * ms, args: always("info")},
+	{name: "log list", budget: 100 * ms, args: always("log", "list")},
+	{name: "log list folder", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
+		return []string{"log", "list", fmt.Sprintf("/p%d", i%10)}
+	}},
+	{name: "log list task", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
+		return []string{"log", "list", "--task", r.task(i, 50)}
+	}},
+	{name: "log list after", budget: 100 * ms, args: func(r *perfRoot, i int) []string {
+		return []string{"log", "list", "--after", fmt.Sprint(num(r.must("info")["last_seq"]) - 50)}
+	}},
+	{name: "log list all", budget: time.Second, args: always("log", "list", "--limit", "null")},
 	{name: "complete all", budget: 100 * ms, plain: true, args: always("__complete", "block", "1", "--blocked-by", "@")},
 	{name: "complete id", budget: 100 * ms, plain: true, args: func(r *perfRoot, i int) []string {
 		id := r.task(i, 50)
@@ -348,6 +401,11 @@ var perfOps = []perfOp{
 		r.seq++
 		return []string{"backup", filepath.Join(filepath.Dir(r.home), fmt.Sprint("backup-", r.seq))}
 	}},
+	{name: "log rotate", budget: time.Second,
+		prep: func(r *perfRoot, i int) { r.fill() },
+		args: func(r *perfRoot, i int) []string {
+			return []string{"log", "rotate", "--before", time.Now().UTC().Format(time.RFC3339)}
+		}},
 }
 
 // smallFolder makes a folder of 20 tasks with notes under top, complete

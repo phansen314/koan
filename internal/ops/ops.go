@@ -30,6 +30,8 @@ func Commands() []*cli.Command {
 		Where(),
 		Context(),
 		Export(),
+		LogList(),
+		LogRotate(),
 		Bind(),
 		Unbind(),
 		Init(),

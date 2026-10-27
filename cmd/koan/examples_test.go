@@ -29,7 +29,7 @@ type docStep struct {
 // run on one root, made by koan init --ids-from 40, as the skill says.
 var skillSteps = []docStep{
 	{cmd: "koan info", want: []string{`{"ok":true,"result":{"state":"usable","next_id":40},"warnings":[]}`}},
-	{cmd: "koan version", want: []string{`{"ok":true,"result":{"format":1},"warnings":[]}`}},
+	{cmd: "koan version", want: []string{`{"ok":true,"result":{"format":2},"warnings":[]}`}},
 
 	// The model
 	{cmd: `koan batch -i - <<'EOF'
@@ -90,6 +90,11 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "koan export /work/api > api.json"},
 	{cmd: "jq .ok api.json", want: []string{"true"}},
 
+	// Catching up: the log
+	{cmd: "koan log list --after 29 --limit 50", want: []string{`{"ok":true,"result":{"events":[{"seq":30,"kind":"created","id":49},{},{},{},{},{},{},{},{},{},{},{"seq":41,"kind":"reblocked","id":52}],"total":12,"truncated":false,"last_seq":41},"warnings":[]}`}},
+	{cmd: "koan log list /work/api --since 2026-10-20T00:00:00Z --kinds completed,reopened", want: []string{`{"ok":true,"result":{"events":[{"kind":"completed","id":45,"folder":{"id":41,"path":"/work/api"}},{"kind":"completed","id":42,"folder":{"id":41,"path":"/work/api"}}],"total":2,"truncated":false}}`}},
+	{cmd: "koan log list --task 42 | jq -c '[.result.events[].kind]'", want: []string{`["created","blocked","released","claimed","completed","unclaimed"]`}},
+
 	// Worktrees
 	{cmd: "koan bind @41 ~/code/api-v2", want: []string{`{"ok":true,"result":{"binding":{"id":41,"path":"/work/api"},"replaced":false}}`}},
 	{cmd: "cd ~/code/api-v2 && koan context --here", want: []string{`{"ok":true,"result":{"folder":{"id":41},"ancestors":[{"id":40}],"notes":"Move the API to v2.\n",
@@ -136,7 +141,7 @@ func TestSkill(t *testing.T) {
 // shell blocks, which install things or act on a root of the original
 // koan, aren't run.
 var readmeSteps = []docStep{
-	{cmd: "koan init", want: []string{`{"ok":true,"result":{"made":["root","tree","archived","database"],"first_id":1},"warnings":[]}`}},
+	{cmd: "koan init", want: []string{`{"ok":true,"result":{"made":["root","tree","archived","log","database"],"first_id":1},"warnings":[]}`}},
 
 	// A taste
 	{cmd: "koan folder create /work/api --title 'API rework'", want: []string{`{"ok":true,"result":{"id":2,"folders_made":[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}]},"warnings":[]}`}},
@@ -146,6 +151,7 @@ var readmeSteps = []docStep{
 	{cmd: `koan claim-next --extra '{"by":"me"}'`, want: []string{`{"ok":true,"result":{"task":{"id":3,"claim":{"task":3,"extra":{"by":"me"}}}}}`}},
 	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]}}`}},
 	{cmd: "koan show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
+	{cmd: "koan log list --task 3 | jq -c '[.result.events[].kind]'", want: []string{`["created","claimed","completed","unclaimed"]`}},
 
 	// Ordering folders
 	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":5,"gates_made":[{"id":6,"folder":{"id":2},"gate":"done"}]}}`}},
@@ -166,6 +172,10 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home
 	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
 	{cmd: "cp -R ~/backups/koan-$(date +%F) ~/koan-root"},
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
+
+	// History
+	{cmd: "koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed", want: []string{`{"ok":true,"result":{"events":[{"kind":"completed","id":3,"folder":{"id":2,"path":"/work/api"}}],"total":1,"truncated":false},"warnings":[]}`}},
+	{cmd: "koan log rotate --before 2026-10-01T00:00:00Z", want: []string{`{"ok":true,"result":{"changed":false,"file":null,"first_seq":null,"last_seq":null,"count":0},"warnings":[]}`}},
 }
 
 // TestReadme runs the README's sh examples as TestSkill runs the skill's.
@@ -316,7 +326,7 @@ func exampleCommandNames(cmd string) []string {
 			continue
 		}
 		name := words[1]
-		if (name == "task" || name == "folder") && len(words) > 2 {
+		if (name == "task" || name == "folder" || name == "log") && len(words) > 2 {
 			name += " " + words[2]
 		}
 		names = append(names, name)

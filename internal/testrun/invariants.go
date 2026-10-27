@@ -28,6 +28,11 @@ type Snapshot struct {
 	// Pending is how many filesystem steps are pending, stuck ones
 	// included.
 	Pending int
+	// Events is every event in the log's table, by seq, as its row
+	// reads; LastSeq is the last seq issued, whether or not its event is
+	// still in the table.
+	Events  map[int64]string
+	LastSeq int64
 }
 
 // Checks says what CheckRoot checks beyond the invariants.
@@ -52,7 +57,7 @@ type taskRow struct {
 
 // CheckRoot reads the root under home directly, its database and its
 // directories, not through koan, and reports every invariant of the rules
-// doc it finds broken: I1 to I12, then T1 to T6. prev, when not nil, is
+// doc it finds broken: I1 to I14, then T1 to T6. prev, when not nil, is
 // the snapshot of an earlier state of the same root, for what must hold
 // across changes. It returns nil when all hold.
 func CheckRoot(home string, prev *Snapshot, checks Checks) (*Snapshot, []string) {
@@ -88,7 +93,7 @@ func CheckRoot(home string, prev *Snapshot, checks Checks) (*Snapshot, []string)
 		}
 	}
 
-	snap := &Snapshot{Issued: map[int64][2]string{}, Gates: map[int64]int64{}, Created: map[int64]string{}}
+	snap := &Snapshot{Issued: map[int64][2]string{}, Gates: map[int64]int64{}, Created: map[int64]string{}, Events: map[int64]string{}}
 	archive := map[int64]string{}
 	query("SELECT id, kind, state, coalesce(archive, '') FROM issued", func(rs *sql.Rows) error {
 		var id int64
@@ -208,6 +213,28 @@ func CheckRoot(home string, prev *Snapshot, checks Checks) (*Snapshot, []string)
 		return nil
 	})
 	query("SELECT count(*) FROM pending", func(rs *sql.Rows) error { return rs.Scan(&snap.Pending) })
+	type event struct {
+		seq, change int64
+		at, command string
+		kind        string
+		first, last int64 // a rotated event's range
+	}
+	var events []event
+	query(`SELECT seq, change, at, command, kind, coalesce(id, 0), coalesce(folder_id, 0), folder_path, data,
+		coalesce(data ->> '$.first_seq', 0), coalesce(data ->> '$.last_seq', 0) FROM event ORDER BY seq`, func(rs *sql.Rows) error {
+		var e event
+		var id, folder int64
+		var path, data string
+		if err := rs.Scan(&e.seq, &e.change, &e.at, &e.command, &e.kind, &id, &folder, &path, &data, &e.first, &e.last); err != nil {
+			return err
+		}
+		events = append(events, e)
+		snap.Events[e.seq] = fmt.Sprintf("%d %s %s %s %d %d %s %s", e.change, e.at, e.command, e.kind, id, folder, path, data)
+		return nil
+	})
+	query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'event'), 0)", func(rs *sql.Rows) error {
+		return rs.Scan(&snap.LastSeq)
+	})
 
 	// I1: one ID, one live row, of the kind issued.
 	for id, x := range snap.Issued {
@@ -271,6 +298,49 @@ func CheckRoot(home string, prev *Snapshot, checks Checks) (*Snapshot, []string)
 		for id, at := range prev.Created {
 			if now, ok := snap.Created[id]; ok && now != at {
 				fail("I9: @%d created_at changed from %s to %s", id, at, now)
+			}
+		}
+	}
+
+	// I13 and I14: the table holds an unbroken run of seq, the newest
+	// the last issued; each change's events are contiguous, sharing its
+	// first seq as change, its time and its command; and no event once
+	// recorded changes, or leaves but by a rotation that says so.
+	for i, e := range events {
+		if i > 0 && e.seq != events[i-1].seq+1 {
+			fail("I14: seq jumps from %d to %d", events[i-1].seq, e.seq)
+		}
+		switch {
+		case e.change == e.seq:
+		case i == 0 || e.change > e.seq:
+			fail("I13: event %d's change is %d, whose first event isn't in the table before it", e.seq, e.change)
+		case events[i-1].change != e.change:
+			fail("I13: event %d's change %d isn't the one before it, %d", e.seq, e.change, events[i-1].change)
+		case events[i-1].at != e.at || events[i-1].command != e.command:
+			fail("I13: event %d of change %d at %s by %s, not %s by %s", e.seq, e.change, e.at, e.command, events[i-1].at, events[i-1].command)
+		}
+	}
+	if n := len(events); n > 0 && events[n-1].seq != snap.LastSeq {
+		fail("I14: the last event is %d, and the last seq issued %d", events[n-1].seq, snap.LastSeq)
+	}
+	if prev != nil {
+		if snap.LastSeq < prev.LastSeq {
+			fail("I14: the last seq issued went back from %d to %d", prev.LastSeq, snap.LastSeq)
+		}
+		for seq, was := range prev.Events {
+			now, ok := snap.Events[seq]
+			switch {
+			case ok && now != was:
+				fail("I14: event %d changed from %s to %s", seq, was, now)
+			case !ok && !slices.ContainsFunc(events, func(e event) bool {
+				return e.kind == "rotated" && e.first <= seq && seq <= e.last
+			}):
+				fail("I14: event %d left the table, and no rotation moved it", seq)
+			}
+		}
+		for seq := range snap.Events {
+			if _, ok := prev.Events[seq]; !ok && seq <= prev.LastSeq {
+				fail("I14: event %d was recorded after seq %d was issued", seq, prev.LastSeq)
 			}
 		}
 	}

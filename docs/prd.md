@@ -14,13 +14,13 @@ koan is task management for one person on one machine, driven mostly by agents s
 
 - **Notes are files, edited directly.** No tool stands between an agent and a task's notes. Everything in the tree's directory may be edited; structure changes only through koan.
 - **Structure is safe under many agents at once.** Any number of agents and the user work on one tree concurrently, and every invariant holds.
-- **Fast at the sizes one person reaches.** Every command finishes within 100 ms at 10,000 live tasks on the CI machine, whose OS is named beside the benchmarks, and archiving keeps the live set well below that. Commands whose work grows with the whole tree or their input are budgeted apart: `doctor` and `repair` within 1 s, `export` within 200 ms, a `batch` within 100 ms plus 1 ms a part, and `backup` not at all, since it copies every file.
-- **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed. Help, shell completion and `pick`, which are for people, print plain text (spec Invocation).
+- **Fast at the sizes one person reaches.** Every command finishes within 100 ms at 10,000 live tasks and 100,000 events in the log on the CI machine, whose OS is named beside the benchmarks; archiving keeps the live set well below that, and `log rotate` the log. Commands whose work grows with the whole tree or their input are budgeted apart: `doctor` and `repair` within 1 s, `export` within 200 ms, a `batch` within 100 ms plus 1 ms a part, `log list --limit null` and `log rotate` within 1 s at 100,000 events, and `backup` not at all, since it copies every file.
+- **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed and records it in the log. Help, shell completion and `pick`, which are for people, print plain text (spec Invocation).
 - **Simple to install.** One `go install`, one binary, no system libraries. `pick` alone needs fzf on `PATH` (Command surface).
 
 **Non-goals**
 
-- **Git.** koan neither uses nor supports git on its tree: no history, branches, worktrees or merges of the tree. Archiving is how finished work leaves; `koan backup` is how the whole of it is kept.
+- **Git.** koan neither uses nor supports git on its tree: no branches, worktrees or merges of the tree, and no history of its files. Archiving is how finished work leaves; `koan backup` is how the whole of it is kept; the log (Storage) records what each change did.
 - **More than one machine or one tree.** No sync, no shared trees, no second tree per user.
 - **Migrating today's trees.** The rewrite starts fresh with `koan init`.
 - **Windows.** Linux and macOS only. The root may be on any local filesystem of theirs, whether it ignores case or not.
@@ -32,7 +32,8 @@ koan is task management for one person on one machine, driven mostly by agents s
 | Today | In the rewrite |
 | --- | --- |
 | Tasks and folders are JSON files in the tree | Rows in `koan.db`; the tree holds only notes and material |
-| `~/koan-root` is the tree | `~/koan-root` holds `koan.db`, `tree/` and `archived/` |
+| `~/koan-root` is the tree | `~/koan-root` holds `koan.db`, `tree/`, `archived/` and `log/` |
+| Nothing records what happened: `updated_at` holds the last change, and completing again overwrites `completed_at` | The log: an event for everything every change did, in `koan.db`, read with `log list` |
 | `@folder.md`, `@koan.json`, `@<id>.json` | `@notes.md`; no other koan file in the tree |
 | A folder's `blocked_by`, inherited by everything in it; done when its contents are | Folders are containment only. Ordering is edges between tasks, and a folder orders work through its two gate tasks, `@F.start` and `@F.done`, made when first named |
 | `folder block`, `folder unblock`, `folder why` | Gone: a folder is ordered through its gates, with `block` and `why` |
@@ -48,17 +49,18 @@ koan is task management for one person on one machine, driven mostly by agents s
 
 ## Layout
 
-Everything koan keeps is under one directory, `~/koan-root`. The database is the truth about structure; the tree is where notes and material live; the archive sits beside the tree.
+Everything koan keeps is under one directory, `~/koan-root`. The database is the truth about structure, and holds the log; the tree is where notes and material live; the archive sits beside the tree, and so do the log's rotated files.
 
-&#91;embedded content: koan.db, tree/ and archived/ · one row per task or folder, one directory per folder\]
+&#91;embedded content: koan.db, tree/, archived/ and log/ · one row per task or folder, one directory per folder\]
 
 Each folder row has a directory at its path, and each task row its notes in its folder's directory; a gate's notes are `@start.md` or `@done.md`. No file in the tree holds fields.
 
 | What | Path | Written by |
 | --- | --- | --- |
-| **Database:** tasks, folders, edges, tags, claims, the ID counter, the archive index, pending filesystem steps | `~/koan-root/koan.db`, with its `-wal` and `-shm` files, and the `-journal` SQLite writes while init creates it | koan only |
+| **Database:** tasks, folders, edges, tags, claims, the ID counter, the archive index, pending filesystem steps, the log | `~/koan-root/koan.db`, with its `-wal` and `-shm` files, and the `-journal` SQLite writes while init creates it | koan only |
 | **Tree:** a directory per folder, folder notes, task and gate notes, material | `~/koan-root/tree/` | koan for `@` entries; anyone for file contents |
 | **Archive:** what was archived, as files | `~/koan-root/archived/` | koan only |
+| **Rotated log:** events moved out of the database by `log rotate`, as JSON Lines files | `~/koan-root/log/` | koan only |
 | **Markers:** which folder a code worktree is for | `.koan/` in that worktree | koan only |
 
 - **One root, one filesystem.** The tree and the archive share a directory, so archiving is one rename within one filesystem. To keep the root elsewhere, make `~/koan-root` a symlink before `koan init`; koan resolves that one link and follows no other.
@@ -154,10 +156,32 @@ CREATE TABLE root (first_id INTEGER NOT NULL CHECK (first_id >= 1));
 CREATE TABLE pending (seq INTEGER PRIMARY KEY, change INTEGER NOT NULL,
                       step TEXT NOT NULL CHECK (json_valid(step)),
                       stuck INTEGER NOT NULL DEFAULT 0 CHECK (stuck IN (0, 1)));
+
+-- The log: an event for everything every change did, oldest first (rules The log).
+-- AUTOINCREMENT, so a seq is never issued again, even once log rotate has moved every row out.
+-- No foreign keys: an event outlives the task or folder it names.
+CREATE TABLE event (
+  seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+  change      INTEGER NOT NULL,                  -- the seq of its change's first event
+  at          TEXT NOT NULL,
+  command     TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  id          INTEGER,                           -- the task or folder; NULL for the root or the log
+  folder_id   INTEGER,                           -- where it happened, then; NULL is the root
+  folder_path TEXT NOT NULL,
+  data        TEXT NOT NULL CHECK (json_type(data) = 'object')
+);
+CREATE INDEX event_at     ON event(at);
+CREATE INDEX event_id     ON event(id);
+CREATE INDEX event_folder ON event(folder_id);
+CREATE INDEX event_path   ON event(folder_path);
+CREATE TRIGGER event_fixed BEFORE UPDATE ON event
+  BEGIN SELECT RAISE(ABORT, 'events are never changed'); END;
 ```
 
-- **Format.** `PRAGMA user_version` holds the database's format. The first format is 1. A binary reads exactly one; any other is `unsupported-format`. Before 1.0 a new format means a fresh `init`, with no conversion. The archive needs none, since its JSON is read with any tool. A fresh root issues IDs from 1, unless init is given --ids-from N. Starting past the old root's highest ID keeps every ID unique across every root you have had, so old notes and archives never meet a second @42. An old archived/ can then be moved into the new root, though its IDs aren't in the new index.
+- **Format.** `PRAGMA user_version` holds the database's format. The first format was 1; this one, which adds the log, is 2. A binary reads exactly one; any other is `unsupported-format`. Before 1.0 a new format means a fresh `init`, with no conversion. The archive and the log's rotated files need none, since each names its own format and is read with any tool. A fresh root issues IDs from 1, unless init is given --ids-from N. Starting past the old root's highest ID keeps every ID unique across every root you have had, so old notes and archives never meet a second @42. An old archived/ can then be moved into the new root, though its IDs aren't in the new index.
 - **Timestamps** are stored as their text form, `YYYY-MM-DDTHH:MM:SSZ`, so they sort as text.
+- **The log's indexes** serve `log list`'s filters (spec log list): the `seq` rowid serves `--after`, the order and `--limit`; `event_at` `--since`; `event_id` `--task`; `event_folder` a folder given by ID; and `event_path` a folder given by path, as a range over the index's `BINARY` order, `folder_path = P OR (folder_path >= P || '/' AND folder_path < P || '0')`, since `/` and `0` are adjacent bytes, and none for `/`, which every path is under: byte for byte, as names are compared, never `LIKE`, which ignores case. `kind` has no index: there are few kinds, and only the rarest would gain, so `--kinds` filters what the others find.
 - **`folder.parent` has no cascade on purpose.** koan removes a folder's subtree itself, so it can check for material first and report what it removed.
 
 ## Writes
@@ -170,7 +194,7 @@ A write commits the database first and changes the tree after, from a list of fi
 2. Take the lock, and finish any filesystem steps an earlier write left pending, skipping stuck ones.
 3. `BEGIN IMMEDIATE`. Resolve every reference against the database as it stands.
 4. Check the tree for what the change needs: a destination path is free, a folder to delete holds no material unless `material`. Every destination is checked on disk as well, the missing parents the rules doc counts as destinations included (Changes, A path is taken): listing its parent directory, an entry by that name, or one differing from it only in case, refuses the change as `exists`, with that entry's path.
-5. Change the rows, check for cycles, and insert into `pending` the filesystem steps that bring the tree in line.
+5. Change the rows, check for cycles, insert into `pending` the filesystem steps that bring the tree in line, and insert the change's events into `event` (Events, below).
 6. `COMMIT`.
 7. Carry out the steps, fsync each directory they concern, whether this write changed it or found the step already done, then delete their rows in one transaction.
 8. Release the lock.
@@ -221,6 +245,24 @@ Any refusal refuses the whole batch, and nothing is written.
 
 **Archiving.** One transaction removes the rows of everything that leaves, and every edge between it and what stays; sets each leaving ID's `issued.state` to `archived` and its `archive` to where that ID itself sits in the archive: an archived folder's `…/@41_HOME-12345`, a folder under it `…/@41_HOME-12345/@api`, a task under it `…/@41_HOME-12345/@api/@42.md`, a gate `…/@41_HOME-12345/@start.md`, a task or gate archived alone its own `@42.md` or `@58_start.md`, or, when its notes file wasn't there, its JSON, `@42.json` or `@58_start.json`, so a lone item's entry always names a file that exists; and adds the archive step. A directory is written without a trailing `/`. Whether a lone item's notes file was there is judged by listing its folder's directory when the change is made, spelled exactly, whatever pending steps will still do: a notes file a pending step makes before the archive step runs still goes into the archive beside the JSON, but the index names the JSON, and the result's `notes_path` is null. Counting what pending steps will make instead could name a file that never comes, such as notes a pending move finds neither side of. Everything under an archived folder is indexed where it sits in the folder's directory, whether or not its notes or its directory are on disk; only a lone item falls back to its JSON. The step carries the removed rows. It makes the directories above the item in the archive, writes the rows as JSON to a temp file renamed into place beside where the item will go, then renames the item out of the tree. A task whose notes file is missing is archived as its JSON alone, since a missing file reads as empty notes.
 
+**Events.** Step 5 inserts the change's events (rules The log) in the change's own transaction, so they commit with it or not at all (I10, I13), and a reader sees events and rows from one snapshot. Each takes:
+
+- **`at`:** the change's time, the one it writes into `updated_at` and `completed_at`, the same for every event of the change.
+- **`change`:** the `seq` SQLite issues the change's first event, which the rest repeat. A change's events are contiguous, since writes are serialized.
+- **`command`:** the command that made the change, as its name is typed, such as `complete` or `task create`.
+- **`folder_id` and `folder_path`:** for an event about a folder, that folder; about a task, the task's folder; about the root or the log, the root. Each is taken as the change found it, before anything moved, or for what the change makes, as it made it. So a folder's `moved` stands at the path it left, and its data gives the path it went to.
+
+Derived state is compared, never worked out step by step. `released` and `reblocked` are the change's own result lists, found as they always are. `finished` comes from whether any open task is under each folder above what the change touches, the folders it moves from and to included, asked before the change alters anything and again after it, in the same transaction: a folder with open work before and none after is `finished`, and one with none before and some after is `unfinished`. Each question stops at the first open task it finds, and only those folders are asked, never the whole tree.
+
+A change records its events in this order:
+
+1. `created` for everything it makes, in the order it issues their IDs (Issuing IDs in a change).
+2. `blocked` and `unblocked`, one for each edge it writes or removes, in the order its edges are given, as Issuing IDs in a change orders them: an edge given twice records once, at its first, and a join's edge to the start gate comes before its edge from the done gate. The edges a delete or archive removes between what goes and what stays come by task, then blocker.
+3. Each subject's own events, in input order: `updated`; `completed`, then its `unclaimed`; `reopened`; `claimed`; `unclaimed`; `moved`.
+4. A delete's `unclaimed` events, then its `deleted` events, each in `removed`'s order; an archive's `archived` events, in `removed`'s order.
+5. `released` and `reblocked`, in the result's order.
+6. `finished` and `unfinished`, from the deepest folder up, at the depth the change found it; folders at one depth by ID.
+
 ## Concurrency
 
 Writes are serialized by one lock; reads never wait on a writer or on that lock. Each CLI invocation is a short-lived process with its own connection.
@@ -235,6 +277,8 @@ Writes are serialized by one lock; reads never wait on a writer or on that lock.
 | **Per connection** | `foreign_keys = ON`, `busy_timeout` and the three sync pragmas above are set on every open, since SQLite doesn't store them; `journal_mode = WAL` is stored in the file by `init`. |
 
 - **`doctor` reads one snapshot and takes no koan lock**, so no writer waits for it. `repair` is a write, and takes the lock like any other.
+- **`log rotate` holds the lock throughout**, from listing `log/` to the commit that deletes the rows, so the events it writes to the file are the ones it deletes. A reader meanwhile sees every event in the table until that commit, and the `rotated` event after it: never a gap, and never an event twice.
+- **`backup` holds the lock at most twice:** for `VACUUM INTO` and the copy of `log/`, and for the second copy when it makes one (Install, init, backup and restore).
 - **A reader may see a change whose filesystem steps are still running**, between the commit and the last step. It then reports `pending-filesystem` beside any path it returns, and the path it gives is where the file is going. If steps are pending, the reader tries the lock shared, without waiting, so two readers never keep each other out. If it gets it, it checks pending again, since a write may have finished in between, and releases the lock at once. If it doesn't, something holds the lock exclusively, nearly always a write carrying the steps out, and the reader reports `pending-filesystem`; while `init` or `backup` holds the lock it says the same, which is harmless, since the steps are finished by the next write. Steps still pending have no write carrying them out, because one crashed or failed a step, or they wait behind an earlier change's step on the same paths, so the reader reports pending-step instead; the next write or repair finishes them.
 
 ## Invariants, enforced and tested
@@ -255,6 +299,8 @@ Every invariant of the rules doc has a mechanism that keeps it and a test that s
 | I10 whole changes | one transaction per change, then filesystem steps that can be run again (see Writes) | crash points; concurrency |
 | I11 gates | `task_gate`, the root `CHECK`, and a move refused for a gate | properties |
 | I12 archive index | `issued.state` and `issued.archive`, written in the archiving transaction | properties; crash points |
+| I13 the log is true | each change's events inserted in its own transaction (Writes, Events) | properties; crash points |
+| I14 events fixed | `event`'s `AUTOINCREMENT`, which keeps the largest `seq` once its rows are gone; the `event_fixed` trigger refusing an update; rows deleted only by `log rotate`, once they are in a file | properties; crash points; concurrency |
 | T1–T6 the files | the filesystem steps of each change; `doctor` checks them | crash points; properties |
 
 ## Command surface
@@ -283,6 +329,14 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 - **The other ends of edges.** A record's `blocked_by` and `blocks` name a task outside the subtree only as an edge-end, its ID, kept text and state. export gives each such task as a whole record, so a renderer needs no `show` per task.
 - **Nothing new to read.** Its folders and tasks are the records every read returns, and its edges take Archive JSON's shape and order, so it adds no record and no shared type. It prints JSON only: Graphviz, Mermaid and D2 are drawn from it by tools outside koan.
 - **Budgeted apart.** Its work grows with the subtree, and `export /` prints every live task as a whole record, about 7 MB at 10,000 tasks. The spikes never printed every task. The nearest measurement, `list` filling every field for all 10,000 tasks while printing the 4,223 open ones (3.0 MB), took 66.5 ms, and encoding costs about 5 ms per 1.5 MB, so `export /` comes to an estimated 85–90 ms on the spike machine (docs/spikes.md). 200 ms (Goals) gives it the margin the other whole-tree reads have under 100 ms. It is an estimate, which the Performance benchmarks check.
+
+**The log is for catching up and looking back.** Every change records what it did (rules The log); `koan log list` reads the events back, oldest first, and `koan log rotate` moves the oldest out to files (Rotating the log). Both sit under `log`: the log is neither a task nor a folder, and no reference names it, which is where the command line keeps a noun (spec Invocation).
+
+- **`--after` is the cursor.** Every result carries `last_seq`, the highest `seq` it returned, and an agent that keeps it asks for `--after` it next time: no clock, and nothing seen twice. Nothing is missed either, unless `log rotate` moved it first: `log list` reads only the table, so the full history since a `seq` below the table's oldest is the files in `log/` that cover it, then the table. The `rotated` event comes after every event the table kept, and a filter can leave it out, so an agent back after a long gap asks once `--after` its `last_seq` with no filter and `--limit 1`: since `seq` has no gap in the table, a first `seq` above `last_seq` + 1 means rotation moved what lies between, which is in the files of `log/`. It then asks its filtered question as usual. Cutting well in the past, such as a month back, keeps every cursor still in use out of reach. A result cut short by `--limit` is followed by asking again from its `last_seq`. `--since` is for people, who think in times.
+- **Matched as written.** Its folder and `--task` are compared with what each event stored, never resolved against the tree, so a path that no longer exists, and an ID since deleted or archived, still find their history. A path matches itself and every path under it, byte for byte; an ID matches that folder's own events and its tasks', through renames and moves.
+- **The table only.** It reads only the database, in one snapshot, and never `log/`: koan never reads a rotated file back. Each `rotated` event says which file holds the events it moved, and the files' names give their ranges.
+- **A restore shows.** `--after` a `seq` the root never issued is `not-found` (spec log list), so an agent whose saved `last_seq` comes from before a restore, or from a root since replaced, learns it. That holds only until the restored root has issued that many events again: after that, the saved `seq` names an event again, and `--after` it quietly skips the new events below it. A restore is the user's act, and the user tells their agents.
+- **Reads never log.** No read records an event, `log list` included: a read that logged would be a write, and wait on the lock.
 
 **Every write reports what it released and blocked again.** With edges in an indexed table, finding what a change released or blocked again is a lookup on `edge_blocker`, so every write can afford to report it. Today's koan left `reblocked` out for want of that reverse lookup.
 
@@ -316,10 +370,21 @@ koan init
 ```
 
 - **One binary, no system libraries.** The SQLite driver is `modernc.org/sqlite`, SQLite translated to Go, so there is no cgo and no C compiler at install time. It adds several MB to the binary and lengthens the first build. **Chosen** over `ncruces/go-sqlite3` (SQLite as WebAssembly), which would also work.
-- **`init`** makes `~/koan-root`, its `tree/` and `archived/`, and `koan.db` in WAL mode with the current format; what it accepts, refuses and reports is the spec's, under Operations → init. After making the root directory, init takes the write lock for the rest, like any write, and under the lock checks everything it found before it makes anything else. It makes the database in one transaction, schema, format and `root` row together, so a crash leaves either no database or one with format 0 and no tables at all; init takes that one as unfinished and finishes it, while every other command sees it as `unsupported-format`.
-- **`backup <dir>`** writes a copy of everything into an empty directory, or a new one, made with any parents it lacks, without holding the write lock while it copies. It takes the lock just long enough for `VACUUM INTO`, copies the tree and the archive as files, then runs doctor on the copy and on the live root. Findings the live root has too, such as a stuck step, are copied faithfully and reported, not fixed. Findings only the copy has mean a write landed mid-copy, at worst a folder moved and missed altogether; backup then copies once more, holding the lock throughout. A writer kept waiting more than 5 seconds by that copy fails with busy, which is safe to retry; it happens only in this rare fallback, and is not a bug. If that copy still has findings of its own, backup reports them and stops. Files are copied, never hard-linked, since an editor that writes in place would change the backup too. Copying `koan.db` by hand while koan runs is not a backup.
-- **Restoring** is putting a backup in place of `~/koan-root` and running `koan doctor`. A backup carries the claims of its moment, which a restore brings back with it.
+- **`init`** makes `~/koan-root`, its `tree/`, `archived/` and `log/`, and `koan.db` in WAL mode with the current format; what it accepts, refuses and reports is the spec's, under Operations → init. After making the root directory, init takes the write lock for the rest, like any write, and under the lock checks everything it found before it makes anything else. It makes the database in one transaction, schema, format, `root` row and the `initialized` event together, so a crash leaves either no database or one with format 0 and no tables at all; init takes that one as unfinished and finishes it, while every other command sees it as `unsupported-format`. `initialized` is the log's first event, `seq` 1. A run that finds the database made records nothing, even when it makes a directory that was missing: it only puts the root's own layout back.
+- **`backup <dir>`** writes a copy of everything into an empty directory, or a new one, made with any parents it lacks, without holding the write lock while it copies. It takes the lock just long enough for `VACUUM INTO` and for copying `log/`, so the copy's table and rotated files agree, since `log rotate` takes the lock too; then it copies the tree and the archive as files, then runs doctor on the copy and on the live root. Findings the live root has too, such as a stuck step, are copied faithfully and reported, not fixed. Findings only the copy has mean a write landed mid-copy, at worst a folder moved and missed altogether; backup then copies once more, holding the lock throughout. A writer kept waiting more than 5 seconds by that copy fails with busy, which is safe to retry; it happens only in this rare fallback, and is not a bug. If that copy still has findings of its own, backup reports them and stops. Files are copied, never hard-linked, since an editor that writes in place would change the backup too. Copying `koan.db` by hand while koan runs is not a backup. backup records no event: it reads the root and writes elsewhere, so as far as the log goes it is a read (rules The log).
+- **Restoring** is putting a backup in place of `~/koan-root` and running `koan doctor`. A backup carries the claims and the log of its moment, which a restore brings back with it. So a restore rewinds the root: the IDs and `seq` values issued after the backup will be issued again, to other tasks, folders and events, and an agent's saved `last_seq` from after it is `not-found` until the restored root has issued that many again (Command surface). `log/` comes from the backup too: restoring replaces the whole root, `log/` included. Don't copy the replaced root's rotated files into it: the restored root will issue their `seq` again, and `log rotate` takes one whose range the table still holds for a run cut short, and removes it.
 - **Uninstalling** is removing the binary, and `~/koan-root` if its work isn't wanted.
+
+### Rotating the log
+
+`koan log rotate --before <timestamp>` moves the oldest events out of the table into a file in `log/`, and deletes their rows. The user chooses when, and the cut: there is no default, and koan never rotates on its own. Nothing is lost, only moved, so it runs without asking.
+
+- **What moves** is the oldest events, in `seq` order, up to the first one at or after `--before`: always a prefix of the log, so `log/`'s files cover the oldest `seq` values and the table the newest, each range unbroken, even when the clock was set back between changes. A change's events share their `at`, so they move together.
+- **The file** is `log/<first>-<last>.jsonl`, named by its first and last `seq` (spec On-disk formats). `log rotate` makes `log/` when it is missing.
+- **Its own protocol, not a filesystem step.** Under the write lock, after carrying out pending steps as every write does, it writes the file through `<name>.tmp`, renames it into place and flushes it and `log/`, then deletes the rows and inserts its `rotated` event in one transaction. A pending step would carry every rotated event in its row, so they would sit twice in the database until it ran; writing the file first means a crash leaves the rows in place, never a gap.
+- **Safe to rerun.** A crash after the rename leaves the file and the rows. Before writing, rotate lists `log/`: a regular file of koan's name whose whole range is still in the table was left by a run cut short, or one whose commit failed, and is removed, and so is a leftover `<name>.tmp`; then it carries on. It judges nothing else in `log/`.
+- **On record.** The `rotated` event says which file holds the events it moved, so the table shows where that history went.
+- **Budgeted apart:** within 1 s at 100,000 events (Goals). It writes each event once and deletes its row, about 25 MB at that size.
 
 ### Doctor and repair
 
@@ -344,13 +409,15 @@ A `corrupt` finding stops doctor there: rows that fail either check can't be tru
 
 Repair runs only when asked: as `repair`, and for its own pending steps, as the first thing a write does. Reads never repair; they report what they trip over beside their results. repair takes the kinds in the order of the table, so a directory renamed by hand is moved back before an empty one could be made in its place.
 
+**doctor never looks in `log/`**, since no rule reads it. The log itself is never checked against the tree: no rule reads it (rules The log).
+
 ## Agents
 
 The koan skill is rewritten for the new model, and ships as today's does, through the Claude Code plugin and `scripts/install.sh` for OpenCode.
 
 What the skill teaches, and how a coordinator hands work to workers, are the skill's to say, not this doc's. What koan gives them is in its output: `released`, `reblocked`, `gates_made`, and warnings such as `claimed-blocked` and `moved-claimed`.
 
-**Permissions.** The permission rules let every command run without asking except `init`, `delete` and `repair`, which always ask. Archive is safe to run unasked, since it takes only finished work.
+**Permissions.** The permission rules let every command run without asking except `init`, `delete` and `repair`, which always ask. Archive is safe to run unasked, since it takes only finished work, and so is `log rotate`, which moves events and loses none; when to rotate is still the user's call, as the skill says.
 
 **Agents never run `pick`.** It needs a person at a terminal, and without one it fails at once (spec pick), so it can never hang an agent. The skill doesn't teach it.
 
@@ -360,16 +427,17 @@ These are the tests named in the Tested by column of Invariants, enforced and te
 
 | Test | What it shows |
 | --- | --- |
-| **Invariants as properties** | Random sequences of commands against a fresh root. After every command, `doctor` finds nothing, and I1–I12 and T1–T6 hold, checked directly. |
-| **A reference model** | A small in-memory model of the rules doc answers readiness, the frontier, `released` and `reblocked` for the same random sequences; koan must agree with it on every answer. |
-| **Crash points** | A fault injected before and after the commit, and at each filesystem step. Readers never see part of a change, and the next write, or `repair`, brings the tree back to T1–T6. |
-| **Concurrency** | Hundreds of processes writing and reading one root at once. No claim is ever handed out twice, every read sees a committed state, and `busy` appears only after 5 seconds of waiting. |
+| **Invariants as properties** | Random sequences of commands against a fresh root. After every command, `doctor` finds nothing, and I1–I14 and T1–T6 hold, checked directly: the events each command recorded are exactly those rules The log gives for what it changed, readiness and finished included, `seq` has no gap, and no earlier event changed. |
+| **A reference model** | A small in-memory model of the rules doc answers readiness, the frontier, `released`, `reblocked` and which folders are finished for the same random sequences, and the events each change records; koan must agree with it on every answer. |
+| **Crash points** | A fault injected before and after the commit, and at each filesystem step. Readers never see part of a change, or a change without its events, and the next write, or `repair`, brings the tree back to T1–T6. A fault at each point of `log rotate` leaves every event once in the table or in a file after a rerun. |
+| **Concurrency** | Hundreds of processes writing and reading one root at once. No claim is ever handed out twice, every read sees a committed state, and `busy` appears only after 5 seconds of waiting. `seq` ascends with no gap, each change's events are contiguous, and a reader paging with `--after` during `log rotate` sees no event twice, and misses only what the rotation moved. |
 | **Case** | The Case section's rules as table tests, run in CI on Linux and on macOS with its default case-insensitive filesystem. On both they include a case-only folder move and the case-differs repair, with a crash at each step. |
 | **Output** | Every command's JSON checked against its schema, and golden results for each refusal. |
-| **Performance** | Benchmarks at 1,000 and 10,000 live tasks, run in CI on Linux and macOS and reported against the budget set in Goals. For now neither fails the build; the budget is enforced once performance is taken up again. |
+| **Performance** | Benchmarks at 1,000 and 10,000 live tasks, with 100,000 events in the log, run in CI on Linux and macOS and reported against the budget set in Goals. For now neither fails the build; the budget is enforced once performance is taken up again. |
 | **Repair** | Each finding made by hand on a fresh root. doctor reports it under the right kind, repair does what the table says, and a second doctor reports only what repair leaves to a person. |
 | **Markers** | The nearest marker wins and stops the look; a copied or moved marker binds nothing; archived and deleted folders give their messages, for `where`, `context` and `export` alike; git ignores .koan/; checkout and foreign-files refuse. |
-| **Backup and restore** | A backup taken during the concurrency run restores to a root doctor finds clean; a folder moved mid-copy makes backup copy again under the lock. |
+| **Backup and restore** | A backup taken during the concurrency run restores to a root doctor finds clean; a folder moved mid-copy makes backup copy again under the lock; a backup taken while `log rotate` runs holds a table and `log/` that agree; after a restore, `log list --after` a `seq` from before it is `not-found`. |
+| **Log** | Golden results for each kind of event, from the command that records it; a write of several subjects, and a batch, as one change; derived state compared before and after, a state that changes and changes back recording nothing; writes that change nothing, and refused ones, recording nothing; every `log list` filter at its bounds, the folder matched as written; `log rotate` run normally, with nothing to rotate, after a crash, rerun with the same and with another `--before`, and with every row rotated, `seq` carrying on. |
 | **Export** | Golden results for a subtree with nested folders, gates, claims, and tasks outside it at both ends of edges, and for `/`: every folder and task under the subject once, `external` its direct neighbours only, every edge with an end under it once, and no material. Its `folders` and `tasks` match `folder list` and `task list` with no limit on the same state, and the same database exported twice prints the same bytes. |
 | **pick** | A stand-in fzf first on `PATH` records the arguments and lines it is given and answers as told: a choice, several, nothing matched, a cancel, a failure, a version too old. pick prints what the spec says for each, with and without a terminal, and removes its preview directory every time. A run against the real fzf in a pseudo-terminal is skipped by `-short`. A real bash, 4.0 or later, and a real zsh, each driven in a pseudo-terminal with the stand-in fzf, load `--bash`'s or `--zsh`'s script, bind Alt-K to its widget, and press it: a choice is typed in at the cursor, at the end of the line and in the middle of it, and a cancel, nothing matched, or a koan that prints and then fails leaves the line as it was. Loading a script binds no key. Each is skipped by `-short`, and when its shell isn't installed. |
 | **Completion** | `__complete` on a tree with every kind, for each argument in the spec's table and each form of word, against golden lines: what is offered, in what order, with what descriptions and directives, a list's comma, the cap and its hint, and a root that isn't usable. These lines are what every shell's script reads. A real bash, with bash-completion, and a real zsh, each driven in a pseudo-terminal, complete a path folder by folder, an ID with its title and a gate after a path, and show the hint. Each is skipped by `-short`, and when its shell isn't installed; CI installs both. fish and powershell are covered by the `__complete` lines alone. |
@@ -394,7 +462,7 @@ Anything that would change a rule goes to the rules doc, not to this list. Work 
 | `task list`, `frontier`, `folder list` and `context`'s tasks return 100 results unless `--limit` says otherwise, with `total` and `truncated` | everything, 3 MB of JSON at 10,000 tasks for an agent to take in |
 | The archive laid out by path, items named by ID | an archive laid out by ID only |
 | An empty notes file written at task create | notes made on first edit |
-| 100 ms at 10,000 live tasks; 1 s for `doctor` and `repair`; 200 ms for `export`; 100 ms plus 1 ms a part for `batch`; none for `backup` | another budget |
+| 100 ms at 10,000 live tasks and 100,000 events; 1 s for `doctor` and `repair`; 200 ms for `export`; 100 ms plus 1 ms a part for `batch`; 1 s for `log list --limit null` and `log rotate`; none for `backup` | another budget |
 | A stuck step set aside, later writes going on | every write failing until a person fixes it |
 | A backup copied without the lock, then checked by doctor | the lock held throughout, or hard links |
 | No list of markers in the database | a list, so delete and archive could warn about bound worktrees |
@@ -427,5 +495,17 @@ Anything that would change a rule goes to the rules doc, not to this list. Work 
 | Completing references only | completing fixed choices and the tags in use as well |
 | Past 100 candidates, a hint instead of a list | every candidate, at 0.74 s for 10,000 in bash before it asks whether to show them |
 | Only a list's first item completes; the option is repeated for more | completing after a comma, which cobra's bash script drops: bash 5.3's `printf %q` escapes the comma |
+| The log as a table in `koan.db`, each change's events in its own transaction | a JSONL file beside it, which commits apart from the change, so it could miss a change or record one that never committed, and which readers couldn't read in one snapshot with the rows |
+| Every change logged, and no read | logging reads too, which would make each a write, waiting on the lock: completion on every Tab, and `log list` logging itself |
+| Readiness and finished logged as they change, compared before and after the change | readiness replayed from edges and states, which needs every event since the task was made, and those may be rotated away |
+| An event for each row and derived state a change actually changes, none for what it leaves as it was | an event for each subject or edge given, which would record changes that never happened |
+| No event for what sits under a moved folder, nor for an edge between two things a delete or archive removes | an event for each, which would make a rename of a large folder thousands of events that say nothing the folder's own `moved` doesn't |
+| `updated` with each changed field before and after | the new value alone, which needs the events before it to read, and rotation may have moved them |
+| `log list`'s folder and `--task` matched as written, never resolved | resolving them against the tree, which would lose the history of what was renamed, moved, deleted or archived |
+| `--after` a `seq` never issued is `not-found` | an empty list, which an agent can't tell from a quiet root after a restore |
+| `log rotate` run by the user, with a `--before` they choose | rotating on its own at some size or age, which decides for the user how long history stays in the table |
+| A rotated file written through a temp file before the rows are deleted, by rotation's own steps | a filesystem step, which would hold every rotated event in its row until it ran |
+| `log list` and `log rotate` under `log` | verbs alone, where `rotate` says nothing of what it rotates, and `list` is already `task list`'s and `folder list`'s |
+| Only changes to the database logged | events for `bind`, `unbind`, `repair` and `backup`, committed after their work on disk, which a crash between could leave done and not recorded, and which made `bind` and `unbind` take the lock |
 | init --ids-from N, carrying the ID sequence from root to root | IDs from 1 in every root, so each format change before 1.0 makes a second @42 |
 | `export` returns a folder's whole subtree, every state, gates included, with no limit and nothing to narrow it | the 100-result default `task list`, `frontier` and `folder list` keep for an agent's context, which would cut a graph short; and filters of its own, which jq already gives |

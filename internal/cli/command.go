@@ -122,7 +122,9 @@ type Input map[string]any
 
 // Env is what a command may know about where it runs.
 type Env struct {
-	Stdin io.Reader
+	// Command is the command's name, as typed, such as task create.
+	Command string
+	Stdin   io.Reader
 	// Stderr is for what a program a command runs writes there, such as
 	// fzf's own complaints; koan's own line is Main's.
 	Stderr io.Writer

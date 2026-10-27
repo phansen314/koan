@@ -15,9 +15,9 @@ type BackupResult struct {
 	Findings []Finding `json:"findings"`
 }
 
-// Backup copies the database, the tree and the archive into an empty or
-// new directory outside the root, and checks the copy with doctor
-// against the live root. It gives no warnings: its findings carry the
+// Backup copies the database, the tree, the archive and log/ into an
+// empty or new directory outside the root, and checks the copy with
+// doctor against the live root. It gives no warnings: its findings carry the
 // pending and stuck steps.
 func Backup() *cli.Command {
 	return &cli.Command{

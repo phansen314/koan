@@ -55,11 +55,15 @@ func openRoot(t *testing.T, home string) *store.Store {
 	return s
 }
 
-// change is a change that adds steps, and issues one ID so its commit
+// change is a change that adds steps, and makes one task so its commit
 // shows in the database.
 func change(steps ...Step) store.Change {
 	return func(tx *store.Tx) (any, []cli.Warning, error) {
-		if _, err := tx.Issue(core.NodeTask); err != nil {
+		id, err := tx.Issue(core.NodeTask, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := tx.InsertTask(store.TaskRow{ID: id, Folder: core.RootID, Title: "t", Extra: []byte("{}")}, nil); err != nil {
 			return nil, nil, err
 		}
 		for _, s := range steps {
