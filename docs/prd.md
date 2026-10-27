@@ -261,7 +261,7 @@ A change records its events in this order:
 3. Each subject's own events, in input order: `updated`; `completed`, then its `unclaimed`; `reopened`; `claimed`; `unclaimed`; `moved`.
 4. A delete's `unclaimed` events, then its `deleted` events, each in `removed`'s order; an archive's `archived` events, in `removed`'s order.
 5. `released` and `reblocked`, in the result's order.
-6. `finished` and `unfinished`, from the deepest folder up; folders at one depth by ID.
+6. `finished` and `unfinished`, from the deepest folder up, at the depth the change found it; folders at one depth by ID.
 
 ## Concurrency
 
