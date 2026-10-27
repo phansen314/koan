@@ -1154,7 +1154,7 @@ A case-only rename is `koan mv /work /Work`, since `/Work` names no folder byte 
 
 #### info, version
 
-`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. A `~/koan-root` that isn't a directory, or that koan can't list, is the operating system refusing, not a state: info fails with `io`. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one; it is null unless the state is usable, and null once the root has issued its last ID, `999999999999999`, since no `--ids-from` follows it. `last_seq` is the highest `seq` the root has issued, whether or not its event has since been rotated into `log/`: `log list --after` it returns only what comes next. It too is null unless the state is usable. `format` is the database's whenever koan can read it, so an `unsupported-format` root reports it, and a corrupt one does when it can be read. If SQLite itself stays busy for 5 seconds, info fails with `busy`.
+`koan info` reports the root and its state without taking the lock, and never fails for the root's state: it reports it. A `~/koan-root` that isn't a directory, or that koan can't list, is the operating system refusing, not a state: info fails with `io`. `koan version` reports the binary. `next_id` is the `--ids-from` to give a root that replaces this one; it is null unless the state is usable, and null once the root has issued its last ID, `999999999999999`, since no `--ids-from` follows it. `last_seq` is the highest `seq` the root has issued, whether or not its event has since been rotated into `log/`: `log list --after` it returns only what comes next. It too is null unless the state is usable, and when the root has issued none. `format` is the database's whenever koan can read it, so an `unsupported-format` root reports it, and a corrupt one does when it can be read. If SQLite itself stays busy for 5 seconds, info fails with `busy`.
 
 ```json
 { "$id": "info", "$defs": {
@@ -1170,7 +1170,7 @@ A case-only rename is `koan mv /work /Work`, since `/Work` names no folder byte 
       "state":    { "enum": ["usable", "not-initialized", "unsupported-format", "corrupt"] },
       "format":   { "type": ["integer", "null"], "description": "The database's; null when there is none, or it can't be read." },
       "next_id":  { "anyOf": [ { "$ref": "types#/$defs/id" }, { "type": "null" } ], "description": "Null unless usable, and once the last ID is issued." },
-      "last_seq": { "anyOf": [ { "$ref": "types#/$defs/seq" }, { "type": "null" } ], "description": "The highest seq issued, rotated or not. Null unless usable." },
+      "last_seq": { "anyOf": [ { "$ref": "types#/$defs/seq" }, { "type": "null" } ], "description": "The highest seq issued, rotated or not. Null unless usable, and null when the root has issued none." },
       "counts":   { "anyOf": [ { "type": "null", "description": "Unless usable." },
                                { "type": "object", "required": ["tasks", "folders", "claims", "pending", "stuck", "events"], "properties": {
                                  "tasks":   { "type": "integer", "minimum": 0, "description": "Live tasks." },

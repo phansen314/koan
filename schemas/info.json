@@ -74,7 +74,7 @@
               "type": "null"
             }
           ],
-          "description": "The highest seq issued, rotated or not. Null unless usable."
+          "description": "The highest seq issued, rotated or not. Null unless usable, and null when the root has issued none."
         },
         "counts": {
           "anyOf": [
