@@ -177,8 +177,12 @@ func Delete() *cli.Command {
 				}
 				removed := slices.Concat(tasks, fs)
 				slices.Sort(removed)
-				// Each claim it ends, then each task and folder it removes,
-				// in removed's order, as the change found them.
+				// Each edge out to what stays, then each claim it ends, then
+				// each task and folder it removes, in removed's order, as the
+				// change found them.
+				if err := tx.RecordCut(tasks); err != nil {
+					return nil, nil, err
+				}
 				unclaimed := []int64{}
 				type removal struct {
 					id   int64

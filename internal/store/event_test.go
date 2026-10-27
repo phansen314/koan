@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -181,8 +182,12 @@ func TestRecordMade(t *testing.T) {
 		`{"given":true,"gate":null,"title":"a","priority":null,"tags":[],"extra":{},"readiness":"blocked"}`,
 		`{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}`,
 	}
-	if len(got) != len(want) {
+	// The edge's own event comes after everything made.
+	if len(got) != len(want)+1 {
 		t.Fatalf("events: %+v", got)
+	}
+	if e := got[len(want)]; e.Kind != EventBlocked || e.ID.Int64 != task || e.Data != fmt.Sprintf(`{"blocker":%d}`, gate) {
+		t.Errorf("the edge: %+v", e)
 	}
 	for i, w := range want {
 		if got[i].Kind != EventCreated || got[i].ID.Int64 != []int64{parent, folder, task, gate}[i] || got[i].Data != w {

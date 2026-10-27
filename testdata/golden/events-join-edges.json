@@ -1,0 +1,6 @@
+[
+{"seq":5,"change":5,"at":"$AT","command":"join","kind":"created","id":4,"folder":{"id":1,"path":"/f"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":6,"change":5,"at":"$AT","command":"join","kind":"created","id":5,"folder":{"id":1,"path":"/f"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
+{"seq":7,"change":5,"at":"$AT","command":"join","kind":"blocked","id":3,"folder":{"id":null,"path":"/"},"data":{"blocker":4}},
+{"seq":8,"change":5,"at":"$AT","command":"join","kind":"blocked","id":5,"folder":{"id":1,"path":"/f"},"data":{"blocker":3}}
+]

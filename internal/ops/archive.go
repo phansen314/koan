@@ -163,6 +163,23 @@ func Archive() *cli.Command {
 					return nil, nil, core.Conflict(core.RuleNotFinished, open, nil,
 						"%s %s still open; only finished work is archived", core.FormatIDs(open), isAre(len(open)))
 				}
+				// Each edge between what leaves, every subject's, and what
+				// stays, as the change found it, before anything leaves.
+				var leaves []int64
+				for _, sub := range subs {
+					if !sub.folder {
+						leaves = append(leaves, sub.id)
+						continue
+					}
+					for _, tid := range t.order {
+						if t.in(tid, sub.id, false) {
+							leaves = append(leaves, tid)
+						}
+					}
+				}
+				if err := tx.RecordCut(leaves); err != nil {
+					return nil, nil, err
+				}
 				res := ArchiveResult{Archived: []ArchivedItem{}, Removed: []int64{}}
 				var events []leftEvent
 				for _, sub := range subs {

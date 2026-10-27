@@ -1,0 +1,9 @@
+[
+{"seq":14,"change":14,"at":"$AT","command":"delete","kind":"unblocked","id":2,"folder":{"id":1,"path":"/d"},"data":{"blocker":6}},
+{"seq":15,"change":14,"at":"$AT","command":"delete","kind":"unblocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":2}},
+{"seq":16,"change":14,"at":"$AT","command":"delete","kind":"unblocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":3}},
+{"seq":17,"change":14,"at":"$AT","command":"delete","kind":"unblocked","id":5,"folder":{"id":null,"path":"/"},"data":{"blocker":3}},
+{"seq":18,"change":14,"at":"$AT","command":"delete","kind":"unclaimed","id":3,"folder":{"id":1,"path":"/d"},"data":{"claimed_at":"$CLAIMED_AT","extra":{}}},
+{"seq":19,"change":14,"at":"$AT","command":"delete","kind":"deleted","id":2,"folder":{"id":1,"path":"/d"},"data":{"given":true,"ref":"@2 (/d)","title":"a"}},
+{"seq":20,"change":14,"at":"$AT","command":"delete","kind":"deleted","id":3,"folder":{"id":1,"path":"/d"},"data":{"given":true,"ref":"@3 (/d)","title":"b"}}
+]

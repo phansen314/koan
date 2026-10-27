@@ -1,0 +1,9 @@
+[
+{"seq":5,"change":5,"at":"$AT","command":"task create","kind":"created","id":4,"folder":{"id":null,"path":"/"},"data":{"given":true,"gate":null,"title":"x","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
+{"seq":6,"change":5,"at":"$AT","command":"task create","kind":"created","id":5,"folder":{"id":1,"path":"/j"},"data":{"given":false,"gate":"start","title":"Start","priority":null,"tags":[],"extra":{},"readiness":"ready"}},
+{"seq":7,"change":5,"at":"$AT","command":"task create","kind":"created","id":6,"folder":{"id":1,"path":"/j"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"blocked"}},
+{"seq":8,"change":5,"at":"$AT","command":"task create","kind":"blocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":2}},
+{"seq":9,"change":5,"at":"$AT","command":"task create","kind":"blocked","id":3,"folder":{"id":null,"path":"/"},"data":{"blocker":4}},
+{"seq":10,"change":5,"at":"$AT","command":"task create","kind":"blocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":5}},
+{"seq":11,"change":5,"at":"$AT","command":"task create","kind":"blocked","id":6,"folder":{"id":1,"path":"/j"},"data":{"blocker":4}}
+]

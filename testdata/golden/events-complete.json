@@ -1,6 +1,6 @@
 [
-{"seq":7,"change":7,"at":"$AT","command":"complete","kind":"completed","id":4,"folder":{"id":null,"path":"/"},"data":{}},
-{"seq":8,"change":7,"at":"$AT","command":"complete","kind":"completed","id":2,"folder":{"id":1,"path":"/w"},"data":{}},
-{"seq":9,"change":7,"at":"$AT","command":"complete","kind":"completed","id":3,"folder":{"id":1,"path":"/w"},"data":{}},
-{"seq":10,"change":7,"at":"$AT","command":"complete","kind":"unclaimed","id":3,"folder":{"id":1,"path":"/w"},"data":{"claimed_at":"$CLAIMED_AT","extra":{"by":"w"}}}
+{"seq":8,"change":8,"at":"$AT","command":"complete","kind":"completed","id":4,"folder":{"id":null,"path":"/"},"data":{}},
+{"seq":9,"change":8,"at":"$AT","command":"complete","kind":"completed","id":2,"folder":{"id":1,"path":"/w"},"data":{}},
+{"seq":10,"change":8,"at":"$AT","command":"complete","kind":"completed","id":3,"folder":{"id":1,"path":"/w"},"data":{}},
+{"seq":11,"change":8,"at":"$AT","command":"complete","kind":"unclaimed","id":3,"folder":{"id":1,"path":"/w"},"data":{"claimed_at":"$CLAIMED_AT","extra":{"by":"w"}}}
 ]

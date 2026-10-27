@@ -2,10 +2,12 @@ package store
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/phansen314/koan/internal/core"
 )
@@ -90,6 +92,12 @@ type FieldChange struct {
 // the change.
 type Reopened struct {
 	Readiness string `json:"readiness"`
+}
+
+// Blocker is the data of blocked and unblocked, on the task that waits:
+// the task it waits on, or waited on.
+type Blocker struct {
+	Blocker int64 `json:"blocker"`
 }
 
 // Claimed is the data of claimed: the claim's extra.
@@ -314,4 +322,36 @@ func (t *Tx) PlaceOf(id int64) Place {
 		}
 	}
 	return Place{Folder: folder, Path: t.Path(folder)}
+}
+
+// RecordCut records unblocked for each edge between the tasks given,
+// which the change removes, and the tasks that stay, by task, then
+// blocker, each where its waiting task is as the change found it. An
+// edge between two that go records nothing. A change calls it before it
+// removes anything.
+func (t *Tx) RecordCut(ids []int64) error {
+	gone := map[int64]bool{}
+	for _, id := range ids {
+		gone[id] = true
+	}
+	var cut []core.Edge
+	for _, id := range ids {
+		for _, to := range t.BlockedBy(id) {
+			if !gone[to] {
+				cut = append(cut, core.Edge{From: id, To: to})
+			}
+		}
+		for _, from := range t.Blocks(id) {
+			if !gone[from] {
+				cut = append(cut, core.Edge{From: from, To: id})
+			}
+		}
+	}
+	slices.SortFunc(cut, func(a, b core.Edge) int {
+		return cmp.Or(cmp.Compare(a.From, b.From), cmp.Compare(a.To, b.To))
+	})
+	for _, e := range cut {
+		t.Record(EventUnblocked, e.From, t.PlaceOf(e.From), Blocker{Blocker: e.To})
+	}
+	return t.err
 }

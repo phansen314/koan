@@ -138,17 +138,20 @@ func (t *Tx) HasEdge(from, to int64) (bool, error) {
 }
 
 // AddEdge writes an edge, from waiting on to, and gives from a new
-// updated_at, since its blocked_by gains an entry.
+// updated_at, since its blocked_by gains an entry. It records blocked on
+// from.
 func (t *Tx) AddEdge(from, to int64) error {
 	if _, err := t.Exec("INSERT INTO edge (task, blocker) VALUES (?, ?)", from, to); err != nil {
 		return err
 	}
+	t.Record(EventBlocked, from, t.PlaceOf(from), Blocker{Blocker: to})
 	_, err := t.Exec("UPDATE task SET updated_at = ? WHERE id = ?", t.Now, from)
 	return err
 }
 
 // RemoveEdge removes an edge, from waiting on to, giving from a new
-// updated_at when there was one. It reports whether there was.
+// updated_at and recording unblocked on it when there was one. It
+// reports whether there was.
 func (t *Tx) RemoveEdge(from, to int64) (bool, error) {
 	res, err := t.Exec("DELETE FROM edge WHERE task = ? AND blocker = ?", from, to)
 	if err != nil {
@@ -157,6 +160,7 @@ func (t *Tx) RemoveEdge(from, to int64) (bool, error) {
 	if n, err := res.RowsAffected(); err != nil || n == 0 {
 		return false, err
 	}
+	t.Record(EventUnblocked, from, t.PlaceOf(from), Blocker{Blocker: to})
 	_, err = t.Exec("UPDATE task SET updated_at = ? WHERE id = ?", t.Now, from)
 	return err == nil, err
 }
