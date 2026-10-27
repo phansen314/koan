@@ -31,9 +31,10 @@ type eventFolder struct {
 	Path string `json:"path"`
 }
 
-// rowKinds are the kinds of event recorded from making, updating, state
-// and claims. Moves, deletes, edges and derived state record the rest.
-var rowKinds = []string{"created", "updated", "completed", "reopened", "claimed", "unclaimed"}
+// rowKinds are the kinds of event recorded from rows: making, updating,
+// state, claims, moves, deletes and archiving. Edges and derived state
+// record the rest.
+var rowKinds = []string{"created", "updated", "completed", "reopened", "claimed", "unclaimed", "moved", "deleted", "archived"}
 
 // logged reads the log's table straight from the database, oldest first,
 // the events after seq after whose kind is among kinds, each checked
@@ -346,4 +347,159 @@ func TestEventsRefused(t *testing.T) {
 	if got := logged(t, home, before, nil); len(got) != 0 {
 		t.Errorf("refusals recorded: %+v", got)
 	}
+}
+
+// mv records moved for each task and folder that moves, in input order,
+// standing where it left: a folder at its old path, with its path before
+// and after, and a task at its old folder, with its folder before and
+// after. What is under a moved folder records nothing.
+func TestEventsMoved(t *testing.T) {
+	home := root(t)
+	koanOK(t, home, "folder", "create", "/a")
+	koanOK(t, home, "folder", "create", "/b")
+	koanOK(t, home, "task", "create", "x", "--folder", "/a")
+	koanOK(t, home, "folder", "create", "/a/s")
+	koanOK(t, home, "task", "create", "y", "--folder", "/a/s")
+	koanOK(t, home, "task", "create", "r")
+	goldenEvents(t, "events-mv-task", changeOf(t, home, "mv", "3", "/b"))
+	// One event for the folder, none for 4 and 5 under it.
+	got := changeOf(t, home, "mv", "-T", "/a", "/c")
+	goldenEvents(t, "events-mv-rename", got)
+	if len(got) == 1 && got[0].Folder.Path != "/a" {
+		t.Errorf("a rename stands at %s, not the path it left", got[0].Folder.Path)
+	}
+	// A folder and a task from the root, in input order; 3, already in
+	// /b, records nothing.
+	goldenEvents(t, "events-mv-into", changeOf(t, home, "mv", "/c/s", "3", "6", "/b"))
+	// Nothing moved records nothing.
+	if got := changeOf(t, home, "mv", "3", "/b"); len(got) != 0 {
+		t.Errorf("a move to where it is: %+v", got)
+	}
+	fails(t, home, "conflict", "into-itself", "mv", "/b", "/b/s")
+	if got := changeOf(t, home, "mv", "-T", "/c", "/c"); len(got) != 0 {
+		t.Errorf("a rename to its own path: %+v", got)
+	}
+}
+
+// delete records unclaimed for each claim it ends, then deleted for each
+// task and folder removed, everything under the subjects included, each
+// in removed's order, given true only for a subject.
+func TestEventsDeleted(t *testing.T) {
+	home := root(t)
+	koanOK(t, home, "folder", "create", "/d", "--title", "D")
+	koanOK(t, home, "folder", "create", "/d/e")
+	koanOK(t, home, "task", "create", "a", "--folder", "/d")
+	koanOK(t, home, "task", "create", "b", "--folder", "/d/e")
+	koanOK(t, home, "task", "create", "s")
+	koanOK(t, home, "task", "create", "x")
+	koanOK(t, home, "block", "/d.done", "--blocked-by", "3")
+	koanOK(t, home, "claim", "4", "6", "--extra", `{"by":"w"}`)
+	before := lastSeq(t, home)
+	fails(t, home, "conflict", "not-empty", "delete", "/d")
+	if got := logged(t, home, before, nil); len(got) != 0 {
+		t.Errorf("a refused delete recorded: %+v", got)
+	}
+	goldenEvents(t, "events-delete", changeOf(t, home, "delete", "6", "/d", "--contents"))
+	// Tasks alone: a gate's ref keeps its end.
+	koanOK(t, home, "folder", "create", "/g")
+	koanOK(t, home, "block", "5", "--blocked-by", "/g.start")
+	koanOK(t, home, "unblock", "5", "--blocked-by", "/g.start")
+	got := changeOf(t, home, "delete", "9")
+	if len(got) != 1 || got[0].Kind != "deleted" || string(got[0].Data) != `{"given":true,"ref":"@9 (/g.start)","title":"Start"}` {
+		t.Errorf("a gate deleted: %+v", got)
+	}
+}
+
+// archive records archived for each task and folder that leaves, in
+// removed's order: a subject where archive's result says it went, and
+// what goes with a folder where it sits in that folder's archived
+// directory, whether or not its notes are on disk.
+func TestEventsArchived(t *testing.T) {
+	home := root(t)
+	koanOK(t, home, "folder", "create", "/f", "--title", "F")
+	koanOK(t, home, "folder", "create", "/f/g")
+	koanOK(t, home, "task", "create", "a", "--folder", "/f")
+	koanOK(t, home, "task", "create", "b", "--folder", "/f/g")
+	koanOK(t, home, "block", "/f.done", "--blocked-by", "3")
+	koanOK(t, home, "task", "create", "c")
+	koanOK(t, home, "task", "create", "d")
+	koanOK(t, home, "complete", "3", "4", "5", "6", "7")
+	tree := filepath.Join(home, "koan-root", "tree")
+	// 7 is archived alone without its notes, and 4 with its folder.
+	for _, f := range []string{"@7.md", "@f/@g/@4.md"} {
+		if err := os.Remove(filepath.Join(tree, f)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := lastSeq(t, home)
+	fails(t, home, "invalid-input", "", "archive", "/f", "1")
+	if got := logged(t, home, before, nil); len(got) != 0 {
+		t.Errorf("a refused archive recorded: %+v", got)
+	}
+	r := koanOK(t, home, "archive", "/f", "6", "7")
+	got := logged(t, home, before, rowKinds)
+	oneChange(t, logged(t, home, before, nil))
+	type item struct {
+		ID        int64   `json:"id"`
+		Ref       string  `json:"ref"`
+		NotesPath *string `json:"notes_path"`
+		Dir       *string `json:"dir"`
+	}
+	var res struct {
+		Archived []item `json:"archived"`
+	}
+	if err := json.Unmarshal(mustJSON(t, r.Result()), &res); err != nil || len(res.Archived) != 3 {
+		t.Fatalf("archive's result: %s", r.Line())
+	}
+	str := func(s string) *string { return &s }
+	f, task6, task7 := res.Archived[0], res.Archived[1], res.Archived[2]
+	if task7.NotesPath != nil {
+		t.Fatalf("7 has no notes, and its result gives %s", *task7.NotesPath)
+	}
+	dir := *f.Dir
+	type archived struct {
+		Given     bool    `json:"given"`
+		Ref       string  `json:"ref"`
+		Title     *string `json:"title"`
+		NotesPath *string `json:"notes_path"`
+		Dir       *string `json:"dir"`
+	}
+	want := []struct {
+		id     int64
+		folder eventFolder
+		data   archived
+	}{
+		{1, eventFolder{ptr(1), "/f"}, archived{true, f.Ref, str("F"), f.NotesPath, f.Dir}},
+		{2, eventFolder{ptr(2), "/f/g"}, archived{false, "@2 (/f/g)", nil, str(dir + "/@g/@notes.md"), str(dir + "/@g")}},
+		{3, eventFolder{ptr(1), "/f"}, archived{false, "@3 (/f)", str("a"), str(dir + "/@3.md"), nil}},
+		{4, eventFolder{ptr(2), "/f/g"}, archived{false, "@4 (/f/g)", str("b"), str(dir + "/@g/@4.md"), nil}},
+		{5, eventFolder{ptr(1), "/f"}, archived{false, "@5 (/f.done)", str("Done"), str(dir + "/@done.md"), nil}},
+		{6, eventFolder{nil, "/"}, archived{true, task6.Ref, str("c"), task6.NotesPath, nil}},
+		{7, eventFolder{nil, "/"}, archived{true, task7.Ref, str("d"), nil, nil}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("archived: %d events, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		e := got[i]
+		data, _ := json.Marshal(w.data)
+		if e.Kind != "archived" || e.Command != "archive" || *e.ID != w.id || !samePlace(e.Folder, w.folder) || string(e.Data) != string(data) {
+			t.Errorf("event %d:\ngot  %s %d %+v %s\nwant archived %d %+v %s", i, e.Kind, *e.ID, e.Folder, e.Data, w.id, w.folder, data)
+		}
+	}
+}
+
+func ptr(id int64) *int64 { return &id }
+
+func samePlace(a, b eventFolder) bool {
+	return a.Path == b.Path && (a.ID == nil) == (b.ID == nil) && (a.ID == nil || *a.ID == *b.ID)
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

@@ -40,10 +40,7 @@ type Gate struct {
 }
 
 // FolderAt is a folder named both ways; the root has a null ID.
-type FolderAt struct {
-	ID   *int64 `json:"id"`
-	Path string `json:"path"`
-}
+type FolderAt = store.FolderAt
 
 // folderFields is the folder record's field list, as --fields takes it.
 var folderFields = FieldNames(Folder{})

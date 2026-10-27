@@ -102,6 +102,52 @@ type Unclaimed struct {
 	Extra     json.RawMessage `json:"extra"`
 }
 
+// FolderAt is a task's folder as records give it: its ID, null for the
+// root, and its path.
+type FolderAt struct {
+	ID   *int64 `json:"id"`
+	Path string `json:"path"`
+}
+
+// At is a folder as a task's records give it.
+func At(folder int64, path string) FolderAt {
+	f := FolderAt{Path: path}
+	if folder != core.RootID {
+		f.ID = &folder
+	}
+	return f
+}
+
+// FolderMoved is the data of a folder's moved: its path before and after.
+type FolderMoved struct {
+	Before string `json:"before"`
+	After  string `json:"after"`
+}
+
+// TaskMoved is the data of a task's moved: its folder before and after.
+type TaskMoved struct {
+	Before FolderAt `json:"before"`
+	After  FolderAt `json:"after"`
+}
+
+// Deleted is the data of deleted: whether it was a subject, its kept text
+// with the path it had, and its title, null for a folder with none.
+type Deleted struct {
+	Given bool    `json:"given"`
+	Ref   string  `json:"ref"`
+	Title *string `json:"title"`
+}
+
+// Archived is the data of archived: as deleted's, and where its notes and
+// a folder's directory went.
+type Archived struct {
+	Given     bool    `json:"given"`
+	Ref       string  `json:"ref"`
+	Title     *string `json:"title"`
+	NotesPath *string `json:"notes_path"`
+	Dir       *string `json:"dir"`
+}
+
 // Readiness is an open task's readiness, as events give it.
 func Readiness(g core.Graph, id int64) string {
 	if core.Ready(g, id) {

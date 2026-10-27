@@ -1,0 +1,4 @@
+[
+{"seq":10,"change":10,"at":"$AT","command":"mv","kind":"moved","id":4,"folder":{"id":4,"path":"/c/s"},"data":{"before":"/c/s","after":"/b/s"}},
+{"seq":11,"change":10,"at":"$AT","command":"mv","kind":"moved","id":6,"folder":{"id":null,"path":"/"},"data":{"before":{"id":null,"path":"/"},"after":{"id":2,"path":"/b"}}}
+]
