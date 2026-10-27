@@ -1,9 +1,9 @@
 [
-{"seq":19,"change":19,"at":"$AT","command":"delete","kind":"unblocked","id":2,"folder":{"id":1,"path":"/d"},"data":{"blocker":6}},
-{"seq":20,"change":19,"at":"$AT","command":"delete","kind":"unblocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":2}},
-{"seq":21,"change":19,"at":"$AT","command":"delete","kind":"unblocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":3}},
-{"seq":22,"change":19,"at":"$AT","command":"delete","kind":"unblocked","id":5,"folder":{"id":null,"path":"/"},"data":{"blocker":3}},
-{"seq":23,"change":19,"at":"$AT","command":"delete","kind":"unclaimed","id":3,"folder":{"id":1,"path":"/d"},"data":{"claimed_at":"$CLAIMED_AT","extra":{}}},
-{"seq":24,"change":19,"at":"$AT","command":"delete","kind":"deleted","id":2,"folder":{"id":1,"path":"/d"},"data":{"given":true,"ref":"@2 (/d)","title":"a"}},
-{"seq":25,"change":19,"at":"$AT","command":"delete","kind":"deleted","id":3,"folder":{"id":1,"path":"/d"},"data":{"given":true,"ref":"@3 (/d)","title":"b"}}
+{"seq":1,"change":1,"at":"$AT","command":"delete","kind":"unblocked","id":2,"folder":{"id":1,"path":"/d"},"data":{"blocker":6}},
+{"seq":2,"change":1,"at":"$AT","command":"delete","kind":"unblocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":2}},
+{"seq":3,"change":1,"at":"$AT","command":"delete","kind":"unblocked","id":4,"folder":{"id":null,"path":"/"},"data":{"blocker":3}},
+{"seq":4,"change":1,"at":"$AT","command":"delete","kind":"unblocked","id":5,"folder":{"id":null,"path":"/"},"data":{"blocker":3}},
+{"seq":5,"change":1,"at":"$AT","command":"delete","kind":"unclaimed","id":3,"folder":{"id":1,"path":"/d"},"data":{"claimed_at":"$CLAIMED_AT","extra":{}}},
+{"seq":6,"change":1,"at":"$AT","command":"delete","kind":"deleted","id":2,"folder":{"id":1,"path":"/d"},"data":{"given":true,"ref":"@2 (/d)","title":"a"}},
+{"seq":7,"change":1,"at":"$AT","command":"delete","kind":"deleted","id":3,"folder":{"id":1,"path":"/d"},"data":{"given":true,"ref":"@3 (/d)","title":"b"}}
 ]

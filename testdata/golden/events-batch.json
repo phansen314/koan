@@ -1,8 +1,8 @@
 [
-{"seq":2,"change":2,"at":"$AT","command":"batch","kind":"created","id":1,"folder":{"id":1,"path":"/a"},"data":{"given":true,"name":"a","title":null,"extra":{},"finished":false}},
-{"seq":3,"change":2,"at":"$AT","command":"batch","kind":"created","id":2,"folder":{"id":2,"path":"/b"},"data":{"given":false,"name":"b","title":null,"extra":{},"finished":false}},
-{"seq":4,"change":2,"at":"$AT","command":"batch","kind":"created","id":3,"folder":{"id":3,"path":"/b/c"},"data":{"given":true,"name":"c","title":"C","extra":{},"finished":false}},
-{"seq":5,"change":2,"at":"$AT","command":"batch","kind":"created","id":4,"folder":{"id":3,"path":"/b/c"},"data":{"given":true,"gate":null,"title":"x","priority":null,"tags":["t"],"extra":{},"readiness":"ready"}},
-{"seq":6,"change":2,"at":"$AT","command":"batch","kind":"created","id":5,"folder":{"id":null,"path":"/"},"data":{"given":true,"gate":null,"title":"y","priority":1,"tags":[],"extra":{},"readiness":"blocked"}},
-{"seq":7,"change":2,"at":"$AT","command":"batch","kind":"created","id":6,"folder":{"id":1,"path":"/a"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}}
+{"seq":1,"change":1,"at":"$AT","command":"batch","kind":"created","id":1,"folder":{"id":1,"path":"/a"},"data":{"given":true,"name":"a","title":null,"extra":{},"finished":false}},
+{"seq":2,"change":1,"at":"$AT","command":"batch","kind":"created","id":2,"folder":{"id":2,"path":"/b"},"data":{"given":false,"name":"b","title":null,"extra":{},"finished":false}},
+{"seq":3,"change":1,"at":"$AT","command":"batch","kind":"created","id":3,"folder":{"id":3,"path":"/b/c"},"data":{"given":true,"name":"c","title":"C","extra":{},"finished":false}},
+{"seq":4,"change":1,"at":"$AT","command":"batch","kind":"created","id":4,"folder":{"id":3,"path":"/b/c"},"data":{"given":true,"gate":null,"title":"x","priority":null,"tags":["t"],"extra":{},"readiness":"ready"}},
+{"seq":5,"change":1,"at":"$AT","command":"batch","kind":"created","id":5,"folder":{"id":null,"path":"/"},"data":{"given":true,"gate":null,"title":"y","priority":1,"tags":[],"extra":{},"readiness":"blocked"}},
+{"seq":6,"change":1,"at":"$AT","command":"batch","kind":"created","id":6,"folder":{"id":1,"path":"/a"},"data":{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}}
 ]

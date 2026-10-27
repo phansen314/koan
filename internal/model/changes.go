@@ -106,6 +106,7 @@ func (c *Tree) createFolder(ref core.Ref, pointer string, title *string, extra m
 	}
 	f := c.makeFolder(parent, name)
 	f.Title, f.Extra = title, orEmpty(extra)
+	c.given(f.ID)
 	return append(made, FolderAt{ID: f.ID, Path: c.Path(f.ID)}), nil
 }
 
@@ -227,6 +228,7 @@ func (c *Tree) addEdges(edges []edge) ([]Warning, bool, error) {
 		from := c.Tasks[e.From]
 		from.BlockedBy[e.To] = true
 		from.UpdatedAt = c.now
+		c.edged(e.Edge)
 		if !from.Open() {
 			complete[e.From] = true
 		}
@@ -266,6 +268,7 @@ func (c *Tree) newTask(title string, priority *int64, tags map[string]bool, extr
 		BlockedBy: map[int64]bool{}, Tags: tags, Extra: orEmpty(extra),
 	}
 	c.Tasks[x.ID] = x
+	c.given(x.ID)
 	return x
 }
 
@@ -461,6 +464,7 @@ func (c *Tree) resolveSubjects(refs []core.Ref, verb string, within bool) ([]sub
 			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d is given twice", r.ID)}, "%s", at)
 		}
 		out = append(out, subject{id: r.ID, folder: r.Kind == core.ResolvedFolder})
+		c.subject(r.ID)
 	}
 	if !within {
 		return out, nil
@@ -683,6 +687,7 @@ func (t *Tree) Unblock(task string, blockedBy, blocks []string) (out EdgeResult,
 			from := c.Tasks[e.From]
 			if from.BlockedBy[e.To] {
 				delete(from.BlockedBy, e.To)
+				c.edged(e.Edge)
 				from.UpdatedAt = c.now
 				out.Changed = true
 			}
@@ -739,6 +744,7 @@ func (c *Tree) resolveTasks(refs []core.Ref) ([]*Task, error) {
 			return nil, problem(&core.Error{Kind: core.KindInvalidInput, Message: fmt.Sprintf("@%d given twice", x.ID)}, "%s", at)
 		}
 		out = append(out, x)
+		c.subject(x.ID)
 	}
 	return out, nil
 }
@@ -1347,6 +1353,7 @@ func (t *Tree) ClaimNext(s Scope, extra map[string]any) (claim *Claim, err error
 			return err
 		}
 		if len(ids) > 0 {
+			c.subject(ids[0])
 			cl := c.claim(ids[0], extra)
 			claim = &cl
 		}

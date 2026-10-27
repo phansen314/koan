@@ -1,3 +1,3 @@
 [
-{"seq":7,"change":7,"at":"$AT","command":"task create","kind":"created","id":4,"folder":{"id":null,"path":"/"},"data":{"given":true,"gate":null,"title":"r","priority":null,"tags":[],"extra":{},"readiness":"ready"}}
+{"seq":1,"change":1,"at":"$AT","command":"task create","kind":"created","id":4,"folder":{"id":null,"path":"/"},"data":{"given":true,"gate":null,"title":"r","priority":null,"tags":[],"extra":{},"readiness":"ready"}}
 ]

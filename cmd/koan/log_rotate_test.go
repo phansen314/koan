@@ -335,10 +335,15 @@ func rotateCrash(t *testing.T, home, before string, at int) []string {
 // A crash at each point of log rotate, then a rerun with the same
 // --before, with another, or with nothing to rotate, leaves every event
 // exactly once, in the table or in a file; a leftover temp file and a
-// cut-short run's file are removed (PRD Rotating the log, Testing).
+// cut-short run's file are removed (PRD Rotating the log, Testing). No
+// event left in the table changes, after the crash or the rerun (I14).
 func TestLogRotateCrash(t *testing.T) {
 	tmpl, last := rotateBase(t)
 	stampEvents(t, tmpl, 1, 2, "2019-01-01T00:00:00Z")
+	snap, bad := testrun.CheckRoot(tmpl, nil, testrun.Checks{Notes: true})
+	if len(bad) > 0 {
+		t.Fatalf("before: %q", bad)
+	}
 	points := rotateCrash(t, clone(t, tmpl), "2021-01-01T00:00:00Z", -1)
 	for _, want := range []string{"log written", "log renamed", "commit"} {
 		if !slices.Contains(points, want) {
@@ -355,7 +360,14 @@ func TestLogRotateCrash(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%s", point, name), func(t *testing.T) {
 				home := clone(t, tmpl)
 				rotateCrash(t, home, "2021-01-01T00:00:00Z", at)
+				crashed, bad := testrun.CheckRoot(home, snap, testrun.Checks{Notes: true})
+				if len(bad) > 0 {
+					t.Errorf("after the crash: %q", bad)
+				}
 				got := rotate(t, home, before)
+				if _, bad := testrun.CheckRoot(home, crashed, testrun.Checks{Notes: true}); len(bad) > 0 {
+					t.Errorf("after the rerun: %q", bad)
+				}
 				covered(t, filepath.Join(home, "koan-root"))
 				entries, _ := os.ReadDir(logDir(home))
 				var names []string

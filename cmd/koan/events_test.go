@@ -99,9 +99,10 @@ func lastSeq(t *testing.T, home string) int64 {
 var claimedAt = regexp.MustCompile(`"claimed_at":"[^"]*"`)
 
 // goldenEvents compares events, with their seq and change counted from
-// the first and their time written $AT, to testdata/golden/<name>.json,
-// one event a line, rewriting the file when -update is set. Every event
-// must share the first one's time.
+// the first, as 1, so a golden doesn't change with the events before it,
+// and their time written $AT, to testdata/golden/<name>.json, one event a
+// line, rewriting the file when -update is set. Every event must share
+// the first one's time.
 func goldenEvents(t *testing.T, name string, events []eventRecord) {
 	t.Helper()
 	var b bytes.Buffer
@@ -111,6 +112,7 @@ func goldenEvents(t *testing.T, name string, events []eventRecord) {
 			t.Errorf("golden %s: event %d at %s, not %s", name, e.Seq, e.At, events[0].At)
 		}
 		e.At = "$AT"
+		e.Seq, e.Change = e.Seq-events[0].Seq+1, e.Change-events[0].Seq+1
 		e.Data = json.RawMessage(claimedAt.ReplaceAllString(string(e.Data), `"claimed_at":"$$CLAIMED_AT"`))
 		line, _ := json.Marshal(e)
 		b.Write(line)
@@ -381,9 +383,12 @@ func TestEventsMoved(t *testing.T) {
 	}
 }
 
-// delete records unclaimed for each claim it ends, then deleted for each
-// task and folder removed, everything under the subjects included, each
-// in removed's order, given true only for a subject.
+// delete records unblocked for each edge between what goes and what
+// stays, by task, then blocker, then unclaimed for each claim it ends,
+// then deleted for each task and folder removed, everything under the
+// subjects included, each in removed's order, given true only for a
+// subject; then released for what it made ready. An edge between two
+// things that go records nothing.
 func TestEventsDeleted(t *testing.T) {
 	home := root(t)
 	koanOK(t, home, "folder", "create", "/d", "--title", "D")
@@ -394,23 +399,29 @@ func TestEventsDeleted(t *testing.T) {
 	koanOK(t, home, "task", "create", "x")
 	koanOK(t, home, "block", "/d.done", "--blocked-by", "3")
 	koanOK(t, home, "claim", "4", "6", "--extra", `{"by":"w"}`)
+	// 5 stays and waits on 4, which goes; 3 goes and waits on 5.
+	koanOK(t, home, "block", "5", "--blocked-by", "4", "--blocks", "3")
 	before := lastSeq(t, home)
 	fails(t, home, "conflict", "not-empty", "delete", "/d")
 	if got := logged(t, home, before, nil); len(got) != 0 {
 		t.Errorf("a refused delete recorded: %+v", got)
 	}
-	goldenEvents(t, "events-delete", changeOf(t, home, "delete", "6", "/d", "--contents"))
+	koanOK(t, home, "delete", "6", "/d", "--contents")
+	got := logged(t, home, before, nil)
+	oneChange(t, got)
+	goldenEvents(t, "events-delete", got)
 	// Tasks alone: a gate's ref keeps its end.
 	koanOK(t, home, "folder", "create", "/g")
 	koanOK(t, home, "block", "5", "--blocked-by", "/g.start")
 	koanOK(t, home, "unblock", "5", "--blocked-by", "/g.start")
-	got := changeOf(t, home, "delete", "9")
+	got = changeOf(t, home, "delete", "9")
 	if len(got) != 1 || got[0].Kind != "deleted" || string(got[0].Data) != `{"given":true,"ref":"@9 (/g.start)","title":"Start"}` {
 		t.Errorf("a gate deleted: %+v", got)
 	}
 }
 
-// archive records archived for each task and folder that leaves, in
+// archive records unblocked for each edge between what stays and what
+// leaves, then archived for each task and folder that leaves, in
 // removed's order: a subject where archive's result says it went, and
 // what goes with a folder where it sits in that folder's archived
 // directory, whether or not its notes are on disk.
@@ -424,6 +435,8 @@ func TestEventsArchived(t *testing.T) {
 	koanOK(t, home, "task", "create", "c")
 	koanOK(t, home, "task", "create", "d")
 	koanOK(t, home, "complete", "3", "4", "5", "6", "7")
+	// 8 stays, and waits on 6, which leaves.
+	koanOK(t, home, "task", "create", "e", "--blocked-by", "6")
 	tree := filepath.Join(home, "koan-root", "tree")
 	// 7 is archived alone without its notes, and 4 with its folder.
 	for _, f := range []string{"@7.md", "@f/@g/@4.md"} {
@@ -437,8 +450,13 @@ func TestEventsArchived(t *testing.T) {
 		t.Errorf("a refused archive recorded: %+v", got)
 	}
 	r := koanOK(t, home, "archive", "/f", "6", "7")
-	got := logged(t, home, before, rowKinds)
-	oneChange(t, logged(t, home, before, nil))
+	got := logged(t, home, before, nil)
+	oneChange(t, got)
+	if len(got) == 0 || got[0].Kind != "unblocked" || got[0].ID == nil || *got[0].ID != 8 || !samePlace(got[0].Folder, eventFolder{nil, "/"}) ||
+		string(got[0].Data) != `{"blocker":6}` {
+		t.Fatalf("archive's first event isn't 8's edge to 6: %+v", got)
+	}
+	got = got[1:]
 	type item struct {
 		ID        int64   `json:"id"`
 		Ref       string  `json:"ref"`

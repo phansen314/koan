@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"maps"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -28,8 +29,10 @@ var (
 // fresh root and beside the model on the same inputs. koan and the model
 // agree on every result and refusal, and on readiness, edges, claims,
 // fields, the frontier and the folders after each; doctor finds nothing,
-// and I1 to I12 and T1 to T6 hold, read directly from the database and
-// the disk. A failure prints its seed and the commands run; -seed N runs
+// and I1 to I14 and T1 to T6 hold, read directly from the database and
+// the disk; and the events each command recorded are exactly those the
+// model gives for what it changed, seq unbroken, and no earlier event
+// changed (I13, I14). A failure prints its seed and the commands run; -seed N runs
 // that seed alone. -short runs the fixed seeds; the full run adds more,
 // each longer, from a seed of the moment, which it prints.
 func TestProperties(t *testing.T) {
@@ -343,6 +346,8 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 	// The rest, updates, case-only moves, forced deletes and hand edits,
 	// draw from a source of their own too.
 	xrng := rand.New(rand.NewSource(seed + 1))
+	// Rotations draw from their own too.
+	lrng := rand.New(rand.NewSource(seed + 2))
 	// dir is a folder's directory on disk, the root's for the root.
 	dir := func(id int64) string {
 		p := filepath.Join(home, "koan-root", "tree")
@@ -508,8 +513,9 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		}
 	})
 	var prev *testrun.Snapshot
+	seq := lastSeqOf(t, home)
 
-	var made, refused int
+	var made, refused, rotations int
 	for step := range steps {
 		var args []string
 		var stdin string
@@ -682,6 +688,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				}
 			}
 		}
+		var archived []any
 		if args != nil {
 			if name == "" {
 				name = commandName(args)
@@ -747,11 +754,28 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					got = fmt.Sprintf("%v %v %v %v", res["deleted"], res["removed"], res["unclaimed"], res["released"])
 				case "archive":
 					got = fmt.Sprintf("%v %v", koanMoved(res["archived"]), res["removed"])
+					archived = res["archived"].([]any)
 				}
 				if got != want {
 					t.Fatalf("step %d %q: model %s, koan %s", step, args, want, got)
 				}
 			}
+		}
+
+		// The events it recorded are exactly those the model gives for
+		// what changed, readiness and finished included: none for a
+		// refusal or a hand edit, one change's, with seq unbroken.
+		var wantEvents []string
+		command := ""
+		if args != nil && err == nil {
+			wantEvents = modelEvents(m.Events, archived)
+			command = commandName(args)
+		}
+		var gotEvents []string
+		gotEvents, seq = koanEvents(t, home, seq, command)
+		if !slices.Equal(gotEvents, wantEvents) {
+			t.Fatalf("step %d %q: events:\nkoan  %s\nmodel %s", step, args,
+				strings.Join(gotEvents, "\n      "), strings.Join(wantEvents, "\n      "))
 		}
 
 		// Readiness and edges, task by task, then the frontier.
@@ -846,12 +870,38 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		if bad := m.Check(); len(bad) > 0 {
 			t.Fatalf("step %d %q: the model's invariants:\n%s", step, args, strings.Join(bad, "\n"))
 		}
+
+		// Now and then the oldest events move out to a file: the oldest
+		// in the table first, a run unbroken, recorded as one rotated
+		// event, and every event left in the table as it was.
+		if lrng.Intn(25) == 0 {
+			sequence = append(sequence, "koan log rotate")
+			r := rotate(t, home, time.Now().UTC().Format(time.RFC3339))
+			var want []string
+			if r.Changed {
+				rotations++
+				first := slices.Min(slices.Collect(maps.Keys(prev.Events)))
+				if *r.FirstSeq != first || *r.LastSeq-*r.FirstSeq+1 != int64(r.Count) {
+					t.Fatalf("step %d: rotated %d to %d, %d events, from a table whose first is %d", step, *r.FirstSeq, *r.LastSeq, r.Count, first)
+				}
+				want = []string{sameEvent("rotated", nil, nil, "/", map[string]any{
+					"file": *r.File, "first_seq": *r.FirstSeq, "last_seq": *r.LastSeq, "count": r.Count})}
+			}
+			var got []string
+			got, seq = koanEvents(t, home, seq, "log rotate")
+			if !slices.Equal(got, want) {
+				t.Fatalf("step %d: log rotate recorded %s, want %s", step, got, want)
+			}
+			if prev, bad = testrun.CheckRoot(home, prev, testrun.Checks{Notes: true}); len(bad) > 0 {
+				t.Fatalf("step %d: log rotate: invariants:\n%s", step, strings.Join(bad, "\n"))
+			}
+		}
 	}
 	// The sequence must try both sides.
 	if made < 5 || refused < 5 {
 		t.Errorf("%d changes made, %d refused", made, refused)
 	}
-	t.Logf("%d changes made, %d refused: %v", made, refused, succeeded)
+	t.Logf("%d changes made, %d refused, %d rotations: %v", made, refused, rotations, succeeded)
 	return succeeded
 }
 
@@ -883,13 +933,16 @@ func TestCheckRoot(t *testing.T) {
 		"INSERT INTO issued (id, kind, state) VALUES (7, 'task', 'live')",
 		"UPDATE task SET created_at = '2026-10-20T11:00:00Z' WHERE id = 3",
 		"INSERT INTO edge (task, blocker) VALUES (4, 3)",
-		"DELETE FROM issued WHERE id = 6")
+		"DELETE FROM issued WHERE id = 6",
+		"DELETE FROM event WHERE seq = 3",
+		"INSERT INTO event (change, at, command, kind, id, folder_id, folder_path, data) VALUES (1, '2026-10-20T10:00:00Z', 'update', 'updated', 3, NULL, '/', '{}')")
 	_, bad = testrun.CheckRoot(home, snap, testrun.Checks{Notes: true})
 	for _, want := range []string{
 		"I1: @7 is issued live with no row", "I1: task @6 was never issued", "I2: @6 is no longer issued",
 		"I7: cycle", "I8: claim on @5, which isn't a task", "I9: @3 tag \"Bad\"", "I9: @3 created_at changed",
 		"I12: @5 archived alone", "T1: folder @2", "T2: ", "T4: ", "T5: ", "T6: " + filepath.Join(tree, "@work", "@todo.md"),
 		"T6: " + filepath.Join(tree, "@work", "@done.md") + " is no gate's notes", "notes: @6 has no",
+		"I14: seq jumps from 2 to 4", "I14: event 3 left the table", "I13: event ",
 	} {
 		if !slices.ContainsFunc(bad, func(b string) bool { return strings.HasPrefix(b, want) }) {
 			t.Errorf("not found: %s", want)

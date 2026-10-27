@@ -1,7 +1,8 @@
 // Package model is an in-memory koan tree that applies the rules doc's
 // changes literally. It is the oracle the property tests check koan
 // against, so it favours plainness over speed: every change works on a
-// copy of the whole tree and keeps it only if nothing refuses.
+// copy of the whole tree and keeps it only if nothing refuses, and its
+// events are found by comparing the two.
 package model
 
 import (
@@ -73,8 +74,12 @@ type Tree struct {
 	First int64
 	// Now gives the time for each change, as a timestamp.
 	Now func() string
+	// Events is what the last change recorded, in order: none when it
+	// was refused or changed nothing.
+	Events []Event
 
 	now string // the time of the change in progress
+	h   *hints // what the change in progress notes for its events
 }
 
 // New makes an empty tree whose first ID will be first.
@@ -136,14 +141,17 @@ func (t *Tree) clone() *Tree {
 }
 
 // change runs f on a copy of the tree, and keeps the copy only if f
-// succeeds: a change is whole (I10).
+// succeeds: a change is whole (I10). Its events are the two compared.
 func (t *Tree) change(f func(c *Tree) error) error {
 	c := t.clone()
 	c.now = t.Now()
+	c.h = &hints{given: map[int64]bool{}}
 	if err := f(c); err != nil {
+		t.Events = nil
 		return err
 	}
-	c.now = ""
+	c.Events = events(t, c, c.h)
+	c.now, c.h = "", nil
 	*t = *c
 	return nil
 }

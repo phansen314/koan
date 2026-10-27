@@ -9,8 +9,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -82,7 +84,9 @@ var refPath = regexp.MustCompile(`\((.*)\)$`)
 // taken during it: hundreds of processes write and read one root at
 // once. No claim is handed out twice, every read sees a committed state,
 // never part of a batch or a delete, busy comes only after 5 seconds of
-// waiting, and at the end doctor finds nothing and the invariants hold.
+// waiting, and at the end doctor finds nothing and the invariants hold,
+// the log's included: each write that changed something recorded one
+// change, its events contiguous, with seq unbroken.
 // A backup taken mid-run restores to a root doctor finds clean.
 func TestConcurrency(t *testing.T) {
 	if testing.Short() {
@@ -130,6 +134,7 @@ func TestConcurrency(t *testing.T) {
 	if len(cIDs) != completers {
 		t.Fatalf("%d tasks in /c", len(cIDs))
 	}
+	setup := lastSeq(t, home)
 
 	var procs []*proc
 	add := func(stdin string, args ...string) { procs = append(procs, &proc{args: args, stdin: stdin}) }
@@ -300,6 +305,33 @@ func TestConcurrency(t *testing.T) {
 	if _, bad := testrun.CheckRoot(home, nil, testrun.Checks{Notes: true}); len(bad) > 0 {
 		t.Errorf("invariants:\n%s", strings.Join(bad, "\n"))
 	}
+	// seq ascends with no gap, each change's events contiguous, as
+	// CheckRoot found; and each write that changed something recorded
+	// one change, under its command, while one that got busy, a read,
+	// and the backup recorded none.
+	changes, made := map[string]int{}, map[string]int{}
+	for _, e := range logged(t, home, setup, nil) {
+		if e.Seq == e.Change {
+			changes[e.Command]++
+		}
+	}
+	for _, p := range order {
+		if !p.ok() {
+			continue
+		}
+		switch name := commandName(p.args); name {
+		case "task list", "folder list":
+		case "claim-next":
+			if p.result()["task"] != nil {
+				made[name]++
+			}
+		default:
+			made[name]++
+		}
+	}
+	if fmt.Sprint(changes) != fmt.Sprint(made) {
+		t.Errorf("changes recorded %v, want %v", changes, made)
+	}
 	r := ok(t, home, "info")
 	busyDeletes := 0
 	for i := range deleters {
@@ -357,4 +389,131 @@ func TestBusy(t *testing.T) {
 	}
 	golden(t, write, "busy")
 	ok(t, home, "task", "create", "b")
+}
+
+// The PRD's Concurrency test of the log: while writers record changes
+// and log rotate moves the oldest events out, readers paging with
+// --after see every event in seq order and none twice, and miss only
+// what the rotation moved.
+func TestLogPagingWhileRotating(t *testing.T) {
+	if testing.Short() {
+		t.Skip("concurrency")
+	}
+	home := root(t)
+	for i := range 20 {
+		var tasks []any
+		for k := range 25 {
+			x := map[string]any{"label": fmt.Sprintf("$t%d", k), "title": "t"}
+			if k > 0 {
+				x["blocked_by"] = []string{fmt.Sprintf("$t%d", k-1)}
+			}
+			tasks = append(tasks, x)
+		}
+		b, _ := json.Marshal(map[string]any{"folders": []any{map[string]any{"path": fmt.Sprintf("/b%d", i)}}, "folder": fmt.Sprintf("/b%d", i), "tasks": tasks})
+		batchOK(t, home, string(b))
+	}
+	old := lastSeq(t, home)
+	stampEvents(t, home, 1, old, "2020-01-01T00:00:00Z")
+	snap, bad := testrun.CheckRoot(home, nil, testrun.Checks{Notes: true})
+	if len(bad) > 0 {
+		t.Fatalf("before: %q", bad)
+	}
+
+	bin := testrun.Binary(t)
+	const readers, writers = 4, 20
+	start := make(chan struct{})
+	var wg, writing sync.WaitGroup
+	var done atomic.Bool
+	rotation := &proc{args: []string{"log", "rotate", "--before", "2021-01-01T00:00:00Z"}}
+	writing.Add(1)
+	go func() {
+		defer writing.Done()
+		<-start
+		time.Sleep(100 * time.Millisecond)
+		rotation.run(bin, home)
+	}()
+	ws := make([]*proc, writers)
+	for i := range ws {
+		ws[i] = &proc{args: []string{"task", "create", fmt.Sprint("w", i), "--blocked-by", "/b0.done"}}
+		writing.Add(1)
+		go func() {
+			defer writing.Done()
+			<-start
+			time.Sleep(time.Duration(i*20) * time.Millisecond)
+			ws[i].run(bin, home)
+		}()
+	}
+	seen := make([][]int64, readers)
+	fault := make([]string, readers)
+	for r := range readers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			time.Sleep(time.Duration(r*50) * time.Millisecond)
+			var after int64
+			for {
+				finished := done.Load()
+				args := []string{"log", "list", "--limit", "20"}
+				if after > 0 {
+					args = append(args, "--after", fmt.Sprint(after))
+				}
+				p := &proc{args: args}
+				if p.run(bin, home); p.err != nil || !p.ok() {
+					fault[r] = fmt.Sprintf("%q: %v %s", args, p.err, p.line)
+					return
+				}
+				events := p.result()["events"].([]any)
+				for _, e := range events {
+					s, _ := e.(map[string]any)["seq"].(json.Number).Int64()
+					seen[r] = append(seen[r], s)
+					after = s
+				}
+				if len(events) == 0 && finished {
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	writing.Wait()
+	done.Store(true)
+	wg.Wait()
+
+	for _, p := range append(ws, rotation) {
+		if p.err != nil || !p.ok() {
+			t.Errorf("%q: %v %s", p.args, p.err, p.line)
+		}
+	}
+	res := rotation.result()
+	first, _ := res["first_seq"].(json.Number).Int64()
+	last, _ := res["last_seq"].(json.Number).Int64()
+	if first != 1 || last != old {
+		t.Fatalf("rotated %d to %d, not 1 to %d: %s", first, last, old, rotation.line)
+	}
+	all := lastSeq(t, home)
+	for r, s := range seen {
+		if fault[r] != "" {
+			t.Errorf("reader %d: %s", r, fault[r])
+			continue
+		}
+		missed := 0
+		for i, seq := range s {
+			if i > 0 && seq <= s[i-1] {
+				t.Errorf("reader %d: %d after %d", r, seq, s[i-1])
+			}
+		}
+		for seq := int64(1); seq <= all; seq++ {
+			if _, found := slices.BinarySearch(s, seq); !found {
+				missed++
+				if seq < first || seq > last {
+					t.Errorf("reader %d missed %d, which wasn't rotated", r, seq)
+				}
+			}
+		}
+		t.Logf("reader %d: %d events seen, %d missed, of %d", r, len(s), missed, all)
+	}
+	if _, bad := testrun.CheckRoot(home, snap, testrun.Checks{Notes: true}); len(bad) > 0 {
+		t.Errorf("after:\n%s", strings.Join(bad, "\n"))
+	}
 }
