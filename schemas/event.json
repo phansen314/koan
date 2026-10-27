@@ -39,7 +39,7 @@
           "type": "null"
         }
       ],
-      "description": "The task or folder it is about; null for the root or the log, and for a repaired whose finding names no issued ID."
+      "description": "The task or folder it is about; null for the root or the log, and for a repaired whose finding is about no task or folder."
     },
     "folder": {
       "$ref": "types#/$defs/folder-at",
@@ -290,22 +290,6 @@
       "if": {
         "properties": {
           "kind": {
-            "const": "backed-up"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/backed-up"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "kind": {
             "const": "rotated"
           }
         }
@@ -342,7 +326,6 @@
         "bind",
         "unbind",
         "repair",
-        "backup",
         "log rotate"
       ]
     },
@@ -367,7 +350,6 @@
         "unbound",
         "initialized",
         "repaired",
-        "backed-up",
         "rotated"
       ]
     },
@@ -647,7 +629,7 @@
               "type": "null"
             }
           ],
-          "description": "Where its notes went in the archive; null only for a task archived alone without a notes file."
+          "description": "Where its notes went in the archive; null only for a task given as a subject, archived without a notes file."
         },
         "dir": {
           "anyOf": [
@@ -699,36 +681,6 @@
       "properties": {
         "finding": {
           "$ref": "finding"
-        }
-      },
-      "unevaluatedProperties": false
-    },
-    "backed-up": {
-      "type": "object",
-      "required": [
-        "dir",
-        "files",
-        "bytes",
-        "recopied",
-        "clean"
-      ],
-      "properties": {
-        "dir": {
-          "$ref": "types#/$defs/abs-path"
-        },
-        "files": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "bytes": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "recopied": {
-          "type": "boolean"
-        },
-        "clean": {
-          "type": "boolean"
         }
       },
       "unevaluatedProperties": false
