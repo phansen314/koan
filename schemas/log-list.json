@@ -58,18 +58,6 @@
           "default": null,
           "description": "After this seq. Given with since, invalid-input at \"\"."
         },
-        "until": {
-          "anyOf": [
-            {
-              "$ref": "types#/$defs/timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Before it."
-        },
         "kinds": {
           "type": "array",
           "items": {

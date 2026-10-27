@@ -169,7 +169,7 @@ A backup carries the claims and the log of its moment, and a restore brings them
 
 ## History
 
-Every change is recorded in the log, in the database: what was made, changed, moved, completed, claimed, deleted or archived, which tasks became ready, and which folders became finished. `koan log list` reads it back, oldest first, filtered by folder path or ID (matched as recorded, so a renamed or deleted folder still finds its history), `--task`, `--kinds`, and `--since`, `--until` or `--after` a `seq`. To keep the table small, move old events out to files in `~/koan-root/log/`. `log list` reads only the table, so a full history since a point reads those files too; cut well in the past, such as a month back, so no agent's saved place falls behind the cut:
+Every change is recorded in the log, in the database: what was made, changed, moved, completed, claimed, deleted or archived, which tasks became ready, and which folders became finished. `koan log list` reads it back, oldest first, filtered by folder path or ID (matched as recorded, so a renamed or deleted folder still finds its history), `--task`, `--kinds`, and `--since` a time or `--after` a `seq`. To keep the table small, move old events out to files in `~/koan-root/log/`. `log list` reads only the table, so a full history since a point reads those files too; cut well in the past, such as a month back, so no agent's saved place falls behind the cut:
 
 ```shell
 koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed   # what was finished under /work/api this month

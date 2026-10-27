@@ -39,7 +39,7 @@
           "type": "null"
         }
       ],
-      "description": "The task or folder it is about; null for the root or the log, and for a repaired whose finding is about no task or folder."
+      "description": "The task or folder it is about; null for the root or the log."
     },
     "folder": {
       "$ref": "types#/$defs/folder-at",
@@ -239,25 +239,6 @@
       "if": {
         "properties": {
           "kind": {
-            "enum": [
-              "bound",
-              "unbound"
-            ]
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/marker"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "kind": {
             "const": "initialized"
           }
         }
@@ -266,22 +247,6 @@
         "properties": {
           "data": {
             "$ref": "#/$defs/initialized"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "kind": {
-            "const": "repaired"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/repaired"
           }
         }
       }
@@ -323,9 +288,6 @@
         "delete",
         "archive",
         "batch",
-        "bind",
-        "unbind",
-        "repair",
         "log rotate"
       ]
     },
@@ -346,10 +308,7 @@
         "reblocked",
         "finished",
         "unfinished",
-        "bound",
-        "unbound",
         "initialized",
-        "repaired",
         "rotated"
       ]
     },
@@ -645,18 +604,6 @@
       },
       "unevaluatedProperties": false
     },
-    "marker": {
-      "type": "object",
-      "required": [
-        "dir"
-      ],
-      "properties": {
-        "dir": {
-          "$ref": "types#/$defs/abs-path"
-        }
-      },
-      "unevaluatedProperties": false
-    },
     "initialized": {
       "type": "object",
       "required": [
@@ -669,18 +616,6 @@
         },
         "first_id": {
           "$ref": "types#/$defs/id"
-        }
-      },
-      "unevaluatedProperties": false
-    },
-    "repaired": {
-      "type": "object",
-      "required": [
-        "finding"
-      ],
-      "properties": {
-        "finding": {
-          "$ref": "finding"
         }
       },
       "unevaluatedProperties": false
