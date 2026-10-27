@@ -97,10 +97,7 @@ koan frontier --limit 10 --fields ref,title                              # what 
 koan claim-next --extra '{"by":"me"}'                                    # claims @3 and returns it, so no one else takes it
 koan complete 3                                                          # .result.released: [4], now ready
 koan show 4                                                              # the whole task, with its notes_path
-```
-
-```shell
-koan log list --task 3 | jq -c '[.result.events[].kind]'                # ["created","claimed","completed","unclaimed"]
+koan log list --task 3 | jq -c '[.result.events[].kind]'                 # its history: ["created","claimed","completed","unclaimed"]
 ```
 
 `task` and `folder` hold only `create` and `list`; every other command is its verb alone, for tasks and folders both (`koan show 4`, `koan update 4 --priority 1`, `koan mv 4 /work`). A list or an export with no folder looks at the whole tree; in a worktree, `--here` looks under its folder, as in `koan context --here`. A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`; a `usage` error names the sibling option you probably meant.
@@ -151,7 +148,7 @@ The script is safe to rerun. It backs a settings file up, to `.bak.<timestamp>`,
 
 ## Backup and restore
 
-`koan backup` copies the database, the tree and the archive into a new or empty directory, while koan keeps running, and checks the copy:
+`koan backup` copies the database, the tree, the archive and the log's rotated files into a new or empty directory, while koan keeps running, and checks the copy:
 
 ```sh
 koan backup ~/backups/koan-$(date +%F)   # .result.clean is true when the copy checks out
@@ -165,13 +162,13 @@ cp -R ~/backups/koan-$(date +%F) ~/koan-root   # or whichever backup you want
 koan doctor                                    # .result.findings: what is wrong, if anything
 ```
 
-A backup carries the claims and the log of its moment, and a restore brings them back with it. So the IDs and log `seq` numbers issued after the backup will be issued again, and `koan log list --after` a `seq` from after it is `not-found`, until the restored root has issued that many again.
+A backup carries the claims and the log of its moment, and a restore brings them back with it. So the IDs and log `seq` numbers issued after the backup will be issued again, and `koan log list --after` a `seq` from after it is `not-found`, until the restored root has issued that many again. The restored root's `log/` is the backup's: don't copy the replaced root's rotated files into it, since the restored root will issue their `seq` again.
 
 ## History
 
 Every change is recorded in the log, in the database: what was made, changed, moved, completed, claimed, deleted or archived, which tasks became ready, and which folders became finished. `koan log list` reads it back, oldest first, filtered by folder path or ID (matched as recorded, so a renamed or deleted folder still finds its history), `--task`, `--kinds`, and `--since` a time or `--after` a `seq`. To keep the table small, move old events out to files in `~/koan-root/log/`. `log list` reads only the table, so a full history since a point reads those files too; cut well in the past, such as a month back, so no agent's saved place falls behind the cut:
 
-```shell
+```sh
 koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed   # what was finished under /work/api this month
 koan log rotate --before 2026-10-01T00:00:00Z                            # move everything older out to ~/koan-root/log/
 ```

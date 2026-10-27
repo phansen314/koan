@@ -226,8 +226,8 @@ jq .ok api.json                     # true; when false, .error says why
 
 Every change koan makes is recorded in the log as events, oldest first: what was made, changed, moved, completed, claimed, deleted or archived, which tasks became ready or waited again (`released`, `reblocked`), and which folders became finished. Reads are never recorded, nor is anything a change left as it was, nor notes edits.
 
-```shell
-koan log list --after 4810 --limit 50                       # what happened since the last event you saw: .result.events, .result.last_seq
+```sh
+koan log list --after 29 --limit 50                         # what happened since the last event you saw: .result.events, .result.last_seq
 koan log list /work/api --since 2026-10-20T00:00:00Z --kinds completed,reopened   # under a path, as it was then
 koan log list --task 42 | jq -c '[.result.events[].kind]'   # one task's whole history, even once deleted or archived
 ```
@@ -253,7 +253,7 @@ koan bind @41 ~/code/api-v2                        # refreshes the hint: .result
 koan mv -T /work/api2 /work/api
 ```
 
-- **Starting work in a worktree, run `koan context --here` first**, and print it as is. Without `--here` it briefs the root: `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `tasks` is limited like a list: `--limit` (100 by default, `null` for all), with `total` and `truncated`. `koan context <folder>` briefs any folder, and `--file <path>` the folder a file is in. `export` and `where` take `--here` and `--file` too.
+- **Starting work in a worktree, run `koan context --here` first**, and print it as is: a bare `koan context` briefs the root, never the worktree's folder. `.result.folder` is the folder, `.result.ancestors` the folders above it (top first), `.result.notes` its `@notes.md` whole, `.result.tasks` its own open tasks (not its subfolders'), and `.result.marker` the marker it came by. `tasks` is limited like a list: `--limit` (100 by default, `null` for all), with `total` and `truncated`. `koan context <folder>` briefs any folder, and `--file <path>` the folder a file is in. `export` and `where` take `--here` and `--file` too.
 - **Check the marker is the worktree's own**: in a git worktree it should be `$(git rev-parse --show-toplevel)/.koan/marker.json`. A marker above the worktree means it was never bound and is borrowing an outer folder: say so, rather than working in that folder.
 - **Bind worktrees from their top, never the checkout that holds them**: a marker binds every directory under it. `bind` refuses a checkout, a directory whose `.git` is a directory (`checkout`), and a directory bound to another live folder (`bound`); `--force` overrides either, so ask the user first. It refuses a `.koan/` holding files that aren't koan's (`foreign-files`), and any directory under `~/koan-root`.
 - A marker copied or moved with its directory, or whose folder was deleted or archived, binds nothing: `where`, `context` and `export` fail `not-found` and say why. Binding again fixes a moved one. `koan unbind <dir>` removes one; `bind` and `unbind` both return `dir`, `marker` and `changed`, false when there was nothing to write or remove; removing the worktree removes it too.

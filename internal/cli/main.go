@@ -195,7 +195,7 @@ func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran 
 var groupShorts = map[string]string{
 	"task":   "Make and list tasks",
 	"folder": "Make and list folders",
-	"log":    "Read the log of changes, and move its oldest events out to files",
+	"log":    "List the log's events, and move the oldest out to files",
 }
 
 // unknown refuses a line that names no command under group, "" for the

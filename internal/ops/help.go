@@ -82,7 +82,7 @@ var usages = map[string]string{
 	"export/file":         "export the folder this file is in",
 	"file":                "look under the folder this file is in",
 	"kinds":               "fix only these kinds of finding",
-	"log list/task":       "only the events about the task with this ID",
+	"log list/task":       "only the events about the task with this ID, even once it is deleted or archived",
 	"since":               "only the events at or after this time, YYYY-MM-DDTHH:MM:SSZ",
 	"after":               "only the events after this seq, such as the last_seq of the list before",
 	"log list/kinds":      "only these kinds of event",
@@ -145,6 +145,10 @@ func describe(commands []*cli.Command) []*cli.Command {
 			c.Uses = []string{exclusiveFolder, "--bash", "--zsh"}
 		case "batch":
 			c.Uses = []string{"-i <file>"}
+		case "log list":
+			c.Uses = []string{"[<folder>] [--since <timestamp> | --after <seq>]"}
+		case "log rotate":
+			c.Uses = []string{"--before <timestamp>"}
 		}
 	}
 	return commands
