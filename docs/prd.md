@@ -257,7 +257,7 @@ Derived state is compared, never worked out step by step. `released` and `rebloc
 A change records its events in this order:
 
 1. `created` for everything it makes, in the order it issues their IDs (Issuing IDs in a change).
-2. `blocked` and `unblocked`, one for each edge it writes or removes, in the order its edges are given, as Issuing IDs in a change orders them: an edge given twice records once, at its first. The edges a delete or archive removes between what goes and what stays come by task, then blocker.
+2. `blocked` and `unblocked`, one for each edge it writes or removes, in the order its edges are given, as Issuing IDs in a change orders them: an edge given twice records once, at its first, and a join's edge to the start gate comes before its edge from the done gate. The edges a delete or archive removes between what goes and what stays come by task, then blocker.
 3. Each subject's own events, in input order: `updated`; `completed`, then its `unclaimed`; `reopened`; `claimed`; `unclaimed`; `moved`.
 4. A delete's `unclaimed` events, then its `deleted` events, each in `removed`'s order; an archive's `archived` events, in `removed`'s order.
 5. `released` and `reblocked`, in the result's order.
