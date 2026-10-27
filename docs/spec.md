@@ -1091,7 +1091,7 @@ A case-only rename is `koan mv /work /Work`, since `/Work` names no folder byte 
 
 #### log rotate
 
-`koan log rotate --before <timestamp>`. Moves the oldest events, in `seq` order, up to the first one at or after `--before`, into `~/koan-root/log/<first>-<last>.jsonl` (On-disk formats), then deletes their rows, under the write lock, and records `rotated`, so the table shows where the events it moved went (PRD Rotating the log). It makes `log/` when it is missing. `--before` is required, since there is no default cut; one in the future is `invalid-input` at `/before`. With nothing to rotate, `changed` is false, `file`, `first_seq` and `last_seq` are null, `count` is 0, and nothing is recorded. It is safe to rerun at any point: a file of koan's name whose whole range is still in the table, left by a run cut short, is removed first, and so is a leftover `<name>.tmp`.
+`koan log rotate --before <timestamp>`. Moves the oldest events, in `seq` order, up to the first one at or after `--before`, into `~/koan-root/log/<first>-<last>.jsonl` (On-disk formats), then deletes their rows, under the write lock, and records `rotated`, so the table shows where the events it moved went (PRD Rotating the log). It makes `log/` when it is missing. `--before` is required, since there is no default cut; one in the future is `invalid-input` at `/before`. With nothing to rotate, `changed` is false, `file`, `first_seq` and `last_seq` are null, `count` is 0, and nothing is recorded. It is safe to rerun at any point: a regular file of koan's name whose whole range is still in the table, left by a run cut short or one whose commit failed, is removed first, and so is a leftover `<name>.tmp`.
 
 ```json
 { "$id": "log-rotate", "$defs": {
