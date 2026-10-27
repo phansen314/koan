@@ -31,6 +31,7 @@ func Commands() []*cli.Command {
 		Context(),
 		Export(),
 		LogList(),
+		LogRotate(),
 		Bind(),
 		Unbind(),
 		Init(),

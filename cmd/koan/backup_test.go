@@ -119,7 +119,7 @@ func TestBackup(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if !slices.Equal(names, []string{"archived", "koan.db", "tree"}) {
+	if !slices.Equal(names, []string{"archived", "koan.db", "log", "tree"}) {
 		t.Errorf("backup holds %q", names)
 	}
 

@@ -35,6 +35,8 @@ type EventFilter struct {
 	Since string
 	// After keeps the events after that seq.
 	After int64
+	// Below, when not zero, keeps the events before that seq.
+	Below int64
 	// Kinds, when not empty, keeps the events of those kinds.
 	Kinds []string
 	// Limit, when not nil, is the most events returned.
@@ -75,6 +77,10 @@ func (t *Tx) Events(f EventFilter) (events []Event, total int, err error) {
 	if f.After != 0 {
 		conds = append(conds, "seq > ?")
 		args = append(args, f.After)
+	}
+	if f.Below != 0 {
+		conds = append(conds, "seq < ?")
+		args = append(args, f.Below)
 	}
 	if len(f.Kinds) > 0 {
 		conds = append(conds, "kind IN (?"+strings.Repeat(", ?", len(f.Kinds)-1)+")")

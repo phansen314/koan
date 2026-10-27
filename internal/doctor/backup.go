@@ -24,8 +24,8 @@ type Copied struct {
 }
 
 // Hook, when a test sets it, is called each time backup copies the tree
-// and the archive: at "copy", once the database is copied, before them,
-// and at "copied", after them, before doctor runs. The first time, the
+// and the archive: at "copy", once the database and log/ are copied,
+// before them, and at "copied", after them, before doctor runs. The first time, the
 // lock is not held. Nothing but tests sets it.
 var Hook func(stage string)
 
@@ -36,16 +36,18 @@ func hook(stage string) {
 }
 
 // Backup copies a root into dir, an empty or new directory: the database
-// as one snapshot under the write lock, then the tree and the archive as
-// files, without it. It runs doctor on the copy and on the live root;
-// when the copy has findings the live root doesn't, a write landed
-// mid-copy, and it copies once more, holding the lock throughout. The
-// copy is clean when it then has no findings the live root lacks.
+// as one snapshot and log/ under the write lock, so they agree, then the
+// tree and the archive as files, without it. It runs doctor on the copy
+// and on the live root; when the copy has findings the live root
+// doesn't, a write landed mid-copy, and it copies once more, holding the
+// lock throughout. The copy is clean when it then has no findings the
+// live root lacks.
 func Backup(s *store.Store, dir string) (Copied, *cli.Error) {
 	to := store.Root{
 		Path:     dir,
 		Tree:     filepath.Join(dir, store.TreeName),
 		Archive:  filepath.Join(dir, store.ArchiveName),
+		Log:      filepath.Join(dir, store.LogName),
 		Database: filepath.Join(dir, store.DatabaseName),
 		Dir:      dir,
 	}
@@ -54,7 +56,7 @@ func Backup(s *store.Store, dir string) (Copied, *cli.Error) {
 		if e := prepare(dir); e != nil {
 			return e
 		}
-		return h.VacuumInto(to.Database)
+		return copyLocked(h, s, to, &out)
 	})
 	if e != nil {
 		return out, e
@@ -69,7 +71,7 @@ func Backup(s *store.Store, dir string) (Copied, *cli.Error) {
 			if err := empty(dir); err != nil {
 				return cli.IO("could not clear "+dir+" to copy again: "+err.Error(), dir)
 			}
-			if e := h.VacuumInto(to.Database); e != nil {
+			if e := copyLocked(h, s, to, &out); e != nil {
 				return e
 			}
 			copied, live, e = copyRest(s, to, &out)
@@ -105,15 +107,29 @@ func prepare(dir string) *cli.Error {
 	return nil
 }
 
-// copyRest copies the tree and the archive into the copy, whose database
-// is there, counting every regular file in it, then runs doctor on the
-// copy and on the live root.
-func copyRest(s *store.Store, to store.Root, out *Copied) (copied, live []Finding, e *cli.Error) {
+// copyLocked copies what must agree, the lock held: the database, as one
+// snapshot, and log/ when the root has one. It counts them, the first
+// files of the copy.
+func copyLocked(h *store.Held, s *store.Store, to store.Root, out *Copied) *cli.Error {
+	if e := h.VacuumInto(to.Database); e != nil {
+		return e
+	}
 	fi, err := os.Lstat(filepath.Join(to.Dir, store.DatabaseName))
 	if err != nil {
-		return nil, nil, cli.IO("could not read the copy of the database: "+err.Error(), to.Database)
+		return cli.IO("could not read the copy of the database: "+err.Error(), to.Database)
 	}
 	out.Files, out.Bytes = 1, fi.Size()
+	err = copyDir(filepath.Join(s.Root.Dir, store.LogName), filepath.Join(to.Dir, store.LogName), out)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return cli.IO("could not copy "+s.Root.Log+": "+err.Error(), to.Log)
+	}
+	return nil
+}
+
+// copyRest copies the tree and the archive into the copy, whose database
+// and log/ are there, counting every regular file in it, then runs doctor
+// on the copy and on the live root.
+func copyRest(s *store.Store, to store.Root, out *Copied) (copied, live []Finding, e *cli.Error) {
 	hook("copy")
 	for _, name := range []string{store.TreeName, store.ArchiveName} {
 		src, dst := filepath.Join(s.Root.Dir, name), filepath.Join(to.Dir, name)
