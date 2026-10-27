@@ -14,9 +14,12 @@ import (
 // writes always carry out their filesystem steps: it can only be opened
 // with the Steps that do.
 type Store struct {
-	Root  Root
-	db    *DB
-	steps Steps
+	Root Root
+	// Command is the command its writes are logged as, as its name is
+	// typed, such as task create.
+	Command string
+	db      *DB
+	steps   Steps
 }
 
 // Close closes the database.
@@ -73,9 +76,10 @@ func fault(point string) error {
 }
 
 // Change is steps 3 to 5 of a write: inside BEGIN IMMEDIATE it resolves
-// every reference, checks the tree, changes the rows and adds the
-// filesystem steps that bring the tree in line. Its error refuses the
-// change, and nothing is written.
+// every reference, checks the tree, changes the rows, adds the filesystem
+// steps that bring the tree in line, and records its events, which are
+// inserted once it returns. Its error refuses the change, and nothing is
+// written.
 type Change func(tx *Tx) (result any, warnings []cli.Warning, err error)
 
 // Write runs a change through the steps of a write. The caller has done
@@ -84,7 +88,7 @@ type Change func(tx *Tx) (result any, warnings []cli.Warning, err error)
 //
 //  2. Take the lock, and finish the steps an earlier write left pending.
 //  3. BEGIN IMMEDIATE.
-//  4. and 5. The change.
+//  4. and 5. The change, then the events it recorded.
 //  6. COMMIT.
 //  7. Carry out the steps, then delete their rows.
 //  8. Release the lock.
@@ -119,6 +123,9 @@ func (s *Store) change(change Change) (any, []cli.Warning, *cli.Error) {
 	result, warnings, err := change(tx)
 	if err == nil {
 		err = tx.err
+	}
+	if err == nil {
+		err = tx.insert(tx.ctx, s.db.conn)
 	}
 	if err != nil {
 		e := asError(err, s.Root.Database, tx.ArchivedEntry)
@@ -290,7 +297,9 @@ func (s *Store) begin(stmt string) (*Tx, *cli.Error) {
 	if _, err := s.db.conn.ExecContext(ctx, stmt); err != nil {
 		return nil, sqliteError(err, s.Root.Database)
 	}
-	return &Tx{conn: s.db.conn, ctx: ctx, Now: core.FormatTimestamp(time.Now()), encode: s.steps.Encode, root: s.Root.Path}, nil
+	now := core.FormatTimestamp(time.Now())
+	return &Tx{conn: s.db.conn, ctx: ctx, Now: now, encode: s.steps.Encode, root: s.Root.Path,
+		recorder: recorder{command: s.Command, at: now}}, nil
 }
 
 // querier is a connection or a transaction.
@@ -389,6 +398,8 @@ type Tx struct {
 	// root is the root's path as written, which the archive index's
 	// paths are relative to.
 	root string
+	// recorder holds the events the change records, at Now.
+	recorder
 }
 
 // Exec runs a statement in the transaction.

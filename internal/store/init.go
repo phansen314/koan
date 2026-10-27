@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/phansen314/koan/internal/cli"
+	"github.com/phansen314/koan/internal/core"
 )
 
 // What init can make, in the order its result lists them.
@@ -18,6 +20,7 @@ const (
 	MadeRoot     = "root"
 	MadeTree     = "tree"
 	MadeArchive  = "archived"
+	MadeLog      = "log"
 	MadeDatabase = "database"
 )
 
@@ -34,11 +37,13 @@ var ownNames = map[string]bool{
 	DatabaseName + "-journal": false,
 	TreeName:                  true,
 	ArchiveName:               true,
+	LogName:                   true,
 }
 
-// Init makes the root, its tree and archive, and the database, issuing IDs
-// from idsFrom, or from 1 when it is nil. What is already there it leaves
-// as it is, and reports. It returns what it made, in result order, and the
+// Init makes the root, its tree, archive and log, and the database,
+// issuing IDs from idsFrom, or from 1 when it is nil, its log starting with
+// initialized. What is already there it leaves as it is, and reports; a
+// run that finds the database made records nothing. It returns what it made, in result order, and the
 // root's first ID.
 func Init(home string, idsFrom *int64) (r Root, created []string, firstID int64, e *cli.Error) {
 	r, exists, e := FindRoot(home)
@@ -106,6 +111,7 @@ func Init(home string, idsFrom *int64) (r Root, created []string, firstID int64,
 	for _, d := range []struct{ name, made, path string }{
 		{TreeName, MadeTree, r.Tree},
 		{ArchiveName, MadeArchive, r.Archive},
+		{LogName, MadeLog, r.Log},
 	} {
 		if have[d.name] {
 			continue
@@ -201,9 +207,9 @@ func existingDatabase(r Root, idsFrom *int64) (finish bool, firstID int64, e *cl
 	return false, firstID, nil
 }
 
-// createDatabase makes the database in WAL mode, then its schema, format
-// and root row in one transaction, so a crash leaves either none of them
-// or all.
+// createDatabase makes the database in WAL mode, then its schema, format,
+// root row and initialized event in one transaction, so a crash leaves
+// either none of them or all.
 func createDatabase(file, path string, firstID int64) *cli.Error {
 	d, e := openConn(file, path, "rwc")
 	if e != nil {
@@ -229,6 +235,11 @@ func createDatabase(file, path string, firstID int64) *cli.Error {
 			return err
 		}
 		if _, err := d.conn.ExecContext(ctx, "INSERT INTO root (first_id) VALUES (?)", firstID); err != nil {
+			return err
+		}
+		rec := recorder{command: "init", at: core.FormatTimestamp(time.Now())}
+		rec.Record(EventInitialized, 0, Place{Folder: core.RootID, Path: "/"}, initialized{Format: Format, FirstID: firstID})
+		if err := rec.insert(ctx, d.conn); err != nil {
 			return err
 		}
 		_, err := d.conn.ExecContext(ctx, "COMMIT")

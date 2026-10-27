@@ -4,7 +4,7 @@
     "version": "$VERSION",
     "commit": "$COMMIT",
     "go": "$GO",
-    "format": 1
+    "format": 2
   },
   "warnings": []
 }

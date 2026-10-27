@@ -4,11 +4,13 @@
     "root": "$HOME/koan-root",
     "tree": "$HOME/koan-root/tree",
     "archived": "$HOME/koan-root/archived",
+    "log": "$HOME/koan-root/log",
     "database": "$HOME/koan-root/koan.db",
     "made": [
       "root",
       "tree",
       "archived",
+      "log",
       "database"
     ],
     "first_id": 1

@@ -14,13 +14,14 @@ type InitResult struct {
 	Root     string   `json:"root"`
 	Tree     string   `json:"tree"`
 	Archived string   `json:"archived"`
+	Log      string   `json:"log"`
 	Database string   `json:"database"`
 	Made     []string `json:"made"`
 	FirstID  int64    `json:"first_id"`
 }
 
-// Init makes the root, its tree and archive, and the database. Run again,
-// it changes nothing that is there and reports what it found.
+// Init makes the root, its tree, archive and log, and the database. Run
+// again, it changes nothing that is there and reports what it found.
 func Init() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
@@ -47,8 +48,8 @@ func Init() *cli.Command {
 			if created == nil {
 				created = []string{}
 			}
-			return InitResult{Root: root.Path, Tree: root.Tree, Archived: root.Archive, Database: root.Database,
-				Made: created, FirstID: first}, nil, nil
+			return InitResult{Root: root.Path, Tree: root.Tree, Archived: root.Archive, Log: root.Log,
+				Database: root.Database, Made: created, FirstID: first}, nil, nil
 		},
 	}
 }

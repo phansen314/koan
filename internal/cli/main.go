@@ -62,6 +62,7 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer, commands []*
 	if e := c.unknownFields(in); e != nil {
 		return out(nil, e, nil)
 	}
+	env.Command = c.Name
 	result, warnings, e := c.Run(env, in)
 	return out(result, c.boolHinted(l, e), warnings)
 }
