@@ -27,7 +27,7 @@ func Repair(s *store.Store, kinds []string) (fixed, left []Finding, warnings []c
 		if e := h.Finish(); e != nil {
 			return e
 		}
-		r := &repair{s: s, h: h}
+		r := &repair{s: s, h: h, before: before}
 		for _, kind := range RepairKinds {
 			if !slices.Contains(kinds, kind) {
 				continue
@@ -46,7 +46,7 @@ func Repair(s *store.Store, kinds []string) (fixed, left []Finding, warnings []c
 				return e
 			}
 		}
-		if left, e = Check(s); e != nil {
+		if left, e = recheck(s, before); e != nil {
 			return e
 		}
 		for _, f := range before {
@@ -64,8 +64,9 @@ func Repair(s *store.Store, kinds []string) (fixed, left []Finding, warnings []c
 }
 
 type repair struct {
-	s *store.Store
-	h *store.Held
+	s      *store.Store
+	h      *store.Held
+	before []Finding // what the repair found before it began
 }
 
 // of is the findings of one kind.
@@ -151,7 +152,7 @@ func (r *repair) ready(found []Finding, kind string) ([]Finding, *cli.Error) {
 func (r *repair) oneByOne(kind string) *cli.Error {
 	var tried []Finding
 	for {
-		found, e := Check(r.s)
+		found, e := recheck(r.s, r.before)
 		if e != nil {
 			return e
 		}
@@ -175,7 +176,7 @@ func (r *repair) oneByOne(kind string) *cli.Error {
 // moved back from one place only, since once they are there, any other
 // copy is no longer repairable.
 func (r *repair) together(kind string) *cli.Error {
-	found, e := Check(r.s)
+	found, e := recheck(r.s, r.before)
 	if e != nil {
 		return e
 	}

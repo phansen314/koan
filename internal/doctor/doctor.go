@@ -118,9 +118,26 @@ func compare(a, b Finding) int {
 // Check reads one snapshot of a root and reports every finding, in order.
 // It takes no lock.
 func Check(s *store.Store) ([]Finding, *cli.Error) {
+	return check(s, nil)
+}
+
+// recheck is Check for a repair, which ran SQLite's integrity check in
+// before: it carries that result over instead of reading the whole
+// database again, the log included. A fix moves files and the rows that
+// track them, which can't make the database fail that check.
+func recheck(s *store.Store, before []Finding) ([]Finding, *cli.Error) {
+	integrity := slices.DeleteFunc(slices.Clone(before), func(f Finding) bool {
+		return f.Kind != Corrupt || f.detail() != "integrity"
+	})
+	return check(s, &integrity)
+}
+
+// check is Check, taking the integrity check's findings from integrity
+// when it is given.
+func check(s *store.Store, integrity *[]Finding) ([]Finding, *cli.Error) {
 	var out []Finding
 	e := s.Read(func(tx *store.Tx) error {
-		c := &checker{tx: tx, root: s.Root}
+		c := &checker{tx: tx, root: s.Root, integrity: integrity}
 		err := c.check()
 		out = c.found
 		return err
@@ -137,6 +154,8 @@ type checker struct {
 	tx    *store.Tx
 	root  store.Root
 	found []Finding
+	// integrity, when set, is what an earlier integrity check found.
+	integrity *[]Finding
 	*rows
 }
 
@@ -163,34 +182,22 @@ func (c *checker) check() error {
 	return c.tree()
 }
 
-// corrupt runs SQLite's own checks of the whole database.
+// corrupt runs SQLite's own checks of the whole database, taking the
+// integrity check's findings from an earlier run when it has them.
 func (c *checker) corrupt() (bool, error) {
-	var problems []string
-	rows, err := c.tx.Query("PRAGMA integrity_check")
-	if err != nil {
-		return false, err
-	}
-	for rows.Next() {
-		var p string
-		if err := rows.Scan(&p); err != nil {
-			rows.Close()
+	var integrity []Finding
+	if c.integrity != nil {
+		integrity = *c.integrity
+	} else {
+		var err error
+		if integrity, err = c.integrityCheck(); err != nil {
 			return false, err
 		}
-		// SQLite heads each database's problems with its name.
-		for _, line := range strings.Split(p, "\n") {
-			if line != "ok" && !strings.HasPrefix(line, "*** ") {
-				problems = append(problems, line)
-			}
-		}
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return false, err
+	for _, f := range integrity {
+		c.add(f)
 	}
-	if len(problems) > 0 {
-		c.add(newFinding(Corrupt, "integrity", "The database fails PRAGMA integrity_check: "+first(problems)+". Restore from a backup.", nil, []string{c.root.Database}))
-	}
-	rows, err = c.tx.Query("PRAGMA foreign_key_check")
+	rows, err := c.tx.Query("PRAGMA foreign_key_check")
 	if err != nil {
 		return false, err
 	}
@@ -215,7 +222,38 @@ func (c *checker) corrupt() (bool, error) {
 	if len(broken) > 0 {
 		c.add(newFinding(Corrupt, "foreign-key", "The database fails PRAGMA foreign_key_check: "+first(broken)+". Restore from a backup.", nil, []string{c.root.Database}))
 	}
-	return len(problems) > 0 || len(broken) > 0, nil
+	return len(integrity) > 0 || len(broken) > 0, nil
+}
+
+// integrityCheck runs PRAGMA integrity_check, which reads every page of
+// the database.
+func (c *checker) integrityCheck() ([]Finding, error) {
+	var problems []string
+	rows, err := c.tx.Query("PRAGMA integrity_check")
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		// SQLite heads each database's problems with its name.
+		for _, line := range strings.Split(p, "\n") {
+			if line != "ok" && !strings.HasPrefix(line, "*** ") {
+				problems = append(problems, line)
+			}
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(problems) == 0 {
+		return nil, nil
+	}
+	return []Finding{newFinding(Corrupt, "integrity", "The database fails PRAGMA integrity_check: "+first(problems)+". Restore from a backup.", nil, []string{c.root.Database})}, nil
 }
 
 // first is the first few problems SQLite reported, and how many more.
