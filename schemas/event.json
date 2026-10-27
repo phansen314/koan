@@ -326,7 +326,7 @@
       "properties": {
         "given": {
           "type": "boolean",
-          "description": "false for a gate an edge named."
+          "description": "false for a gate, always: only an edge naming it makes one."
         },
         "gate": {
           "$ref": "types#/$defs/gate"

@@ -397,7 +397,7 @@ What `log list` returns: one thing a change did (rules The log). Events are reco
 
 | Kind | About | Recorded by | `data` |
 | --- | --- | --- | --- |
-| `created` | a task, a gate or a folder | `task create`, `folder create`, `block`, `join`, `batch` | for a task or gate, `given`, `gate`, `title`, `priority`, `tags`, `extra` as made, and its `readiness` as of the end of the change; for a folder, `given`, `name`, `title`, `extra`, and whether it is `finished` as of the end of the change. `given` is false for what the change made because something it was given needed it: a gate an edge names, or a missing parent |
+| `created` | a task, a gate or a folder | `task create`, `folder create`, `block`, `join`, `batch` | for a task or gate, `given`, `gate`, `title`, `priority`, `tags`, `extra` as made, and its `readiness` as of the end of the change; for a folder, `given`, `name`, `title`, `extra`, and whether it is `finished` as of the end of the change. `given` is false for what the change made because something it was given needed it: a gate, always, since only an edge naming it makes one, even when the gate is the command's subject, or a missing parent |
 | `updated` | a task or a folder | `update` | `changes`: each field it changed, in the record's order, with its value `before` and `after`; `extra` and `tags` whole |
 | `completed` | a task | `complete` | `{}` |
 | `reopened` | a task | `reopen` | its `readiness` as of the end of the change |
@@ -465,7 +465,7 @@ What `log list` returns: one thing a change did (rules The log). Events are reco
                           "moved", "deleted", "archived", "released", "reblocked", "finished", "unfinished",
                           "initialized", "rotated"] },
     "task-made": { "type": "object", "required": ["given", "gate", "title", "priority", "tags", "extra", "readiness"], "properties": {
-      "given":     { "type": "boolean", "description": "false for a gate an edge named." },
+      "given":     { "type": "boolean", "description": "false for a gate, always: only an edge naming it makes one." },
       "gate":      { "$ref": "types#/$defs/gate" },
       "title":     { "$ref": "types#/$defs/title" },
       "priority":  { "$ref": "types#/$defs/priority" },
