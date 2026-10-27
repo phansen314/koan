@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -189,6 +190,18 @@ func (r *recorder) Record(kind string, id int64, at Place, data any) {
 	r.events = append(r.events, event{kind: kind, id: id, place: at, data: data})
 }
 
+// marshal encodes an event's data as every result is printed: without
+// escaping <, > and &.
+func marshal(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
+}
+
 // insert inserts the change's events in the order recorded. The first
 // takes the seq SQLite issues it as its change, and the rest repeat it.
 // A change that recorded nothing inserts nothing.
@@ -198,7 +211,7 @@ func (r *recorder) insert(ctx context.Context, conn *sql.Conn) error {
 		data := []byte("{}")
 		if e.data != nil {
 			var err error
-			if data, err = json.Marshal(e.data); err != nil {
+			if data, err = marshal(e.data); err != nil {
 				return err
 			}
 		}

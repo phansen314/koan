@@ -424,3 +424,14 @@ func TestLogListRefused(t *testing.T) {
 		}
 	}
 }
+
+// An event's data is printed as every result is, without escaping <, >
+// and &.
+func TestLogListNoHTMLEscape(t *testing.T) {
+	home := root(t)
+	ok(t, home, "task", "create", "a<b & c>d")
+	r := ok(t, home, "log", "list", "--kinds", "created")
+	if line := r.Line(); !strings.Contains(line, `"title":"a<b & c>d"`) {
+		t.Errorf("log list printed the title escaped: %s", line)
+	}
+}
