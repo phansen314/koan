@@ -78,6 +78,11 @@ var siblings = map[string]map[string]string{
 	"folder list": {"--folder": "the folder is a word of its own, as in koan folder list /work"},
 	"context":     {"--folder": "the folder is a word of its own, as in koan context /work"},
 	"export":      {"--folder": "the folder is a word of its own, as in koan export /work"},
+	"log list": {
+		"--folder": "the folder is a word of its own, as in koan log list /work",
+		"--file":   "the folder is matched as written, never found on disk: give its path or its ID, as in koan log list /work",
+		"--here":   "the folder is matched as written, never found on disk: give its path or its ID, as in koan log list /work",
+	},
 	"join":        {"--join": "name the folders to join after the task or folder as words of their own, as in koan join 42 /work/a /work/b"},
 	"update":      {"--tags": "update takes --tags-add, --tags-remove and --tags-replace-all"},
 	"task create": {"--tags-add": "task create takes --tags", "--title": "the title is a word of its own, as in koan task create 'Write it'"},
@@ -190,6 +195,7 @@ func tree(commands []*Command, stdout io.Writer, env *Env, completing bool, ran 
 var groupShorts = map[string]string{
 	"task":   "Make and list tasks",
 	"folder": "Make and list folders",
+	"log":    "Read the log of changes",
 }
 
 // unknown refuses a line that names no command under group, "" for the
