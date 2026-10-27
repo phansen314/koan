@@ -193,9 +193,11 @@ func (t *Tx) ids(query string, args ...any) []int64 {
 // calls it in the order it makes things: its folders, parents first, in
 // tree order; then its tasks, in input order; then the gates its edges
 // name, in the order those edges are given, each task's blocked_by before
-// its blocks, then the edges of the folders it joins. Past the last ID a
-// root can have, the change is refused as no-ids.
-func (t *Tx) Issue(kind core.NodeKind) (int64, error) {
+// its blocks, then the edges of the folders it joins. Given is false for
+// what the change makes because something it was given needed it: a gate
+// an edge names, or a missing parent. Past the last ID a root can have,
+// the change is refused as no-ids.
+func (t *Tx) Issue(kind core.NodeKind, given bool) (int64, error) {
 	var id int64
 	err := t.QueryRow(`SELECT max(coalesce((SELECT max(id) FROM issued), 0) + 1, (SELECT first_id FROM root))`).Scan(&id)
 	if err != nil {
@@ -212,6 +214,7 @@ func (t *Tx) Issue(kind core.NodeKind) (int64, error) {
 	if _, err := t.Exec("INSERT INTO issued (id, kind, state) VALUES (?, ?, 'live')", id, k); err != nil {
 		return 0, err
 	}
+	t.made = append(t.made, made{id: id, given: given})
 	return id, nil
 }
 
@@ -220,7 +223,7 @@ func (t *Tx) Issue(kind core.NodeKind) (int64, error) {
 // made gate's fields, Start or Done as its title, null priority, no tags
 // and an empty extra. The change adds the step writing its notes.
 func (t *Tx) MakeGate(folder int64, end core.End) (int64, error) {
-	id, err := t.Issue(core.NodeTask)
+	id, err := t.Issue(core.NodeTask, false)
 	if err != nil {
 		return 0, err
 	}

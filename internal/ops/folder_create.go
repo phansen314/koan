@@ -118,7 +118,8 @@ func makeFolders(tx *store.Tx, root store.Root, ref core.Ref, pointer string, ti
 	}
 	created := []FolderAt{}
 	for i, name := range missing {
-		id, err := tx.Issue(core.NodeFolder)
+		// A missing parent is made because the folder given needs it.
+		id, err := tx.Issue(core.NodeFolder, i == len(missing)-1)
 		if err != nil {
 			return nil, err
 		}

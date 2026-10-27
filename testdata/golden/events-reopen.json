@@ -1,0 +1,4 @@
+[
+{"seq":11,"change":11,"at":"$AT","command":"reopen","kind":"reopened","id":3,"folder":{"id":1,"path":"/w"},"data":{"readiness":"blocked"}},
+{"seq":12,"change":11,"at":"$AT","command":"reopen","kind":"reopened","id":2,"folder":{"id":1,"path":"/w"},"data":{"readiness":"ready"}}
+]

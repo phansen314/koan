@@ -53,9 +53,11 @@ func TaskClaim() *cli.Command {
 					case !tx.Open(id):
 						return nil, nil, core.Conflict(core.RuleAlreadyComplete, []int64{id}, nil, "@%d is complete; only an open task can be claimed", id)
 					}
-					if _, err := tx.InsertClaim(id, extra); err != nil {
+					c, err := tx.InsertClaim(id, extra)
+					if err != nil {
 						return nil, nil, err
 					}
+					tx.Record(store.EventClaimed, id, tx.PlaceOf(id), store.Claimed{Extra: c.Extra})
 				}
 				return TaskClaimResult{Claimed: ids}, nil, nil
 			})
@@ -107,6 +109,7 @@ func TaskClaimNext() *cli.Command {
 				if err != nil {
 					return nil, nil, err
 				}
+				tx.Record(store.EventClaimed, id, tx.PlaceOf(id), store.Claimed{Extra: c.Extra})
 				t.claims[id] = c
 				rec := t.record(id)
 				return TaskClaimNextResult{Task: &rec}, stale, nil
@@ -125,13 +128,18 @@ func TaskUnclaim() *cli.Command {
 	return tasksCommand("unclaim", claimedOnes, func(tx *store.Tx, ids []int64) (any, []cli.Warning, error) {
 		unclaimed := []int64{}
 		for _, id := range ids {
-			changed, err := tx.EndClaim(id)
+			c, claimed, err := tx.Claim(id)
 			if err != nil {
 				return nil, nil, err
 			}
-			if changed {
-				unclaimed = append(unclaimed, id)
+			if !claimed {
+				continue
 			}
+			if _, err := tx.EndClaim(id); err != nil {
+				return nil, nil, err
+			}
+			tx.Record(store.EventUnclaimed, id, tx.PlaceOf(id), store.Unclaimed{ClaimedAt: c.ClaimedAt, Extra: c.Extra})
+			unclaimed = append(unclaimed, id)
 		}
 		return TaskUnclaimResult{Unclaimed: unclaimed}, nil, nil
 	})

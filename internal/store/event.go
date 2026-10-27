@@ -49,6 +49,74 @@ type initialized struct {
 	FirstID int64 `json:"first_id"`
 }
 
+// TaskMade is the data of a task's or a gate's created: its fields as
+// made, and its readiness as of the end of the change.
+type TaskMade struct {
+	Given     bool            `json:"given"`
+	Gate      *string         `json:"gate"`
+	Title     string          `json:"title"`
+	Priority  *int64          `json:"priority"`
+	Tags      []string        `json:"tags"`
+	Extra     json.RawMessage `json:"extra"`
+	Readiness string          `json:"readiness"`
+}
+
+// FolderMade is the data of a folder's created: its fields as made, and
+// whether it is finished as of the end of the change.
+type FolderMade struct {
+	Given    bool            `json:"given"`
+	Name     string          `json:"name"`
+	Title    *string         `json:"title"`
+	Extra    json.RawMessage `json:"extra"`
+	Finished bool            `json:"finished"`
+}
+
+// Updated is the data of updated: each field the update changed, in the
+// record's order.
+type Updated struct {
+	Changes []FieldChange `json:"changes"`
+}
+
+// FieldChange is one field an update changed, its value before and after,
+// tags and extra whole.
+type FieldChange struct {
+	Field  string `json:"field"`
+	Before any    `json:"before"`
+	After  any    `json:"after"`
+}
+
+// Reopened is the data of reopened: the task's readiness as of the end of
+// the change.
+type Reopened struct {
+	Readiness string `json:"readiness"`
+}
+
+// Claimed is the data of claimed: the claim's extra.
+type Claimed struct {
+	Extra json.RawMessage `json:"extra"`
+}
+
+// Unclaimed is the data of unclaimed: the ended claim's time and extra.
+type Unclaimed struct {
+	ClaimedAt string          `json:"claimed_at"`
+	Extra     json.RawMessage `json:"extra"`
+}
+
+// Readiness is an open task's readiness, as events give it.
+func Readiness(g core.Graph, id int64) string {
+	if core.Ready(g, id) {
+		return "ready"
+	}
+	return "blocked"
+}
+
+// made is something a change made, and whether it was given, rather than
+// made because something given needed it.
+type made struct {
+	id    int64
+	given bool
+}
+
 // event is one event a change records, before it has a seq.
 type event struct {
 	kind  string
@@ -59,11 +127,13 @@ type event struct {
 
 // recorder holds a change's events until step 5 inserts them, in the
 // order they were recorded. Every event of the change takes its command
-// and time.
+// and time. Made is what the change issued IDs to, in that order, whose
+// created events come first.
 type recorder struct {
 	command string
 	at      string
 	events  []event
+	made    []made
 }
 
 // Record adds an event to the change: its kind, the task or folder it is
@@ -115,6 +185,60 @@ func (r *recorder) insert(ctx context.Context, conn *sql.Conn) error {
 		}
 	}
 	return nil
+}
+
+// recordMade puts a created event for everything the change made before
+// the rest of its events, in the order it issued their IDs, each with its
+// state as of the end of the change.
+func (t *Tx) recordMade() error {
+	var created []event
+	for _, m := range t.made {
+		n, ok := t.Node(m.id)
+		if !ok {
+			if t.err != nil {
+				return t.err
+			}
+			return fmt.Errorf("@%d was made, and is gone by the end of its change", m.id)
+		}
+		var data any
+		if n.Kind == core.NodeFolder {
+			f, err := t.Folder(m.id)
+			if err != nil {
+				return err
+			}
+			data = FolderMade{Given: m.given, Name: f.Name, Title: f.Title, Extra: f.Extra, Finished: !t.OpenUnder(m.id)}
+		} else {
+			r, tags, err := t.Task(m.id)
+			if err != nil {
+				return err
+			}
+			var gate *string
+			if r.Gate != core.EndNone {
+				g := string(r.Gate)
+				gate = &g
+			}
+			if tags == nil {
+				tags = []string{}
+			}
+			data = TaskMade{Given: m.given, Gate: gate, Title: r.Title, Priority: r.Priority, Tags: tags, Extra: r.Extra,
+				Readiness: Readiness(t, m.id)}
+		}
+		created = append(created, event{kind: EventCreated, id: m.id, place: t.PlaceOf(m.id), data: data})
+	}
+	if t.err != nil {
+		return t.err
+	}
+	t.events = append(created, t.events...)
+	return nil
+}
+
+// OpenUnder reports whether any open task, a gate included, is under a
+// folder, at any depth, stopping at the first it finds.
+func (t *Tx) OpenUnder(folder int64) bool {
+	var open bool
+	t.fail(t.QueryRow(`WITH RECURSIVE under(id) AS (SELECT ? UNION ALL SELECT folder.id FROM folder JOIN under ON folder.parent = under.id)
+		SELECT EXISTS (SELECT 1 FROM task WHERE folder IN under AND completed_at IS NULL)`, folder).Scan(&open))
+	return open
 }
 
 // PlaceOf is where an event about id happens, as the transaction now

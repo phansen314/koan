@@ -65,7 +65,9 @@ func TestInitRecordsInitialized(t *testing.T) {
 
 // Every event of a change takes its time, its command and the seq of its
 // first event; where each happened is its folder, a task's folder, or the
-// root. A change that records nothing, and a refused one, insert nothing.
+// root. What the change made comes first, a created event each in the
+// order of their IDs, then the events it recorded, in order. A change
+// that records nothing, and a refused one, insert nothing.
 func TestRecorder(t *testing.T) {
 	home, s := newRoot(t, 1)
 	s.Command = "task create"
@@ -80,31 +82,36 @@ func TestRecorder(t *testing.T) {
 		if task, err = addTask(tx, folder, "a"); err != nil {
 			return err
 		}
+		tx.Record(EventUpdated, folder, tx.PlaceOf(folder), map[string]any{"n": 1})
 		if rootTask, err = addTask(tx, core.RootID, "b"); err != nil {
 			return err
 		}
-		tx.Record(EventCreated, folder, tx.PlaceOf(folder), map[string]any{"n": 1})
-		tx.Record(EventCreated, task, tx.PlaceOf(task), nil)
-		tx.Record(EventCreated, rootTask, tx.PlaceOf(rootTask), nil)
+		tx.Record(EventUpdated, task, tx.PlaceOf(task), nil)
+		tx.Record(EventUpdated, rootTask, tx.PlaceOf(rootTask), nil)
 		return nil
 	})
 	got := events(t, home)
-	if len(got) != 4 {
+	if len(got) != 7 {
 		t.Fatalf("events: %+v", got)
 	}
+	inFolder := sql.NullInt64{Int64: folder, Valid: true}
 	want := []struct {
+		kind   string
 		id     int64
 		folder sql.NullInt64
 		path   string
 		data   string
 	}{
-		{folder, sql.NullInt64{Int64: folder, Valid: true}, "/work", `{"n":1}`},
-		{task, sql.NullInt64{Int64: folder, Valid: true}, "/work", `{}`},
-		{rootTask, sql.NullInt64{}, "/", `{}`},
+		{EventCreated, folder, inFolder, "/work", `{"given":true,"name":"work","title":null,"extra":{},"finished":false}`},
+		{EventCreated, task, inFolder, "/work", `{"given":true,"gate":null,"title":"a","priority":null,"tags":[],"extra":{},"readiness":"ready"}`},
+		{EventCreated, rootTask, sql.NullInt64{}, "/", `{"given":true,"gate":null,"title":"b","priority":null,"tags":[],"extra":{},"readiness":"ready"}`},
+		{EventUpdated, folder, inFolder, "/work", `{"n":1}`},
+		{EventUpdated, task, inFolder, "/work", `{}`},
+		{EventUpdated, rootTask, sql.NullInt64{}, "/", `{}`},
 	}
 	for i, w := range want {
 		e := got[i+1]
-		if e.Seq != int64(i+2) || e.Change != 2 || e.At != now || e.Command != "task create" || e.Kind != "created" ||
+		if e.Seq != int64(i+2) || e.Change != 2 || e.At != now || e.Command != "task create" || e.Kind != w.kind ||
 			e.ID.Int64 != w.id || e.FolderID != w.folder || e.FolderPath != w.path || e.Data != w.data {
 			t.Errorf("event %d: %+v", i, e)
 		}
@@ -112,15 +119,18 @@ func TestRecorder(t *testing.T) {
 
 	// Nothing recorded, nothing inserted.
 	write(t, s, func(tx *Tx) error { return nil })
-	// A refused change inserts nothing it recorded.
+	// A refused change inserts nothing it recorded or made.
 	_, _, e := s.Write(func(tx *Tx) (any, []cli.Warning, error) {
+		if _, err := addTask(tx, folder, "c"); err != nil {
+			return nil, nil, err
+		}
 		tx.Record(EventCompleted, task, tx.PlaceOf(task), nil)
 		return nil, nil, core.Conflict(core.RuleClaimed, []int64{task}, nil, "refused")
 	})
 	if e == nil {
 		t.Fatal("the change was not refused")
 	}
-	if n := len(events(t, home)); n != 4 {
+	if n := len(events(t, home)); n != 7 {
 		t.Errorf("%d events", n)
 	}
 
@@ -132,8 +142,52 @@ func TestRecorder(t *testing.T) {
 		return nil
 	})
 	got = events(t, home)
-	if len(got) != 6 || got[4].Seq != 5 || got[4].Change != 5 || got[5].Change != 5 || got[5].Command != "complete" {
-		t.Errorf("second change: %+v", got[4:])
+	if len(got) != 9 || got[7].Seq != 8 || got[7].Change != 8 || got[8].Change != 8 || got[8].Command != "complete" {
+		t.Errorf("second change: %+v", got[7:])
+	}
+}
+
+// A made task's readiness and a made folder's finished are as the change
+// leaves them, and a gate an edge named, or a missing parent, is not
+// given.
+func TestRecordMade(t *testing.T) {
+	home, s := newRoot(t, 1)
+	s.Command = "batch"
+	var parent, folder, task, gate int64
+	write(t, s, func(tx *Tx) error {
+		var err error
+		if parent, err = tx.Issue(core.NodeFolder, false); err != nil {
+			return err
+		}
+		if err := tx.InsertFolder(FolderRow{ID: parent, Name: "p", Extra: []byte("{}")}); err != nil {
+			return err
+		}
+		if folder, err = addFolder(tx, parent, "f"); err != nil {
+			return err
+		}
+		if task, err = addTask(tx, folder, "a"); err != nil {
+			return err
+		}
+		if gate, err = tx.MakeGate(parent, core.EndDone); err != nil {
+			return err
+		}
+		// Made ready, the task waits on the gate by the end of the change.
+		return tx.AddEdge(task, gate)
+	})
+	got := events(t, home)[1:]
+	want := []string{
+		`{"given":false,"name":"p","title":null,"extra":{},"finished":false}`,
+		`{"given":true,"name":"f","title":null,"extra":{},"finished":false}`,
+		`{"given":true,"gate":null,"title":"a","priority":null,"tags":[],"extra":{},"readiness":"blocked"}`,
+		`{"given":false,"gate":"done","title":"Done","priority":null,"tags":[],"extra":{},"readiness":"ready"}`,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("events: %+v", got)
+	}
+	for i, w := range want {
+		if got[i].Kind != EventCreated || got[i].ID.Int64 != []int64{parent, folder, task, gate}[i] || got[i].Data != w {
+			t.Errorf("event %d: %+v", i, got[i])
+		}
 	}
 }
 

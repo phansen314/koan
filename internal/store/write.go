@@ -125,6 +125,9 @@ func (s *Store) change(change Change) (any, []cli.Warning, *cli.Error) {
 		err = tx.err
 	}
 	if err == nil {
+		err = tx.recordMade()
+	}
+	if err == nil {
 		err = tx.insert(tx.ctx, s.db.conn)
 	}
 	if err != nil {

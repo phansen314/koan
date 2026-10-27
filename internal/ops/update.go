@@ -186,8 +186,16 @@ func Update() *cli.Command {
 						if row.Extra, err = extra.apply(row.Extra); err != nil {
 							return nil, nil, err
 						}
-						changed = !same(row.Title, was.Title) || !bytes.Equal(row.Extra, was.Extra)
+						var fields []store.FieldChange
+						if !same(row.Title, was.Title) {
+							fields = append(fields, store.FieldChange{Field: "title", Before: was.Title, After: row.Title})
+						}
+						if !bytes.Equal(row.Extra, was.Extra) {
+							fields = append(fields, store.FieldChange{Field: "extra", Before: was.Extra, After: row.Extra})
+						}
+						changed = len(fields) > 0
 						if changed {
+							tx.Record(store.EventUpdated, sub.id, tx.PlaceOf(sub.id), store.Updated{Changes: fields})
 							if err := tx.SetFolderFields(row); err != nil {
 								return nil, nil, err
 							}
@@ -218,9 +226,22 @@ func Update() *cli.Command {
 						if row.Extra, err = extra.apply(row.Extra); err != nil {
 							return nil, nil, err
 						}
-						changed = row.Title != was.Title || !same(row.Priority, was.Priority) ||
-							!slices.Equal(now, tags) || !bytes.Equal(row.Extra, was.Extra)
+						var fields []store.FieldChange
+						if row.Title != was.Title {
+							fields = append(fields, store.FieldChange{Field: "title", Before: was.Title, After: row.Title})
+						}
+						if !same(row.Priority, was.Priority) {
+							fields = append(fields, store.FieldChange{Field: "priority", Before: was.Priority, After: row.Priority})
+						}
+						if !slices.Equal(now, tags) {
+							fields = append(fields, store.FieldChange{Field: "tags", Before: nonNilTags(tags), After: nonNilTags(now)})
+						}
+						if !bytes.Equal(row.Extra, was.Extra) {
+							fields = append(fields, store.FieldChange{Field: "extra", Before: was.Extra, After: row.Extra})
+						}
+						changed = len(fields) > 0
 						if changed {
+							tx.Record(store.EventUpdated, sub.id, tx.PlaceOf(sub.id), store.Updated{Changes: fields})
 							if err := tx.SetTaskFields(row, now); err != nil {
 								return nil, nil, err
 							}
@@ -234,6 +255,14 @@ func Update() *cli.Command {
 			})
 		},
 	}
+}
+
+// nonNilTags is a list of tags as an event gives it: empty, never null.
+func nonNilTags(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
 }
 
 // same reports whether two optional values are equal: both null, or both

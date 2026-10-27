@@ -45,7 +45,7 @@ func write(t *testing.T, s *Store, fn func(tx *Tx) error) []cli.Warning {
 
 // addTask inserts an ordinary task, issuing its ID.
 func addTask(tx *Tx, folder int64, title string) (int64, error) {
-	id, err := tx.Issue(core.NodeTask)
+	id, err := tx.Issue(core.NodeTask, true)
 	if err != nil {
 		return 0, err
 	}
@@ -56,7 +56,7 @@ func addTask(tx *Tx, folder int64, title string) (int64, error) {
 
 // addFolder inserts a folder, issuing its ID.
 func addFolder(tx *Tx, parent int64, name string) (int64, error) {
-	id, err := tx.Issue(core.NodeFolder)
+	id, err := tx.Issue(core.NodeFolder, true)
 	if err != nil {
 		return 0, err
 	}

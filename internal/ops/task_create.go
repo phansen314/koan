@@ -100,7 +100,7 @@ func TaskCreate() *cli.Command {
 // its notes file. It gives the task's ID and its notes path, as a step's
 // path.
 func makeTask(tx *store.Tx, folder int64, title string, priority *int64, tags []string, extra json.RawMessage, notes string) (int64, string, error) {
-	id, err := tx.Issue(core.NodeTask)
+	id, err := tx.Issue(core.NodeTask, true)
 	if err != nil {
 		return 0, "", err
 	}

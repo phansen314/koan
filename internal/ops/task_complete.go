@@ -111,6 +111,14 @@ func TaskComplete() *cli.Command {
 			if !tx.Open(id) {
 				continue
 			}
+			claim, claimed, err := tx.Claim(id)
+			if err != nil {
+				return nil, nil, err
+			}
+			tx.Record(store.EventCompleted, id, tx.PlaceOf(id), nil)
+			if claimed {
+				tx.Record(store.EventUnclaimed, id, tx.PlaceOf(id), store.Unclaimed{ClaimedAt: claim.ClaimedAt, Extra: claim.Extra})
+			}
 			ended, err := tx.SetComplete(id, true)
 			if err != nil {
 				return nil, nil, err
@@ -139,6 +147,10 @@ func TaskReopen() *cli.Command {
 				return nil, nil, err
 			}
 			reopened = append(reopened, id)
+		}
+		// Each with its readiness once every task given is open again.
+		for _, id := range reopened {
+			tx.Record(store.EventReopened, id, tx.PlaceOf(id), store.Reopened{Readiness: store.Readiness(tx, id)})
 		}
 		reblocked, warnings, err := watched.reblocked()
 		if err != nil {
