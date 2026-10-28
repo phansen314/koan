@@ -386,6 +386,13 @@ type heldOpen struct {
 // parent before and after it moves the folder, so each is asked before
 // the change alters anything under it. An open task under a folder is
 // under each folder above it, which needs no asking.
+//
+// The places it keeps are as the change found them only because no
+// change renames or moves a folder and then touches anything under it:
+// below a folder already asked, the chain takes the names as they now
+// stand. mv refuses a subject under another subject, and update renames
+// nothing. A change that breaks this records wrong paths and depths for
+// finished and unfinished, and nothing fails.
 func (t *Tx) touch(folder int64) {
 	type link struct {
 		id   int64
