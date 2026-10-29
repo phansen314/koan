@@ -38,7 +38,7 @@ var (
 func TestProperties(t *testing.T) {
 	t.Parallel()
 	// These seeds together make every command succeed, for -short.
-	seeds := []int64{1, 59, 11, 2}
+	seeds := []int64{1, 2, 4, 11}
 	steps := 200
 	switch {
 	case *seedFlag != 0:
@@ -76,7 +76,7 @@ func TestProperties(t *testing.T) {
 	}
 	for _, cmd := range []string{"task create", "update task", "update folder", "block", "unblock", "complete", "reopen",
 		"claim", "claim-next", "unclaim", "mv task", "delete task", "archive task", "folder create",
-		"mv folder", "mv case", "delete folder", "delete material", "archive folder", "batch"} {
+		"mv folder", "mv case", "delete folder", "delete material", "archive folder", "batch", "join", "unjoin"} {
 		if succeeded[cmd] == 0 {
 			t.Errorf("no %s succeeded", cmd)
 		}
@@ -254,6 +254,22 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		return pick([]string{"/a", "/a/b", "/c", "/d", "@1", "@2", "/c/e", "/A", "/"})
 	}
 	folderPaths := []string{"/d", "/a/b/x", "/c/a", "/x/y", "/C", "/a/B", "/c", "/a", "/c/e", "/a/b"}
+	// joinList is the folders a join names: mostly folders there are,
+	// now and then a gate, which is no folder, and in a batch a label.
+	joinList := func(n int, batch bool) []string {
+		var out []string
+		for range n {
+			switch {
+			case rng.Intn(8) == 0:
+				out = append(out, pick([]string{"/a.start", "@2.done"}))
+			case batch && rng.Intn(8) == 0:
+				out = append(out, "$a")
+			default:
+				out = append(out, folderRef())
+			}
+		}
+		return out
+	}
 	warnings := func(ws []model.Warning) string {
 		var out []string
 		for _, w := range ws {
@@ -288,12 +304,26 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		var folders, tasks []any
 		for range []int{0, 0, 1, 2}[rng.Intn(4)] {
 			p := pick(folderPaths)
-			in.Folders = append(in.Folders, model.BatchFolder{Path: p})
-			folders = append(folders, map[string]any{"path": p})
+			f := model.BatchFolder{Path: p}
+			part := map[string]any{"path": p}
+			if rng.Intn(4) == 0 {
+				// Now and then one of the batch's own folders.
+				f.Join = joinList(1+rng.Intn(2), true)
+				if len(in.Folders) > 0 && rng.Intn(2) == 0 {
+					f.Join[0] = in.Folders[0].Path
+				}
+				part["join"] = f.Join
+			}
+			in.Folders = append(in.Folders, f)
+			folders = append(folders, part)
 		}
 		if rng.Intn(3) == 0 {
 			in.Folder = folderRef()
 			file["folder"] = in.Folder
+		}
+		if rng.Intn(4) == 0 {
+			in.Join = joinList(1+rng.Intn(2), true)
+			file["join"] = in.Join
 		}
 		n := rng.Intn(4)
 		if rng.Intn(5) > 0 {
@@ -328,6 +358,14 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			}
 			if x.Blocks != nil {
 				part["blocks"] = x.Blocks
+			}
+			// Its own join, now and then none, replaces the batch's.
+			if rng.Intn(5) == 0 {
+				x.Join = joinList(rng.Intn(3), true)
+				if x.Join == nil {
+					x.Join = []string{}
+				}
+				part["join"] = x.Join
 			}
 			in.Tasks = append(in.Tasks, x)
 			tasks = append(tasks, part)
@@ -526,7 +564,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		if xrng.Intn(5) == 0 {
 			op = -2
 		} else if brng.Intn(8) > 0 {
-			op = rng.Intn(20)
+			op = rng.Intn(22)
 		}
 		switch {
 		case op == -2:
@@ -547,13 +585,20 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		case op < 3:
 			folder := pick([]string{"", "/a", "/a/b", "/c"})
 			bb, bl := edgeList(), edgeList()
+			var join []string
+			if rng.Intn(4) == 0 {
+				join = joinList(1+rng.Intn(2), false)
+			}
 			var out model.TaskCreated
-			out, err = m.CreateTask(model.TaskInput{Title: "t", Folder: folder, BlockedBy: bb, Blocks: bl})
+			out, err = m.CreateTask(model.TaskInput{Title: "t", Folder: folder, BlockedBy: bb, Blocks: bl, Join: join})
 			args = []string{"task", "create", "t"}
 			if folder != "" {
 				args = append(args, "--folder", folder)
 			}
 			args = edgeArgs(args, bb, bl)
+			if join != nil {
+				args = append(args, "--join", strings.Join(join, ","))
+			}
 			want = fmt.Sprintf("%d %s %v %s", out.ID, gates(out.GatesMade), nonNil(out.Reblocked), warnings(out.Warnings))
 		case op < 6:
 			x, bb, bl := subject(), edgeList(), edgeList()
@@ -567,6 +612,21 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			out, err = m.Unblock(x, bb, bl)
 			args = edgeArgs([]string{"unblock", x}, bb, bl)
 			want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
+		case op >= 20:
+			// A task or a folder, now and then a gate or the root, joined
+			// to one folder or more, now and then none.
+			x := pick2(subject, folderRef)()
+			folders := joinList([]int{0, 1, 1, 1, 2}[rng.Intn(5)], false)
+			var out model.EdgeResult
+			if op == 20 {
+				out, err = m.Join(x, folders)
+				args = append([]string{"join", x}, folders...)
+				want = fmt.Sprintf("%d %v %s %v %s", out.ID, out.Changed, gates(out.GatesMade), nonNil(out.Reblocked), warnings(out.Warnings))
+			} else {
+				out, err = m.Unjoin(x, folders)
+				args = append([]string{"unjoin", x}, folders...)
+				want = fmt.Sprintf("%d %v %v", out.ID, out.Changed, nonNil(out.Released))
+			}
 		case op == 13:
 			xs, words := subjects(subject(), pick2(subject, folderRef))
 			into := folderRef()
@@ -586,7 +646,7 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			args = append([]string{"delete"}, words...)
 			name = "delete task"
 			want = fmt.Sprintf("%v %v %v %v", out.Deleted, nonNil(out.Removed), out.Unclaimed, nonNil(out.Released))
-		case op >= 18:
+		case op == 18 || op == 19:
 			var archived, left []int64
 			var xs, words []string
 			if op == 18 {
@@ -617,10 +677,17 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			// the other parts name come back.
 			switch x, to := folderRef(), pick(folderPaths); rng.Intn(8) {
 			case 0, 1, 2, 3:
-				var made []model.FolderAt
-				made, err = m.CreateFolder(to, nil, nil)
+				var join []string
+				if rng.Intn(3) == 0 {
+					join = joinList(1+rng.Intn(2), false)
+				}
+				var out model.FolderCreated
+				out, err = m.CreateFolderJoin(to, nil, nil, join)
 				args = []string{"folder", "create", to}
-				want = fmt.Sprint(madeAt(made))
+				if join != nil {
+					args = append(args, "--join", strings.Join(join, ","))
+				}
+				want = fmt.Sprintf("%v %s %v %s", madeAt(out.Made), gates(out.GatesMade), nonNil(out.Reblocked), warnings(out.Warnings))
 			case 4, 5, 6:
 				// Into a folder, renamed, or as the destination says; now
 				// and then the destination is any folder reference.
@@ -725,15 +792,15 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 						koanGates(r), res["reblocked"], koanWarnings(r))
 				case "create":
 					if args[0] == "folder" {
-						got = fmt.Sprint(koanMade(res["folders_made"]))
+						got = fmt.Sprintf("%v %s %v %s", koanMade(res["folders_made"]), koanGates(r), res["reblocked"], koanWarnings(r))
 						break
 					}
 					got = fmt.Sprintf("%v %s %v %s", res["id"], koanGates(r), res["reblocked"], koanWarnings(r))
-				case "block":
+				case "block", "join":
 					got = fmt.Sprintf("%v %v %s %v %s", res["id"], res["changed"], koanGates(r), res["reblocked"], koanWarnings(r))
 				case "update":
 					got = fmt.Sprint(res["updated"])
-				case "unblock":
+				case "unblock", "unjoin":
 					got = fmt.Sprintf("%v %v %v", res["id"], res["changed"], res["released"])
 				case "complete":
 					got = fmt.Sprintf("%v %v %v", res["completed"], res["unclaimed"], res["released"])

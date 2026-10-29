@@ -54,6 +54,60 @@ func (t *Tx) LastSeq() (int64, error) {
 // Events are the events the filter keeps, oldest first in seq order, the
 // first limit of them, and how many it keeps in all.
 func (t *Tx) Events(f EventFilter) (events []Event, total int, err error) {
+	where, args := f.where()
+	if err := t.QueryRow("SELECT count(*) FROM event"+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	events = []Event{}
+	err = t.EachEvent(f, func(e Event) error {
+		events = append(events, e)
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return events, total, nil
+}
+
+// EachEvent calls fn with each event the filter keeps, oldest first in seq
+// order, the first limit of them, one row at a time, and stops at the
+// first error fn gives.
+func (t *Tx) EachEvent(f EventFilter, fn func(Event) error) error {
+	where, args := f.where()
+	limit := int64(-1)
+	if f.Limit != nil {
+		limit = *f.Limit
+	}
+	rows, err := t.Query("SELECT seq, change, at, command, kind, id, folder_id, folder_path, data FROM event"+where+
+		" ORDER BY seq LIMIT ?", append(args, limit)...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var e Event
+		var id, folder sql.NullInt64
+		var data string
+		if err := rows.Scan(&e.Seq, &e.Change, &e.At, &e.Command, &e.Kind, &id, &folder, &e.Folder.Path, &data); err != nil {
+			return err
+		}
+		if id.Valid {
+			e.ID = &id.Int64
+		}
+		if folder.Valid {
+			e.Folder.ID = &folder.Int64
+		}
+		e.Data = json.RawMessage(data)
+		if err := fn(e); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// where is the filter's WHERE clause, "" when it keeps every event, and
+// its arguments.
+func (f EventFilter) where() (string, []any) {
 	var conds []string
 	var args []any
 	if f.Path != "" && f.Path != "/" {
@@ -88,39 +142,8 @@ func (t *Tx) Events(f EventFilter) (events []Event, total int, err error) {
 			args = append(args, k)
 		}
 	}
-	where := ""
-	if len(conds) > 0 {
-		where = " WHERE " + strings.Join(conds, " AND ")
+	if len(conds) == 0 {
+		return "", nil
 	}
-	if err := t.QueryRow("SELECT count(*) FROM event"+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	limit := int64(-1)
-	if f.Limit != nil {
-		limit = *f.Limit
-	}
-	rows, err := t.Query("SELECT seq, change, at, command, kind, id, folder_id, folder_path, data FROM event"+where+
-		" ORDER BY seq LIMIT ?", append(args, limit)...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	events = []Event{}
-	for rows.Next() {
-		var e Event
-		var id, folder sql.NullInt64
-		var data string
-		if err := rows.Scan(&e.Seq, &e.Change, &e.At, &e.Command, &e.Kind, &id, &folder, &e.Folder.Path, &data); err != nil {
-			return nil, 0, err
-		}
-		if id.Valid {
-			e.ID = &id.Int64
-		}
-		if folder.Valid {
-			e.Folder.ID = &folder.Int64
-		}
-		e.Data = json.RawMessage(data)
-		events = append(events, e)
-	}
-	return events, total, rows.Err()
+	return " WHERE " + strings.Join(conds, " AND "), args
 }

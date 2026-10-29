@@ -306,6 +306,13 @@ func (t *Tx) recordMade() error {
 // about.
 var asked func(folder int64)
 
+// openUnder asks whether an open task is under a folder. It joins the
+// folders under it rather than asking IN them, so SQLite runs the CTE as
+// a co-routine and stops at the first open task, where IN materialises
+// every folder below first.
+const openUnder = `WITH RECURSIVE under(id) AS (SELECT ? UNION ALL SELECT folder.id FROM folder JOIN under ON folder.parent = under.id)
+	SELECT EXISTS (SELECT 1 FROM under JOIN task ON task.folder = under.id WHERE task.completed_at IS NULL)`
+
 // OpenUnder reports whether any open task, a gate included, is under a
 // folder, at any depth, stopping at the first it finds.
 func (t *Tx) OpenUnder(folder int64) bool {
@@ -313,8 +320,7 @@ func (t *Tx) OpenUnder(folder int64) bool {
 		asked(folder)
 	}
 	var open bool
-	t.fail(t.QueryRow(`WITH RECURSIVE under(id) AS (SELECT ? UNION ALL SELECT folder.id FROM folder JOIN under ON folder.parent = under.id)
-		SELECT EXISTS (SELECT 1 FROM task WHERE folder IN under AND completed_at IS NULL)`, folder).Scan(&open))
+	t.fail(t.QueryRow(openUnder, folder).Scan(&open))
 	return open
 }
 
