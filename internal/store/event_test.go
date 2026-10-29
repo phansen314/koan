@@ -312,3 +312,29 @@ func TestDerivedAsksAbove(t *testing.T) {
 		t.Errorf("events %q, want %q", got, want)
 	}
 }
+
+// OpenUnder streams the folders under the one asked about, so it can stop
+// at the first open task, rather than materialising them all first.
+func TestOpenUnderStreams(t *testing.T) {
+	home, _ := newRoot(t, 1)
+	rows, err := rawDB(t, home).Query("EXPLAIN QUERY PLAN "+openUnder, core.RootID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(plan, "CO-ROUTINE under") {
+		t.Errorf("plan %q runs under other than as a co-routine", plan)
+	}
+}
