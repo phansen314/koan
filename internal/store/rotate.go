@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -78,7 +79,8 @@ func (h *Held) rotate(before string) (*Rotated, *cli.Error) {
 	}
 
 	var stale []string
-	var events []Event
+	var moving EventFilter
+	moved := &Rotated{}
 	e := h.s.Read(func(tx *Tx) error {
 		for _, entry := range entries {
 			name := entry.Name()
@@ -111,9 +113,10 @@ func (h *Held) rotate(before string) (*Rotated, *cli.Error) {
 			return err
 		}
 		// With no event at or after it, every event moves.
-		var err error
-		events, _, err = tx.Events(EventFilter{Below: cut})
-		return err
+		moving = EventFilter{Below: cut}
+		where, args := moving.where()
+		return tx.QueryRow("SELECT coalesce(min(seq), 0), coalesce(max(seq), 0), count(*) FROM event"+where, args...).
+			Scan(&moved.FirstSeq, &moved.LastSeq, &moved.Count)
 	})
 	if e != nil {
 		return nil, e
@@ -129,14 +132,16 @@ func (h *Held) rotate(before string) (*Rotated, *cli.Error) {
 			return nil, e
 		}
 	}
-	if len(events) == 0 {
+	if moved.Count == 0 {
 		return nil, nil
 	}
 
-	moved := &Rotated{FirstSeq: events[0].Seq, LastSeq: events[len(events)-1].Seq, Count: len(events)}
 	name := fmt.Sprintf("%016d-%016d.jsonl", moved.FirstSeq, moved.LastSeq)
 	moved.File = filepath.Join(dir, name)
-	if e := writeLog(moved.File, events); e != nil {
+	e = h.s.Read(func(tx *Tx) error {
+		return writeLog(moved.File, func(fn func(Event) error) error { return tx.EachEvent(moving, fn) })
+	})
+	if e != nil {
 		return nil, e
 	}
 	if err := fault("log written"); err != nil {
@@ -165,31 +170,43 @@ func (h *Held) rotate(before string) (*Rotated, *cli.Error) {
 	return moved, nil
 }
 
-// writeLog writes events to file's temp file, one line each, as log list
-// prints them with their schema first, without escaping <, > and &, and
-// flushes it.
-func writeLog(file string, events []Event) *cli.Error {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	for _, ev := range events {
-		if err := enc.Encode(logLine{Schema: LogFileSchema, Event: ev}); err != nil {
-			return cli.NewError(cli.KindInternal, "could not encode event "+strconv.FormatInt(ev.Seq, 10)+": "+err.Error())
-		}
-	}
+// writeLog writes the events each gives to file's temp file as it gives
+// them, one line each, as log list prints them with their schema first,
+// without escaping <, > and &, and flushes it. An error is an Err, or
+// each's own.
+func writeLog(file string, each func(fn func(Event) error) error) error {
 	tmp := file + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err == nil {
-		_, err = f.Write(b.Bytes())
-		if err == nil {
-			err = f.Sync()
-		}
-		if cerr := f.Close(); err == nil {
-			err = cerr
-		}
-	}
 	if err != nil {
-		return cli.IO("could not write "+tmp+": "+err.Error(), tmp)
+		return Err(cli.IO("could not write "+tmp+": "+err.Error(), tmp))
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	var line bytes.Buffer
+	enc := json.NewEncoder(&line)
+	enc.SetEscapeHTML(false)
+	writeErr := func(err error) error { return Err(cli.IO("could not write "+tmp+": "+err.Error(), tmp)) }
+	err = each(func(ev Event) error {
+		line.Reset()
+		if err := enc.Encode(logLine{Schema: LogFileSchema, Event: ev}); err != nil {
+			return Err(cli.NewError(cli.KindInternal, "could not encode event "+strconv.FormatInt(ev.Seq, 10)+": "+err.Error()))
+		}
+		if _, err := w.Write(line.Bytes()); err != nil {
+			return writeErr(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := w.Flush(); err != nil {
+		return writeErr(err)
+	}
+	if err := f.Sync(); err != nil {
+		return writeErr(err)
+	}
+	if err := f.Close(); err != nil {
+		return writeErr(err)
 	}
 	return nil
 }
