@@ -220,6 +220,62 @@ func TestBlockUnblock(t *testing.T) {
 	checked(t, tr)
 }
 
+func TestJoinUnjoin(t *testing.T) {
+	tr := newTree()
+	// PRD Issuing IDs in a change: the folders, the new folder's gates,
+	// then the gates of the folder it joins.
+	f := must[FolderCreated](t)(tr.CreateFolderJoin("/s/impl", nil, nil, []string{"/s"}))
+	if got := gatesOf(f.GatesMade); !reflect.DeepEqual(got, []string{"3 /s/impl start", "4 /s/impl done", "5 /s start", "6 /s done"}) ||
+		f.Made[0].ID != 1 || f.Made[1].ID != 2 {
+		t.Errorf("folder create --join: %+v", f)
+	}
+	if !tr.Tasks[3].BlockedBy[5] || !tr.Tasks[6].BlockedBy[4] {
+		t.Error("the folder joined through its gates")
+	}
+	// A task waits on the start gate, and the done gate waits on it.
+	x := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Join: []string{"/s"}})).ID // @7
+	if !tr.Tasks[x].BlockedBy[5] || !tr.Tasks[6].BlockedBy[x] {
+		t.Error("task create --join")
+	}
+	if r := must[EdgeResult](t)(tr.Join("7", []string{"/s"})); r.Changed {
+		t.Errorf("joining twice changed something: %+v", r)
+	}
+	// Unjoin removes both edges, and never makes a gate.
+	if r := must[EdgeResult](t)(tr.Unjoin("7", []string{"@1", "/s/impl"})); !r.Changed || tr.Tasks[x].BlockedBy[5] || tr.Tasks[6].BlockedBy[x] {
+		t.Errorf("unjoin: %+v", r)
+	}
+	if _, ok := tr.Gate(2, core.EndStart); !ok {
+		t.Error("unjoin removed a gate")
+	}
+	// A gate, the root, or no folder: invalid-input. Itself: an edge to
+	// itself.
+	for _, c := range []struct {
+		ref     string
+		folders []string
+		at      []string
+	}{
+		{"/s.start", []string{"/s"}, []string{"/ref"}},
+		{"5", []string{"/s"}, []string{"/ref"}},
+		{"7", []string{"/", "/s.done"}, []string{"/join/1", "/join/0"}},
+		{"7", nil, []string{"/join"}},
+		{"/s", []string{"/s"}, []string{"/join/0"}},
+	} {
+		_, err := tr.Join(c.ref, c.folders)
+		if e := wantErr(t, err, core.KindInvalidInput, ""); !reflect.DeepEqual(e.Problems, c.at) {
+			t.Errorf("join %s %v: problems %v, want %v", c.ref, c.folders, e.Problems, c.at)
+		}
+	}
+	checked(t, tr)
+}
+
+func gatesOf(made []GateMade) []string {
+	var out []string
+	for _, g := range made {
+		out = append(out, fmt.Sprintf("%d %s %s", g.ID, g.Path, g.End))
+	}
+	return out
+}
+
 func TestCompleteReopen(t *testing.T) {
 	tr := newTree()
 	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "a"}))                           // @1

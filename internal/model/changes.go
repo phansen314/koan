@@ -113,17 +113,53 @@ func (c *Tree) createFolder(ref core.Ref, pointer string, title *string, extra m
 // CreateFolder makes a folder at path, and any missing parents. The result
 // lists every folder made, parents first, this one last.
 func (t *Tree) CreateFolder(path string, title *string, extra map[string]any) (made []FolderAt, err error) {
+	out, err := t.CreateFolderJoin(path, title, extra, nil)
+	return out.Made, err
+}
+
+// FolderCreated is what folder create returns.
+type FolderCreated struct {
+	Made      []FolderAt
+	GatesMade []GateMade
+	Reblocked []int64
+	Warnings  []Warning
+}
+
+// CreateFolderJoin makes a folder at path, and any missing parents, then
+// joins it to each folder in join, which resolve once the folders are
+// made. Joining any, it makes its own gates first.
+func (t *Tree) CreateFolderJoin(path string, title *string, extra map[string]any, join []string) (out FolderCreated, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
 		ref := s.path("/path", path)
 		title := s.folderTitle("/title", title)
+		joins := s.joinRefs("/join", join, false)
 		if err := s.done(nil); err != nil {
 			return err
 		}
-		made, err = c.createFolder(ref, "/path", title, extra)
-		return err
+		before := c.readySet()
+		made, err := c.createFolder(ref, "/path", title, extra)
+		if err != nil {
+			return err
+		}
+		out = FolderCreated{Made: made}
+		if len(joins) == 0 {
+			return nil
+		}
+		start, done, gates := c.gates(made[len(made)-1].ID, true)
+		js, joinMade, err := c.joinEdges(start, done, joins, nil, true, false)
+		if err != nil {
+			return err
+		}
+		warnings, _, err := c.addEdges(js)
+		if err != nil {
+			return err
+		}
+		out.GatesMade, out.Reblocked = append(gates, joinMade...), c.reblocked(before)
+		out.Warnings = append(warnings, c.claimedBlocked(out.Reblocked)...)
+		return nil
 	})
-	return made, err
+	return out, err
 }
 
 // makeGate makes a folder's gate, as an edge naming it does.
@@ -216,7 +252,8 @@ func (c *Tree) addEdges(edges []edge) ([]Warning, bool, error) {
 		for i := range cycle {
 			step := core.Edge{From: cycle[i], To: cycle[(i+1)%len(cycle)]}
 			for _, e := range fresh {
-				if e.Edge == step {
+				// A join's two edges share their pointer, named once.
+				if e.Edge == step && !slices.Contains(err.Problems, e.pointer) {
 					err.Problems = append(err.Problems, e.pointer)
 				}
 			}
@@ -249,6 +286,7 @@ type TaskInput struct {
 	Tags      []string
 	BlockedBy []string
 	Blocks    []string
+	Join      []string // folder-refs
 	Extra     map[string]any
 }
 
@@ -320,6 +358,7 @@ func (t *Tree) CreateTask(in TaskInput) (out TaskCreated, err error) {
 		s.priority("/priority", in.Priority)
 		tags := s.tags("/tags", in.Tags)
 		bb, bl := s.edgeRefs("", in.BlockedBy, in.Blocks, false)
+		joins := s.joinRefs("/join", in.Join, false)
 		if err := s.done(nil); err != nil {
 			return err
 		}
@@ -335,7 +374,12 @@ func (t *Tree) CreateTask(in TaskInput) (out TaskCreated, err error) {
 		if err != nil {
 			return err
 		}
-		warnings, _, err := c.addEdges(edges)
+		js, joinMade, err := c.joinEdges(x.ID, x.ID, joins, nil, true, false)
+		if err != nil {
+			return err
+		}
+		made = append(made, joinMade...)
+		warnings, _, err := c.addEdges(append(edges, js...))
 		if err != nil {
 			return err
 		}
@@ -683,6 +727,173 @@ func (t *Tree) Unblock(task string, blockedBy, blocks []string) (out EdgeResult,
 			return err
 		}
 		out.ID = x.ID
+		for _, e := range edges {
+			from := c.Tasks[e.From]
+			if from.BlockedBy[e.To] {
+				delete(from.BlockedBy, e.To)
+				c.edged(e.Edge)
+				from.UpdatedAt = c.now
+				out.Changed = true
+			}
+		}
+		out.Released = c.released(before, existed)
+		return nil
+	})
+	return out, err
+}
+
+// joinIn is a folder a join names, at pointer in the input.
+type joinIn struct {
+	ref     core.Ref
+	pointer string
+}
+
+// joinRefs checks the shape of the folders a join names, at pointer/i:
+// each a folder, then, as koan does, that none is the root, which has no
+// gates.
+func (s *shape) joinRefs(pointer string, refs []string, inBatch bool) []joinIn {
+	var good []joinIn
+	for i, raw := range refs {
+		at := fmt.Sprintf("%s/%d", pointer, i)
+		n := len(s.refs)
+		r := s.ref(at, raw, core.WantFolder, inBatch)
+		if len(s.refs) > n {
+			good = append(good, joinIn{ref: r, pointer: at})
+		}
+	}
+	var out []joinIn
+	for _, j := range good {
+		if j.ref.IsRoot() {
+			s.faultf(j.pointer, "%q: the root has no gates, so it joins no folder and no folder joins it", j.ref.Raw)
+			continue
+		}
+		out = append(out, j)
+	}
+	return out
+}
+
+// gates gives a folder's start and done gates. With make set, a gate it
+// lacks is made, the start gate first; else it is 0, a task no edge has.
+func (c *Tree) gates(folder int64, make bool) (start, done int64, made []GateMade) {
+	var ids [2]int64
+	for i, end := range []core.End{core.EndStart, core.EndDone} {
+		id, ok := c.Gate(folder, end)
+		if !ok && make {
+			g := c.makeGate(folder, end)
+			made = append(made, g)
+			id = g.ID
+		}
+		ids[i] = id
+	}
+	return ids[0], ids[1], made
+}
+
+// joinEdges resolves the edges of joining each folder given, in order:
+// start, a task or a folder's start gate, waits on the folder's start
+// gate, and the folder's done gate waits on done. With make set, a gate a
+// folder lacks is made, its start gate first; else an edge naming one, or
+// a start or done that is 0, is an edge that isn't there, and is left
+// out. In a batch, a refusal points at the folder.
+func (c *Tree) joinEdges(start, done int64, in []joinIn, labels map[string]int64, make, batch bool) ([]edge, []GateMade, error) {
+	var out []edge
+	var made []GateMade
+	for _, j := range in {
+		r, err := core.Resolve(c, j.ref, core.WantFolder, labels)
+		if err != nil {
+			return nil, nil, pointAt(err, j.pointer, batch)
+		}
+		folderStart, folderDone, gates := c.gates(r.ID, make)
+		made = append(made, gates...)
+		if start != 0 && folderStart != 0 {
+			out = append(out, edge{core.Edge{From: start, To: folderStart}, j.pointer})
+		}
+		if folderDone != 0 && done != 0 {
+			out = append(out, edge{core.Edge{From: folderDone, To: done}, j.pointer})
+		}
+	}
+	return out, made, nil
+}
+
+// joinChange checks the shape of join's or unjoin's input, then resolves
+// its subject: a task, whose start and done are itself, or a folder,
+// through its gates, made when make is set.
+func (c *Tree) joinChange(ref string, folders []string, make bool) (id, start, done int64, joins []joinIn, made []GateMade, err error) {
+	var s shape
+	r := s.ref("/ref", ref, core.WantRef, false)
+	if len(s.refs) == 0 {
+		// A reference refused is no reference, as koan reads it.
+		r = core.Ref{}
+	}
+	if r.End != core.EndNone {
+		s.faultf("/ref", "%q: a gate joins no folder; the subject is a task or a folder", ref)
+	}
+	if r.IsRoot() {
+		s.faultf("/ref", "%q: the root has no gates, so it joins no folder", ref)
+	}
+	if len(folders) == 0 {
+		s.faultf("/join", "at least one folder is needed")
+	}
+	joins = s.joinRefs("/join", folders, false)
+	if err := s.done(nil); err != nil {
+		return 0, 0, 0, nil, nil, err
+	}
+	res, err := core.Resolve(c, r, core.WantRef, nil)
+	if err != nil {
+		return 0, 0, 0, nil, nil, pointAt(err, "/ref", false)
+	}
+	if res.Kind != core.ResolvedTask {
+		start, done, made = c.gates(res.ID, make)
+		return res.ID, start, done, joins, made, nil
+	}
+	if c.Tasks[res.ID].Gate != core.EndNone {
+		err := invalid("@%d is a gate, and a gate joins no folder", res.ID)
+		err.(*core.Error).Problems = []string{"/ref"}
+		return 0, 0, 0, nil, nil, err
+	}
+	return res.ID, res.ID, res.ID, joins, nil, nil
+}
+
+// Join joins a task or a folder to each folder given: a task waits on the
+// folder's start gate, and the folder's done gate waits on it; a folder
+// joins through its gates. Any gate named is made, the subject's first,
+// then each folder's, its start gate first.
+func (t *Tree) Join(ref string, folders []string) (out EdgeResult, err error) {
+	err = t.change(func(c *Tree) error {
+		before := c.readySet()
+		id, start, done, joins, subject, err := c.joinChange(ref, folders, true)
+		if err != nil {
+			return err
+		}
+		edges, made, err := c.joinEdges(start, done, joins, nil, true, false)
+		if err != nil {
+			return err
+		}
+		warnings, changed, err := c.addEdges(edges)
+		if err != nil {
+			return err
+		}
+		out = EdgeResult{ID: id, Changed: changed, GatesMade: append(subject, made...), Reblocked: c.reblocked(before)}
+		out.Warnings = append(warnings, c.claimedBlocked(out.Reblocked)...)
+		return nil
+	})
+	return out, err
+}
+
+// Unjoin removes a join's two edges for each folder given. It never makes
+// a gate, the subject's included: an edge to one a folder lacks isn't
+// there.
+func (t *Tree) Unjoin(ref string, folders []string) (out EdgeResult, err error) {
+	err = t.change(func(c *Tree) error {
+		id, start, done, joins, _, err := c.joinChange(ref, folders, false)
+		if err != nil {
+			return err
+		}
+		before, existed := c.readySet(), c.taskIDs()
+		edges, _, err := c.joinEdges(start, done, joins, nil, false, false)
+		if err != nil {
+			return err
+		}
+		out.ID = id
 		for _, e := range edges {
 			from := c.Tasks[e.From]
 			if from.BlockedBy[e.To] {
