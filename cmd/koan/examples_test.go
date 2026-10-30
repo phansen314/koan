@@ -147,17 +147,56 @@ var readmeSteps = []docStep{
 	{cmd: "koan folder create /work/api --title 'API rework'", want: []string{`{"ok":true,"result":{"id":2,"folders_made":[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}]},"warnings":[]}`}},
 	{cmd: "koan task create 'Design the endpoints' --folder /work/api --priority 2", want: []string{`{"ok":true,"result":{"id":3}}`}},
 	{cmd: "koan task create 'Build them' --folder /work/api --blocked-by 3", want: []string{`{"ok":true,"result":{"id":4,"reblocked":[]}}`}},
-	{cmd: "koan frontier --limit 10 --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1}}`}},
+	{cmd: "koan frontier --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1}}`}},
 	{cmd: `koan claim-next --extra '{"by":"me"}'`, want: []string{`{"ok":true,"result":{"task":{"id":3,"claim":{"task":3,"extra":{"by":"me"}}}}}`}},
-	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]}}`}},
-	{cmd: "koan show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
-	{cmd: "koan log list --task 3 | jq -c '[.result.events[].kind]'", want: []string{`["created","claimed","completed","unclaimed"]`}},
+	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}`}},
 
-	// Ordering folders
+	// Backup and repair
+	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
+	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
+	{cmd: "cp -R ~/backups/koan-$(date +%F) ~/koan-root"},
+	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
+}
+
+// TestReadme runs the README's sh examples as TestSkill runs the skill's.
+func TestReadme(t *testing.T) {
+	runExamples(t, "README.md", nil, readmeSteps)
+}
+
+// tutorialSteps are the tutorial's sh examples, in order, on a new root,
+// with the worktree it binds made beside the checkout it comes from.
+var tutorialSteps = []docStep{
+	// 1. A folder and two tasks
+	{cmd: "koan folder create /work/api --title 'API rework'", want: []string{`{"ok":true,"result":{"id":2,"ref":"@2 (/work/api)","folders_made":[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}]},"warnings":[]}`}},
+	{cmd: "koan task create 'Design the endpoints' --folder /work/api --priority 2", want: []string{`{"ok":true,"result":{"id":3,"ref":"@3 (/work/api)"}}`}},
+	{cmd: "koan task create 'Build them' --folder /work/api --blocked-by 3", want: []string{`{"ok":true,"result":{"id":4,"ref":"@4 (/work/api)"}}`}},
+
+	// 2. What can be done now
+	{cmd: "koan frontier --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1,"truncated":false},"warnings":[]}`}},
+	{cmd: "koan why 4", want: []string{`{"ok":true,"result":{"id":4,"readiness":"blocked","blockers":[{"id":3,"ref":"@3 (/work/api)","state":"open"}],"ready":[{"id":3,"ref":"@3 (/work/api)","claimed":false}]},"warnings":[]}`}},
+
+	// 3. Taking and finishing work
+	{cmd: `koan claim-next --extra '{"by":"me"}'`, want: []string{`{"ok":true,"result":{"task":{"id":3,"claim":{"task":3,"extra":{"by":"me"}}}}}`}},
+	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}`}},
+
+	// 4. Notes and material
+	{cmd: "koan show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
+	{cmd: "echo 'Move the API to v2.' > ~/koan-root/tree/@work/@api/@notes.md"},
+	{cmd: "echo 'Endpoints: /v2/users, /v2/orders' > ~/koan-root/tree/@work/@api/spec.md"},
+	{cmd: "koan where @2:spec.md", want: []string{`{"ok":true,"result":{"ref":"@2:spec.md (/work/api:spec.md)","kind":"material","id":2,"file":"~/koan-root/tree/@work/@api/spec.md"},"warnings":[]}`}},
+
+	// 5. How commands answer
+	{cmd: "koan update 4 --priority 1", want: []string{`{"ok":true,"result":{"updated":[4]},"warnings":[]}`}},
+	{cmd: "koan block 3 --blocked-by 4", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"cycle","message":"@3 would wait on itself through @4","ids":[3,4],"paths":[],
+		"problems":[{"field":"/blocked_by/0","reason":"@3 would wait on itself through @4"}],"archived":[]},"warnings":[]}`}},
+
+	// 6. Ordering folders with gates
 	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":5,"gates_made":[{"id":6,"folder":{"id":2},"gate":"done"}]}}`}},
 	{cmd: "koan block /work/api.done --blocked-by 3,4", want: []string{`{"ok":true,"result":{"id":6,"changed":true,"reblocked":[6]}}`}},
-	{cmd: "koan why 5", want: []string{`{"ok":true,"result":{"id":5,"readiness":"blocked","blockers":[{"id":6}],"ready":[{"id":4,"claimed":false}]}}`}},
+	{cmd: "koan why 5", want: []string{`{"ok":true,"result":{"id":5,"readiness":"blocked","blockers":[{"id":6,"ref":"@6 (/work/api.done)","state":"open"}],"ready":[{"id":4,"ref":"@4 (/work/api)","claimed":false}]},"warnings":[]}`}},
 	{cmd: "koan export /work/api | jq '.result.external[].ref'", want: []string{`"@5 (/work)"`}},
+
+	// 7. A whole plan in one call
 	{cmd: `koan batch -i - <<'EOF'
 {"folders": [{"path": "/home/trip", "title": "Lisbon in May"}],
  "folder": "/home/trip",
@@ -166,21 +205,51 @@ var readmeSteps = []docStep{
            {"title": "Book a hotel", "blocked_by": ["$flights"]}]}
 EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home"},{"id":8,"path":"/home/trip"}],"tasks_made":[9,10],"labels":{"$flights":9},
 		"gates_made":[{"id":11,"folder":{"id":8},"gate":"start"},{"id":12,"folder":{"id":8},"gate":"done"}],"reblocked":[]},"warnings":[]}`}},
+	{cmd: "koan frontier /home --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":11,"ref":"@11 (/home/trip.start)","title":"Start"}],"total":1,"truncated":false},"warnings":[]}`}},
 
-	// Backup and restore
+	// 8. Working from a worktree
+	{cmd: "koan bind /work/api ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":"~/code/api-v2/.koan/marker.json","binding":{"id":2,"path":"/work/api"},"replaced":false}}`}},
+	{cmd: "cd ~/code/api-v2 && koan context --here", want: []string{`{"ok":true,"result":{"folder":{"id":2},"ancestors":[{"id":1}],"notes":"Move the API to v2.\n",
+		"tasks":[{"id":4},{"id":6,"gate":"done"}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
+	{cmd: "koan where --file ~/code/api-v2/src/main.go", want: []string{`{"ok":true,"result":{"ref":"@2 (/work/api)","kind":"folder"}}`}},
+
+	// 9. Several agents
+	{cmd: `koan claim 4 --extra '{"by":"agent-1"}'`, want: []string{`{"ok":true,"result":{"claimed":[4]}}`}},
+	{cmd: "koan claim 4", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"claimed","ids":[4]}}`}},
+	{cmd: "koan task list --claimed --fields title,claim", want: []string{`{"ok":true,"result":{"tasks":[{"id":4,"title":"Build them","claim":{"task":4,"extra":{"by":"agent-1"}}}],"total":1}}`}},
+	{cmd: "koan unclaim 4", want: []string{`{"ok":true,"result":{"unclaimed":[4]}}`}},
+
+	// 10. History
+	{cmd: "koan log list --task 3 | jq -c '[.result.events[].kind]'", want: []string{`["created","claimed","completed","unclaimed"]`}},
+	{cmd: "koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed", want: []string{`{"ok":true,"result":{"events":[{"kind":"completed","id":3,"folder":{"id":2,"path":"/work/api"}}],"total":1,"truncated":false},"warnings":[]}`}},
+	{cmd: "koan log rotate --before 2026-10-01T00:00:00Z", want: []string{`{"ok":true,"result":{"changed":false,"count":0},"warnings":[]}`}},
+
+	// 11. Finishing and archiving
+	{cmd: "koan complete 4", want: []string{`{"ok":true,"result":{"completed":[4],"released":[6]}}`}},
+	{cmd: "koan complete /work/api.done", want: []string{`{"ok":true,"result":{"completed":[6],"released":[5]}}`}},
+	{cmd: "koan archive /work/api", want: []string{`{"ok":true,"result":{"archived":[{"id":2,"dir":"~/koan-root/archived/work/@2_api"}],"removed":[2,3,4,6]},"warnings":[]}`}},
+	{cmd: "koan show 3", exit: 1, want: []string{`{"ok":false,"error":{"kind":"not-found","ids":[3],"archived":[{"id":3,"notes_path":"~/koan-root/archived/work/@2_api/@3.md"}]}}`}},
+
+	// 12. Backup and restore
 	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
 	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
 	{cmd: "cp -R ~/backups/koan-$(date +%F) ~/koan-root"},
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
 
-	// History
-	{cmd: "koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed", want: []string{`{"ok":true,"result":{"events":[{"kind":"completed","id":3,"folder":{"id":2,"path":"/work/api"}}],"total":1,"truncated":false},"warnings":[]}`}},
-	{cmd: "koan log rotate --before 2026-10-01T00:00:00Z", want: []string{`{"ok":true,"result":{"changed":false,"file":null,"first_seq":null,"last_seq":null,"count":0},"warnings":[]}`}},
+	// 13. When the tree is damaged
+	{cmd: "mv ~/koan-root/tree/@home/@trip ~/koan-root/tree/@home/@lisbon"},
+	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[{"kind":"stray-directory","ids":[8],"paths":["~/koan-root/tree/@home/@lisbon"],"repairable":true},{"kind":"missing-directory","ids":[8]}]}}`}},
+	{cmd: "koan repair", want: []string{`{"ok":true,"result":{"fixed":[{"kind":"stray-directory"},{"kind":"missing-directory"}],"left":[]},"warnings":[]}`}},
 }
 
-// TestReadme runs the README's sh examples as TestSkill runs the skill's.
-func TestReadme(t *testing.T) {
-	runExamples(t, "README.md", nil, readmeSteps)
+// TestTutorial runs the tutorial's sh examples as TestSkill runs the skill's.
+func TestTutorial(t *testing.T) {
+	runExamples(t, filepath.Join("docs", "tutorial.md"), []string{
+		"koan init",
+		"git init -q ~/code/api",
+		"git -C ~/code/api -c user.name=koan -c user.email=koan@example.com commit -q --allow-empty -m start",
+		"git -C ~/code/api worktree add -q ~/code/api-v2",
+	}, tutorialSteps)
 }
 
 // TestReadmeRules checks that the README's table of permission rules lists
