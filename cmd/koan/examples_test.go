@@ -183,6 +183,84 @@ func TestReadme(t *testing.T) {
 	runExamples(t, "README.md", nil, readmeSteps)
 }
 
+// TestReadmeRules checks that the README's table of permission rules lists
+// what scripts/install.sh adds, in its order, so the two can't drift.
+func TestReadmeRules(t *testing.T) {
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(testrun.Repo(), name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	script, readme := read(filepath.Join("scripts", "install.sh")), read("README.md")
+
+	// The script's rules: a JSON list each for Claude Code, and a JSON
+	// object of rule and action for OpenCode.
+	variable := func(name string) string {
+		t.Helper()
+		m := regexp.MustCompile(`(?ms)^` + name + `='(.*?)'$`).FindStringSubmatch(script)
+		if m == nil {
+			t.Fatalf("scripts/install.sh sets no %s", name)
+		}
+		return m[1]
+	}
+	list := func(name string) []string {
+		t.Helper()
+		var rules []string
+		if err := json.Unmarshal([]byte(variable(name)), &rules); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return rules
+	}
+	var ocAllow, ocAsk []string
+	for _, m := range regexp.MustCompile(`"([^"]+)":\s*"(allow|ask)"`).FindAllStringSubmatch(variable("oc_rules"), -1) {
+		if m[2] == "allow" {
+			ocAllow = append(ocAllow, m[1])
+		} else {
+			ocAsk = append(ocAsk, m[1])
+		}
+	}
+
+	// The README's rows: Agent | File | Allow | Ask, each rule in backticks,
+	// OpenCode's quoted as JSON keys.
+	row := func(agent string) (allow, ask []string) {
+		t.Helper()
+		m := regexp.MustCompile(`(?m)^\| ` + agent + ` \|(.*)\|$`).FindStringSubmatch(readme)
+		if m == nil {
+			t.Fatalf("the README's rules table has no %s row", agent)
+		}
+		cells := strings.Split(m[1], "|")
+		if len(cells) != 3 {
+			t.Fatalf("the README's %s row has %d cells, want 4", agent, len(cells)+1)
+		}
+		rules := func(cell string) []string {
+			var out []string
+			for _, r := range regexp.MustCompile("`([^`]+)`").FindAllStringSubmatch(cell, -1) {
+				out = append(out, strings.Trim(r[1], `"`))
+			}
+			return out
+		}
+		return rules(cells[1]), rules(cells[2])
+	}
+	for _, c := range []struct {
+		agent      string
+		allow, ask []string
+	}{
+		{"Claude Code", list("claude_allow"), list("claude_ask")},
+		{"OpenCode", ocAllow, ocAsk},
+	} {
+		allow, ask := row(c.agent)
+		if !slices.Equal(allow, c.allow) {
+			t.Errorf("%s allow: the README has %q, scripts/install.sh %q", c.agent, allow, c.allow)
+		}
+		if !slices.Equal(ask, c.ask) {
+			t.Errorf("%s ask: the README has %q, scripts/install.sh %q", c.agent, ask, c.ask)
+		}
+	}
+}
+
 // runExamples runs the commands of doc's sh blocks in a scratch HOME, after
 // setup, and checks them against steps.
 func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
