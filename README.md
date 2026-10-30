@@ -2,15 +2,23 @@
 
 [![CI](https://github.com/phansen314/koan/actions/workflows/ci.yml/badge.svg)](https://github.com/phansen314/koan/actions/workflows/ci.yml)
 
-**Your agent already runs commands and reads files. Why is your task list trapped in someone else's app?**
+**Where is your task list stored?**
 
-koan keeps your tasks and their dependencies in a database your agent drives with commands, and mirrors every folder of work as a real directory. Open it in your editor: each task's Markdown notes sit next to your material — the specs, drafts and research the work is about. Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
+In most tools, on someone else's server. Your agent reaches it through an API and a token, its notes don't live on the filesystem, and the specs and drafts the work is about are somewhere else again.
+
+koan keeps it on your machine, in `~/koan-root`:
+
+- **Tasks and dependencies** in one SQLite file, which your agent drives with koan's commands.
+- **Notes** as Markdown files, one per task and folder, in a directory tree you open in your editor, beside your material: the specs, drafts and research the work is about.
+- **History** in the same database: every change, so an agent can catch up on what happened since it last looked.
+
+Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
 
 - **Your agent drives it.** Every command prints one line of JSON, so Claude Code and OpenCode use it natively. Ask "what should I work on next?" and koan hands back the ready tasks, highest priority first, or have your agent lay out a whole plan, dependencies included, in one call.
 - **Safe with several agents.** A claim reserves a task, so two agents are never handed the same one.
 - **Yours to drive too.** `koan pick` opens an fzf picker for choosing tasks and folders by hand.
 
-One binary, no server, and your agent has a memory for the work ahead.
+Nothing to sign up for, no token to give your agent, and it works offline: one binary, no server, and your agent has a memory for the work ahead.
 
 Linux and macOS only. **Pre-1.0:** the JSON output and the database's format can change in a minor release; see [Upgrading](#upgrading).
 
