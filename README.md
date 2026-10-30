@@ -16,58 +16,38 @@ Linux and macOS only.
 
 **Pre-1.0:** until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports `unsupported-format`, its `format` below `koan version`'s. Back the old root up, move it aside and `koan init`.
 
-## Install
+## Quick start
 
 Needs Go 1.25 or later. The SQLite driver is SQLite translated to Go, so there is no cgo and no C compiler, just one binary.
+
+**1. Install koan:**
 
 ```shell
 GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.13.1   # any GOBIN on your PATH
 ```
 
-For shell completion of commands, options and references (folder paths one folder at a time, IDs with their titles, and gates), load koan's script in your shell's startup file; `koan completion --help` lists the shells. bash needs the bash-completion package:
-
-```shell
-source <(koan completion bash)   # in ~/.bashrc; zsh: source <(koan completion zsh) in ~/.zshrc
-```
-
-`koan pick` lets you choose tasks, gates and folders in fzf (0.63.0 or later) and prints their references. To have a key type the picked references in at the cursor, load pick's widget in your shell's startup file and bind it to a key. koan binds none for you, since which key is free depends on your terminal, keyboard and editing mode. bash needs 4.0 or later, so on macOS use Homebrew's bash rather than `/bin/bash`.
-
-```shell
-# ~/.zshrc
-eval "$(koan pick --zsh)"
-bindkey '\ek' __koan_pick_widget        # Alt-K
-
-# ~/.bashrc
-eval "$(koan pick --bash)"
-bind -x '"\ek": __koan_pick_widget'     # Alt-K
-```
-
-koan paths are never globbed: a shell expands `/work/old/*` against your disk before koan runs, so it never means the folders under `/work/old`. Name each folder, completing it with Tab, or pick them with `$(koan pick)`.
-
-### Choosing a key
-
-- **Alt-K on Linux**, in the default emacs editing mode, works as above.
-- **Alt-K on macOS** needs your terminal to send it first: see below.
-- **In vi mode** (`bindkey -v`, `set -o vi`), Alt-K is the same keys as Esc then `k` typed quickly, which recalls the previous line, so bind a key in insert mode instead. Ctrl-K only inserts a literal `^K` there in both shells: `bindkey -M viins '^K' __koan_pick_widget` in zsh, or `bind -m vi-insert -x '"\C-k": __koan_pick_widget'` in bash.
-- **Any other key** binds the same way: `bindkey '<key>' __koan_pick_widget`, or `bind -x '"<key>": __koan_pick_widget'`.
-
-### Alt-K on macOS
-
-On macOS, Option-K types a character, such as `˚` on a US keyboard, rather than sending Alt-K (escape then `k`), until your terminal is told otherwise. Either remap Option-K alone, which keeps every other Option key typing its character and works whatever your keyboard layout, or make the Option key a Meta key, which turns on your shell's other Alt keys too, such as Alt-B and Alt-F to move by word, but stops that key typing accented characters:
-
-| Terminal | Option-K alone | Option as Meta |
-|---|---|---|
-| kitty | in `kitty.conf`: `map opt+k send_text all \x1bk` | in `kitty.conf`: `macos_option_as_alt left` (or `right`, or `both`) |
-| iTerm2 | Settings → Profiles → Keys → Key Mappings → **+**: press Option-K, Action "Send Escape Sequence", Esc+ `k` | Settings → Profiles → Keys → General: Left Option key **Esc+** |
-| Terminal.app | not possible: Terminal.app remaps only arrows, function and editing keys | Settings → Profiles → Keyboard: **Use Option as Meta key** (both Option keys) |
-
-Or leave the terminal alone and bind the character your keyboard types for Option-K, which you can see by running `cat` and pressing it: `bindkey '˚' __koan_pick_widget` in zsh, or `bind -x '"˚": __koan_pick_widget'` in bash. You can no longer type that character, and it works only on that layout.
-
-Then make this machine's root:
+**2. Make this machine's root** (to keep it somewhere else, see [The root](#the-root) first):
 
 ```sh
 koan init
 ```
+
+**3. Give your agent the koan skill.** In Claude Code, from the plugin marketplace this repo is:
+
+```shell
+claude plugin marketplace add phansen314/koan
+claude plugin install koan@koan
+```
+
+**4. Let koan's commands run without a prompt each time,** from a clone of this repo (see [Use it from Claude Code and OpenCode](#use-it-from-claude-code-and-opencode)); this also sets up OpenCode:
+
+```shell
+scripts/install.sh
+```
+
+Then ask your agent to plan some work, or "what should I work on next?". To try the commands yourself, see [A taste](#a-taste). For shell completion and the `koan pick` picker on a key, see [docs/shell.md](docs/shell.md).
+
+## The root
 
 Everything is under `~/koan-root`:
 
@@ -137,14 +117,9 @@ Several agents can work from one tree: a **claim** reserves a task, so two worke
 
 ## Use it from Claude Code and OpenCode
 
-The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin; this repo is a Claude Code plugin marketplace:
+The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin, installed in the [Quick start](#quick-start).
 
-```shell
-claude plugin marketplace add phansen314/koan
-claude plugin install koan@koan
-```
-
-Then, from a clone of this repo, add the permission rules. They let every koan command run without asking, except `koan init`, `koan delete` and `koan repair`, which always ask. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
+From a clone of this repo, `scripts/install.sh` adds the permission rules. They let every koan command run without asking, except `koan init`, `koan delete` and `koan repair`, which always ask. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
 
 ```shell
 scripts/install.sh               # every agent whose CLI is on PATH
@@ -191,6 +166,7 @@ Remove the binary, `scripts/install.sh --uninstall`, `claude plugin uninstall ko
 
 ## Docs
 
+- [docs/shell.md](docs/shell.md): shell completion, and the `koan pick` picker on a key.
 - [docs/rules.md](docs/rules.md): the invariants and rules every tree obeys.
 - [docs/prd.md](docs/prd.md): how koan is built: layout, storage, writes, concurrency, recovery.
 - [docs/spec.md](docs/spec.md): exactly what every command takes and prints.
