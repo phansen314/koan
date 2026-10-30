@@ -2,23 +2,18 @@
 
 [![CI](https://github.com/phansen314/koan/actions/workflows/ci.yml/badge.svg)](https://github.com/phansen314/koan/actions/workflows/ci.yml)
 
+koan is a durable task tree for you and your agents, with the notes, specs, drafts and research for each piece of work filed beside it.
+
+**What should I work on next?**
+Ask, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command prints one line of JSON, so Claude Code and OpenCode drive it natively, and your agent can lay out a whole plan, dependencies included, in one call.
+
 **Where is your task list stored?**
+On your machine, in `~/koan-root`, not on someone else's server behind an API and a token. Folders, tasks and the edges between them sit in one SQLite file, and every change is logged, so the plan outlasts every session, and an agent can catch up on what happened since it last looked.
 
-In most tools, on someone else's server. Your agent reaches it through an API and a token, its notes don't live on the filesystem, and the specs and drafts the work is about are somewhere else again.
+**Where do the specs, drafts and research for the work live?**
+In most tools, notes don't live on the filesystem, and the material is somewhere else again. In koan, every folder of work is a real directory you open in your editor: its notes and each task's are Markdown files, beside the material they're about, which koan can name (`@2:spec.md`) and archives with the work. Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
 
-koan keeps it on your machine, in `~/koan-root`:
-
-- **Tasks and dependencies** in one SQLite file, which your agent drives with koan's commands.
-- **Notes** as Markdown files, one per task and folder, in a directory tree you open in your editor, beside your material: the specs, drafts and research the work is about.
-- **History** in the same database: every change, so an agent can catch up on what happened since it last looked.
-
-Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
-
-- **Your agent drives it.** Every command prints one line of JSON, so Claude Code and OpenCode use it natively. Ask "what should I work on next?" and koan hands back the ready tasks, highest priority first, or have your agent lay out a whole plan, dependencies included, in one call.
-- **Safe with several agents.** A claim reserves a task, so two agents are never handed the same one.
-- **Yours to drive too.** `koan pick` opens an fzf picker for choosing tasks and folders by hand.
-
-Nothing to sign up for, no token to give your agent, and it works offline: one binary, no server, and your agent has a memory for the work ahead.
+One binary, no server, nothing to sign up for, and it works offline. `koan pick` lets you drive it by hand too.
 
 Linux and macOS only. **Pre-1.0:** the JSON output and the database's format can change in a minor release; see [Upgrading](#upgrading).
 
