@@ -39,11 +39,14 @@ claude plugin marketplace add phansen314/koan
 claude plugin install koan@koan
 ```
 
-**4. Let koan's commands run without a prompt each time,** from a clone of this repo (see [Use it from Claude Code and OpenCode](#use-it-from-claude-code-and-opencode)); this also sets up OpenCode:
+**4. Decide what your agent may run without asking.** Unless your settings already allow them, your agent asks before running each koan command. The repo's suggested rules let every `koan` and `jq` command run without asking, except `koan init`, `koan delete` and `koan repair`, which always ask. [Use it from Claude Code and OpenCode](#use-it-from-claude-code-and-opencode) lists them for each agent. Apply them with the repo's script, which also links the skill for OpenCode, or add your own by hand:
 
 ```shell
-scripts/install.sh
+git clone https://github.com/phansen314/koan && cd koan
+scripts/install.sh               # every agent whose CLI is on PATH; --claude or --opencode for one
 ```
+
+That section also says what the script changes and how to undo it.
 
 Then ask your agent to plan some work, or "what should I work on next?". To try the commands yourself, see [A taste](#a-taste). For shell completion and the `koan pick` picker on a key, see [docs/shell.md](docs/shell.md).
 
@@ -119,7 +122,14 @@ Several agents can work from one tree: a **claim** reserves a task, so two worke
 
 The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin, installed in the [Quick start](#quick-start).
 
-From a clone of this repo, `scripts/install.sh` adds the permission rules. They let every koan command run without asking, except `koan init`, `koan delete` and `koan repair`, which always ask. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
+What your agent may run without asking is your call. `scripts/install.sh`, from a clone of this repo, applies the suggested rules: every `koan` and `jq` command runs without asking, except `koan init`, which makes a root, `koan delete`, which removes work, and `koan repair`, which changes the tree on disk. Those always ask. To add them by hand instead:
+
+| Agent | File | Allow | Ask |
+|---|---|---|---|
+| Claude Code | `~/.claude/settings.json`, under `permissions` | `Bash(koan:*)`, `Bash(jq:*)` | `Bash(koan init:*)`, `Bash(koan delete:*)`, `Bash(koan repair:*)` |
+| OpenCode | `~/.config/opencode/opencode.json`, under `permission.bash`, in this order, since the last matching rule wins | `"koan *"`, `"jq *"` | `"koan init*"`, `"koan delete *"`, `"koan repair*"` |
+
+For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
 
 ```shell
 scripts/install.sh               # every agent whose CLI is on PATH
