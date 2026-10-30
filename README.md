@@ -6,7 +6,7 @@ koan is a durable task tree for you and your agents, with the notes, specs, draf
 
 **What should I work on next?**
 
-Ask, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command prints one line of JSON, so Claude Code and OpenCode drive it natively, and your agent can lay out a whole plan, dependencies included, in one call.
+Ask your agent, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command prints one line of JSON, so Claude Code and OpenCode drive it natively, and your agent can lay out a whole plan, dependencies included, in one call. Or pick tasks yourself with `koan pick`.
 
 **Where is your task list stored?**
 
@@ -14,9 +14,9 @@ On your machine, in `~/koan-root`, not on someone else's server behind an API an
 
 **Where do the specs, drafts and research for the work live?**
 
-In most tools, notes don't live on the filesystem, and the material is somewhere else again. In koan, every folder of work is a real directory you open in your editor: its notes and each task's are Markdown files, beside the material they're about, which koan can name (`@2:spec.md`) and archives with the work. Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
+Right beside it. Every folder of work is a real directory you open in your editor: its notes and each task's are Markdown files, next to the material they're about, and the material is archived with the work. Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
 
-One binary, no server, nothing to sign up for, and it works offline. `koan pick` lets you drive it by hand too.
+One binary, no server, nothing to sign up for, and it works offline.
 
 Linux and macOS only. **Pre-1.0:** the JSON output and the database's format can change in a minor release; see [Upgrading](#upgrading).
 
@@ -117,7 +117,7 @@ The script is safe to rerun. It backs a settings file up, to `.bak.<timestamp>`,
 koan backup ~/backups/koan-$(date +%F)   # .result.clean is true when the copy checks out
 ```
 
-To restore, put a backup in place of `~/koan-root` and run `koan doctor`. The [tutorial](docs/tutorial.md#12-backup-and-restore) says what a restore brings back with it.
+To restore, put a backup in place of `~/koan-root` and run `koan doctor`. A restore brings back the claims and the log of the backup's moment, so the IDs and log `seq` numbers issued since the backup will be issued again; the [tutorial](docs/tutorial.md#12-backup-and-restore) has the details.
 
 ```sh
 mv ~/koan-root ~/koan-root.before-restore
@@ -129,7 +129,7 @@ A crash, or a folder renamed or dragged by hand in your editor, can leave the tr
 
 ## Upgrading
 
-Until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports `unsupported-format`, its `format` below `koan version`'s. Back the old root up, move it aside and `koan init`.
+Until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports the state `unsupported-format`, with a `format` older than the one `koan version` reports. Back the old root up, move it aside and `koan init`.
 
 ### Coming from the original koan
 
