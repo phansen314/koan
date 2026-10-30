@@ -343,7 +343,7 @@ func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmds := exampleCommands(string(text))
+	cmds, shown := exampleCommands(string(text))
 	var want []string
 	for _, s := range steps {
 		want = append(want, s.cmd)
@@ -376,7 +376,7 @@ func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
 		}
 	}
 
-	for _, s := range steps {
+	for n, s := range steps {
 		out, exit := sh(s.cmd)
 		var lines []string
 		if out != "" {
@@ -385,6 +385,12 @@ func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
 		if exit != s.exit || len(lines) != len(s.want) {
 			t.Errorf("%s:\nexit %d, want %d; %d lines, want %d:\n%s", s.cmd, exit, s.exit, len(lines), len(s.want), out)
 			continue
+		}
+		// What the doc prints for the command must be its output exactly.
+		if printed, ok := shown[n]; ok {
+			if got := strings.ReplaceAll(strings.TrimSuffix(out, "\n"), home, "~"); got != printed {
+				t.Errorf("%s: the output %s prints differs from the command's:\ngot:     %s\nprinted: %s", s.cmd, doc, got, printed)
+			}
 		}
 		names := exampleCommandNames(s.cmd)
 		for i, line := range lines {
@@ -425,19 +431,27 @@ func exampleEnv(home string) []string {
 }
 
 var (
-	shBlock  = regexp.MustCompile("(?s)```sh\n(.*?)```")
-	heredoc  = regexp.MustCompile(`<<-?'?(\w+)'?`)
-	trailing = regexp.MustCompile(`\s{2,}# .*$`)
+	exampleBlock = regexp.MustCompile("(?s)```(sh|json)\n(.*?)```")
+	heredoc      = regexp.MustCompile(`<<-?'?(\w+)'?`)
+	trailing     = regexp.MustCompile(`\s{2,}# .*$`)
 )
 
 // exampleCommands is every command in a doc's sh blocks, in order: each
 // line, with its heredoc when it has one, and without its trailing
 // comment, which the docs set off with two spaces or more. Blocks marked
-// shell instead of sh aren't examples to run.
-func exampleCommands(text string) []string {
-	var cmds []string
-	for _, m := range shBlock.FindAllStringSubmatch(text, -1) {
-		lines := strings.Split(strings.TrimSuffix(m[1], "\n"), "\n")
+// shell instead of sh aren't examples to run. shown maps a command's index
+// to the output a json block prints for it: the last command of the sh
+// block before it.
+func exampleCommands(text string) (cmds []string, shown map[int]string) {
+	shown = map[int]string{}
+	for _, m := range exampleBlock.FindAllStringSubmatch(text, -1) {
+		if m[1] == "json" {
+			if len(cmds) > 0 {
+				shown[len(cmds)-1] = strings.TrimSuffix(m[2], "\n")
+			}
+			continue
+		}
+		lines := strings.Split(strings.TrimSuffix(m[2], "\n"), "\n")
 		for i := 0; i < len(lines); i++ {
 			line := trailing.ReplaceAllString(lines[i], "")
 			if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
@@ -453,7 +467,7 @@ func exampleCommands(text string) []string {
 			cmds = append(cmds, line)
 		}
 	}
-	return cmds
+	return cmds, shown
 }
 
 // exampleCommandNames is the koan command each part of a command line runs,
