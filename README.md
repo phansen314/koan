@@ -16,7 +16,7 @@ Linux and macOS only. **Pre-1.0:** the JSON output and the database's format can
 
 ## Quick start
 
-Needs Go 1.25 or later. The SQLite driver is SQLite translated to Go, so there is no cgo and no C compiler, just one binary.
+Needs Go 1.25 or later; no cgo, no C compiler.
 
 **1. Install koan:**
 
@@ -46,6 +46,27 @@ scripts/install.sh               # every agent whose CLI is on PATH; --claude or
 
 Then ask your agent to plan some work, or "what should I work on next?". To try the commands yourself, see [A taste](#a-taste) and the [tutorial](docs/tutorial.md). For shell completion and the `koan pick` picker on a key, see [docs/shell.md](docs/shell.md).
 
+## A taste
+
+On a new root:
+
+```sh
+koan folder create /work/api --title 'API rework'                        # makes /work too: @1, and /work/api @2
+koan task create 'Design the endpoints' --folder /work/api --priority 2  # @3
+koan task create 'Build them' --folder /work/api --blocked-by 3          # @4, which waits on @3
+koan frontier --fields ref,title                                         # what can be done now: only @3
+koan claim-next --extra '{"by":"me"}'                                    # claims @3, so no one else is handed it
+koan complete 3
+```
+
+`complete` says what changed: `@3` is complete, its claim ended, and `@4` is now ready.
+
+```json
+{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}
+```
+
+The [tutorial](docs/tutorial.md) carries on from here: notes and material, ordering whole folders, laying out a plan in one call, working from a worktree, several agents, history, archiving, backup, and repair.
+
 ## The root
 
 Everything is under `~/koan-root`:
@@ -61,27 +82,6 @@ Open `~/koan-root/tree` in your editor and edit any notes file. Rename or move f
 
 To keep the root somewhere else, make `~/koan-root` a symlink to it before `koan init`. It must be on a local filesystem, never a sync folder: SQLite's WAL mode and koan's lock need one.
 
-## A taste
-
-On a new root:
-
-```sh
-koan folder create /work/api --title 'API rework'                        # makes /work too: @1, and /work/api @2
-koan task create 'Design the endpoints' --folder /work/api --priority 2  # @3
-koan task create 'Build them' --folder /work/api --blocked-by 3          # @4, which waits on @3
-koan frontier --fields ref,title                                         # what can be done now: only @3
-koan claim-next --extra '{"by":"me"}'                                    # claims @3, so no one else is handed it
-koan complete 3
-```
-
-Every command answers with one line of JSON. `complete` says what changed: `@3` is complete, its claim ended, and `@4` is now ready.
-
-```json
-{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}
-```
-
-The [tutorial](docs/tutorial.md) carries on from here: notes and material, ordering whole folders, laying out a plan in one call, working from a worktree, several agents, history, archiving, backup, and repair.
-
 ## Use it from Claude Code and OpenCode
 
 The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin, installed in the [Quick start](#quick-start).
@@ -91,9 +91,9 @@ What your agent may run without asking is your call. `scripts/install.sh`, from 
 | Agent | File | Allow | Ask |
 |---|---|---|---|
 | Claude Code | `~/.claude/settings.json`, under `permissions` | `Bash(koan:*)`, `Bash(jq:*)` | `Bash(koan init:*)`, `Bash(koan delete:*)`, `Bash(koan repair:*)` |
-| OpenCode | `~/.config/opencode/opencode.json`, under `permission.bash`, in this order, since the last matching rule wins | `"koan *"`, `"jq *"` | `"koan init*"`, `"koan delete *"`, `"koan repair*"` |
+| OpenCode | `~/.config/opencode/opencode.json`, under `permission.bash` | `"koan *"`, `"jq *"` | `"koan init*"`, `"koan delete *"`, `"koan repair*"` |
 
-For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
+In OpenCode the last matching rule wins, so the asks go after the allows. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
 
 ```shell
 scripts/install.sh               # every agent whose CLI is on PATH
@@ -138,12 +138,17 @@ Then recreate the work you still want, by hand or with `koan batch`. The origina
 
 ## Uninstalling
 
-Remove the binary, `scripts/install.sh --uninstall`, `claude plugin uninstall koan@koan`, and `~/koan-root` if its work isn't wanted.
+Remove the binary, run `scripts/install.sh --uninstall` and `claude plugin uninstall koan@koan`, and delete `~/koan-root` if you don't want its work.
 
 ## Docs
 
+Using koan:
+
 - [docs/tutorial.md](docs/tutorial.md): one project from its first task to its archive, by hand.
 - [docs/shell.md](docs/shell.md): shell completion, and the `koan pick` picker on a key.
+
+How koan works, for contributors and agents:
+
 - [docs/rules.md](docs/rules.md): the invariants and rules every tree obeys.
 - [docs/prd.md](docs/prd.md): how koan is built: layout, storage, writes, concurrency, recovery.
 - [docs/spec.md](docs/spec.md): exactly what every command takes and prints.
