@@ -2,7 +2,15 @@
 
 [![CI](https://github.com/phansen314/koan/actions/workflows/ci.yml/badge.svg)](https://github.com/phansen314/koan/actions/workflows/ci.yml)
 
-Task management for one person on one machine, built to be driven by agents such as Claude Code and OpenCode. Tasks live in nested folders, with dependencies between them; the structure is kept in a SQLite database, and each task and folder has a plain Markdown notes file in a tree of directories you can open in any editor. No daemon, no server. Every command prints exactly one line of JSON, apart from help, shell completion and the `koan pick` picker.
+**Your agent already runs commands and reads files. Why is your task list trapped in someone else's app?**
+
+koan keeps your tasks and their dependencies in a database your agent drives with commands, and mirrors every folder of work as a real directory. Open it in your editor: each task's Markdown notes sit next to your material — the specs, drafts and research the work is about. Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
+
+- **Your agent drives it.** Every command prints one line of JSON, so Claude Code and OpenCode use it natively. Ask "what should I work on next?" and koan hands back the ready tasks, highest priority first, or have your agent lay out a whole plan, dependencies included, in one call.
+- **Safe with several agents.** A claim reserves a task, so two agents are never handed the same one.
+- **Yours to drive too.** `koan pick` opens an fzf picker for choosing tasks and folders by hand.
+
+One `go install`, no server, and your agent has a memory for the work ahead.
 
 Linux and macOS only.
 
