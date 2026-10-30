@@ -1,8 +1,15 @@
 # koan tutorial
 
-This walks one project from its first task to its archive, by hand, so you can see what your agent does when it drives koan. It assumes you have done the README's [Quick start](../README.md#quick-start) and have `jq`.
+This walks one project from its first task to its archive, by hand, so you can see what your agent does when it drives koan. It needs `koan`, installed as in the README's [Quick start](../README.md#quick-start), and `jq` and `git`.
 
-The IDs below are from a new root. On yours they will differ: folders and tasks share one ID sequence, and every root counts from its own start.
+Run it on a scratch root of its own, never on your real one: it fills the tree with example work, section 12 restores a backup over the root, and section 13 damages the tree on purpose. Open a new shell for it, point `HOME` at an empty directory there, and close the shell when you're done:
+
+```shell
+export HOME="$(mktemp -d)"   # this shell only: your real ~/koan-root is untouched
+koan init
+```
+
+On that new root, your IDs match the ones below: folders and tasks share one ID sequence, which starts at `@1`.
 
 Every command prints one line of JSON. The outputs shown here are real; long ones are described rather than printed. Pipe any of them to `jq` to read them comfortably.
 
@@ -104,7 +111,7 @@ koan block 3 --blocked-by 4
 {"ok":false,"error":{"kind":"conflict","rule":"cycle","message":"@3 would wait on itself through @4","ids":[3,4],"paths":[],"problems":[{"field":"/blocked_by/0","reason":"@3 would wait on itself through @4"}],"archived":[]},"warnings":[]}
 ```
 
-It exits 1, and prints the message on standard error too, for people. A command line koan can't read exits 2, with `kind` `usage`; for a mistyped option, it names the one you probably meant. Agents branch on `error.kind` and `rule`, never on the message.
+It exits 1, and prints the message on standard error too, for people. A command line koan can't read exits 2, with `kind` `usage`; given an option that a sibling command takes, such as `--folder` on `task list`, its message says what this command takes instead. Agents branch on `error.kind` and `rule`, never on the message.
 
 ## 6. Ordering folders with gates
 
@@ -161,7 +168,17 @@ koan frontier /home --fields ref,title
 
 ## 8. Working from a worktree
 
-Your code stays in its own repo. Bind a git worktree to the folder its work belongs to, and koan knows where you are when you're inside it:
+Your code stays in its own repo. Bind a git worktree to the folder its work belongs to, and koan knows where you are when you're inside it. `bind` takes a worktree, not the repo's main checkout, which it refuses with rule `checkout`.
+
+Make a scratch repo with one worktree to bind. The `-c` options give the commit an author, since the scratch `HOME` has no git config:
+
+```sh
+git init -q ~/code/api
+git -C ~/code/api -c user.name=you -c user.email=you@example.com commit -q --allow-empty -m start
+git -C ~/code/api worktree add -q ~/code/api-v2
+```
+
+Then bind the worktree to `/work/api`, and work from inside it:
 
 ```sh
 koan bind /work/api ~/code/api-v2

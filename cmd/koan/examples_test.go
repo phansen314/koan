@@ -163,8 +163,8 @@ func TestReadme(t *testing.T) {
 	runExamples(t, "README.md", nil, readmeSteps)
 }
 
-// tutorialSteps are the tutorial's sh examples, in order, on a new root,
-// with the worktree it binds made beside the checkout it comes from.
+// tutorialSteps are the tutorial's sh examples, in order, on a new root:
+// the scratch root it opens with, made by koan init.
 var tutorialSteps = []docStep{
 	// 1. A folder and two tasks
 	{cmd: "koan folder create /work/api --title 'API rework'", want: []string{`{"ok":true,"result":{"id":2,"ref":"@2 (/work/api)","folders_made":[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}]},"warnings":[]}`}},
@@ -208,6 +208,9 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home
 	{cmd: "koan frontier /home --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":11,"ref":"@11 (/home/trip.start)","title":"Start"}],"total":1,"truncated":false},"warnings":[]}`}},
 
 	// 8. Working from a worktree
+	{cmd: "git init -q ~/code/api"},
+	{cmd: "git -C ~/code/api -c user.name=you -c user.email=you@example.com commit -q --allow-empty -m start"},
+	{cmd: "git -C ~/code/api worktree add -q ~/code/api-v2"},
 	{cmd: "koan bind /work/api ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":"~/code/api-v2/.koan/marker.json","binding":{"id":2,"path":"/work/api"},"replaced":false}}`}},
 	{cmd: "cd ~/code/api-v2 && koan context --here", want: []string{`{"ok":true,"result":{"folder":{"id":2},"ancestors":[{"id":1}],"notes":"Move the API to v2.\n",
 		"tasks":[{"id":4},{"id":6,"gate":"done"}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
@@ -244,12 +247,7 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home
 
 // TestTutorial runs the tutorial's sh examples as TestSkill runs the skill's.
 func TestTutorial(t *testing.T) {
-	runExamples(t, filepath.Join("docs", "tutorial.md"), []string{
-		"koan init",
-		"git init -q ~/code/api",
-		"git -C ~/code/api -c user.name=koan -c user.email=koan@example.com commit -q --allow-empty -m start",
-		"git -C ~/code/api worktree add -q ~/code/api-v2",
-	}, tutorialSteps)
+	runExamples(t, filepath.Join("docs", "tutorial.md"), []string{"koan init"}, tutorialSteps)
 }
 
 // TestReadmeRules checks that the README's table of permission rules lists

@@ -71,7 +71,7 @@ koan complete 3
 {"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}
 ```
 
-The [tutorial](docs/tutorial.md) carries on from here: notes and material, ordering whole folders, laying out a plan in one call, working from a worktree, several agents, history, archiving, backup, and repair.
+The [tutorial](docs/tutorial.md) walks a whole project on a scratch root of its own: notes and material, ordering whole folders, laying out a plan in one call, working from a worktree, several agents, history, archiving, backup, and repair.
 
 ## The root
 
