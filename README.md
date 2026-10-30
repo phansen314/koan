@@ -6,7 +6,7 @@ koan is a durable task tree for you and your agents, with the notes, specs, draf
 
 **What should I work on next?**
 
-Ask your agent, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command prints one line of JSON, so Claude Code and OpenCode drive it natively, and your agent can lay out a whole plan, dependencies included, in one call. Or pick tasks yourself with `koan pick`.
+Ask your agent, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command your agent runs prints one line of JSON, so Claude Code and OpenCode drive it natively, and your agent can lay out a whole plan, dependencies included, in one call. Or pick tasks yourself with `koan pick`.
 
 **Where is your task list stored?**
 
@@ -22,7 +22,7 @@ Linux and macOS only. **Pre-1.0:** the JSON output and the database's format can
 
 ## Quick start
 
-Needs Go 1.25 or later; no cgo, no C compiler.
+Needs Go 1.25 or later; no cgo, no C compiler. Your agent also uses `jq` to read koan's output, and `koan pick` needs fzf 0.63.0 or later.
 
 **1. Install koan:**
 
@@ -43,7 +43,9 @@ claude plugin marketplace add phansen314/koan
 claude plugin install koan@koan
 ```
 
-**4. Decide what your agent may run without asking.** Until your settings allow them, your agent asks before each koan command. The repo suggests rules, listed under [Use it from Claude Code and OpenCode](#use-it-from-claude-code-and-opencode), and a script that applies them and links the skill for OpenCode. Or add your own by hand.
+OpenCode gets the skill from the repo's script, in step 4.
+
+**4. Decide what your agent may run without asking.** Until your settings allow them, your agent asks before each koan command. The repo suggests rules, listed under [Use it from Claude Code and OpenCode](#use-it-from-claude-code-and-opencode), and a script that applies them and links the skill for OpenCode. Or add your own by hand. The clone is only for the script:
 
 ```shell
 git clone https://github.com/phansen314/koan && cd koan
@@ -121,13 +123,23 @@ To restore, put a backup in place of `~/koan-root` and run `koan doctor`. A rest
 
 ```sh
 mv ~/koan-root ~/koan-root.before-restore
-cp -R ~/backups/koan-$(date +%F) ~/koan-root   # or whichever backup you want
+cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root   # the newest; or name the backup you want
 koan doctor                                    # .result.findings: what is wrong, if anything
 ```
 
 A crash, or a folder renamed or dragged by hand in your editor, can leave the tree on disk out of step with the database. `koan doctor` finds it and changes nothing; `koan repair` fixes what it can without losing anything, and reports what it left for you. Every finding's message says what to do.
 
 ## Upgrading
+
+To upgrade, install the new release over the old binary, and update the plugin, which carries the skill:
+
+```shell
+GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest
+claude plugin marketplace update koan
+claude plugin update koan@koan
+```
+
+OpenCode reads the skill from your clone, through the link the script made: pull the clone to update it.
 
 Until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports the state `unsupported-format`, with a `format` older than the one `koan version` reports. Back the old root up, move it aside and `koan init`.
 

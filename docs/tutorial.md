@@ -11,7 +11,7 @@ koan init
 
 On that new root, your IDs match the ones below: folders and tasks share one ID sequence, which starts at `@1`.
 
-Every command prints one line of JSON. The outputs shown here are real; long ones are described rather than printed. Pipe any of them to `jq` to read them comfortably.
+Every koan command here prints one line of JSON. The outputs shown here are real; long ones are described rather than printed. Pipe any of them to `jq` to read them comfortably.
 
 ## 1. A folder and two tasks
 
@@ -56,7 +56,7 @@ koan claim-next --extra '{"by":"me"}'
 koan complete 3
 ```
 
-`claim-next` claims the first task of the frontier, `@3`, and returns its whole record, so two workers asking at once are never handed the same task. `--extra` is any JSON you want kept with the claim, such as who took it.
+`claim-next` claims the first task of the frontier, `@3`, as one change, so two workers asking at once are never handed the same task, and returns its whole record. `--extra` is any JSON you want kept with the claim, such as who took it.
 
 `complete` answers with what changed:
 
@@ -101,7 +101,8 @@ koan update 4 --priority 1
 
 - **A write returns what it changed, by ID; a read returns whole records.**
 - **`task` and `folder` hold only `create` and `list`.** Every other command is its verb alone, for tasks and folders both: `koan show 4`, `koan update /work/api --title 'API v2'`, `koan mv 4 /work`.
-- **A refusal names its rule:**
+
+A refusal names its rule:
 
 ```sh
 koan block 3 --blocked-by 4
@@ -117,30 +118,30 @@ It exits 1, and prints the message on standard error too, for people. A command 
 
 Edges are only ever between tasks: where a task sits never orders it. To make whole folders wait on each other, every folder has two **gates**, tasks of its own that koan makes the first time an edge names them:
 
-- `/work/api.start`, which the folder's work waits on;
-- `/work/api.done`, which waits on the folder's work, and which whatever comes after the folder waits on.
+- `/work/api.start`, for the folder's work to wait on;
+- `/work/api.done`, to wait on the folder's work, and for whatever comes after the folder to wait on.
 
-In an edge, a folder means its done gate:
+A gate waits only on the edges you give it, like any task. So give the done gate its edges first: a gate that waits on nothing is ready, and `claim-next` could hand it out before its work is done. In an edge, a folder means its done gate:
 
 ```sh
-koan task create 'Announce it' --folder /work --blocked-by /work/api
 koan block /work/api.done --blocked-by 3,4
-koan why 5
+koan task create 'Announce it' --folder /work --blocked-by /work/api
+koan why 6
 ```
 
-The first command makes `@5`, and `/work/api.done` as `@6`. The second makes the done gate wait on both tasks. Now `why 5` traces it through:
+The first command makes `/work/api.done` as `@5`, waiting on both tasks. The second makes `@6`, which waits on the gate. Now `why 6` traces it through:
 
 ```json
-{"ok":true,"result":{"id":5,"readiness":"blocked","blockers":[{"id":6,"ref":"@6 (/work/api.done)","state":"open"}],"ready":[{"id":4,"ref":"@4 (/work/api)","claimed":false}]},"warnings":[]}
+{"ok":true,"result":{"id":6,"readiness":"blocked","blockers":[{"id":5,"ref":"@5 (/work/api.done)","state":"open"}],"ready":[{"id":4,"ref":"@4 (/work/api)","claimed":false}]},"warnings":[]}
 ```
 
-`@5` waits on the gate, and the gate on `@4`, so `@4` is what to finish. To see what a folder's work touches outside it:
+`@6` waits on the gate, and the gate on `@4`, so `@4` is what to finish. To put a task in a folder's order in one go, `koan join <task> /work/api` makes it wait on the start gate and the done gate wait on it; the next section joins a whole plan that way. To see what a folder's work touches outside it:
 
 ```sh
 koan export /work/api | jq '.result.external[].ref'
 ```
 
-That prints `"@5 (/work)"`.
+That prints `"@6 (/work)"`.
 
 ## 7. A whole plan in one call
 
@@ -218,7 +219,7 @@ To keep the database small, move old events out to JSON Lines files in `~/koan-r
 koan log rotate --before 2026-10-01T00:00:00Z
 ```
 
-`log list` reads only the database, so cut well in the past, such as a month back, so no agent's saved place falls behind the cut.
+Here nothing is that old yet, so `.result.count` is 0 and nothing moves. `log list` reads only the database, so cut well in the past, such as a month back, so no agent's saved place falls behind the cut.
 
 ## 11. Finishing and archiving
 
@@ -229,7 +230,7 @@ koan archive /work/api
 koan show 3
 ```
 
-Completing `@4` releases the done gate, `@6`, and completing the gate releases `@5`. With all its work complete, `/work/api` is finished, and `archive` moves it out of the tree, into `~/koan-root/archived/work/@2_api`, notes and material with it. Its tasks are gone from koan, but not lost: `show 3` is `not-found`, and says where `@3`'s notes went. `rg` searches the archive like any other files.
+Completing `@4` releases the done gate, `@5`, and completing the gate releases `@6`. With all its work complete, `/work/api` is finished, and `archive` moves it out of the tree, into `~/koan-root/archived/work/@2_api`, notes and material with it. Its tasks are gone from koan, but not lost: `show 3` is `not-found`, and says where `@3`'s notes went. `rg` searches the archive like any other files.
 
 ## 12. Backup and restore
 
@@ -239,11 +240,11 @@ Completing `@4` releases the done gate, `@6`, and completing the gate releases `
 koan backup ~/backups/koan-$(date +%F)
 ```
 
-`.result.clean` is true when the copy checks out. To restore, put a backup in place of `~/koan-root`, and check it:
+`.result.clean` is true when the copy checks out. To restore, put a backup in place of `~/koan-root`, and check it. Dated names sort in order, so this takes the newest; name another to restore that one:
 
 ```sh
 mv ~/koan-root ~/koan-root.before-restore
-cp -R ~/backups/koan-$(date +%F) ~/koan-root
+cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root
 koan doctor
 ```
 
@@ -259,7 +260,12 @@ koan doctor
 koan repair
 ```
 
-`doctor` finds it and changes nothing. Every finding's message says what to do; here, that `@lisbon` is `@8 (/home/trip)`'s directory, and that `koan repair` moves it back. `repair` fixes what it can without losing anything, and reports what it left for you. To rename the folder, use `koan mv -T /home/trip /home/lisbon`.
+`doctor` finds it and changes nothing. Every finding's message says what to do, and here there are two, both about the same folder:
+
+- `stray-directory`: `@lisbon` is no folder's directory. It is `@8 (/home/trip)`'s, and `koan repair` moves it back.
+- `missing-directory`: `@8` has no directory. Its message warns that repair makes an empty one, without the notes and material. But repair moves stray directories back before it makes missing ones, so it puts `@lisbon` back as `@trip` first, and nothing is lost.
+
+`repair` fixes what it can without losing anything, and reports what it left for you. To rename the folder, use `koan mv -T /home/trip /home/lisbon`.
 
 ## Where next
 

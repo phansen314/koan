@@ -154,7 +154,7 @@ var readmeSteps = []docStep{
 	// Backup and repair
 	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
 	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
-	{cmd: "cp -R ~/backups/koan-$(date +%F) ~/koan-root"},
+	{cmd: `cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root`},
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
 }
 
@@ -191,10 +191,10 @@ var tutorialSteps = []docStep{
 		"problems":[{"field":"/blocked_by/0","reason":"@3 would wait on itself through @4"}],"archived":[]},"warnings":[]}`}},
 
 	// 6. Ordering folders with gates
-	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":5,"gates_made":[{"id":6,"folder":{"id":2},"gate":"done"}]}}`}},
-	{cmd: "koan block /work/api.done --blocked-by 3,4", want: []string{`{"ok":true,"result":{"id":6,"changed":true,"reblocked":[6]}}`}},
-	{cmd: "koan why 5", want: []string{`{"ok":true,"result":{"id":5,"readiness":"blocked","blockers":[{"id":6,"ref":"@6 (/work/api.done)","state":"open"}],"ready":[{"id":4,"ref":"@4 (/work/api)","claimed":false}]},"warnings":[]}`}},
-	{cmd: "koan export /work/api | jq '.result.external[].ref'", want: []string{`"@5 (/work)"`}},
+	{cmd: "koan block /work/api.done --blocked-by 3,4", want: []string{`{"ok":true,"result":{"id":5,"changed":true,"gates_made":[{"id":5,"folder":{"id":2},"gate":"done"}],"reblocked":[]}}`}},
+	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":6,"gates_made":[]}}`}},
+	{cmd: "koan why 6", want: []string{`{"ok":true,"result":{"id":6,"readiness":"blocked","blockers":[{"id":5,"ref":"@5 (/work/api.done)","state":"open"}],"ready":[{"id":4,"ref":"@4 (/work/api)","claimed":false}]},"warnings":[]}`}},
+	{cmd: "koan export /work/api | jq '.result.external[].ref'", want: []string{`"@6 (/work)"`}},
 
 	// 7. A whole plan in one call
 	{cmd: `koan batch -i - <<'EOF'
@@ -213,7 +213,7 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home
 	{cmd: "git -C ~/code/api worktree add -q ~/code/api-v2"},
 	{cmd: "koan bind /work/api ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":"~/code/api-v2/.koan/marker.json","binding":{"id":2,"path":"/work/api"},"replaced":false}}`}},
 	{cmd: "cd ~/code/api-v2 && koan context --here", want: []string{`{"ok":true,"result":{"folder":{"id":2},"ancestors":[{"id":1}],"notes":"Move the API to v2.\n",
-		"tasks":[{"id":4},{"id":6,"gate":"done"}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
+		"tasks":[{"id":4},{"id":5,"gate":"done"}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
 	{cmd: "koan where --file ~/code/api-v2/src/main.go", want: []string{`{"ok":true,"result":{"ref":"@2 (/work/api)","kind":"folder"}}`}},
 
 	// 9. Several agents
@@ -228,15 +228,15 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home
 	{cmd: "koan log rotate --before 2026-10-01T00:00:00Z", want: []string{`{"ok":true,"result":{"changed":false,"count":0},"warnings":[]}`}},
 
 	// 11. Finishing and archiving
-	{cmd: "koan complete 4", want: []string{`{"ok":true,"result":{"completed":[4],"released":[6]}}`}},
-	{cmd: "koan complete /work/api.done", want: []string{`{"ok":true,"result":{"completed":[6],"released":[5]}}`}},
-	{cmd: "koan archive /work/api", want: []string{`{"ok":true,"result":{"archived":[{"id":2,"dir":"~/koan-root/archived/work/@2_api"}],"removed":[2,3,4,6]},"warnings":[]}`}},
+	{cmd: "koan complete 4", want: []string{`{"ok":true,"result":{"completed":[4],"released":[5]}}`}},
+	{cmd: "koan complete /work/api.done", want: []string{`{"ok":true,"result":{"completed":[5],"released":[6]}}`}},
+	{cmd: "koan archive /work/api", want: []string{`{"ok":true,"result":{"archived":[{"id":2,"dir":"~/koan-root/archived/work/@2_api"}],"removed":[2,3,4,5]},"warnings":[]}`}},
 	{cmd: "koan show 3", exit: 1, want: []string{`{"ok":false,"error":{"kind":"not-found","ids":[3],"archived":[{"id":3,"notes_path":"~/koan-root/archived/work/@2_api/@3.md"}]}}`}},
 
 	// 12. Backup and restore
 	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
 	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
-	{cmd: "cp -R ~/backups/koan-$(date +%F) ~/koan-root"},
+	{cmd: `cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root`},
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
 
 	// 13. When the tree is damaged
