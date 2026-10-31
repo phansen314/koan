@@ -27,7 +27,7 @@ Needs Go 1.25 or later; no cgo, no C compiler. Your agent also uses `jq` to read
 **1. Install koan:**
 
 ```shell
-GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.13.1   # any GOBIN on your PATH
+GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.13.2   # any GOBIN on your PATH
 ```
 
 **2. Make this machine's root:**
