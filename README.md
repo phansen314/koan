@@ -2,186 +2,172 @@
 
 [![CI](https://github.com/phansen314/koan/actions/workflows/ci.yml/badge.svg)](https://github.com/phansen314/koan/actions/workflows/ci.yml)
 
-Task management for one person on one machine, built to be driven by agents such as Claude Code and OpenCode. Tasks live in nested folders, with dependencies between them; the structure is kept in a SQLite database, and each task and folder has a plain Markdown notes file in a tree of directories you can open in any editor. No daemon, no server. Every command prints exactly one line of JSON, apart from help, shell completion and the `koan pick` picker.
+koan is a durable task tree for you and your agents, with the notes, specs, drafts and research for each piece of work filed beside it.
 
-Linux and macOS only.
+**What should I work on next?**
 
-**Pre-1.0:** until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports `unsupported-format`, its `format` below `koan version`'s. Back the old root up, move it aside and `koan init`.
+Ask your agent, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command your agent runs prints one line of JSON, so Claude Code drives it natively, and your agent can lay out a whole plan, dependencies included, in one call. Or pick tasks yourself with `koan pick`.
 
-## Install
+**Where is your task list stored?**
 
-Needs Go 1.25 or later. The SQLite driver is SQLite translated to Go, so there is no cgo and no C compiler, just one binary.
+On your machine, in `~/koan-root`, not on someone else's server behind an API and a token. Folders, tasks and the edges between them sit in one SQLite file, and every change is logged, so the plan outlasts every session, and an agent can catch up on what happened since it last looked.
+
+**Where do the specs, drafts and research for the work live?**
+
+Right beside it. Every folder of work is a real directory you open in your editor: its notes and each task's are Markdown files, next to the material they're about, and the material is archived with the work. Your code stays in its own repo; bind a worktree to a folder, and `koan context --here` briefs your agent from inside it with that folder's notes and open tasks.
+
+One binary, no server, nothing to sign up for, and it works offline.
+
+Linux and macOS only. **Pre-1.0:** the JSON output and the database's format can change in a minor release; see [Upgrading](#upgrading).
+
+## Quick start
+
+Needs Go 1.25 or later; no cgo, no C compiler. Your agent also uses `jq` to read koan's output, and `koan pick` needs fzf 0.63.0 or later.
+
+**1. Install koan:**
 
 ```shell
 GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.13.1   # any GOBIN on your PATH
 ```
 
-For shell completion of commands, options and references (folder paths one folder at a time, IDs with their titles, and gates), load koan's script in your shell's startup file; `koan completion --help` lists the shells. bash needs the bash-completion package:
-
-```shell
-source <(koan completion bash)   # in ~/.bashrc; zsh: source <(koan completion zsh) in ~/.zshrc
-```
-
-`koan pick` lets you choose tasks, gates and folders in fzf (0.63.0 or later) and prints their references. To have a key type the picked references in at the cursor, load pick's widget in your shell's startup file and bind it to a key. koan binds none for you, since which key is free depends on your terminal, keyboard and editing mode. bash needs 4.0 or later, so on macOS use Homebrew's bash rather than `/bin/bash`.
-
-```shell
-# ~/.zshrc
-eval "$(koan pick --zsh)"
-bindkey '\ek' __koan_pick_widget        # Alt-K
-
-# ~/.bashrc
-eval "$(koan pick --bash)"
-bind -x '"\ek": __koan_pick_widget'     # Alt-K
-```
-
-koan paths are never globbed: a shell expands `/work/old/*` against your disk before koan runs, so it never means the folders under `/work/old`. Name each folder, completing it with Tab, or pick them with `$(koan pick)`.
-
-### Choosing a key
-
-- **Alt-K on Linux**, in the default emacs editing mode, works as above.
-- **Alt-K on macOS** needs your terminal to send it first: see below.
-- **In vi mode** (`bindkey -v`, `set -o vi`), Alt-K is the same keys as Esc then `k` typed quickly, which recalls the previous line, so bind a key in insert mode instead. Ctrl-K only inserts a literal `^K` there in both shells: `bindkey -M viins '^K' __koan_pick_widget` in zsh, or `bind -m vi-insert -x '"\C-k": __koan_pick_widget'` in bash.
-- **Any other key** binds the same way: `bindkey '<key>' __koan_pick_widget`, or `bind -x '"<key>": __koan_pick_widget'`.
-
-### Alt-K on macOS
-
-On macOS, Option-K types a character, such as `˚` on a US keyboard, rather than sending Alt-K (escape then `k`), until your terminal is told otherwise. Either remap Option-K alone, which keeps every other Option key typing its character and works whatever your keyboard layout, or make the Option key a Meta key, which turns on your shell's other Alt keys too, such as Alt-B and Alt-F to move by word, but stops that key typing accented characters:
-
-| Terminal | Option-K alone | Option as Meta |
-|---|---|---|
-| kitty | in `kitty.conf`: `map opt+k send_text all \x1bk` | in `kitty.conf`: `macos_option_as_alt left` (or `right`, or `both`) |
-| iTerm2 | Settings → Profiles → Keys → Key Mappings → **+**: press Option-K, Action "Send Escape Sequence", Esc+ `k` | Settings → Profiles → Keys → General: Left Option key **Esc+** |
-| Terminal.app | not possible: Terminal.app remaps only arrows, function and editing keys | Settings → Profiles → Keyboard: **Use Option as Meta key** (both Option keys) |
-
-Or leave the terminal alone and bind the character your keyboard types for Option-K, which you can see by running `cat` and pressing it: `bindkey '˚' __koan_pick_widget` in zsh, or `bind -x '"˚": __koan_pick_widget'` in bash. You can no longer type that character, and it works only on that layout.
-
-Then make this machine's root:
+**2. Make this machine's root:**
 
 ```sh
 koan init
 ```
 
-Everything is under `~/koan-root`:
-
-| Path | Holds |
-|---|---|
-| `koan.db` | the database: tasks, folders, the edges between tasks, claims, and the log of every change. Only koan writes it |
-| `tree/` | a directory per folder, named `@<name>`, holding its notes `@notes.md`, each task's notes `@<id>.md`, and anything else you keep there (your *material*, which koan never reads) |
-| `archived/` | finished work that was archived, as files |
-| `log/` | old events of the log, moved out of the database by `koan log rotate`, as JSON Lines files |
-
-Open `~/koan-root/tree` in your editor and edit any notes file. Rename or move folders with koan, not by hand: `koan doctor` finds a hand rename and `koan repair` puts it back.
-
-To keep the root somewhere else, make `~/koan-root` a symlink to it before `koan init`. It must be on a local filesystem, never a sync folder: SQLite's WAL mode and koan's lock need one.
-
-## Coming from the original koan
-
-There is no migration: this koan starts from a fresh root. `koan init` refuses a `~/koan-root` left by the original koan (versions up to v0.3.0), with `conflict`, rule `not-a-root`, listing what it found that isn't its own, such as `@koan.json`. Move the old root aside, and start a new one:
-
-```shell
-mv ~/koan-root ~/koan-root-v0.3   # the old tree stays readable: its notes are Markdown files
-koan init
-```
-
-Then recreate the work you still want, by hand or with `koan batch`. The original's claims file, `~/.config/koan/state.json`, is read by nothing now and can be deleted. Install this koan over the old binary with the `go install` above, update the Claude Code plugin with `claude plugin marketplace update koan` and `claude plugin update koan@koan`, and rerun `scripts/install.sh`, which also removes the old `koan migrate` permission rule.
-
-## A taste
-
-Folders and tasks share one ID sequence. On a new root:
-
-```sh
-koan folder create /work/api --title 'API rework'                        # makes /work too: @1, and /work/api @2
-koan task create 'Design the endpoints' --folder /work/api --priority 2  # @3
-koan task create 'Build them' --folder /work/api --blocked-by 3          # @4, which waits on @3
-koan frontier --limit 10 --fields ref,title                              # what can be taken now: only @3
-koan claim-next --extra '{"by":"me"}'                                    # claims @3 and returns it, so no one else takes it
-koan complete 3                                                          # .result.released: [4], now ready
-koan show 4                                                              # the whole task, with its notes_path
-koan log list --task 3 | jq -c '[.result.events[].kind]'                 # its history: ["created","claimed","completed","unclaimed"]
-```
-
-`task` and `folder` hold only `create` and `list`; every other command is its verb alone, for tasks and folders both (`koan show 4`, `koan update 4 --priority 1`, `koan mv 4 /work`). A list or an export with no folder looks at the whole tree; in a worktree, `--here` looks under its folder, as in `koan context --here`. A write returns what it changed, by ID; a read returns whole records. Errors carry a `kind`, and a refusal its `rule`, such as `cycle`; a `usage` error names the sibling option you probably meant.
-
-### Ordering folders
-
-Edges are only ever between tasks: where a task sits never orders it. To order whole folders, a folder has two **gates**, tasks of its own made the first time an edge names them: `/work/api.start`, which its work waits on, and `/work/api.done`, which waits on its work and which what comes after waits on. In an edge, a folder means its done gate.
-
-```sh
-koan task create 'Announce it' --folder /work --blocked-by /work/api    # @5 waits on /work/api's done gate, made as @6
-koan block /work/api.done --blocked-by 3,4                              # the done gate waits on the folder's work
-koan why 5                                                              # .result.ready: @4, what to finish to move @5
-koan export /work/api | jq '.result.external[].ref'                     # the tasks outside /work/api at the other end of an edge: @5
-```
-
-A plan with several tasks goes in at once, as one change, with labels for its tasks to name each other by; here every task joins the folder through the batch's `join`:
-
-```sh
-koan batch -i - <<'EOF'
-{"folders": [{"path": "/home/trip", "title": "Lisbon in May"}],
- "folder": "/home/trip",
- "join": ["/home/trip"],
- "tasks": [{"label": "$flights", "title": "Book flights"},
-           {"title": "Book a hotel", "blocked_by": ["$flights"]}]}
-EOF
-```
-
-Several agents can work from one tree: a **claim** reserves a task, so two workers are never handed the same one. It never expires; `complete` or `unclaim` ends it, and says which claims it ended. Finished work leaves the tree with `koan archive`, for a task or a folder, into `~/koan-root/archived`, where `rg` finds it.
-
-## Use it from Claude Code and OpenCode
-
-The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin; this repo is a Claude Code plugin marketplace:
+**3. Give your agent the koan skill.** In Claude Code, from the plugin marketplace this repo is:
 
 ```shell
 claude plugin marketplace add phansen314/koan
 claude plugin install koan@koan
 ```
 
-Then, from a clone of this repo, add the permission rules. They let every koan command run without asking, except `koan init`, `koan delete` and `koan repair`, which always ask. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
+**4. Decide what your agent may run without asking.** Until your settings allow them, your agent asks before each koan command. The repo suggests rules, listed under [Use it from Claude Code](#use-it-from-claude-code), and a script that applies them. Or add your own by hand. The clone is only for the script:
 
 ```shell
-scripts/install.sh               # every agent whose CLI is on PATH
-scripts/install.sh --opencode    # or name them: --claude, --opencode
-scripts/install.sh --uninstall   # take it all out again
+git clone https://github.com/phansen314/koan && cd koan
+scripts/install.sh               # adds the rules to ~/.claude/settings.json
 ```
 
-The script is safe to rerun. It backs a settings file up, to `.bak.<timestamp>`, before changing it, and adds or removes only koan's rules. It never edits an `opencode.jsonc`, or an `opencode.json` that isn't plain JSON: it prints the rules to add by hand. It needs `jq`, and runs under macOS's `/bin/bash`.
+Then ask your agent to plan some work, or "what should I work on next?". To try the commands yourself, see [A taste](#a-taste) and the [tutorial](docs/tutorial.md). For shell completion and the `koan pick` picker on a key, see [docs/shell.md](docs/shell.md).
 
-## Backup and restore
+## A taste
 
-`koan backup` copies the database, the tree, the archive and the log's rotated files into a new or empty directory, while koan keeps running, and checks the copy:
+Try it on a scratch root, so the example work stays out of your real one. Open a new shell, point `HOME` at a scratch directory there, and close the shell when you're done:
+
+```shell
+export HOME=/tmp/koan-taste   # this shell only: your real ~/koan-root is untouched
+mkdir -p "$HOME" && koan init
+```
+
+In any other shell, `koan` is back on your real root: run the `export` again first.
+
+Then:
 
 ```sh
-koan backup ~/backups/koan-$(date +%F)   # .result.clean is true when the copy checks out
+koan folder create /work/api --title 'API rework'                        # makes /work too: @1, and /work/api @2
+koan task create 'Design the endpoints' --folder /work/api --priority 2  # @3
+koan task create 'Build them' --folder /work/api --blocked-by 3          # @4, which waits on @3
+koan frontier --fields ref,title                                         # what can be done now: only @3
+koan claim-next --extra '{"by":"me"}'                                    # claims @3, so no one else is handed it
+koan complete 3
 ```
 
-Copying `koan.db` by hand while koan runs is not a backup. To restore, put a backup in place of `~/koan-root` and run `koan doctor`:
+`complete` says what changed: `@3` is complete, its claim ended, and `@4` is now ready.
+
+```json
+{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}
+```
+
+The [tutorial](docs/tutorial.md) walks a whole project the same way: notes and material, ordering whole folders, laying out a plan in one call, working from a worktree, several agents, history, archiving, backup, and repair.
+
+## The root
+
+Everything is under `~/koan-root`:
+
+| Path | Holds |
+|---|---|
+| `koan.db` | the database: tasks, folders, the edges between tasks, claims, and the log of every change. Only koan writes it |
+| `tree/` | a directory per folder, named `@<name>`, holding its notes `@notes.md`, each task's notes `@<id>.md`, its gates' notes `@start.md` and `@done.md`, and anything else you keep there (your *material*, which koan never reads) |
+| `archived/` | finished work that was archived, as files |
+| `log/` | old events of the log, moved out of the database by `koan log rotate`, as JSON Lines files |
+
+Open `~/koan-root/tree` in your editor and edit any notes file. Rename or move folders with koan, not by hand: `koan doctor` finds a hand rename and `koan repair` puts it back.
+
+The root must be on a local filesystem, never a sync folder: SQLite's WAL mode and koan's lock need one.
+
+## Use it from Claude Code
+
+The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin, installed in the [Quick start](#quick-start).
+
+What your agent may run without asking is your call. `scripts/install.sh`, from a clone of this repo, applies the suggested rules: every `koan` and `jq` command runs without asking, except `koan init`, which makes a root, `koan delete`, which removes work, and `koan repair`, which changes the tree on disk. Those always ask. To add them by hand instead:
+
+| File | Allow | Ask |
+|---|---|---|
+| `~/.claude/settings.json`, under `permissions` | `Bash(koan:*)`, `Bash(jq:*)` | `Bash(koan init:*)`, `Bash(koan delete:*)`, `Bash(koan repair:*)` |
+
+```shell
+scripts/install.sh               # when claude is on PATH
+scripts/install.sh --claude      # even when it isn't
+scripts/install.sh --uninstall   # take them out again
+```
+
+The script is safe to rerun. It backs the settings file up, to `.bak.<timestamp>`, before changing it, and adds or removes only koan's rules. It needs `jq`, and runs under macOS's `/bin/bash`.
+
+## Backup and repair
+
+`koan backup` copies the database, the tree, the archive and the log's rotated files into a new or empty directory, while koan keeps running, and checks the copy. Copying `koan.db` by hand while koan runs is not a backup.
+
+```sh
+koan backup ~/backups/koan-$(date +%F-%H%M%S)   # .result.clean is true when the copy checks out
+```
+
+To restore, put a backup in place of `~/koan-root` and run `koan doctor`. A restore brings back the claims and the log of the backup's moment, so the IDs and log `seq` numbers issued since the backup will be issued again; the [tutorial](docs/tutorial.md#12-backup-and-restore) has the details.
 
 ```sh
 mv ~/koan-root ~/koan-root.before-restore
-cp -R ~/backups/koan-$(date +%F) ~/koan-root   # or whichever backup you want
+cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root   # the newest; or name the backup you want
 koan doctor                                    # .result.findings: what is wrong, if anything
 ```
 
-A backup carries the claims and the log of its moment, and a restore brings them back with it. So the IDs and log `seq` numbers issued after the backup will be issued again, and `koan log list --after` a `seq` from after it is `not-found`, until the restored root has issued that many again. The restored root's `log/` is the backup's: don't copy the replaced root's rotated files into it, since the restored root will issue their `seq` again.
+A crash, or a folder renamed or dragged by hand in your editor, can leave the tree on disk out of step with the database. `koan doctor` finds it and changes nothing; `koan repair` fixes what it can without losing anything, and reports what it left for you. Every finding's message says what to do.
 
-## History
+## Upgrading
 
-Every change is recorded in the log, in the database: what was made, changed, moved, completed, claimed, deleted or archived, which tasks became ready, and which folders became finished. `koan log list` reads it back, oldest first, filtered by folder path or ID (matched as recorded, so a renamed or deleted folder still finds its history), `--task`, `--kinds`, and `--since` a time or `--after` a `seq`. To keep the table small, move old events out to files in `~/koan-root/log/`. `log list` reads only the table, so a full history since a point reads those files too; cut well in the past, such as a month back, so no agent's saved place falls behind the cut:
+To upgrade, install the new release over the old binary, and update the plugin, which carries the skill:
 
-```sh
-koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed   # what was finished under /work/api this month
-koan log rotate --before 2026-10-01T00:00:00Z                            # move everything older out to ~/koan-root/log/
+```shell
+GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@latest
+claude plugin marketplace update koan
+claude plugin update koan@koan
 ```
 
-## Checking and repairing
+Until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports the state `unsupported-format`, with a `format` older than the one `koan version` reports. Back the old root up, move it aside and `koan init`.
 
-A crash, or a folder renamed or dragged by hand in your editor, can leave the tree on disk out of step with the database. `koan doctor` finds it and changes nothing; `koan repair` fixes what it can without losing anything, and reports what it left for you. Every finding's message says what to do.
+### Coming from the original koan
+
+There is no migration: this koan starts from a fresh root. `koan init` refuses a `~/koan-root` left by the original koan (versions up to v0.3.0), with `conflict`, rule `not-a-root`, listing what it found that isn't its own, such as `@koan.json`. Move the old root aside, and start a new one whose IDs begin past the highest the old root issued, so the `@` references in the old notes never name new work:
+
+```shell
+mv ~/koan-root ~/koan-root-v0.3   # the old tree stays readable: its notes are Markdown files
+koan init --ids-from 1000         # any number past the old root's highest ID
+```
+
+Then recreate the work you still want, by hand or with `koan batch`. The original's claims file, `~/.config/koan/state.json`, is read by nothing now and can be deleted. Install this koan over the old binary with the `go install` above, update the Claude Code plugin with `claude plugin marketplace update koan` and `claude plugin update koan@koan`, and rerun `scripts/install.sh`, which also removes the old `koan migrate` permission rule.
 
 ## Uninstalling
 
-Remove the binary, `scripts/install.sh --uninstall`, `claude plugin uninstall koan@koan`, and `~/koan-root` if its work isn't wanted.
+Remove the binary, run `scripts/install.sh --uninstall` and `claude plugin uninstall koan@koan`, and delete `~/koan-root` if you don't want its work.
 
 ## Docs
+
+Using koan:
+
+- [docs/tutorial.md](docs/tutorial.md): one project from its first task to its archive, by hand.
+- [docs/shell.md](docs/shell.md): shell completion, and the `koan pick` picker on a key.
+
+How koan works, for contributors and agents:
 
 - [docs/rules.md](docs/rules.md): the invariants and rules every tree obeys.
 - [docs/prd.md](docs/prd.md): how koan is built: layout, storage, writes, concurrency, recovery.
@@ -192,7 +178,7 @@ Remove the binary, `scripts/install.sh --uninstall`, `claude plugin uninstall ko
 ## Development
 
 ```shell
-go test ./...                              # everything, the skill's and this README's examples included
+go test ./...                              # everything, the examples of the skill, this README and the tutorial included
 go test -short ./...                       # without the long concurrency and crash matrices
 python3 scripts/extract-schemas.py --check # schemas/ matches the spec
 ```

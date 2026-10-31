@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
-# Sets koan up for Claude Code, OpenCode, or both: the permission rules that
-# let the agent run koan and jq without prompting, except `koan init`, which
-# makes this machine's root, the deletes, which have no undo but a backup,
-# and `koan repair`, which changes the tree on disk; those always ask.
-# And, for OpenCode, the skill. Claude Code gets the skill from the koan
-# plugin; see the README.
+# Sets koan up for Claude Code: the permission rules that let the agent run
+# koan and jq without prompting, except `koan init`, which makes this
+# machine's root, the deletes, which have no undo but a backup, and
+# `koan repair`, which changes the tree on disk; those always ask. Claude Code
+# gets the skill from the koan plugin; see the README.
 #
-#   scripts/install.sh                         # every agent whose CLI is on PATH
-#   scripts/install.sh --claude --opencode     # just these
-#   scripts/install.sh --uninstall [--claude] [--opencode]
+#   scripts/install.sh                         # when claude is on PATH
+#   scripts/install.sh --claude                # even when it isn't
+#   scripts/install.sh --uninstall [--claude]
 #
-# Claude Code: rules in ${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json.
-# OpenCode: rules in ${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json, and
-# the skill as a link, opencode/skills/koan, to this clone's copy.
+# The rules go in ${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json.
 #
-# Safe to rerun. A settings file is backed up (to .bak.<timestamp>, a new one
-# each time) before it changes, and only koan's rules are added or removed,
-# along with the original koan's rule for `koan migrate`, which is gone; an
-# opencode.jsonc, or an opencode.json jq can't parse, is never touched: the
-# rules are printed to add by hand. Runs under macOS's /bin/bash 3.2. Needs jq.
+# Safe to rerun. The settings file is backed up (to .bak.<timestamp>, a new
+# one each time) before it changes, and only koan's rules are added or
+# removed, along with the original koan's rule for `koan migrate`, which is
+# gone. Runs under macOS's /bin/bash 3.2. Needs jq.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd -P)
@@ -32,32 +28,16 @@ claude_ask='["Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan repair:*)"]'
 # and the asks for the deletes before they were one command.
 claude_old='["Bash(koan migrate:*)", "Bash(koan task delete:*)", "Bash(koan folder delete:*)"]'
 
-oc_dir=${XDG_CONFIG_HOME:-$HOME/.config}/opencode
-oc_json=$oc_dir/opencode.json
-oc_jsonc=$oc_dir/opencode.jsonc
-oc_link=$oc_dir/skills/koan
-# The last matching rule wins in OpenCode, so the asks come after "koan *".
-oc_rules='{
-  "koan *": "allow",
-  "jq *": "allow",
-  "koan init*": "ask",
-  "koan delete *": "ask",
-  "koan repair*": "ask"
-}'
-oc_old='{"koan migrate*": "ask", "koan task delete *": "ask", "koan folder delete *": "ask"}'
-
 usage() {
-	echo "usage: $0 [--claude] [--opencode] [--uninstall]" >&2
+	echo "usage: $0 [--claude] [--uninstall]" >&2
 	exit 2
 }
 
 mode=install
 want_claude=
-want_oc=
 for arg in "$@"; do
 	case $arg in
 	--claude) want_claude=1 ;;
-	--opencode) want_oc=1 ;;
 	--uninstall) mode=uninstall ;;
 	*) usage ;;
 	esac
@@ -72,21 +52,15 @@ if [[ $mode == install ]] && ! command -v koan >/dev/null; then
 fi
 
 changed=
-failed=
 
-# Which agents: the flags, or else every agent whose CLI is on PATH
-# (installing) or that has something to clean up (uninstalling).
-if [[ -z $want_claude$want_oc ]]; then
+# Claude Code when --claude says so, or else when claude is on PATH
+# (installing) or its settings have something to clean up (uninstalling).
+if [[ -z $want_claude ]]; then
 	if [[ $mode == install ]]; then
 		if command -v claude >/dev/null; then
 			want_claude=1
 		else
 			echo "claude: skipped, no claude on PATH"
-		fi
-		if command -v opencode >/dev/null; then
-			want_oc=1
-		else
-			echo "opencode: skipped, no opencode on PATH"
 		fi
 	else
 		if [[ -e $claude_settings ]]; then
@@ -94,14 +68,9 @@ if [[ -z $want_claude$want_oc ]]; then
 		else
 			echo "claude: skipped, no $claude_settings"
 		fi
-		if [[ -e $oc_json || -e $oc_jsonc || -L $oc_link ]]; then
-			want_oc=1
-		else
-			echo "opencode: skipped, no config or skill link in $oc_dir"
-		fi
 	fi
 fi
-if [[ -z $want_claude$want_oc ]]; then
+if [[ -z $want_claude ]]; then
 	echo "Nothing to do."
 	exit 0
 fi
@@ -115,14 +84,13 @@ is_our_link() {
 }
 
 # A skill in ~/.claude/skills would load a second time: Claude Code has it from
-# the plugin, and OpenCode reads that directory too. An earlier version of this
-# script linked it there; anything else there is the user's, so stop before
+# the plugin. An earlier version of this script linked it there; anything else there is the user's, so stop before
 # changing anything.
 stray=
 for p in "$HOME/.claude/skills/koan" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR/skills/koan"}; do
 	if [[ -e $p || -L $p ]] && ! is_our_link "$p"; then
 		echo "skill: $p exists and isn't a link to $skill_src." >&2
-		echo "  It would load as a second koan skill, beside the plugin's or OpenCode's." >&2
+		echo "  It would load as a second koan skill, beside the plugin's." >&2
 		stray=1
 	fi
 done
@@ -204,105 +172,6 @@ if [[ -n $want_claude ]]; then
 	fi
 fi
 
-# oc_by_hand: prints the rules to add to, or remove from, a config this script
-# won't edit.
-oc_by_hand() {
-	echo "opencode: $1"
-	echo "  so it was left alone."
-	if [[ $mode == install ]]; then
-		echo "  Add these rules by hand, in this order, at the end of"
-		echo "  \"permission\": { \"bash\": { ... } } (in OpenCode the last matching rule"
-		echo "  wins, so they must come after any rule matching koan):"
-		jq -r 'to_entries[] | "    \(.key | tojson): \(.value | tojson),"' <<<"$oc_rules"
-		echo "  If \"bash\" is a string, such as \"ask\", make it an object with \"*\" set to"
-		echo "  that value first. Remove any \"koan migrate*\" rule: that command is gone."
-	else
-		echo "  Remove these rules from \"permission\": { \"bash\": { ... } } by hand:"
-		jq -r '(keys_unsorted[]) | "    \(tojson)"' <<<"$oc_rules"
-	fi
-}
-
-if [[ -n $want_oc ]]; then
-	oc_cur=
-	if [[ -e $oc_jsonc ]]; then
-		oc_by_hand "$oc_jsonc is JSONC, which jq can't edit without losing comments,"
-	elif [[ -e $oc_json ]] && ! jq empty "$oc_json" 2>/dev/null; then
-		oc_by_hand "$oc_json isn't plain JSON (comments or trailing commas?),"
-	elif [[ -e $oc_json ]]; then
-		oc_cur=$(<"$oc_json")
-	elif [[ $mode == install ]]; then
-		# shellcheck disable=SC2016 # "$schema" is a JSON key
-		oc_cur='{"$schema": "https://opencode.ai/config.json"}'
-	else
-		echo "opencode: no $oc_json, no rules to remove"
-	fi
-
-	if [[ -n $oc_cur ]]; then
-		if [[ $mode == install ]]; then
-			# Drop koan's rules wherever they are, then append them, so they
-			# end up last and in order. A string default ("bash": "ask")
-			# becomes the "*" rule, so it still covers everything else.
-			# shellcheck disable=SC2016 # $rules and $old are jq variables
-			filter='
-				.permission = (.permission // {} | if type == "string" then {"*": .} else . end)
-				| .permission.bash = (
-					.permission.bash // {}
-					| if type == "string" then {"*": .} else . end
-					| with_entries(select(.key as $k | ($rules | has($k)) or ($old | has($k)) | not))
-					| . + $rules)'
-		else
-			# shellcheck disable=SC2016
-			filter='
-				if (.permission | type) == "object" and (.permission.bash | type) == "object" then
-					.permission.bash |= with_entries(select(.key as $k | ($rules | has($k)) or ($old | has($k)) | not))
-					| if .permission.bash == {} then del(.permission.bash) else . end
-					| if .permission == {} then del(.permission) else . end
-				else . end'
-		fi
-		new=$(jq --argjson rules "$oc_rules" --argjson old "$oc_old" "$filter" <<<"$oc_cur")
-		# Order matters here, so don't sort: a reorder is a change.
-		if [[ -e $oc_json && $(jq -c . <<<"$oc_cur") == "$(jq -c . <<<"$new")" ]]; then
-			echo "opencode: $oc_json already up to date"
-		else
-			write_json opencode "$oc_json" "$new"
-		fi
-		if [[ $mode == install ]]; then
-			# shellcheck disable=SC2016
-			others=$(jq -r --argjson rules "$oc_rules" '
-				.permission.bash | keys_unsorted[]
-				| select(. as $k | startswith("koan") and ($rules | has($k) | not))' <<<"$new")
-			if [[ -n $others ]]; then
-				echo "opencode: warning: these rules of yours match koan commands, but come"
-				echo "  before koan's, so where both match, koan's win:"
-				printf '    %s\n' "$others"
-			fi
-		fi
-	fi
-
-	if [[ $mode == install ]]; then
-		if is_our_link "$oc_link"; then
-			echo "opencode: skill link $oc_link already in place"
-		elif [[ -e $oc_link || -L $oc_link ]]; then
-			echo "opencode: $oc_link exists and isn't a link to $skill_src; left alone." >&2
-			echo "  Move it out of the way and rerun to install the skill." >&2
-			failed=1
-		else
-			mkdir -p "$(dirname "$oc_link")"
-			ln -s "$skill_src" "$oc_link"
-			changed=1
-			echo "opencode: linked the skill, $oc_link -> $skill_src"
-		fi
-	else
-		if is_our_link "$oc_link"; then
-			rm "$oc_link"
-			changed=1
-			echo "opencode: removed the skill link $oc_link"
-		elif [[ -e $oc_link || -L $oc_link ]]; then
-			echo "opencode: $oc_link isn't a link to $skill_src; left in place"
-		fi
-	fi
-fi
-
 if [[ $mode == install ]]; then
 	# The original koan printed its version without the v, as 0.3.0.
 	version=$(koan version | jq -r '.result.version // empty')
@@ -332,4 +201,3 @@ if [[ $mode == install ]]; then
 fi
 
 [[ -n $changed ]] || echo "Nothing changed."
-[[ -z $failed ]]

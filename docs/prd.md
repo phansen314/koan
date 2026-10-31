@@ -8,7 +8,7 @@ The command specification comes after this doc, as JSON Schemas and a command re
 
 ## Goals and non-goals
 
-koan is task management for one person on one machine, driven mostly by agents such as Claude Code and OpenCode. Tasks and their structure live in a database; their notes are plain files in a directory tree that people and agents open and edit with any tool, Zed included.
+koan is task management for one person on one machine, driven mostly by agents such as Claude Code. Tasks and their structure live in a database; their notes are plain files in a directory tree that people and agents open and edit with any tool, Zed included.
 
 **Goals**
 
@@ -313,7 +313,7 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 
 - **fzf draws the picker.** koan runs fzf as an outside program, writes its candidates to fzf's standard input, and reads the choice back from fzf's standard output. fzf draws on `/dev/tty` itself, so standard output carries only the choice. fzf is the one runtime dependency koan has, and only `pick` needs it. It adds no Go dependency, it gives fuzzy matching, marking several and a preview pane for free, and the same build is already proven in the user's own fzf pickers.
 - **The candidates are koan's own reads.** pick runs `task list`, `frontier` and `folder list` in-process, with the same filters, and turns the records into lines. It adds no query, and completing references draws on the same candidates.
-- **koan binds no key.** `pick --bash` and `pick --zsh` define a widget that runs pick and types what it prints at the cursor, and the person binds it to a key in their own startup file. No key suits everyone: Alt-K, escape then `k`, is also Esc then `k` typed quickly in vi insert mode, which recalls the previous line, and on macOS a terminal sends it for Option-K only when set up to. Which key is free depends on the terminal, the keyboard and the editing mode, which only the person knows, so the README gives recipes instead.
+- **koan binds no key.** `pick --bash` and `pick --zsh` define a widget that runs pick and types what it prints at the cursor, and the person binds it to a key in their own startup file. No key suits everyone: Alt-K, escape then `k`, is also Esc then `k` typed quickly in vi insert mode, which recalls the previous line, and on macOS a terminal sends it for Option-K only when set up to. Which key is free depends on the terminal, the keyboard and the editing mode, which only the person knows, so `docs/shell.md` gives recipes instead.
 - **Previews need no call back into koan.** Before fzf starts, pick writes a short header per candidate into a private temporary directory, and fzf's preview shows that header and the notes file. The directory is removed as soon as fzf returns.
 
 **Completing references is for people too.** cobra's completion scripts call koan back for each Tab, and koan answers with the references the argument takes: paths folder by folder, IDs with their titles, and gates after a path (spec Completing references). Completion is for when you know the name; `pick` is for when you know only what it's about. Only references complete: fixed choices such as `--state`, and tags, don't.
@@ -413,7 +413,7 @@ Repair runs only when asked: as `repair`, and for its own pending steps, as the 
 
 ## Agents
 
-The koan skill is rewritten for the new model, and ships as today's does, through the Claude Code plugin and `scripts/install.sh` for OpenCode.
+The koan skill is rewritten for the new model, and ships through the Claude Code plugin.
 
 What the skill teaches, and how a coordinator hands work to workers, are the skill's to say, not this doc's. What koan gives them is in its output: `released`, `reblocked`, `gates_made`, and warnings such as `claimed-blocked` and `moved-claimed`.
 

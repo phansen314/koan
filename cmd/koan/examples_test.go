@@ -121,7 +121,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	// When the tree is damaged
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
 	{cmd: "koan repair", want: []string{`{"ok":true,"result":{"fixed":[],"left":[]},"warnings":[]}`}},
-	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"recopied":false,"clean":true,"findings":[]},"warnings":[]}`}},
+	{cmd: "koan backup ~/backups/koan-$(date +%F-%H%M%S)", want: []string{`{"ok":true,"result":{"recopied":false,"clean":true,"findings":[]},"warnings":[]}`}},
 }
 
 // TestSkill runs every command in the skill's sh blocks, as written, in a
@@ -147,17 +147,56 @@ var readmeSteps = []docStep{
 	{cmd: "koan folder create /work/api --title 'API rework'", want: []string{`{"ok":true,"result":{"id":2,"folders_made":[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}]},"warnings":[]}`}},
 	{cmd: "koan task create 'Design the endpoints' --folder /work/api --priority 2", want: []string{`{"ok":true,"result":{"id":3}}`}},
 	{cmd: "koan task create 'Build them' --folder /work/api --blocked-by 3", want: []string{`{"ok":true,"result":{"id":4,"reblocked":[]}}`}},
-	{cmd: "koan frontier --limit 10 --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1}}`}},
+	{cmd: "koan frontier --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1}}`}},
 	{cmd: `koan claim-next --extra '{"by":"me"}'`, want: []string{`{"ok":true,"result":{"task":{"id":3,"claim":{"task":3,"extra":{"by":"me"}}}}}`}},
-	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]}}`}},
-	{cmd: "koan show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
-	{cmd: "koan log list --task 3 | jq -c '[.result.events[].kind]'", want: []string{`["created","claimed","completed","unclaimed"]`}},
+	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}`}},
 
-	// Ordering folders
-	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":5,"gates_made":[{"id":6,"folder":{"id":2},"gate":"done"}]}}`}},
-	{cmd: "koan block /work/api.done --blocked-by 3,4", want: []string{`{"ok":true,"result":{"id":6,"changed":true,"reblocked":[6]}}`}},
-	{cmd: "koan why 5", want: []string{`{"ok":true,"result":{"id":5,"readiness":"blocked","blockers":[{"id":6}],"ready":[{"id":4,"claimed":false}]}}`}},
-	{cmd: "koan export /work/api | jq '.result.external[].ref'", want: []string{`"@5 (/work)"`}},
+	// Backup and repair
+	{cmd: "koan backup ~/backups/koan-$(date +%F-%H%M%S)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
+	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
+	{cmd: `cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root`},
+	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
+}
+
+// TestReadme runs the README's sh examples as TestSkill runs the skill's.
+func TestReadme(t *testing.T) {
+	runExamples(t, "README.md", nil, readmeSteps)
+}
+
+// tutorialSteps are the tutorial's sh examples, in order, on a new root:
+// the scratch root it opens with, made by koan init.
+var tutorialSteps = []docStep{
+	// 1. A folder and two tasks
+	{cmd: "koan folder create /work/api --title 'API rework'", want: []string{`{"ok":true,"result":{"id":2,"ref":"@2 (/work/api)","folders_made":[{"id":1,"path":"/work"},{"id":2,"path":"/work/api"}]},"warnings":[]}`}},
+	{cmd: "koan task create 'Design the endpoints' --folder /work/api --priority 2", want: []string{`{"ok":true,"result":{"id":3,"ref":"@3 (/work/api)"}}`}},
+	{cmd: "koan task create 'Build them' --folder /work/api --blocked-by 3", want: []string{`{"ok":true,"result":{"id":4,"ref":"@4 (/work/api)"}}`}},
+
+	// 2. What can be done now
+	{cmd: "koan frontier --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":3,"ref":"@3 (/work/api)","title":"Design the endpoints"}],"total":1,"truncated":false},"warnings":[]}`}},
+	{cmd: "koan why 4", want: []string{`{"ok":true,"result":{"id":4,"readiness":"blocked","blockers":[{"id":3,"ref":"@3 (/work/api)","state":"open"}],"ready":[{"id":3,"ref":"@3 (/work/api)","claimed":false}]},"warnings":[]}`}},
+
+	// 3. Taking and finishing work
+	{cmd: `koan claim-next --extra '{"by":"me"}'`, want: []string{`{"ok":true,"result":{"task":{"id":3,"claim":{"task":3,"extra":{"by":"me"}}}}}`}},
+	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}`}},
+
+	// 4. Notes and material
+	{cmd: "koan show 4", want: []string{`{"ok":true,"result":{"task":{"id":4,"readiness":"ready","notes_path":"~/koan-root/tree/@work/@api/@4.md"}},"warnings":[]}`}},
+	{cmd: "echo 'Move the API to v2.' > ~/koan-root/tree/@work/@api/@notes.md"},
+	{cmd: "echo 'Endpoints: /v2/users, /v2/orders' > ~/koan-root/tree/@work/@api/spec.md"},
+	{cmd: "koan where @2:spec.md", want: []string{`{"ok":true,"result":{"ref":"@2:spec.md (/work/api:spec.md)","kind":"material","id":2,"file":"~/koan-root/tree/@work/@api/spec.md"},"warnings":[]}`}},
+
+	// 5. How commands answer
+	{cmd: "koan update 4 --priority 1", want: []string{`{"ok":true,"result":{"updated":[4]},"warnings":[]}`}},
+	{cmd: "koan block 3 --blocked-by 4", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"cycle","message":"@3 would wait on itself through @4","ids":[3,4],"paths":[],
+		"problems":[{"field":"/blocked_by/0","reason":"@3 would wait on itself through @4"}],"archived":[]},"warnings":[]}`}},
+
+	// 6. Ordering folders with gates
+	{cmd: "koan block /work/api.done --blocked-by 3,4", want: []string{`{"ok":true,"result":{"id":5,"changed":true,"gates_made":[{"id":5,"folder":{"id":2},"gate":"done"}],"reblocked":[]}}`}},
+	{cmd: "koan task create 'Announce it' --folder /work --blocked-by /work/api", want: []string{`{"ok":true,"result":{"id":6,"gates_made":[]}}`}},
+	{cmd: "koan why 6", want: []string{`{"ok":true,"result":{"id":6,"readiness":"blocked","blockers":[{"id":5,"ref":"@5 (/work/api.done)","state":"open"}],"ready":[{"id":4,"ref":"@4 (/work/api)","claimed":false}]},"warnings":[]}`}},
+	{cmd: "koan export /work/api | jq '.result.external[].ref'", want: []string{`"@6 (/work)"`}},
+
+	// 7. A whole plan in one call
 	{cmd: `koan batch -i - <<'EOF'
 {"folders": [{"path": "/home/trip", "title": "Lisbon in May"}],
  "folder": "/home/trip",
@@ -166,21 +205,100 @@ var readmeSteps = []docStep{
            {"title": "Book a hotel", "blocked_by": ["$flights"]}]}
 EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home"},{"id":8,"path":"/home/trip"}],"tasks_made":[9,10],"labels":{"$flights":9},
 		"gates_made":[{"id":11,"folder":{"id":8},"gate":"start"},{"id":12,"folder":{"id":8},"gate":"done"}],"reblocked":[]},"warnings":[]}`}},
+	{cmd: "koan frontier /home --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":11,"ref":"@11 (/home/trip.start)","title":"Start"}],"total":1,"truncated":false},"warnings":[]}`}},
 
-	// Backup and restore
-	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
+	// 8. Working from a worktree
+	{cmd: "git init -q ~/code/api"},
+	{cmd: "git -C ~/code/api -c user.name=you -c user.email=you@example.com commit -q --allow-empty -m start"},
+	{cmd: "git -C ~/code/api worktree add -q ~/code/api-v2"},
+	{cmd: "koan bind /work/api ~/code/api-v2", want: []string{`{"ok":true,"result":{"marker":"~/code/api-v2/.koan/marker.json","binding":{"id":2,"path":"/work/api"},"replaced":false}}`}},
+	{cmd: "cd ~/code/api-v2 && koan context --here", want: []string{`{"ok":true,"result":{"folder":{"id":2},"ancestors":[{"id":1}],"notes":"Move the API to v2.\n",
+		"tasks":[{"id":4},{"id":5,"gate":"done"}],"marker":"~/code/api-v2/.koan/marker.json"}}`}},
+	{cmd: "koan where --file ~/code/api-v2/src/main.go", want: []string{`{"ok":true,"result":{"ref":"@2 (/work/api)","kind":"folder"}}`}},
+
+	// 9. Several agents
+	{cmd: `koan claim 4 --extra '{"by":"agent-1"}'`, want: []string{`{"ok":true,"result":{"claimed":[4]}}`}},
+	{cmd: "koan claim 4", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"claimed","ids":[4]}}`}},
+	{cmd: "koan task list --claimed --fields title,claim", want: []string{`{"ok":true,"result":{"tasks":[{"id":4,"title":"Build them","claim":{"task":4,"extra":{"by":"agent-1"}}}],"total":1}}`}},
+	{cmd: "koan unclaim 4", want: []string{`{"ok":true,"result":{"unclaimed":[4]}}`}},
+
+	// 10. History
+	{cmd: "koan log list --task 3 | jq -c '[.result.events[].kind]'", want: []string{`["created","claimed","completed","unclaimed"]`}},
+	{cmd: "koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed", want: []string{`{"ok":true,"result":{"events":[{"kind":"completed","id":3,"folder":{"id":2,"path":"/work/api"}}],"total":1,"truncated":false},"warnings":[]}`}},
+	{cmd: "koan log rotate --before 2026-10-01T00:00:00Z", want: []string{`{"ok":true,"result":{"changed":false,"count":0},"warnings":[]}`}},
+
+	// 11. Finishing and archiving
+	{cmd: "koan complete 4", want: []string{`{"ok":true,"result":{"completed":[4],"released":[5]}}`}},
+	{cmd: "koan complete /work/api.done", want: []string{`{"ok":true,"result":{"completed":[5],"released":[6]}}`}},
+	{cmd: "koan archive /work/api", want: []string{`{"ok":true,"result":{"archived":[{"id":2,"dir":"~/koan-root/archived/work/@2_api"}],"removed":[2,3,4,5]},"warnings":[]}`}},
+	{cmd: "koan show 3", exit: 1, want: []string{`{"ok":false,"error":{"kind":"not-found","ids":[3],"archived":[{"id":3,"notes_path":"~/koan-root/archived/work/@2_api/@3.md"}]}}`}},
+
+	// 12. Backup and restore
+	{cmd: "koan backup ~/backups/koan-$(date +%F-%H%M%S)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
 	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
-	{cmd: "cp -R ~/backups/koan-$(date +%F) ~/koan-root"},
+	{cmd: `cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root`},
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
 
-	// History
-	{cmd: "koan log list /work/api --since 2026-10-01T00:00:00Z --kinds completed", want: []string{`{"ok":true,"result":{"events":[{"kind":"completed","id":3,"folder":{"id":2,"path":"/work/api"}}],"total":1,"truncated":false},"warnings":[]}`}},
-	{cmd: "koan log rotate --before 2026-10-01T00:00:00Z", want: []string{`{"ok":true,"result":{"changed":false,"file":null,"first_seq":null,"last_seq":null,"count":0},"warnings":[]}`}},
+	// 13. When the tree is damaged
+	{cmd: "mv ~/koan-root/tree/@home/@trip ~/koan-root/tree/@home/@lisbon"},
+	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[{"kind":"stray-directory","ids":[8],"paths":["~/koan-root/tree/@home/@lisbon"],"repairable":true},{"kind":"missing-directory","ids":[8]}]}}`}},
+	{cmd: "koan repair", want: []string{`{"ok":true,"result":{"fixed":[{"kind":"stray-directory"},{"kind":"missing-directory"}],"left":[]},"warnings":[]}`}},
 }
 
-// TestReadme runs the README's sh examples as TestSkill runs the skill's.
-func TestReadme(t *testing.T) {
-	runExamples(t, "README.md", nil, readmeSteps)
+// TestTutorial runs the tutorial's sh examples as TestSkill runs the skill's.
+func TestTutorial(t *testing.T) {
+	runExamples(t, filepath.Join("docs", "tutorial.md"), []string{"koan init"}, tutorialSteps)
+}
+
+// TestReadmeRules checks that the README's table of permission rules lists
+// what scripts/install.sh adds, in its order, so the two can't drift.
+func TestReadmeRules(t *testing.T) {
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(testrun.Repo(), name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	script, readme := read(filepath.Join("scripts", "install.sh")), read("README.md")
+
+	// The script's rules: a JSON list each.
+	list := func(name string) []string {
+		t.Helper()
+		m := regexp.MustCompile(`(?ms)^` + name + `='(.*?)'$`).FindStringSubmatch(script)
+		if m == nil {
+			t.Fatalf("scripts/install.sh sets no %s", name)
+		}
+		var rules []string
+		if err := json.Unmarshal([]byte(m[1]), &rules); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return rules
+	}
+
+	// The README's row: File | Allow | Ask, each rule in backticks.
+	m := regexp.MustCompile("(?m)^\\| `~/.claude/settings.json`[^|]*\\|(.*)\\|$").FindStringSubmatch(readme)
+	if m == nil {
+		t.Fatal("the README's rules table has no row for ~/.claude/settings.json")
+	}
+	cells := strings.Split(m[1], "|")
+	if len(cells) != 2 {
+		t.Fatalf("the README's rules row has %d cells, want 3", len(cells)+1)
+	}
+	rules := func(cell string) []string {
+		var out []string
+		for _, r := range regexp.MustCompile("`([^`]+)`").FindAllStringSubmatch(cell, -1) {
+			out = append(out, r[1])
+		}
+		return out
+	}
+	if allow, want := rules(cells[0]), list("claude_allow"); !slices.Equal(allow, want) {
+		t.Errorf("allow: the README has %q, scripts/install.sh %q", allow, want)
+	}
+	if ask, want := rules(cells[1]), list("claude_ask"); !slices.Equal(ask, want) {
+		t.Errorf("ask: the README has %q, scripts/install.sh %q", ask, want)
+	}
 }
 
 // runExamples runs the commands of doc's sh blocks in a scratch HOME, after
@@ -198,7 +316,7 @@ func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmds := exampleCommands(string(text))
+	cmds, shown := exampleCommands(string(text))
 	var want []string
 	for _, s := range steps {
 		want = append(want, s.cmd)
@@ -231,7 +349,7 @@ func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
 		}
 	}
 
-	for _, s := range steps {
+	for n, s := range steps {
 		out, exit := sh(s.cmd)
 		var lines []string
 		if out != "" {
@@ -240,6 +358,12 @@ func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
 		if exit != s.exit || len(lines) != len(s.want) {
 			t.Errorf("%s:\nexit %d, want %d; %d lines, want %d:\n%s", s.cmd, exit, s.exit, len(lines), len(s.want), out)
 			continue
+		}
+		// What the doc prints for the command must be its output exactly.
+		if printed, ok := shown[n]; ok {
+			if got := strings.ReplaceAll(strings.TrimSuffix(out, "\n"), home, "~"); got != printed {
+				t.Errorf("%s: the output %s prints differs from the command's:\ngot:     %s\nprinted: %s", s.cmd, doc, got, printed)
+			}
 		}
 		names := exampleCommandNames(s.cmd)
 		for i, line := range lines {
@@ -280,19 +404,27 @@ func exampleEnv(home string) []string {
 }
 
 var (
-	shBlock  = regexp.MustCompile("(?s)```sh\n(.*?)```")
-	heredoc  = regexp.MustCompile(`<<-?'?(\w+)'?`)
-	trailing = regexp.MustCompile(`\s{2,}# .*$`)
+	exampleBlock = regexp.MustCompile("(?s)```(sh|json)\n(.*?)```")
+	heredoc      = regexp.MustCompile(`<<-?'?(\w+)'?`)
+	trailing     = regexp.MustCompile(`\s{2,}# .*$`)
 )
 
 // exampleCommands is every command in a doc's sh blocks, in order: each
 // line, with its heredoc when it has one, and without its trailing
 // comment, which the docs set off with two spaces or more. Blocks marked
-// shell instead of sh aren't examples to run.
-func exampleCommands(text string) []string {
-	var cmds []string
-	for _, m := range shBlock.FindAllStringSubmatch(text, -1) {
-		lines := strings.Split(strings.TrimSuffix(m[1], "\n"), "\n")
+// shell instead of sh aren't examples to run. shown maps a command's index
+// to the output a json block prints for it: the last command of the sh
+// block before it.
+func exampleCommands(text string) (cmds []string, shown map[int]string) {
+	shown = map[int]string{}
+	for _, m := range exampleBlock.FindAllStringSubmatch(text, -1) {
+		if m[1] == "json" {
+			if len(cmds) > 0 {
+				shown[len(cmds)-1] = strings.TrimSuffix(m[2], "\n")
+			}
+			continue
+		}
+		lines := strings.Split(strings.TrimSuffix(m[2], "\n"), "\n")
 		for i := 0; i < len(lines); i++ {
 			line := trailing.ReplaceAllString(lines[i], "")
 			if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
@@ -308,7 +440,7 @@ func exampleCommands(text string) []string {
 			cmds = append(cmds, line)
 		}
 	}
-	return cmds
+	return cmds, shown
 }
 
 // exampleCommandNames is the koan command each part of a command line runs,

@@ -304,7 +304,7 @@ After a `pending-step` or `stuck-step` warning, a `corrupt` error, or the user r
 - **Backups**: `koan backup <dir>` copies everything into an empty or new directory and checks the copy. Restoring is the user's: putting a backup in place of `~/koan-root`, then `koan doctor`.
 
 ```sh
-koan backup ~/backups/koan-$(date +%F)     # .result.clean is true when the copy checks out
+koan backup ~/backups/koan-$(date +%F-%H%M%S)     # .result.clean is true when the copy checks out
 ```
 
 ## Hard rules

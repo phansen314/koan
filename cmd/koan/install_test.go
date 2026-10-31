@@ -7,19 +7,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/phansen314/koan/internal/testrun"
 )
 
-// installer runs scripts/install.sh with HOME, CLAUDE_CONFIG_DIR and
-// XDG_CONFIG_HOME in a scratch directory, and a PATH of bin alone, which
-// holds the built koan, jq and the commands the script runs, so no real
-// claude or opencode is found unless a test puts a stand-in in bin.
+// installer runs scripts/install.sh with HOME and CLAUDE_CONFIG_DIR in a
+// scratch directory, and a PATH of bin alone, which holds the built koan, jq
+// and the commands the script runs, so no real claude is found unless a test
+// puts a stand-in in bin.
 type installer struct {
-	home, claude, xdg, bin string
+	home, claude, bin string
 }
 
 func newInstaller(t *testing.T) *installer {
@@ -38,7 +37,6 @@ func newInstaller(t *testing.T) *installer {
 	in := &installer{
 		home:   filepath.Join(dir, "home"),
 		claude: filepath.Join(dir, "home", "claude-config"),
-		xdg:    filepath.Join(dir, "home", "xdg"),
 		bin:    filepath.Join(dir, "bin"),
 	}
 	for _, d := range []string{in.home, in.bin} {
@@ -48,7 +46,7 @@ func newInstaller(t *testing.T) *installer {
 	}
 	in.link(t, "koan", testrun.Binary(t))
 	in.link(t, "jq", jq)
-	for _, name := range []string{"cp", "date", "dirname", "ln", "mkdir", "mv", "rm"} {
+	for _, name := range []string{"cp", "date", "dirname", "mkdir", "mv", "rm"} {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			t.Fatal(err)
@@ -83,7 +81,6 @@ func (in *installer) run(t *testing.T, args ...string) (string, int) {
 	cmd.Env = []string{
 		"HOME=" + in.home,
 		"CLAUDE_CONFIG_DIR=" + in.claude,
-		"XDG_CONFIG_HOME=" + in.xdg,
 		"PATH=" + in.bin,
 		"LC_ALL=C",
 	}
@@ -99,8 +96,6 @@ func (in *installer) run(t *testing.T, args ...string) (string, int) {
 }
 
 func (in *installer) settings() string { return filepath.Join(in.claude, "settings.json") }
-func (in *installer) ocJSON() string   { return filepath.Join(in.xdg, "opencode", "opencode.json") }
-func (in *installer) ocLink() string   { return filepath.Join(in.xdg, "opencode", "skills", "koan") }
 
 func writeFile(t *testing.T, path, text string) {
 	t.Helper()
@@ -121,8 +116,7 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// decode reads a JSON object from a file. Key order is lost: bashKeys
-// checks it where it matters.
+// decode reads a JSON object from a file.
 func decode(t *testing.T, path string) map[string]any {
 	t.Helper()
 	var v map[string]any
@@ -130,16 +124,6 @@ func decode(t *testing.T, path string) map[string]any {
 		t.Fatalf("%s: %v", path, err)
 	}
 	return v
-}
-
-// bashKeys is the order of the rules in opencode.json's permission.bash.
-func bashKeys(t *testing.T, path string) []string {
-	t.Helper()
-	out, err := exec.Command("jq", "-r", ".permission.bash | keys_unsorted[]", path).Output()
-	if err != nil {
-		t.Fatalf("%s: %v", path, err)
-	}
-	return strings.Fields(strings.ReplaceAll(string(out), " ", "_"))
 }
 
 // backups is the backups made of path.
@@ -155,7 +139,6 @@ func backups(t *testing.T, path string) []string {
 var (
 	koanAllow = []any{"Bash(koan:*)", "Bash(jq:*)"}
 	koanAsk   = []any{"Bash(koan init:*)", "Bash(koan delete:*)", "Bash(koan repair:*)"}
-	ocKoan    = []string{"koan_*", "jq_*", "koan_init*", "koan_delete_*", "koan_repair*"}
 )
 
 func TestInstallShellcheck(t *testing.T) {
@@ -170,35 +153,13 @@ func TestInstallShellcheck(t *testing.T) {
 
 func TestInstallFresh(t *testing.T) {
 	in := newInstaller(t)
-	out, code := in.run(t, "--claude", "--opencode")
+	out, code := in.run(t, "--claude")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 	want := map[string]any{"permissions": map[string]any{"allow": koanAllow, "ask": koanAsk}}
 	if got := decode(t, in.settings()); !reflect.DeepEqual(got, want) {
 		t.Errorf("settings.json: %v, want %v", got, want)
-	}
-	oc := decode(t, in.ocJSON())
-	if oc["$schema"] != "https://opencode.ai/config.json" {
-		t.Errorf("opencode.json: %v", oc)
-	}
-	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, ocKoan) {
-		t.Errorf("opencode rules %v, want %v", got, ocKoan)
-	}
-	bash := oc["permission"].(map[string]any)["bash"].(map[string]any)
-	for k, v := range map[string]string{"koan *": "allow", "jq *": "allow", "koan init*": "ask",
-		"koan delete *": "ask", "koan repair*": "ask"} {
-		if bash[k] != v {
-			t.Errorf("opencode rule %q is %v, want %s", k, bash[k], v)
-		}
-	}
-	target, err := filepath.EvalSymlinks(in.ocLink())
-	if err != nil {
-		t.Fatal(err)
-	}
-	skill, _ := filepath.EvalSymlinks(filepath.Join(testrun.Repo(), "claude", "skills", "koan"))
-	if target != skill {
-		t.Errorf("skill link points at %s, want %s", target, skill)
 	}
 	if b := backups(t, in.settings()); len(b) != 0 {
 		t.Errorf("backed up files that weren't there: %v", b)
@@ -211,15 +172,15 @@ func TestInstallFresh(t *testing.T) {
 	}
 
 	// A rerun changes nothing and backs nothing up.
-	settings, ocjson := readFile(t, in.settings()), readFile(t, in.ocJSON())
-	out, code = in.run(t, "--claude", "--opencode")
+	settings := readFile(t, in.settings())
+	out, code = in.run(t, "--claude")
 	if code != 0 || !strings.Contains(out, "Nothing changed.") || !strings.Contains(out, "already up to date") {
 		t.Errorf("rerun: exit %d:\n%s", code, out)
 	}
-	if readFile(t, in.settings()) != settings || readFile(t, in.ocJSON()) != ocjson {
-		t.Error("rerun changed the files")
+	if readFile(t, in.settings()) != settings {
+		t.Error("rerun changed the settings")
 	}
-	if b := append(backups(t, in.settings()), backups(t, in.ocJSON())...); len(b) != 0 {
+	if b := backups(t, in.settings()); len(b) != 0 {
 		t.Errorf("rerun backed up: %v", b)
 	}
 
@@ -231,13 +192,7 @@ func TestInstallFresh(t *testing.T) {
 	if got := decode(t, in.settings()); len(got) != 0 {
 		t.Errorf("settings.json after uninstall: %v", got)
 	}
-	if got := decode(t, in.ocJSON()); !reflect.DeepEqual(got, map[string]any{"$schema": "https://opencode.ai/config.json"}) {
-		t.Errorf("opencode.json after uninstall: %v", got)
-	}
-	if _, err := os.Lstat(in.ocLink()); !os.IsNotExist(err) {
-		t.Errorf("skill link still there: %v", err)
-	}
-	if len(backups(t, in.settings())) != 1 || len(backups(t, in.ocJSON())) != 1 {
+	if len(backups(t, in.settings())) != 1 {
 		t.Errorf("uninstall made no backup, or more than one:\n%s", out)
 	}
 	out, code = in.run(t, "--uninstall")
@@ -253,9 +208,7 @@ func TestInstallKeepsTheUsersSettings(t *testing.T) {
 	in := newInstaller(t)
 	settings := `{"model": "opus", "permissions": {"allow": ["Bash(ls:*)", "Bash(koan:*)"], "ask": ["Bash(koan migrate:*)", "Bash(koan task delete:*)", "Bash(rm:*)", "Bash(koan folder delete:*)"], "deny": ["Bash(curl:*)"]}}` + "\n"
 	writeFile(t, in.settings(), settings)
-	ocjson := `{"model": "x", "permission": {"edit": "ask", "bash": "ask"}}` + "\n"
-	writeFile(t, in.ocJSON(), ocjson)
-	out, code := in.run(t, "--claude", "--opencode")
+	out, code := in.run(t, "--claude")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
@@ -269,34 +222,8 @@ func TestInstallKeepsTheUsersSettings(t *testing.T) {
 	if b := backups(t, in.settings()); len(b) != 1 || readFile(t, b[0]) != settings {
 		t.Errorf("settings.json backups %v don't hold the original", b)
 	}
-	if b := backups(t, in.ocJSON()); len(b) != 1 || readFile(t, b[0]) != ocjson {
-		t.Errorf("opencode.json backups %v don't hold the original", b)
-	}
-	oc := decode(t, in.ocJSON())
-	if oc["model"] != "x" || oc["permission"].(map[string]any)["edit"] != "ask" {
-		t.Errorf("opencode.json lost the user's settings: %v", oc)
-	}
-	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, append([]string{"*"}, ocKoan...)) {
-		t.Errorf("opencode rules %v: a string bash should become the \"*\" rule, before koan's", got)
-	}
-
-	// koan's rules written before the user's move to the end, the
-	// original's migrate rule goes, and a rule of the user's that matches
-	// koan is warned about.
-	writeFile(t, in.ocJSON(), `{"permission": {"bash": {"koan repair*": "ask", "koan migrate*": "ask", "koan task delete *": "ask", "git *": "allow", "koan show*": "deny", "koan folder delete *": "ask"}}}`)
-	out, code = in.run(t, "--opencode")
-	if code != 0 {
-		t.Fatalf("exit %d:\n%s", code, out)
-	}
-	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, append([]string{"git_*", "koan_show*"}, ocKoan...)) {
-		t.Errorf("opencode rules %v", got)
-	}
-	if !strings.Contains(out, "koan show*") || !strings.Contains(out, "warning") {
-		t.Errorf("no warning of the user's koan rule:\n%s", out)
-	}
-
 	// Uninstalling leaves only the user's.
-	out, code = in.run(t, "--uninstall", "--claude", "--opencode")
+	out, code = in.run(t, "--uninstall", "--claude")
 	if code != 0 {
 		t.Fatalf("uninstall: exit %d:\n%s", code, out)
 	}
@@ -305,66 +232,20 @@ func TestInstallKeepsTheUsersSettings(t *testing.T) {
 	if got := decode(t, in.settings()); !reflect.DeepEqual(got, want) {
 		t.Errorf("settings.json after uninstall: %v\nwant %v", got, want)
 	}
-	if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, []string{"git_*", "koan_show*"}) {
-		t.Errorf("opencode rules after uninstall: %v", got)
-	}
 }
 
 // Files install.sh must not touch: it leaves them as they are and says so.
 func TestInstallRefuses(t *testing.T) {
-	t.Run("opencode.jsonc", func(t *testing.T) {
-		in := newInstaller(t)
-		jsonc := "{\n  // mine\n  \"model\": \"x\",\n}\n"
-		writeFile(t, filepath.Join(in.xdg, "opencode", "opencode.jsonc"), jsonc)
-		out, code := in.run(t, "--opencode")
-		if code != 0 {
-			t.Fatalf("exit %d:\n%s", code, out)
-		}
-		if readFile(t, filepath.Join(in.xdg, "opencode", "opencode.jsonc")) != jsonc {
-			t.Error("opencode.jsonc changed")
-		}
-		if _, err := os.Lstat(in.ocJSON()); !os.IsNotExist(err) {
-			t.Error("made an opencode.json beside the opencode.jsonc")
-		}
-		if !strings.Contains(out, "by hand") || !strings.Contains(out, `"koan repair*": "ask",`) {
-			t.Errorf("no rules to add by hand:\n%s", out)
-		}
-		if strings.Contains(out, "koan migrate*\": \"ask\",") {
-			t.Errorf("tells the user to add the migrate rule:\n%s", out)
-		}
-		// The skill still goes in.
-		if _, err := os.Lstat(in.ocLink()); err != nil {
-			t.Errorf("no skill link: %v", err)
-		}
-	})
-	t.Run("opencode.json not JSON", func(t *testing.T) {
-		in := newInstaller(t)
-		bad := "{\"model\": \"x\",}\n"
-		writeFile(t, in.ocJSON(), bad)
-		out, code := in.run(t, "--opencode")
-		if code != 0 {
-			t.Fatalf("exit %d:\n%s", code, out)
-		}
-		if readFile(t, in.ocJSON()) != bad || len(backups(t, in.ocJSON())) != 0 {
-			t.Error("opencode.json changed")
-		}
-		if !strings.Contains(out, "isn't plain JSON") {
-			t.Errorf("no word of why:\n%s", out)
-		}
-	})
 	t.Run("settings.json not JSON", func(t *testing.T) {
 		in := newInstaller(t)
 		bad := "{\"permissions\": \n"
 		writeFile(t, in.settings(), bad)
-		out, code := in.run(t, "--claude", "--opencode")
+		out, code := in.run(t, "--claude")
 		if code != 1 || !strings.Contains(out, "isn't valid JSON") {
 			t.Errorf("exit %d:\n%s", code, out)
 		}
 		if readFile(t, in.settings()) != bad || len(backups(t, in.settings())) != 0 {
 			t.Error("settings.json changed")
-		}
-		if _, err := os.Lstat(filepath.Join(in.xdg, "opencode")); !os.IsNotExist(err) {
-			t.Error("changed OpenCode's config before refusing")
 		}
 	})
 	t.Run("a koan skill of the user's", func(t *testing.T) {
@@ -372,43 +253,21 @@ func TestInstallRefuses(t *testing.T) {
 			in := newInstaller(t)
 			mine := filepath.Join(in.home, dir, "SKILL.md")
 			writeFile(t, mine, "mine\n")
-			out, code := in.run(t, "--claude", "--opencode")
+			out, code := in.run(t, "--claude")
 			if code != 1 || !strings.Contains(out, "Nothing was changed") {
 				t.Errorf("%s: exit %d:\n%s", dir, code, out)
 			}
 			if readFile(t, mine) != "mine\n" {
 				t.Errorf("%s changed", dir)
 			}
-			for _, p := range []string{in.settings(), filepath.Join(in.xdg, "opencode")} {
-				if _, err := os.Lstat(p); !os.IsNotExist(err) {
-					t.Errorf("%s: made %s before refusing", dir, p)
-				}
+			if _, err := os.Lstat(in.settings()); !os.IsNotExist(err) {
+				t.Errorf("%s: made %s before refusing", dir, in.settings())
 			}
 			// Uninstalling leaves it in place too, and goes on.
 			out, code = in.run(t, "--uninstall", "--claude")
 			if code != 0 || readFile(t, mine) != "mine\n" {
 				t.Errorf("%s: uninstall: exit %d:\n%s", dir, code, out)
 			}
-		}
-	})
-	t.Run("the skill link's place taken", func(t *testing.T) {
-		in := newInstaller(t)
-		mine := filepath.Join(in.ocLink(), "SKILL.md")
-		writeFile(t, mine, "mine\n")
-		out, code := in.run(t, "--opencode")
-		if code != 1 || !strings.Contains(out, "left alone") {
-			t.Errorf("exit %d:\n%s", code, out)
-		}
-		if readFile(t, mine) != "mine\n" {
-			t.Error("the user's skill changed")
-		}
-		// The rules still go in.
-		if got := bashKeys(t, in.ocJSON()); !slices.Equal(got, ocKoan) {
-			t.Errorf("opencode rules %v", got)
-		}
-		out, code = in.run(t, "--uninstall", "--opencode")
-		if code != 0 || readFile(t, mine) != "mine\n" || !strings.Contains(out, "left in place") {
-			t.Errorf("uninstall: exit %d:\n%s", code, out)
 		}
 	})
 }
@@ -445,14 +304,11 @@ func TestInstallPicksAgents(t *testing.T) {
 	// claude on PATH, without the plugin: its rules, and word of the plugin.
 	in.stub(t, "claude", `[ "$1 $2 $3" = "plugin list --json" ] && echo '[]'`)
 	out, code = in.run(t)
-	if code != 0 || !strings.Contains(out, "claude plugin install koan@koan") || !strings.Contains(out, "opencode: skipped") {
+	if code != 0 || !strings.Contains(out, "claude plugin install koan@koan") {
 		t.Errorf("claude on PATH: exit %d:\n%s", code, out)
 	}
 	if _, err := os.Lstat(in.settings()); err != nil {
 		t.Errorf("no settings.json: %v", err)
-	}
-	if _, err := os.Lstat(filepath.Join(in.xdg, "opencode")); !os.IsNotExist(err) {
-		t.Error("set up OpenCode with no opencode on PATH")
 	}
 
 	// With the plugin, no word of it.
@@ -461,15 +317,10 @@ func TestInstallPicksAgents(t *testing.T) {
 		t.Errorf("plugin installed, but:\n%s", out)
 	}
 
-	// Uninstalling picks what has something to clean up.
-	in.stub(t, "opencode", "true")
-	if out, _ = in.run(t); !strings.Contains(out, "linked the skill") {
-		t.Errorf("opencode on PATH:\n%s", out)
-	}
+	// Uninstalling cleans up the settings, with no claude on PATH.
 	os.Remove(filepath.Join(in.bin, "claude"))
-	os.Remove(filepath.Join(in.bin, "opencode"))
 	out, code = in.run(t, "--uninstall")
-	if code != 0 || !strings.Contains(out, "removed the skill link") || !strings.Contains(out, "claude: updated") {
+	if code != 0 || !strings.Contains(out, "claude: updated") {
 		t.Errorf("uninstall: exit %d:\n%s", code, out)
 	}
 }
