@@ -121,7 +121,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	// When the tree is damaged
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
 	{cmd: "koan repair", want: []string{`{"ok":true,"result":{"fixed":[],"left":[]},"warnings":[]}`}},
-	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"recopied":false,"clean":true,"findings":[]},"warnings":[]}`}},
+	{cmd: "koan backup ~/backups/koan-$(date +%F-%H%M%S)", want: []string{`{"ok":true,"result":{"recopied":false,"clean":true,"findings":[]},"warnings":[]}`}},
 }
 
 // TestSkill runs every command in the skill's sh blocks, as written, in a
@@ -152,7 +152,7 @@ var readmeSteps = []docStep{
 	{cmd: "koan complete 3", want: []string{`{"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}`}},
 
 	// Backup and repair
-	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
+	{cmd: "koan backup ~/backups/koan-$(date +%F-%H%M%S)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
 	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
 	{cmd: `cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root`},
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},
@@ -234,7 +234,7 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home
 	{cmd: "koan show 3", exit: 1, want: []string{`{"ok":false,"error":{"kind":"not-found","ids":[3],"archived":[{"id":3,"notes_path":"~/koan-root/archived/work/@2_api/@3.md"}]}}`}},
 
 	// 12. Backup and restore
-	{cmd: "koan backup ~/backups/koan-$(date +%F)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
+	{cmd: "koan backup ~/backups/koan-$(date +%F-%H%M%S)", want: []string{`{"ok":true,"result":{"clean":true,"findings":[]},"warnings":[]}`}},
 	{cmd: "mv ~/koan-root ~/koan-root.before-restore"},
 	{cmd: `cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root`},
 	{cmd: "koan doctor", want: []string{`{"ok":true,"result":{"findings":[]},"warnings":[]}`}},

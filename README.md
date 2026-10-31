@@ -30,7 +30,7 @@ Needs Go 1.25 or later; no cgo, no C compiler. Your agent also uses `jq` to read
 GOBIN=~/.local/bin go install github.com/phansen314/koan/cmd/koan@v0.13.1   # any GOBIN on your PATH
 ```
 
-**2. Make this machine's root** (to keep it somewhere else, see [The root](#the-root) first):
+**2. Make this machine's root:**
 
 ```sh
 koan init
@@ -56,7 +56,14 @@ Then ask your agent to plan some work, or "what should I work on next?". To try 
 
 ## A taste
 
-On a new root:
+Try it on a scratch root, so the example work stays out of your real one. Open a new shell, point `HOME` at an empty directory there, and close the shell when you're done:
+
+```shell
+export HOME="$(mktemp -d)"   # this shell only: your real ~/koan-root is untouched
+koan init
+```
+
+Then:
 
 ```sh
 koan folder create /work/api --title 'API rework'                        # makes /work too: @1, and /work/api @2
@@ -73,7 +80,7 @@ koan complete 3
 {"ok":true,"result":{"completed":[3],"unclaimed":[3],"released":[4]},"warnings":[]}
 ```
 
-The [tutorial](docs/tutorial.md) walks a whole project on a scratch root of its own: notes and material, ordering whole folders, laying out a plan in one call, working from a worktree, several agents, history, archiving, backup, and repair.
+The [tutorial](docs/tutorial.md) walks a whole project the same way: notes and material, ordering whole folders, laying out a plan in one call, working from a worktree, several agents, history, archiving, backup, and repair.
 
 ## The root
 
@@ -82,13 +89,13 @@ Everything is under `~/koan-root`:
 | Path | Holds |
 |---|---|
 | `koan.db` | the database: tasks, folders, the edges between tasks, claims, and the log of every change. Only koan writes it |
-| `tree/` | a directory per folder, named `@<name>`, holding its notes `@notes.md`, each task's notes `@<id>.md`, and anything else you keep there (your *material*, which koan never reads) |
+| `tree/` | a directory per folder, named `@<name>`, holding its notes `@notes.md`, each task's notes `@<id>.md`, its gates' notes `@start.md` and `@done.md`, and anything else you keep there (your *material*, which koan never reads) |
 | `archived/` | finished work that was archived, as files |
 | `log/` | old events of the log, moved out of the database by `koan log rotate`, as JSON Lines files |
 
 Open `~/koan-root/tree` in your editor and edit any notes file. Rename or move folders with koan, not by hand: `koan doctor` finds a hand rename and `koan repair` puts it back.
 
-To keep the root somewhere else, make `~/koan-root` a symlink to it before `koan init`. It must be on a local filesystem, never a sync folder: SQLite's WAL mode and koan's lock need one.
+The root must be on a local filesystem, never a sync folder: SQLite's WAL mode and koan's lock need one.
 
 ## Use it from Claude Code and OpenCode
 
@@ -116,7 +123,7 @@ The script is safe to rerun. It backs a settings file up, to `.bak.<timestamp>`,
 `koan backup` copies the database, the tree, the archive and the log's rotated files into a new or empty directory, while koan keeps running, and checks the copy. Copying `koan.db` by hand while koan runs is not a backup.
 
 ```sh
-koan backup ~/backups/koan-$(date +%F)   # .result.clean is true when the copy checks out
+koan backup ~/backups/koan-$(date +%F-%H%M%S)   # .result.clean is true when the copy checks out
 ```
 
 To restore, put a backup in place of `~/koan-root` and run `koan doctor`. A restore brings back the claims and the log of the backup's moment, so the IDs and log `seq` numbers issued since the backup will be issued again; the [tutorial](docs/tutorial.md#12-backup-and-restore) has the details.

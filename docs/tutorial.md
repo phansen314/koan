@@ -232,12 +232,14 @@ koan show 3
 
 Completing `@4` releases the done gate, `@5`, and completing the gate releases `@6`. With all its work complete, `/work/api` is finished, and `archive` moves it out of the tree, into `~/koan-root/archived/work/@2_api`, notes and material with it. Its tasks are gone from koan, but not lost: `show 3` is `not-found`, and says where `@3`'s notes went. `rg` searches the archive like any other files.
 
+The worktree you bound in section 8 now binds nothing: `koan context --here` there is `not-found`, and says `@2` was archived. Bind it to another folder with `koan bind`, or take the marker out with `koan unbind ~/code/api-v2`.
+
 ## 12. Backup and restore
 
 `koan backup` copies the database, the tree, the archive and the log's rotated files into a new or empty directory, while koan keeps running, and checks the copy. Copying `koan.db` by hand while koan runs is not a backup.
 
 ```sh
-koan backup ~/backups/koan-$(date +%F)
+koan backup ~/backups/koan-$(date +%F-%H%M%S)
 ```
 
 `.result.clean` is true when the copy checks out. To restore, put a backup in place of `~/koan-root`, and check it. Dated names sort in order, so this takes the newest; name another to restore that one:
@@ -265,7 +267,7 @@ koan repair
 - `stray-directory`: `@lisbon` is no folder's directory. It is `@8 (/home/trip)`'s, and `koan repair` moves it back.
 - `missing-directory`: `@8` has no directory. Its message warns that repair makes an empty one, without the notes and material. But repair moves stray directories back before it makes missing ones, so it puts `@lisbon` back as `@trip` first, and nothing is lost.
 
-`repair` fixes what it can without losing anything, and reports what it left for you. To rename the folder, use `koan mv -T /home/trip /home/lisbon`.
+`repair` fixes what it can without losing anything, and reports what it left for you. Here its `fixed` lists both findings, since moving `@lisbon` back also gave `@8` its directory. To rename the folder, use `koan mv -T /home/trip /home/lisbon`.
 
 ## Where next
 
