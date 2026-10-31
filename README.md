@@ -6,7 +6,7 @@ koan is a durable task tree for you and your agents, with the notes, specs, draf
 
 **What should I work on next?**
 
-Ask your agent, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command your agent runs prints one line of JSON, so Claude Code and OpenCode drive it natively, and your agent can lay out a whole plan, dependencies included, in one call. Or pick tasks yourself with `koan pick`.
+Ask your agent, and koan hands back the ready tasks, highest priority first: dependencies decide what's ready, and a claim makes sure two agents are never handed the same one. Every command your agent runs prints one line of JSON, so Claude Code drives it natively, and your agent can lay out a whole plan, dependencies included, in one call. Or pick tasks yourself with `koan pick`.
 
 **Where is your task list stored?**
 
@@ -43,25 +43,25 @@ claude plugin marketplace add phansen314/koan
 claude plugin install koan@koan
 ```
 
-OpenCode gets the skill from the repo's script, in step 4.
-
-**4. Decide what your agent may run without asking.** Until your settings allow them, your agent asks before each koan command. The repo suggests rules, listed under [Use it from Claude Code and OpenCode](#use-it-from-claude-code-and-opencode), and a script that applies them and links the skill for OpenCode. Or add your own by hand. The clone is only for the script:
+**4. Decide what your agent may run without asking.** Until your settings allow them, your agent asks before each koan command. The repo suggests rules, listed under [Use it from Claude Code](#use-it-from-claude-code), and a script that applies them. Or add your own by hand. The clone is only for the script:
 
 ```shell
 git clone https://github.com/phansen314/koan && cd koan
-scripts/install.sh               # every agent whose CLI is on PATH; --claude or --opencode for one
+scripts/install.sh               # adds the rules to ~/.claude/settings.json
 ```
 
 Then ask your agent to plan some work, or "what should I work on next?". To try the commands yourself, see [A taste](#a-taste) and the [tutorial](docs/tutorial.md). For shell completion and the `koan pick` picker on a key, see [docs/shell.md](docs/shell.md).
 
 ## A taste
 
-Try it on a scratch root, so the example work stays out of your real one. Open a new shell, point `HOME` at an empty directory there, and close the shell when you're done:
+Try it on a scratch root, so the example work stays out of your real one. Open a new shell, point `HOME` at a scratch directory there, and close the shell when you're done:
 
 ```shell
-export HOME="$(mktemp -d)"   # this shell only: your real ~/koan-root is untouched
-koan init
+export HOME=/tmp/koan-taste   # this shell only: your real ~/koan-root is untouched
+mkdir -p "$HOME" && koan init
 ```
+
+In any other shell, `koan` is back on your real root: run the `export` again first.
 
 Then:
 
@@ -97,26 +97,23 @@ Open `~/koan-root/tree` in your editor and edit any notes file. Rename or move f
 
 The root must be on a local filesystem, never a sync folder: SQLite's WAL mode and koan's lock need one.
 
-## Use it from Claude Code and OpenCode
+## Use it from Claude Code
 
 The [koan skill](claude/skills/koan/SKILL.md) teaches the agent the commands. Claude Code gets it from the `koan` plugin, installed in the [Quick start](#quick-start).
 
 What your agent may run without asking is your call. `scripts/install.sh`, from a clone of this repo, applies the suggested rules: every `koan` and `jq` command runs without asking, except `koan init`, which makes a root, `koan delete`, which removes work, and `koan repair`, which changes the tree on disk. Those always ask. To add them by hand instead:
 
-| Agent | File | Allow | Ask |
-|---|---|---|---|
-| Claude Code | `~/.claude/settings.json`, under `permissions` | `Bash(koan:*)`, `Bash(jq:*)` | `Bash(koan init:*)`, `Bash(koan delete:*)`, `Bash(koan repair:*)` |
-| OpenCode | `~/.config/opencode/opencode.json`, under `permission.bash` | `"koan *"`, `"jq *"` | `"koan init*"`, `"koan delete *"`, `"koan repair*"` |
-
-In OpenCode the last matching rule wins, so the asks go after the allows. For OpenCode the script also links the skill into `~/.config/opencode/skills/koan`.
+| File | Allow | Ask |
+|---|---|---|
+| `~/.claude/settings.json`, under `permissions` | `Bash(koan:*)`, `Bash(jq:*)` | `Bash(koan init:*)`, `Bash(koan delete:*)`, `Bash(koan repair:*)` |
 
 ```shell
-scripts/install.sh               # every agent whose CLI is on PATH
-scripts/install.sh --opencode    # or name them: --claude, --opencode
-scripts/install.sh --uninstall   # take it all out again
+scripts/install.sh               # when claude is on PATH
+scripts/install.sh --claude      # even when it isn't
+scripts/install.sh --uninstall   # take them out again
 ```
 
-The script is safe to rerun. It backs a settings file up, to `.bak.<timestamp>`, before changing it, and adds or removes only koan's rules. It never edits an `opencode.jsonc`, or an `opencode.json` that isn't plain JSON: it prints the rules to add by hand. It needs `jq`, and runs under macOS's `/bin/bash`.
+The script is safe to rerun. It backs the settings file up, to `.bak.<timestamp>`, before changing it, and adds or removes only koan's rules. It needs `jq`, and runs under macOS's `/bin/bash`.
 
 ## Backup and repair
 
@@ -146,17 +143,15 @@ claude plugin marketplace update koan
 claude plugin update koan@koan
 ```
 
-OpenCode reads the skill from your clone, through the link the script made: pull the clone to update it.
-
 Until 1.0, the JSON output may change in a minor release, and its release notes say what changed. A release that changes the database's format needs a fresh root, with no conversion: `koan info` then reports the state `unsupported-format`, with a `format` older than the one `koan version` reports. Back the old root up, move it aside and `koan init`.
 
 ### Coming from the original koan
 
-There is no migration: this koan starts from a fresh root. `koan init` refuses a `~/koan-root` left by the original koan (versions up to v0.3.0), with `conflict`, rule `not-a-root`, listing what it found that isn't its own, such as `@koan.json`. Move the old root aside, and start a new one:
+There is no migration: this koan starts from a fresh root. `koan init` refuses a `~/koan-root` left by the original koan (versions up to v0.3.0), with `conflict`, rule `not-a-root`, listing what it found that isn't its own, such as `@koan.json`. Move the old root aside, and start a new one whose IDs begin past the highest the old root issued, so the `@` references in the old notes never name new work:
 
 ```shell
 mv ~/koan-root ~/koan-root-v0.3   # the old tree stays readable: its notes are Markdown files
-koan init
+koan init --ids-from 1000         # any number past the old root's highest ID
 ```
 
 Then recreate the work you still want, by hand or with `koan batch`. The original's claims file, `~/.config/koan/state.json`, is read by nothing now and can be deleted. Install this koan over the old binary with the `go install` above, update the Claude Code plugin with `claude plugin marketplace update koan` and `claude plugin update koan@koan`, and rerun `scripts/install.sh`, which also removes the old `koan migrate` permission rule.

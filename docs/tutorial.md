@@ -2,12 +2,14 @@
 
 This walks one project from its first task to its archive, by hand, so you can see what your agent does when it drives koan. It needs `koan`, installed as in the README's [Quick start](../README.md#quick-start), and `jq` and `git`.
 
-Run it on a scratch root of its own, never on your real one: it fills the tree with example work, section 12 restores a backup over the root, and section 13 damages the tree on purpose. Open a new shell for it, point `HOME` at an empty directory there, and close the shell when you're done:
+Run it on a scratch root of its own, never on your real one: it fills the tree with example work, section 12 restores a backup over the root, and section 13 damages the tree on purpose. Open a new shell for it, point `HOME` at a scratch directory there, and close the shell when you're done:
 
 ```shell
-export HOME="$(mktemp -d)"   # this shell only: your real ~/koan-root is untouched
-koan init
+export HOME=/tmp/koan-tutorial   # this shell only: your real ~/koan-root is untouched
+mkdir -p "$HOME" && koan init
 ```
+
+In any other shell, `koan` is back on your real root. If you stop and come back in a new shell, run the `export` again before anything else. To start over, delete `/tmp/koan-tutorial` and run both lines again.
 
 On that new root, your IDs match the ones below: folders and tasks share one ID sequence, which starts at `@1`.
 
@@ -242,7 +244,7 @@ The worktree you bound in section 8 now binds nothing: `koan context --here` the
 koan backup ~/backups/koan-$(date +%F-%H%M%S)
 ```
 
-`.result.clean` is true when the copy checks out. To restore, put a backup in place of `~/koan-root`, and check it. Dated names sort in order, so this takes the newest; name another to restore that one:
+`.result.clean` is true when the copy checks out. To restore, put a backup in place of `~/koan-root`, and check it. This moves the root aside, so first make sure `echo $HOME` says `/tmp/koan-tutorial`. Dated names sort in order, so this takes the newest; name another to restore that one:
 
 ```sh
 mv ~/koan-root ~/koan-root.before-restore

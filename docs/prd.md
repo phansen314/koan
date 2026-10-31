@@ -8,7 +8,7 @@ The command specification comes after this doc, as JSON Schemas and a command re
 
 ## Goals and non-goals
 
-koan is task management for one person on one machine, driven mostly by agents such as Claude Code and OpenCode. Tasks and their structure live in a database; their notes are plain files in a directory tree that people and agents open and edit with any tool, Zed included.
+koan is task management for one person on one machine, driven mostly by agents such as Claude Code. Tasks and their structure live in a database; their notes are plain files in a directory tree that people and agents open and edit with any tool, Zed included.
 
 **Goals**
 
@@ -413,7 +413,7 @@ Repair runs only when asked: as `repair`, and for its own pending steps, as the 
 
 ## Agents
 
-The koan skill is rewritten for the new model, and ships as today's does, through the Claude Code plugin and `scripts/install.sh` for OpenCode.
+The koan skill is rewritten for the new model, and ships through the Claude Code plugin.
 
 What the skill teaches, and how a coordinator hands work to workers, are the skill's to say, not this doc's. What koan gives them is in its output: `released`, `reblocked`, `gates_made`, and warnings such as `claimed-blocked` and `moved-claimed`.
 
