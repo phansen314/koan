@@ -123,7 +123,7 @@ The script is safe to rerun. It backs the settings file up, to `.bak.<timestamp>
 koan backup ~/backups/koan-$(date +%F-%H%M%S)   # .result.clean is true when the copy checks out
 ```
 
-To restore, put a backup in place of `~/koan-root` and run `koan doctor`. A restore brings back the claims and the log of the backup's moment, so the IDs and log `seq` numbers issued since the backup will be issued again; the [tutorial](docs/tutorial.md#12-backup-and-restore) has the details.
+To restore, stop your agents, so nothing runs koan while the root is moved aside and copied, then put a backup in place of `~/koan-root` and run `koan doctor`. A restore brings back the claims and the log of the backup's moment, so the IDs and log `seq` numbers issued since the backup will be issued again, and a worktree bound since the backup may now bind another folder: bind it again, or unbind it. The [tutorial](docs/tutorial.md#12-backup-and-restore) has the details.
 
 ```sh
 mv ~/koan-root ~/koan-root.before-restore
