@@ -175,13 +175,19 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		for _, p := range got["problems"].([]any) {
 			problems = append(problems, p.(map[string]any)["field"].(string))
 		}
+		want := slices.Clone(e.Problems)
+		// invalid-input's problems come in no set order (spec Errors).
+		if e.Kind == "invalid-input" {
+			slices.Sort(problems)
+			slices.Sort(want)
+		}
 		var archived []any
 		for _, a := range got["archived"].([]any) {
 			archived = append(archived, a.(map[string]any)["id"])
 		}
 		return r.Kind() == e.Kind && rule == e.Rule && fmt.Sprint(got["ids"]) == fmt.Sprint(nonNil(e.IDs)) &&
 			fmt.Sprint(archived) == fmt.Sprint(e.Archived) &&
-			fmt.Sprint(got["paths"]) == fmt.Sprint(nonNilS(e.Paths)) && fmt.Sprint(problems) == fmt.Sprint(e.Problems)
+			fmt.Sprint(got["paths"]) == fmt.Sprint(nonNilS(e.Paths)) && fmt.Sprint(problems) == fmt.Sprint(want)
 	}
 	gates := func(made []model.GateMade) string {
 		var out []string

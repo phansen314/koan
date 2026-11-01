@@ -244,7 +244,7 @@ The worktree you bound in section 8 now binds nothing: `koan context --here` the
 koan backup ~/backups/koan-$(date +%F-%H%M%S)
 ```
 
-`.result.clean` is true when the copy checks out. To restore, put a backup in place of `~/koan-root`, and check it. This moves the root aside, so first make sure `echo $HOME` says `/tmp/koan-tutorial`. Dated names sort in order, so this takes the newest; name another to restore that one:
+`.result.clean` is true when the copy checks out. To restore, stop anything running koan, since from moving the root aside until the copy is done koan finds no root, or a half-copied one; then put a backup in place of `~/koan-root`, and check it. This moves the root aside, so first make sure `echo $HOME` says `/tmp/koan-tutorial`. Dated names sort in order, so this takes the newest; name another to restore that one:
 
 ```sh
 mv ~/koan-root ~/koan-root.before-restore
@@ -252,7 +252,7 @@ cp -R "$(ls -d ~/backups/koan-* | tail -n 1)" ~/koan-root
 koan doctor
 ```
 
-A backup carries the claims and the log of its moment, and a restore brings them back with it. So the IDs and log `seq` numbers issued after the backup will be issued again, and `koan log list --after` a `seq` from after it is `not-found`, until the restored root has issued that many again. The restored root's `log/` is the backup's: don't copy the replaced root's rotated files into it, since the restored root will issue their `seq` again.
+A backup carries the claims and the log of its moment, and a restore brings them back with it. So the IDs and log `seq` numbers issued after the backup will be issued again, and `koan log list --after` a `seq` from after it is `not-found`, until the restored root has issued that many again. Markers live outside the root, so a worktree bound after the backup still names the ID it was bound to, which the restored root may issue to another folder: then it binds that folder, with only a `stale-marker` warning that reads like a move. Bind such worktrees again, or unbind them. The restored root's `log/` is the backup's: don't copy the replaced root's rotated files into it, since the restored root will issue their `seq` again.
 
 ## 13. When the tree is damaged
 
