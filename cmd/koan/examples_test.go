@@ -124,12 +124,24 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "koan backup ~/backups/koan-$(date +%F-%H%M%S)", want: []string{`{"ok":true,"result":{"recopied":false,"clean":true,"findings":[]},"warnings":[]}`}},
 }
 
-// TestSkill runs every command in the skill's sh blocks, as written, in a
-// shell with the built koan first on PATH, and checks each gives what
-// skillSteps says, so the skill can't drift from the binary.
+// skillDocs are the skill's files, in the order their examples run: the
+// skill, then the references it sends the agent to, each continuing the
+// tree the one before left.
+var skillDocs = []string{
+	filepath.Join("claude", "skills", "koan", "SKILL.md"),
+	filepath.Join("claude", "skills", "koan", "references", "export.md"),
+	filepath.Join("claude", "skills", "koan", "references", "log.md"),
+	filepath.Join("claude", "skills", "koan", "references", "worktrees.md"),
+	filepath.Join("claude", "skills", "koan", "references", "moving.md"),
+	filepath.Join("claude", "skills", "koan", "references", "repair.md"),
+}
+
+// TestSkill runs every command in the sh blocks of the skill's files, as
+// written, in a shell with the built koan first on PATH, and checks each
+// gives what skillSteps says, so the skill can't drift from the binary.
 func TestSkill(t *testing.T) {
 	// The worktree the skill binds, beside the checkout it comes from.
-	runExamples(t, filepath.Join("claude", "skills", "koan", "SKILL.md"), []string{
+	runExamples(t, skillDocs, []string{
 		"koan init --ids-from 40",
 		"git init -q ~/code/api",
 		"git -C ~/code/api -c user.name=koan -c user.email=koan@example.com commit -q --allow-empty -m start",
@@ -160,7 +172,7 @@ var readmeSteps = []docStep{
 
 // TestReadme runs the README's sh examples as TestSkill runs the skill's.
 func TestReadme(t *testing.T) {
-	runExamples(t, "README.md", nil, readmeSteps)
+	runExamples(t, []string{"README.md"}, nil, readmeSteps)
 }
 
 // tutorialSteps are the tutorial's sh examples, in order, on a new root:
@@ -247,7 +259,7 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":7,"path":"/home
 
 // TestTutorial runs the tutorial's sh examples as TestSkill runs the skill's.
 func TestTutorial(t *testing.T) {
-	runExamples(t, filepath.Join("docs", "tutorial.md"), []string{"koan init"}, tutorialSteps)
+	runExamples(t, []string{filepath.Join("docs", "tutorial.md")}, []string{"koan init"}, tutorialSteps)
 }
 
 // TestReadmeRules checks that the README's table of permission rules lists
@@ -301,9 +313,9 @@ func TestReadmeRules(t *testing.T) {
 	}
 }
 
-// runExamples runs the commands of doc's sh blocks in a scratch HOME, after
-// setup, and checks them against steps.
-func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
+// runExamples runs the commands of the docs' sh blocks, in order, in a
+// scratch HOME, after setup, and checks them against steps.
+func runExamples(t *testing.T, docs []string, setup []string, steps []docStep) {
 	for _, tool := range []string{"bash", "jq", "git"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			if os.Getenv("CI") != "" {
@@ -312,11 +324,17 @@ func runExamples(t *testing.T, doc string, setup []string, steps []docStep) {
 			t.Skipf("the examples need %s", tool)
 		}
 	}
-	text, err := os.ReadFile(filepath.Join(testrun.Repo(), doc))
-	if err != nil {
-		t.Fatal(err)
+	doc := strings.Join(docs, ", ")
+	var text strings.Builder
+	for _, d := range docs {
+		b, err := os.ReadFile(filepath.Join(testrun.Repo(), d))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text.Write(b)
+		text.WriteString("\n")
 	}
-	cmds, shown := exampleCommands(string(text))
+	cmds, shown := exampleCommands(text.String())
 	var want []string
 	for _, s := range steps {
 		want = append(want, s.cmd)
