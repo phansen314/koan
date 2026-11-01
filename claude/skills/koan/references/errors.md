@@ -37,6 +37,6 @@ Warnings never stop a command, and come with failures too. **Always tell the use
 - `claimed-blocked`: the change made a claimed task wait again. Tell whoever holds the claim.
 - `moved-claimed`: a move changed a claimed task's notes path under its holder.
 - `complete-blocker`: an edge was added to a complete task's `blocked_by`. It doesn't reopen the task, so what waits on it isn't held back.
-- `stale-marker`: a worktree's marker has an old path hint; `bind` again refreshes it.
+- `stale-marker`: a worktree's marker has an old path hint; `bind` again refreshes it, unless the user restored a backup since the worktree was bound: then the ID may now name another folder, so check that `context --here` names the folder you expect before binding again ([worktrees.md](worktrees.md)).
 - `missing-notes`: a notes file is missing; it reads as empty.
 - `pending-step`, `stuck-step`, `pending-filesystem`: the tree on disk is behind the database. A pending step is finished by the next write; a stuck one needs the user ([repair.md](repair.md)).
