@@ -90,10 +90,10 @@ Its edges, each written as the task that waits, then what it waits on: `@8` → 
 
 **The rules**
 
-- **Derived, never stored.** Readiness is worked out when read, from the edges as they stand.
+- **Derived, never stored.** Readiness is worked out when read, from the edges as they stand and whether each task is open or complete, and from nothing else: never the clock, and never a task's other fields, such as its priority, tags or `extra`.
 - **A task blocks while it is open.** Gates included.
 - **Ready.** An open task is ready when nothing in its `blocked_by` blocks, and blocked otherwise. A complete task is neither.
-- **Completion.** Any task, a gate included, can be marked complete at any time, blocked or not, and reopened.
+- **Completion.** Any task, a gate included, can be marked complete at any time, blocked or not, and reopened. Complete means no longer in the way, whatever the reason: done, abandoned, failed and cancelled are all complete, and koan records no outcome. What waits on a task is released when it is complete, however it ended.
 - **A folder has no state of its own.** Its gates, when it has them, say where its work stands: a complete start gate means its work may begin, and a complete done gate means it is signed off.
 - **Finished.** A folder is finished when every task under it, at any depth, is complete, its gates and those of the folders under it included. This is containment, and it decides archiving. A folder can be finished with its done gate open, or have its done gate complete while work under it is still open.
 - **Write the edges before anything waits on them.** A gate that waits on nothing is ready at once, so a plan's joins and blockers go in together, in one batch (see Changes).
