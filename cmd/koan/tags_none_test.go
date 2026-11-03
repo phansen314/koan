@@ -3,6 +3,8 @@ package main_test
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -245,6 +247,17 @@ func TestTagsNonePick(t *testing.T) {
 		if got := p.keys(); !slices.Equal(got, c.want) {
 			t.Errorf("%q: keys %v, want %v", c.args, got, c.want)
 		}
+	}
+	// Through -i, an empty list filters nothing: no task filter at all.
+	in := filepath.Join(t.TempDir(), "input.json")
+	if err := os.WriteFile(in, []byte(`{"kinds":["folder"],"tags_none":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := p.run("-i", in); r.exit != 1 || r.out != "" || r.err != "" {
+		t.Errorf("empty: exit %d, stdout %q, stderr %q", r.exit, r.out, r.err)
+	}
+	if got, want := p.keys(), []string{"@1", "@2", "@3", "@4"}; !slices.Equal(got, want) {
+		t.Errorf("empty: keys %v, want %v", got, want)
 	}
 	p.run("--tags-any", "a", "--tags-none", "a").failed(t, 1, "invalid-input", `"a"`)
 	p.run("--tags-all", "a", "--tags-none", "a").failed(t, 1, "invalid-input", `"a"`)
