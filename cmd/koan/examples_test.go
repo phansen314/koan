@@ -89,7 +89,7 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 		want: []string{`{"ok":true,"result":{"tasks":[{"id":47,"title":"Write the migration"}],"total":8,"truncated":false},"warnings":[]}`}},
 	{cmd: `koan task list --claimed --fields ref,claim --limit null | jq -c 'if .ok then .result.tasks |= map(select(.claim.claimed_at < "2026-11-01T00:00:00Z")) else . end'`,
 		want: []string{`{"ok":true,"result":{"tasks":[],"total":0,"truncated":false},"warnings":[]}`}},
-	{cmd: `koan task list --fields ref,extra --limit null | jq -c 'if .ok then .result.tasks |= map(select(.extra.jira.project == "WEB")) else . end'`,
+	{cmd: `koan task list --fields ref,extra --limit null | jq -c 'if .ok then .result.tasks |= map(select(.extra.jira.project? == "WEB")) else . end'`,
 		want: []string{`{"ok":true,"result":{"tasks":[],"total":8,"truncated":false},"warnings":[]}`}},
 	{cmd: "koan export /work/api > api.json"},
 	{cmd: "jq .ok api.json", want: []string{"true"}},

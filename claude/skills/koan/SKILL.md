@@ -204,7 +204,7 @@ koan folder list /work --direct --fields path,title,open,finished
 ```sh
 koan task list --fields ref,title --limit null | jq -c 'if .ok then .result.tasks |= map(select(.title | test("migration"; "i"))) else . end'   # titles containing a word, ignoring case
 koan task list --claimed --fields ref,claim --limit null | jq -c 'if .ok then .result.tasks |= map(select(.claim.claimed_at < "2026-11-01T00:00:00Z")) else . end'   # claims older than a time: koan's timestamps sort as text
-koan task list --fields ref,extra --limit null | jq -c 'if .ok then .result.tasks |= map(select(.extra.jira.project == "WEB")) else . end'   # a value in extra
+koan task list --fields ref,extra --limit null | jq -c 'if .ok then .result.tasks |= map(select(.extra.jira.project? == "WEB")) else . end'   # a value in extra
 ```
 
 `--limit null` lets the filter see every task, and `total` stays the count before it. With a lower `--limit`, `truncated` true means the filter never saw `total` minus the limit of them: say how many.
