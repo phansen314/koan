@@ -108,9 +108,9 @@ koan show 42                                  # the whole task: .result.task, wi
 koan complete 42                              # ends the claim; .result.released: [43]
 ```
 
-- **Work order** is highest `priority` first, `null` last, then lowest ID. Scope the frontier, and `claim-next`, with the folder as the subject, `--direct`, `--tags-any`, `--tags-all` and `--tags-none`. With no folder they look in the whole tree, the root; every list, `context` and `export` do the same. In a worktree, `--here` looks under its folder: `koan frontier --here`.
+- **Work order** is highest `priority` first, `null` last, then lowest ID. Scope the frontier, and `claim-next`, with the folder as the subject, `--direct`, `--tags-any`, `--tags-all` and `--tags-none`. With no folder they look in the whole tree, the root; every list, `context` and `export` do the same. In a worktree, `--here` looks under its folder: `koan frontier --here --tags-none waiting,deferred`.
 - **Starting work in a worktree, run `koan context --here` first**, and print it as is: a bare `koan context` briefs the root, never the worktree's folder. It gives the folder, the folders above it, its notes and its open tasks. Before binding one, or when its marker looks wrong, read [references/worktrees.md](references/worktrees.md).
-- `why` gives a blocked task's open `blockers`, and in `ready` the ready tasks it waits on at any depth, each with its `id`, `ref` and whether it is `claimed`: what to work on to move it. Don't walk `blocked_by` by hand.
+- `why` gives a blocked task's open `blockers`, and in `ready` the ready tasks it waits on at any depth, each with its `id`, `ref` and whether it is `claimed`: what to work on to move it. Don't walk `blocked_by` by hand. It takes no tag filter, so a task it names may be parked: `show` one before starting it.
 - **Notes are plain files.** Read and edit a task's at its `notes_path` with your file tools; there is no koan command for notes after creation. A folder's `@notes.md` is where what the work is about goes.
 - `complete` reports in `released` the open tasks it made ready, and in `unclaimed` the claims it ended; `reopen` reports in `reblocked` the ready tasks it made wait again. Tell the user about these when they matter.
 - **When the last open task in a folder is complete**, or the user says its work has shipped, offer to archive it ([references/moving.md](references/moving.md)). Never archive on your own initiative.
@@ -126,7 +126,7 @@ koan task list --claimed --limit 20 --fields title,claim   # what is taken, by w
 koan unclaim 43                               # you won't do it after all: .result.unclaimed is [43]
 ```
 
-- **Claim a task before starting it**, whether you picked it or the user named it. `claim-next` picks and claims in one step and returns the task's record in `task`, its `claim` included, so prefer it when the choice is yours. Its `task` is `null` when nothing ready is free. `claim` and `unclaim` take several tasks, as one change.
+- **Claim a task before starting it**, whether you picked it or the user named it. `claim-next` picks and claims in one step and returns the task's record in `task`, its `claim` included, so prefer it when the choice is yours, with `--tags-none waiting,deferred` to leave parked work out. Its `task` is `null` when nothing ready is free among what it was asked to look at: that can mean only parked work is left, so check with `koan task list --tags-any waiting,deferred --readiness ready` before saying there's nothing to do. `claim` and `unclaim` take several tasks, as one change.
 - **On `claimed`**, someone else has it: pick another if the choice was yours; tell the user if they named it.
 - **`complete` ends the claim**, and says so in `unclaimed`. If you stop without finishing, `unclaim` it.
 - **A claim is a reservation, not a lock.** It refuses other claims and nothing else, never expires, and koan doesn't know who made it: `claim.extra` is whatever the claimer stored. So the rules are yours to keep: never change, move, complete or unclaim a task someone else has claimed, or edit its notes, unless the user says so. Whoever holds the claim edits the notes.
@@ -207,7 +207,7 @@ koan task list --claimed --fields ref,claim --limit null | jq -c 'if .ok then .r
 koan task list --fields ref,extra --limit null | jq -c 'if .ok then .result.tasks |= map(select(.extra.jira.project? == "WEB")) else . end'   # a value in extra
 ```
 
-`--limit null` lets the filter see every task, and `total` stays the count before it. With a lower `--limit`, `truncated` true means the filter never saw `total` minus the limit of them: say how many.
+These look at open tasks; add `--state open,complete` for complete ones too. `--limit null` lets the filter see every task, and `total` stays the count before it. With a lower `--limit`, `truncated` true means the filter never saw `total` minus the limit of them: say how many.
 
 **`koan export` is for tools, not for reading**: it has no `--limit` and no `--fields`, and at 10,000 tasks it is megabytes, so never print it into your context. Before running it, read [references/export.md](references/export.md).
 
