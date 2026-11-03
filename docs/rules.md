@@ -90,11 +90,11 @@ Its edges, each written as the task that waits, then what it waits on: `@8` → 
 
 **The rules**
 
-- **Derived, never stored.** Readiness is worked out when read, from the edges as they stand.
+- **Derived, never stored.** Readiness is worked out when read, from the edges as they stand and whether each task is open or complete, and from nothing else: never the clock, and never a task's other fields, such as its priority, tags or `extra`.
 - **A task blocks while it is open.** Gates included.
 - **Ready.** An open task is ready when nothing in its `blocked_by` blocks, and blocked otherwise. A complete task is neither.
-- **Completion.** Any task, a gate included, can be marked complete at any time, blocked or not, and reopened.
-- **A folder has no state of its own.** Its gates, when it has them, say where its work stands: a complete start gate means its work may begin, and a complete done gate means it is signed off.
+- **Completion.** Any task, a gate included, can be marked complete at any time, blocked or not, and reopened. Complete means no longer in the way, whatever the reason: done, abandoned, failed and cancelled are all complete, and koan records no outcome. It stops blocking what waits on it, however it ended.
+- **A folder has no state of its own.** Its gates, when it has them, say where its work stands: a complete start gate means its work may begin, and a complete done gate means what waits on the folder may go ahead.
 - **Finished.** A folder is finished when every task under it, at any depth, is complete, its gates and those of the folders under it included. This is containment, and it decides archiving. A folder can be finished with its done gate open, or have its done gate complete while work under it is still open.
 - **Write the edges before anything waits on them.** A gate that waits on nothing is ready at once, so a plan's joins and blockers go in together, in one batch (see Changes).
 
@@ -179,7 +179,7 @@ What a reference resolves to then holds:
 
 - **Stored edges name tasks by ID.** A gate is stored by its own ID, however it was written, so a later move or rename never changes what an edge names.
 - **koan names tasks and folders by ID** in everything it returns, and marks a gate as its folder's start or done gate. `pick` alone writes a gate by its folder and end (References). `where` gives the kept-text pair, the `@<id>` form with its path.
-- **In kept text, the ID wins.** Reading `@9 (/work/phase2)`, `@9` decides, and a path that no longer matches is a stale hint. koan never reads notes, so this is a convention, not a check.
+- **In kept text, the ID wins.** Reading `@9 (/work/phase2)`, `@9` decides, and a path that no longer matches is a stale hint. koan never interprets notes, so this is a convention, not a check.
 
 ## Fields
 
@@ -205,7 +205,7 @@ A folder's place in the tree (its parent) is structure, not a field: moving it c
 | `title` | 1–200 characters after trimming whitespace (Unicode `White_Space`), with no control characters or line breaks. |
 | `priority` | An integer or `null`. Higher comes first; `null` ranks last. |
 | `created_at` | When the task was made. Never changes. |
-| `completed_at` | `null` while the task is open, a timestamp once it is complete. This alone is the task's state; complete covers cancelled too. |
+| `completed_at` | `null` while the task is open, a timestamp once it is complete. This alone is the task's state. |
 | `updated_at` | When one of these fields last changed, by whatever change: an entry added to or removed from its `blocked_by` by a change to another task counts, so `X --blocks @42` moves `@42`'s and not X's. A move or a notes edit does not. |
 | `blocked_by` | The set of tasks it waits on, gates included. Never itself. |
 | `tags` | A set of labels matching `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`: the folder pattern, lowercase only. |
@@ -273,7 +273,7 @@ The log is the history of the tree: an event for each thing every change did, in
 
 - **Every change is logged, and only what it changes.** A change records its events in the same change (I13): one for each task, gate, folder, edge and claim whose fields, state, place or edges it changes, and one for each change it makes to what the rules derive, below. A task whose `updated_at` moves because one of its edges went records that edge's event, and nothing more. A subject or an edge it leaves as it was records nothing: `block 44 --blocked-by 42,43`, where `@44` already waits on `@42`, records the edge to `@43` alone, and completing a task that is already complete records nothing for it. So a change that changes nothing records nothing, and neither does a refused one. Only changes to the database are logged: `init` and rotating the log record their own, as the PRD says, while reads, binding a marker, `repair` and `backup` record nothing.
 - **Derived state is recorded, never stored.** Readiness and finished are still worked out when read, from the edges and states as they stand (Readiness). The log is history: it records when a change altered them, comparing the state before the change with the state after it, never between, so a state that changes and changes back within one change records nothing.
-- **Notes never appear.** koan never reads them.
+- **Notes never appear.** koan never interprets them.
 - **An event names what it is about, and where, as they were then.** It names its task or folder by ID, and where it happened by the folder's ID and path as they were at that moment, so it reads the same after moves, renames, deletes and archiving. An update records each field it changes, before and after; a delete or an archive records what left with its kept text and title, since its ID never resolves again.
 - **Rotating moves events, never changes them.** The oldest events can be moved out of the log into files, whole and in order; a change's events always move together.
 

@@ -17,6 +17,7 @@ koan is task management for one person on one machine, driven mostly by agents s
 - **Fast at the sizes one person reaches.** Every command finishes within 100 ms at 10,000 live tasks and 100,000 events in the log on the CI machine, whose OS is named beside the benchmarks; archiving keeps the live set well below that, and `log rotate` the log. Commands whose work grows with the whole tree or their input are budgeted apart: `doctor` and `repair` within 1 s, `export` within 200 ms, a `batch` within 100 ms plus 1 ms a part, `log list --limit null` and `log rotate` within 1 s at 100,000 events, and `backup` not at all, since it copies every file.
 - **Built for agents.** Every command prints one line of JSON, every failure has a kind, and every write says what it changed and records it in the log. Help, shell completion and `pick`, which are for people, print plain text (spec Invocation).
 - **Simple to install.** One `go install`, one binary, no system libraries. `pick` alone needs fzf on `PATH` (Command surface).
+- **A small model, extended through `extra`.** koan adds a concept to its model only if it decides readiness or which work is handed out, or if an invariant must protect it. Tasks, folders, edges, gates, claims, priorities and tags are those concepts. Beside them it keeps notes it never interprets, material it never reads, an archive of what has left the tree, a log of its changes, and markers that tie a directory to a folder. New data, such as a ticket number or a workflow status, goes in `extra`, for the programs and conventions that use it; references to other work, and links to a PR or ticket, go in notes. A proposal for the core answers one question: what would koan have to do with it?
 
 **Non-goals**
 
@@ -24,6 +25,7 @@ koan is task management for one person on one machine, driven mostly by agents s
 - **More than one machine or one tree.** No sync, no shared trees, no second tree per user.
 - **Migrating today's trees.** The rewrite starts fresh with `koan init`.
 - **Windows.** Linux and macOS only. The root may be on any local filesystem of theirs, whether it ignores case or not.
+- **Time.** koan never decides anything about work from the clock: not readiness, not order, not what a read returns. It reads the clock only to stamp when something happened (`created_at`, `completed_at`, `updated_at`, `claimed_at`, an archived item's `archived_at`, each event's `at`), to refuse a `log rotate --before` in the future, and to bound the waits for the write lock and the database before `busy`. Due dates, deferral, reminders and recurring work belong to other programs, which keep their dates in `extra` and act through koan's commands, so every change they make is logged.
 
 ## What changes from today
 
@@ -330,6 +332,13 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 - **Nothing new to read.** Its folders and tasks are the records every read returns, and its edges take Archive JSON's shape and order, so it adds no record and no shared type. It prints JSON only: Graphviz, Mermaid and D2 are drawn from it by tools outside koan.
 - **Budgeted apart.** Its work grows with the subtree, and `export /` prints every live task as a whole record, about 7 MB at 10,000 tasks. The spikes never printed every task. The nearest measurement, `list` filling every field for all 10,000 tasks while printing the 4,223 open ones (3.0 MB), took 66.5 ms, and encoding costs about 5 ms per 1.5 MB, so `export /` comes to an estimated 85–90 ms on the spike machine (docs/spikes.md). 200 ms (Goals) gives it the margin the other whole-tree reads have under 100 ms. It is an estimate, which the Performance benchmarks check.
 
+**koan filters on what it models.** Every read for agents prints JSON, so finding tasks by title, by the age of a claim or by a value in `extra` is a pipe to `jq`, and koan adds no query language.
+
+- **Its filters are its own structure:** where work is (the folder, `--file`, `--here`, `--direct`), where it stands (`--state`, `--readiness`, `--claimed`) and which tags it holds (`--tags-any`, `--tags-all`), so `total` and `--limit` count the matches. `log list`'s do the same for the log.
+- **`claim-next` must filter in koan:** it chooses and claims in one change, so nothing outside can narrow its choice.
+- **`pick` and completion share these filters**, since nothing can sit between their reads and fzf or the shell.
+- **Anything else is `jq`'s**, in the pipe or in the program that reads the output. A proposed filter on what koan doesn't model stays out, and one on what it does model needs a reason of its own.
+
 **The log is for catching up and looking back.** Every change records what it did (rules The log); `koan log list` reads the events back, oldest first, and `koan log rotate` moves the oldest out to files (Rotating the log). Both sit under `log`: the log is neither a task nor a folder, and no reference names it, which is where the command line keeps a noun (spec Invocation).
 
 - **`--after` is the cursor.** Every result carries `last_seq`, the highest `seq` it returned, and an agent that keeps it asks for `--after` it next time: no clock, and nothing seen twice. Nothing is missed either, unless `log rotate` moved it first: `log list` reads only the table, so the full history since a `seq` below the table's oldest is the files in `log/` that cover it, then the table. The `rotated` event comes after every event the table kept, and a filter can leave it out, so an agent back after a long gap asks once `--after` its `last_seq` with no filter and `--limit 1`: since `seq` has no gap in the table, a first `seq` above `last_seq` + 1 means rotation moved what lies between, which is in the files of `log/`. It then asks its filtered question as usual. Cutting well in the past, such as a month back, keeps every cursor still in use out of reach. A result cut short by `--limit` is followed by asking again from its `last_seq`. `--since` is for people, who think in times.
@@ -509,3 +518,5 @@ Anything that would change a rule goes to the rules doc, not to this list. Work 
 | Only changes to the database logged | events for `bind`, `unbind`, `repair` and `backup`, committed after their work on disk, which a crash between could leave done and not recorded, and which made `bind` and `unbind` take the lock |
 | init --ids-from N, carrying the ID sequence from root to root | IDs from 1 in every root, so each format change before 1.0 makes a second @42 |
 | `export` returns a folder's whole subtree, every state, gates included, with no limit and nothing to narrow it | the 100-result default `task list`, `frontier` and `folder list` keep for an agent's context, which would cut a graph short; and filters of its own, which jq already gives |
+| Dates in `extra`, for other programs | due dates, deferral, reminders or recurring work in koan |
+| Filters in koan on what it models; `jq` for the rest | a filter per field, a title search, or a query language |

@@ -27,6 +27,7 @@ koan update 48 --tags-add cancelled && koan complete 48 && koan archive 48   # o
 koan show 48                                        # not-found: .error.archived says where it went
 ```
 
+- **Before cancelling a task**, check what waits on it, as the skill's Conventions say.
 - **When the last open task in a folder is complete**, or the user says its work has shipped, offer to archive it. Never archive on your own initiative. A folder archives when every task under it is complete, gates included; otherwise `not-finished` lists the open tasks in `.error.ids`: ask the user, don't complete them to get past it.
 - `archive` takes several tasks and folders, as one change. `.result.archived` says where each went, in a move's shape plus its `json`, and `.result.removed` is every ID that left the tree. They never resolve again: a command naming one fails `not-found`, saying where it went. A worktree bound to an archived folder binds nothing: mention it, so the user can remove the worktree.
 - **Finding archived work**: search it with `rg '<text>' ~/koan-root/archived`. Each item keeps its ID in its name, such as `archived/work/@41_api/` for a folder or `archived/work/api/@48.md` for a task, with its fields in the `.json` beside it. Read archived files; never change them. To pick the work up again, make new tasks from what you find.
