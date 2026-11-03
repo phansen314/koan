@@ -217,6 +217,6 @@ koan task list --fields title,extra --limit 200 | jq -c 'if .ok then .result |= 
 
 ## Conventions
 
-- **Cancelled**: tag it, then complete it: `koan update 48 --tags-add cancelled && koan complete 48`. Before completing a task that didn't succeed, check what waits on it (`koan show <id>`, its `blocks`). If anything does, ask the user whether that work should still go ahead, or wait on something new first: completing releases it either way.
+- **Cancelled**: tag it, then complete it: `koan update 48 --tags-add cancelled && koan complete 48`. Before completing a task that didn't succeed, check what waits on it (`koan show <id>`, the entries in `blocks` still `open`). If anything does, ask the user whether that work should still go ahead, or wait on something new first: completing stops it blocking that work either way.
 - **Waiting on someone**: `--extra-merge '{"status":"waiting","on":"vendor quote"}'`; clear it with `--extra-remove status --extra-remove on`.
 - **Where a task came from**: links to the PR, issue or ticket go in its notes, not its title.
