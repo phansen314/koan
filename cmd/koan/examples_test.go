@@ -44,10 +44,10 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":40,"path":"/wor
 		"labels":{"$build":43,"$design":42},"gates_made":[{"id":45,"gate":"start"},{"id":46,"gate":"done"}],"reblocked":[]},"warnings":[]}`}},
 
 	// The daily loop
-	{cmd: "koan frontier --limit 10 --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":45,"ref":"@45 (/work/api.start)","title":"Start"}],"total":1,"truncated":false}}`}},
+	{cmd: "koan frontier --tags-none waiting,deferred --limit 10 --fields ref,title", want: []string{`{"ok":true,"result":{"tasks":[{"id":45,"ref":"@45 (/work/api.start)","title":"Start"}],"total":1,"truncated":false}}`}},
 	{cmd: "koan why 43", want: []string{`{"ok":true,"result":{"id":43,"readiness":"blocked","ready":[{"id":45,"claimed":false}]}}`}},
 	{cmd: "koan complete 45", want: []string{`{"ok":true,"result":{"completed":[45],"unclaimed":[],"released":[42]}}`}},
-	{cmd: `koan claim-next /work --extra '{"by":"agent-1"}'`, want: []string{`{"ok":true,"result":{"task":{"id":42,"claim":{"task":42,"extra":{"by":"agent-1"}}}}}`}},
+	{cmd: `koan claim-next /work --tags-none waiting,deferred --extra '{"by":"agent-1"}'`, want: []string{`{"ok":true,"result":{"task":{"id":42,"claim":{"task":42,"extra":{"by":"agent-1"}}}}}`}},
 	{cmd: "koan show 42", want: []string{`{"ok":true,"result":{"task":{"id":42,"title":"Design the endpoints","notes_path":"~/koan-root/tree/@work/@api/@42.md"}},"warnings":[]}`}},
 	{cmd: "koan complete 42", want: []string{`{"ok":true,"result":{"completed":[42],"unclaimed":[42],"released":[43]}}`}},
 
@@ -63,7 +63,7 @@ EOF`, want: []string{`{"ok":true,"result":{"folders_made":[{"id":40,"path":"/wor
 	{cmd: `koan task create 'Investigate the flaky test' --notes-file - <<'EOF'
 Seen in CI on 2026-10-19; fails about 1 run in 20.
 EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":"~/koan-root/tree/@48.md"}}`}},
-	{cmd: `koan update 48 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'`, want: []string{`{"ok":true,"result":{"updated":[48]}}`}},
+	{cmd: `koan update 48 --priority null --tags-add waiting --extra-merge '{"waiting":{"on":"vendor quote"}}'`, want: []string{`{"ok":true,"result":{"updated":[48]}}`}},
 	{cmd: "koan block 44 --blocked-by 48", want: []string{`{"ok":true,"result":{"id":44,"changed":true}}`}},
 	{cmd: "koan unblock 44 --blocked-by 48", want: []string{`{"ok":true,"result":{"id":44,"changed":true}}`}},
 	{cmd: "koan block 42 --blocked-by 43", exit: 1, want: []string{`{"ok":false,"error":{"kind":"conflict","rule":"cycle","ids":[42,43]}}`}},
@@ -85,8 +85,12 @@ EOF`, want: []string{`{"ok":true,"result":{"id":48,"ref":"@48 (/)","notes_path":
 	{cmd: "koan task list --limit 20 --fields ref,title,readiness", want: []string{`{"ok":true,"result":{"tasks":[{"id":48},{"id":44},{"id":43},{"id":46},{"id":47},{"id":51},{"id":52},{"id":53}],"total":8,"truncated":false}}`}},
 	{cmd: "koan task list --state complete --limit 1 --fields id", want: []string{`{"ok":true,"result":{"tasks":[{"id":42}],"total":2,"truncated":true}}`}},
 	{cmd: "koan folder list /work --direct --fields path,title,open,finished", want: []string{`{"ok":true,"result":{"folders":[{"id":41,"path":"/work/api"},{"id":49,"path":"/work/web"}],"total":2}}`}},
-	{cmd: `koan task list --fields title,extra --limit 200 | jq -c 'if .ok then .result |= {tasks: (.tasks | map(select(.extra.status == "waiting"))), unscanned: (.total - (.tasks | length))} else . end'`,
-		want: []string{`{"ok":true,"result":{"tasks":[{"id":48,"title":"Investigate the flaky test","extra":{"status":"waiting"}}],"unscanned":0},"warnings":[]}`}},
+	{cmd: `koan task list --fields ref,title --limit null | jq -c 'if .ok then .result.tasks |= map(select(.title | test("migration"; "i"))) else . end'`,
+		want: []string{`{"ok":true,"result":{"tasks":[{"id":47,"title":"Write the migration"}],"total":8,"truncated":false},"warnings":[]}`}},
+	{cmd: `koan task list --claimed --fields ref,claim --limit null | jq -c 'if .ok then .result.tasks |= map(select(.claim.claimed_at < "2026-11-01T00:00:00Z")) else . end'`,
+		want: []string{`{"ok":true,"result":{"tasks":[],"total":0,"truncated":false},"warnings":[]}`}},
+	{cmd: `koan task list --fields ref,extra --limit null | jq -c 'if .ok then .result.tasks |= map(select(.extra.jira.project == "WEB")) else . end'`,
+		want: []string{`{"ok":true,"result":{"tasks":[],"total":8,"truncated":false},"warnings":[]}`}},
 	{cmd: "koan export /work/api > api.json"},
 	{cmd: "jq .ok api.json", want: []string{"true"}},
 

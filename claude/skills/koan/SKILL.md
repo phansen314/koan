@@ -100,15 +100,15 @@ The result names everything by ID: `folders_made`, parents first (`/work` @40, `
 ## The daily loop
 
 ```sh
-koan frontier --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order: only @45, the start gate
+koan frontier --tags-none waiting,deferred --limit 10 --fields ref,title   # ready, unclaimed tasks, in work order, parked work left out: only @45, the start gate
 koan why 43                                   # .result.ready: @45, what to finish to move @43
 koan complete 45                              # .result.released: [42], the tasks it made ready
-koan claim-next /work --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
+koan claim-next /work --tags-none waiting,deferred --extra '{"by":"agent-1"}'   # claims @42, the first of the frontier
 koan show 42                                  # the whole task: .result.task, with its notes_path
 koan complete 42                              # ends the claim; .result.released: [43]
 ```
 
-- **Work order** is highest `priority` first, `null` last, then lowest ID. Scope the frontier, and `claim-next`, with the folder as the subject, `--direct`, `--tags-any` and `--tags-all`. With no folder they look in the whole tree, the root; every list, `context` and `export` do the same. In a worktree, `--here` looks under its folder: `koan frontier --here`.
+- **Work order** is highest `priority` first, `null` last, then lowest ID. Scope the frontier, and `claim-next`, with the folder as the subject, `--direct`, `--tags-any`, `--tags-all` and `--tags-none`. With no folder they look in the whole tree, the root; every list, `context` and `export` do the same. In a worktree, `--here` looks under its folder: `koan frontier --here`.
 - **Starting work in a worktree, run `koan context --here` first**, and print it as is: a bare `koan context` briefs the root, never the worktree's folder. It gives the folder, the folders above it, its notes and its open tasks. Before binding one, or when its marker looks wrong, read [references/worktrees.md](references/worktrees.md).
 - `why` gives a blocked task's open `blockers`, and in `ready` the ready tasks it waits on at any depth, each with its `id`, `ref` and whether it is `claimed`: what to work on to move it. Don't walk `blocked_by` by hand.
 - **Notes are plain files.** Read and edit a task's at its `notes_path` with your file tools; there is no koan command for notes after creation. A folder's `@notes.md` is where what the work is about goes.
@@ -143,7 +143,7 @@ koan task create 'Write the migration' --folder /work/api --priority 1 --tags db
 koan task create 'Investigate the flaky test' --notes-file - <<'EOF'
 Seen in CI on 2026-10-19; fails about 1 run in 20.
 EOF
-koan update 48 --priority null --tags-add urgent --extra-merge '{"status":"waiting"}'
+koan update 48 --priority null --tags-add waiting --extra-merge '{"waiting":{"on":"vendor quote"}}'
 koan block 44 --blocked-by 48              # @44 waits on @48 too
 koan unblock 44 --blocked-by 48
 koan block 42 --blocked-by 43              # refused: conflict, rule cycle, since @43 waits on @42
@@ -196,14 +196,18 @@ koan folder list /work --direct --fields path,title,open,finished
 
 - `--fields` gives `id` first, then the fields named, in the record's order. Task fields: `ref`, `gate`, `title`, `priority`, `folder`, `created_at`, `completed_at`, `updated_at`, `state`, `readiness`, `blocked_by`, `blocks`, `tags`, `extra`, `claim`, `notes_path`. Folder fields: `ref`, `name`, `path`, `title`, `extra`, `gates`, `open`, `complete`, `finished`, `notes_path`, `dir`.
 - `--limit` defaults to 100, and `--limit null` lists everything. The result always has `total` and `truncated`: when `truncated` is true you got the first `--limit` of `total`. Say so rather than presenting them as all.
-- `task list` filters by `--state open,complete` (open by default), `--readiness ready,blocked`, `--claimed` or `--claimed=false`, `--tags-any a,b`, `--tags-all a,b`, and the folder as the subject, with `--direct` for only its own tasks, or `--here` for the folder the working directory is in.
+- `task list` filters by `--state open,complete` (open by default), `--readiness ready,blocked`, `--claimed` or `--claimed=false`, `--tags-any a,b`, `--tags-all a,b`, `--tags-none a,b`, and the folder as the subject, with `--direct` for only its own tasks, or `--here` for the folder the working directory is in.
 - `show` gives one whole record, `.result.task` or `.result.folder` by what the reference names. A record is exact only as of the call.
 
-**With `jq`, a failure looks like success**: the pipe's status is jq's, and the error vanishes. Never trim a write's or a show's envelope: print it as is. When a big read needs `jq`, keep the envelope and shape only the result, and when the filter drops tasks, say how many it didn't see:
+**With `jq`, a failure looks like success**: the pipe's status is jq's, and the error vanishes. Never trim a write's or a show's envelope: print it as is. koan filters on what it models: where work is, where it stands and its tags. Everything else is `jq`'s. When a big read needs `jq`, keep the envelope and shape only the result:
 
 ```sh
-koan task list --fields title,extra --limit 200 | jq -c 'if .ok then .result |= {tasks: (.tasks | map(select(.extra.status == "waiting"))), unscanned: (.total - (.tasks | length))} else . end'
+koan task list --fields ref,title --limit null | jq -c 'if .ok then .result.tasks |= map(select(.title | test("migration"; "i"))) else . end'   # titles containing a word, ignoring case
+koan task list --claimed --fields ref,claim --limit null | jq -c 'if .ok then .result.tasks |= map(select(.claim.claimed_at < "2026-11-01T00:00:00Z")) else . end'   # claims older than a time: koan's timestamps sort as text
+koan task list --fields ref,extra --limit null | jq -c 'if .ok then .result.tasks |= map(select(.extra.jira.project == "WEB")) else . end'   # a value in extra
 ```
+
+`--limit null` lets the filter see every task, and `total` stays the count before it. With a lower `--limit`, `truncated` true means the filter never saw `total` minus the limit of them: say how many.
 
 **`koan export` is for tools, not for reading**: it has no `--limit` and no `--fields`, and at 10,000 tasks it is megabytes, so never print it into your context. Before running it, read [references/export.md](references/export.md).
 
@@ -218,5 +222,7 @@ koan task list --fields title,extra --limit 200 | jq -c 'if .ok then .result |= 
 ## Conventions
 
 - **Cancelled**: tag it, then complete it: `koan update 48 --tags-add cancelled && koan complete 48`. Before completing a task that didn't succeed, check what waits on it (`koan show <id>`, the entries in `blocks` still `open`). If anything does, ask the user whether that work should still go ahead, or wait on something new first: completing stops it blocking that work either way.
-- **Waiting on someone**: `--extra-merge '{"status":"waiting","on":"vendor quote"}'`; clear it with `--extra-remove status --extra-remove on`.
+- **Parked work is a tag**, so that choosing work can leave it out with `--tags-none waiting,deferred`, as the daily loop does.
+  - **Waiting on someone**: the `waiting` tag, with any detail under a `waiting` key in `extra`: `koan update 48 --tags-add waiting --extra-merge '{"waiting":{"on":"vendor quote"}}'`; clear it with `--tags-remove waiting --extra-remove waiting`. `koan task list --tags-any waiting` shows what is waiting.
+  - **Held back until later**: the `deferred` tag, typically set and cleared by an outside tool such as a reminder program.
 - **Where a task came from**: links to the PR, issue or ticket go in its notes, not its title.
