@@ -61,6 +61,7 @@ var usages = map[string]string{
 	"update/title":        "the title, or null to clear a folder's",
 	"tags_any":            "only tasks with any of these tags",
 	"tags_all":            "only tasks with all of these tags",
+	"tags_none":           "only tasks with none of these tags",
 	"limit":               "at most this many; 100 when left out, null for all",
 	"fields":              "only these fields, after id",
 	"state":               "open, complete, or both; open when left out",

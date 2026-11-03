@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"waiting\" is both wanted and left out",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/tags_none/0",
+        "reason": "\"waiting\" is both wanted and left out"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

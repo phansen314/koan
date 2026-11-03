@@ -21,6 +21,7 @@ func TaskFrontier() *cli.Command {
 			{Field: "direct", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
+			{Field: "tags_none", Kind: cli.List},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},
 		},
@@ -71,17 +72,47 @@ func TaskFrontier() *cli.Command {
 
 // scope is where the frontier is looked for, as task list's filter gives
 // it: a folder or the root, at any depth unless direct, cut to
-// the tasks holding any of tagsAny and all of tagsAll.
+// the tasks that pass its tag filter.
 type scope struct {
-	folder           int64
-	direct           bool
-	tagsAny, tagsAll []string
+	folder int64
+	direct bool
+	tags   tagFilter
+}
+
+// tagFilter is the filter's three tag fields: a task must pass each one
+// given.
+type tagFilter struct {
+	any, all, none []string
+}
+
+// tagFilter reads the filter's tag fields. A tag in tags_none and in
+// tags_any or tags_all is refused, at its entry in tags_none, since no
+// task could pass.
+func (r *input) tagFilter() tagFilter {
+	f := tagFilter{any: r.tags("tags_any"), all: r.tags("tags_all"), none: r.tags("tags_none")}
+	r.both("tags_none", "is both wanted and left out", func(tag string) bool {
+		return slices.Contains(f.any, tag) || slices.Contains(f.all, tag)
+	})
+	return f
+}
+
+// given is whether any of the three filters anything.
+func (f tagFilter) given() bool {
+	return len(f.any) > 0 || len(f.all) > 0 || len(f.none) > 0
+}
+
+// passes is whether a task holding has passes the filter.
+func (f tagFilter) passes(has []string) bool {
+	holds := func(tag string) bool { return slices.Contains(has, tag) }
+	return (len(f.any) == 0 || slices.ContainsFunc(f.any, holds)) &&
+		!slices.ContainsFunc(f.all, func(tag string) bool { return !holds(tag) }) &&
+		!slices.ContainsFunc(f.none, holds)
 }
 
 // scope reads task list's filter, but for its folder, which resolves
 // in the store.
 func (r *input) scope() (*query, scope) {
-	return r.foldering("folder"), scope{direct: r.boolean("direct", false), tagsAny: r.tags("tags_any"), tagsAll: r.tags("tags_all")}
+	return r.foldering("folder"), scope{direct: r.boolean("direct", false), tags: r.tagFilter()}
 }
 
 // frontier is the ready tasks with no claim within a scope, in work
@@ -89,10 +120,7 @@ func (r *input) scope() (*query, scope) {
 func (t *tasks) frontier(s scope) []core.Ranked {
 	var candidates []core.Ranked
 	for _, id := range t.order {
-		has := t.tags[id]
-		if !t.in(id, s.folder, s.direct) ||
-			len(s.tagsAny) > 0 && !slices.ContainsFunc(s.tagsAny, func(tag string) bool { return slices.Contains(has, tag) }) ||
-			slices.ContainsFunc(s.tagsAll, func(tag string) bool { return !slices.Contains(has, tag) }) {
+		if !t.in(id, s.folder, s.direct) || !s.tags.passes(t.tags[id]) {
 			continue
 		}
 		candidates = append(candidates, core.Ranked{ID: id, Priority: t.rows[id].Priority})

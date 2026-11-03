@@ -35,7 +35,7 @@ func (r *input) extraChange() extraChange {
 	if x.replace != nil && (x.merge != nil || removing) {
 		r.fault("", "%s can't go with %s or %s", r.name("extra_replace_all"), r.name("extra_merge"), r.name("extra_remove"))
 	}
-	r.both("extra_remove", "merged", func(k string) bool { _, ok := x.merge[k]; return ok })
+	r.both("extra_remove", "is both merged and removed", func(k string) bool { _, ok := x.merge[k]; return ok })
 	return x
 }
 
@@ -71,13 +71,14 @@ func (r *input) objectMap(field string) map[string]any {
 	return m
 }
 
-// both refuses each entry of a list that removes what the same update
-// adds, at that entry; one given twice is refused at its first.
-func (r *input) both(field, verb string, added func(string) bool) {
+// both refuses each entry of a list that contradicts another field of the
+// same input, at that entry, saying why; one given twice is refused at
+// its first.
+func (r *input) both(field, why string, contradicts func(string) bool) {
 	list, _ := r.in[field].([]any)
 	for i, item := range list {
-		if s, ok := item.(string); ok && added(s) && slices.Index(list, item) == i {
-			r.fault(fmt.Sprintf("%s/%d", r.at(field), i), "%q is both %s and removed", s, verb)
+		if s, ok := item.(string); ok && contradicts(s) && slices.Index(list, item) == i {
+			r.fault(fmt.Sprintf("%s/%d", r.at(field), i), "%q %s", s, why)
 		}
 	}
 }
@@ -135,7 +136,7 @@ func Update() *cli.Command {
 			if replacing && (adding || removing) {
 				r.fault("", "%s can't go with %s or %s", r.name("tags_replace_all"), r.name("tags_add"), r.name("tags_remove"))
 			}
-			r.both("tags_remove", "added", func(tag string) bool { return slices.Contains(add, tag) })
+			r.both("tags_remove", "is both added and removed", func(tag string) bool { return slices.Contains(add, tag) })
 			extra := r.extraChange()
 			r.sameCase(refs, at)
 			if e := r.err(); e != nil {

@@ -43,6 +43,10 @@ func TestShapeBeforeReferences(t *testing.T) {
 			_, err := tr.ScopedFrontier(Scope{Folder: "/nope", TagsAny: []string{"Bad"}})
 			return err
 		}, []string{"/tags_any/0"}},
+		{"a tag in tags_none and in tags_any or tags_all", func() error {
+			_, err := tr.ScopedFrontier(Scope{Folder: "/nope", TagsAny: []string{"a"}, TagsAll: []string{"b"}, TagsNone: []string{"c", "a", "b", "a"}})
+			return err
+		}, []string{"/tags_none/1", "/tags_none/2"}},
 		{"a path with no end where a task is taken", func() error {
 			_, err := tr.Complete("/nope/x")
 			return err

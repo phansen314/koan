@@ -268,6 +268,8 @@ var perfOps = []perfOp{
 	{name: "task list all", budget: 100 * ms, args: always("task", "list", "--state", "open,complete", "--limit", "null")},
 	{name: "frontier", budget: 100 * ms, args: always("frontier")},
 	{name: "frontier all", budget: 100 * ms, args: always("frontier", "--limit", "null")},
+	{name: "task list none", budget: 100 * ms, args: always("task", "list", "--state", "open,complete", "--tags-none", "seven,eight", "--limit", "null")},
+	{name: "frontier none", budget: 100 * ms, args: always("frontier", "--tags-none", "seven,eight", "--limit", "null")},
 	{name: "why", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"why", r.task(i, 97)} }},
 	{name: "show folder", budget: 100 * ms, args: func(r *perfRoot, i int) []string { return []string{"show", r.folder(i)} }},
 	{name: "folder list", budget: 100 * ms, args: always("folder", "list", "--limit", "null")},
@@ -344,6 +346,7 @@ var perfOps = []perfOp{
 	{name: "claim-next", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) { r.must("unclaim", r.task(i, 33)) },
 		args: func(r *perfRoot, i int) []string { return []string{"claim-next", r.folder(i)} }},
+	{name: "claim-next none", budget: 100 * ms, args: always("claim-next", "--tags-none", "seven,eight")},
 	{name: "unclaim", budget: 100 * ms,
 		prep: func(r *perfRoot, i int) {
 			if res := r.run("", "claim", r.task(i, 89)); !res.OK() && res.Error()["rule"] != "claimed" {

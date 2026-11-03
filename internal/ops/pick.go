@@ -31,6 +31,7 @@ func Pick() *cli.Command {
 			{Field: "claimed", Kind: cli.Bool, Nullable: true},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
+			{Field: "tags_none", Kind: cli.List},
 			{Field: "frontier", Kind: cli.Bool},
 			{Field: "kinds", Kind: cli.List},
 			{Field: "query", Kind: cli.String},
@@ -51,8 +52,7 @@ type pickIn struct {
 	states    []string
 	readiness []string
 	claimed   *bool
-	tagsAny   []string
-	tagsAll   []string
+	tags      tagFilter
 	frontier  bool
 	kinds     []string
 	query     string
@@ -65,7 +65,7 @@ type pickIn struct {
 // with one, a folder is a candidate only when a task under it passes,
 // and a gate not made yet never is.
 func (p *pickIn) filtered() bool {
-	return len(p.readiness) == 1 || p.claimed != nil || len(p.tagsAny) > 0 || len(p.tagsAll) > 0 || p.frontier
+	return len(p.readiness) == 1 || p.claimed != nil || p.tags.given() || p.frontier
 }
 
 func (p *pickIn) wants(kind string) bool { return slices.Contains(p.kinds, kind) }
@@ -91,8 +91,7 @@ func readPick(env *cli.Env, in cli.Input) (*pickIn, string, *cli.Error) {
 		states:    r.choices("state", []string{"open", "complete"}, []string{"open"}),
 		readiness: r.choices("readiness", []string{"ready", "blocked"}, []string{"ready", "blocked"}),
 		claimed:   r.nullBool("claimed"),
-		tagsAny:   r.tags("tags_any"),
-		tagsAll:   r.tags("tags_all"),
+		tags:      r.tagFilter(),
 		frontier:  r.boolean("frontier", false),
 		kinds:     r.choices("kinds", []string{"task", "gate", "folder"}, []string{"task", "gate", "folder"}),
 		query:     r.text("query", ""),
@@ -231,7 +230,7 @@ func choices(t *tasks, p *pickIn, folder int64) []choice {
 	// within the scope, whatever kinds are asked for.
 	var matched []int64
 	if p.frontier {
-		for _, r := range t.frontier(scope{folder: folder, direct: p.direct, tagsAny: p.tagsAny, tagsAll: p.tagsAll}) {
+		for _, r := range t.frontier(scope{folder: folder, direct: p.direct, tags: p.tags}) {
 			matched = append(matched, r.ID)
 		}
 	} else {
@@ -310,11 +309,7 @@ func (t *tasks) passes(id int64, p *pickIn) bool {
 	if ready := t.readiness(id); ready != nil && !slices.Contains(p.readiness, *ready) {
 		return false
 	}
-	has := t.tags[id]
-	if len(p.tagsAny) > 0 && !slices.ContainsFunc(p.tagsAny, func(tag string) bool { return slices.Contains(has, tag) }) {
-		return false
-	}
-	if slices.ContainsFunc(p.tagsAll, func(tag string) bool { return !slices.Contains(has, tag) }) {
+	if !p.tags.passes(t.tags[id]) {
 		return false
 	}
 	_, isClaimed := t.claims[id]
