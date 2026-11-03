@@ -86,8 +86,7 @@ type tagFilter struct {
 }
 
 // tagFilter reads the filter's tag fields. A tag in tags_none and in
-// tags_any or tags_all is refused, at its entry in tags_none, since no
-// task could pass.
+// tags_any or tags_all is refused, at its entry in tags_none.
 func (r *input) tagFilter() tagFilter {
 	f := tagFilter{any: r.tags("tags_any"), all: r.tags("tags_all"), none: r.tags("tags_none")}
 	r.both("tags_none", "is both wanted and left out", func(tag string) bool {

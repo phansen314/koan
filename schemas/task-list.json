@@ -41,7 +41,7 @@
             "$ref": "types#/$defs/tag"
           },
           "default": [],
-          "description": "Only tasks holding none of these tags; empty filters nothing. A tag also in tags_any or tags_all is invalid-input at its entry here, since no task could pass."
+          "description": "Only tasks holding none of these tags; empty filters nothing. A tag also in tags_any or tags_all is invalid-input at its entry here."
         }
       }
     },
