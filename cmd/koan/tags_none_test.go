@@ -3,12 +3,17 @@ package main_test
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/phansen314/koan/internal/core"
+	"github.com/phansen314/koan/internal/model"
 	"github.com/phansen314/koan/internal/testrun"
 )
 
@@ -91,8 +96,129 @@ func TestTagsNoneFilter(t *testing.T) {
 // isn't what these cases are about.
 func sorted(ids string) string {
 	f := strings.Fields(ids)
-	slices.SortFunc(f, func(a, b string) int { return len(a) - len(b) + strings.Compare(a, b) })
+	slices.SortFunc(f, func(a, b string) int {
+		x, _ := strconv.Atoi(a)
+		y, _ := strconv.Atoi(b)
+		return x - y
+	})
 	return strings.Join(f, " ")
+}
+
+// task list filters complete tasks as it does open ones.
+func TestTagsNoneComplete(t *testing.T) {
+	home := tagsNoneTree(t)
+	ok(t, home, "complete", "3,5")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--state", "complete"}, "3 5"},
+		{[]string{"--state", "complete", "--tags-none", "waiting"}, "5"},
+		{[]string{"--state", "open,complete", "--tags-none", "waiting"}, "4 5 6 7 9"},
+	} {
+		r := ok(t, home, append([]string{"task", "list", "--fields", "id"}, c.args...)...)
+		if got := sorted(idsOf(r)); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.args, got, c.want)
+		}
+	}
+}
+
+// The binary and the reference model agree on the tag filters, on a tree
+// where most tasks are tagged: what frontier gives, what claim-next
+// claims, and what is refused, including bad tags and tags given twice.
+func TestTagsNoneAgainstModel(t *testing.T) {
+	home := root(t)
+	m := model.New(1, func() string { return "2026-10-20T10:00:00Z" })
+	rng := rand.New(rand.NewSource(1))
+	tags := []string{"a", "b", "c"}
+	subset := func(extra ...string) []string {
+		out := []string{}
+		for _, tag := range append(slices.Clone(tags), extra...) {
+			if rng.Intn(3) == 0 {
+				out = append(out, tag)
+			}
+		}
+		if len(out) > 1 && rng.Intn(4) == 0 {
+			out = append(out, out[0])
+		}
+		return out
+	}
+	for i := range 40 {
+		x := subset()
+		if _, err := m.CreateTask(model.TaskInput{Title: "t", Tags: x}); err != nil {
+			t.Fatal(err)
+		}
+		args := []string{"task", "create", fmt.Sprint("t", i)}
+		if len(x) > 0 {
+			args = append(args, "--tags", strings.Join(x, ","))
+		}
+		ok(t, home, args...)
+	}
+	problems := func(err error) string {
+		e := err.(*core.Error)
+		p := slices.Clone(e.Problems)
+		slices.Sort(p)
+		return strings.Join(p, " ")
+	}
+	var refused, left int
+	for n := range 150 {
+		sc := model.Scope{TagsAny: subset("Bad"), TagsAll: subset("Bad"), TagsNone: subset("Bad")}
+		var args []string
+		for _, f := range []struct {
+			flag string
+			list []string
+		}{{"--tags-any", sc.TagsAny}, {"--tags-all", sc.TagsAll}, {"--tags-none", sc.TagsNone}} {
+			if len(f.list) > 0 {
+				args = append(args, f.flag, strings.Join(f.list, ","))
+			}
+		}
+		// Every third, claim the choice, so that the frontier moves.
+		claiming := n%3 == 0
+		var want string
+		var err error
+		r := koan(t, home, append([]string{"frontier", "--fields", "id", "--limit", "null"}, args...)...)
+		if claiming {
+			var c *model.Claim
+			if c, err = m.ClaimNext(sc, nil); c != nil {
+				want = fmt.Sprint(c.Task)
+			}
+			r = koan(t, home, append([]string{"claim-next"}, args...)...)
+		} else {
+			var ids []int64
+			ids, err = m.ScopedFrontier(sc)
+			want = strings.Trim(fmt.Sprint(ids), "[]")
+		}
+		if err != nil {
+			refused++
+			if r.OK() {
+				t.Fatalf("%q: the model refused at %s, koan gave %s", args, problems(err), r.Line())
+			}
+			got := strings.Fields(problemFields(r))
+			slices.Sort(got)
+			if strings.Join(got, " ") != problems(err) {
+				t.Errorf("%q: the model refused at %s, koan %v", args, problems(err), got)
+			}
+			continue
+		}
+		if !r.OK() {
+			t.Fatalf("%q: the model gave %q, koan %s", args, want, r.Line())
+		}
+		var got string
+		if claiming {
+			if task := r.Result()["task"]; task != nil {
+				got = fmt.Sprint(task.(map[string]any)["id"])
+			}
+		} else {
+			got = idsOf(r)
+		}
+		if got != want {
+			t.Errorf("%q: the model gave %q, koan %q", args, want, got)
+		}
+		left++
+	}
+	if refused == 0 || left == 0 {
+		t.Errorf("%d refused, %d answered: the filters drawn don't test both", refused, left)
+	}
 }
 
 // The limit counts only the tasks that pass: what is parked takes no
@@ -172,6 +298,9 @@ func TestTagsNoneBoth(t *testing.T) {
 			{[]string{"--tags-any", "a", "--tags-none", "a,a"}, "/tags_none/0"},
 			{[]string{"--tags-none", "A"}, "/tags_none/0"},
 			{[]string{"--tags-any", "A", "--tags-none", "A"}, "/tags_any/0 /tags_none/0"},
+			{[]string{"--tags-any", "a", "--tags-none", "A,a"}, "/tags_none/0 /tags_none/1"},
+			// Refused even though a task holding only b would pass.
+			{[]string{"--tags-any", "a,b", "--tags-none", "a"}, "/tags_none/0"},
 		} {
 			r := fails(t, home, "invalid-input", "", append(slices.Clone(command), c.args...)...)
 			if problemFields(r) != c.field {
@@ -259,7 +388,81 @@ func TestTagsNonePick(t *testing.T) {
 	if got, want := p.keys(), []string{"@1", "@2", "@3", "@4"}; !slices.Equal(got, want) {
 		t.Errorf("empty: keys %v, want %v", got, want)
 	}
-	p.run("--tags-any", "a", "--tags-none", "a").failed(t, 1, "invalid-input", `"a"`)
-	p.run("--tags-all", "a", "--tags-none", "a").failed(t, 1, "invalid-input", `"a"`)
+	// A gate given a tag is filtered as any task is.
+	ok(t, home, "update", "/gated.start", "--tags-add", "waiting")
+	if r := p.run("--kinds", "gate", "--tags-none", "waiting"); r.exit != 1 {
+		t.Errorf("a tagged gate: exit %d, stderr %q", r.exit, r.err)
+	}
+	if got := p.keys(); len(got) != 0 {
+		t.Errorf("a tagged gate: keys %v", got)
+	}
+	// Complete tasks are filtered too.
+	ok(t, home, "complete", "9")
+	ok(t, home, "complete", "6")
+	ok(t, home, "update", "6", "--tags-add", "waiting")
+	if r := p.run("--kinds", "task", "--state", "complete", "--tags-none", "waiting"); r.exit != 1 {
+		t.Errorf("complete: exit %d, stderr %q", r.exit, r.err)
+	}
+	if got, want := p.keys(), []string{"@9"}; !slices.Equal(got, want) {
+		t.Errorf("complete: keys %v, want %v", got, want)
+	}
+	p.run("--tags-any", "a", "--tags-none", "a").failed(t, 1, "invalid-input", `"a" is both wanted and left out`)
+	p.run("--tags-all", "a", "--tags-none", "a").failed(t, 1, "invalid-input", `"a" is both wanted and left out`)
 	p.run("--tags-none", "A").failed(t, 1, "invalid-input", `"A"`)
+}
+
+// The skill's jq recipes, as it writes them, on data that makes them
+// choose: an old claim and a new one, and extra.jira as an object, as a
+// string and left out. A complete task's title isn't found, as it says.
+func TestSkillRecipes(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("the recipes need jq")
+	}
+	text, err := os.ReadFile(filepath.Join(testrun.Repo(), "claude", "skills", "koan", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, _ := exampleCommands(string(text))
+	recipe := func(has string) string {
+		t.Helper()
+		for _, cmd := range all {
+			if strings.Contains(cmd, "| jq") && strings.Contains(cmd, has) {
+				return cmd
+			}
+		}
+		t.Fatalf("the skill has no recipe with %s", has)
+		return ""
+	}
+	home := root(t)
+	batchOK(t, home, `{"tasks": [
+	  {"title": "Write the MIGRATION", "extra": {"jira": {"project": "WEB"}}},
+	  {"title": "other", "extra": {"jira": {"project": "API"}}},
+	  {"title": "a string", "extra": {"jira": "WEB-12"}},
+	  {"title": "old migration, done"}]}`)
+	ok(t, home, "complete", "4")
+	ok(t, home, "claim", "1,2")
+	db(t, home, `UPDATE claim SET claimed_at = '2026-10-20T10:00:00Z' WHERE task = 1`,
+		`UPDATE claim SET claimed_at = '2026-11-02T10:00:00Z' WHERE task = 2`)
+	path := filepath.Dir(testrun.Binary(t)) + string(os.PathListSeparator) + os.Getenv("PATH")
+	for _, c := range []struct{ has, want string }{
+		{"test(", "1"},
+		{"claimed_at", "1"},
+		{"jira", "1"},
+	} {
+		cmd := exec.Command("bash", "-c", "set -o pipefail; "+recipe(c.has))
+		cmd.Env = append(exampleEnv(home), "PATH="+path)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Errorf("%s: %v", c.has, err)
+			continue
+		}
+		r := &testrun.Result{Stdout: string(out)}
+		if err := decodeNumbers(string(out), &r.Envelope); err != nil {
+			t.Errorf("%s: %v: %s", c.has, err, out)
+			continue
+		}
+		if !r.OK() || idsOf(r) != c.want {
+			t.Errorf("%s: want %s, got %s", c.has, c.want, out)
+		}
+	}
 }

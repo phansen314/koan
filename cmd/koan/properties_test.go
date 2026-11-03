@@ -86,11 +86,11 @@ func TestProperties(t *testing.T) {
 func properties(t *testing.T, seed int64, steps int) map[string]int {
 	succeeded := map[string]int{}
 	rng := rand.New(rand.NewSource(seed))
-	// So do the tag filters on claim-next.
-	tagRng := rand.New(rand.NewSource(seed))
 	// Batches draw from a source of their own, so that the other changes
 	// draw as they would without them.
 	brng := rand.New(rand.NewSource(seed))
+	// claim-next's tag filters do too, for the same reason.
+	tagRng := rand.New(rand.NewSource(seed))
 	home := root(t)
 	m := model.New(1, func() string { return "2026-10-20T10:00:00Z" })
 	for _, p := range []string{"/a/b", "/c"} {
