@@ -334,7 +334,7 @@ The spec fixes the surface: every command's input, result, warnings and refusals
 
 **koan filters on what it models.** Every read for agents prints JSON, so finding tasks by title, by the age of a claim or by a value in `extra` is a pipe to `jq`, and koan adds no query language.
 
-- **Its filters are its own structure:** where work is (the folder, `--file`, `--here`, `--direct`), where it stands (`--state`, `--readiness`, `--claimed`) and which tags it holds (`--tags-any`, `--tags-all`), so `total` and `--limit` count the matches. `log list`'s do the same for the log.
+- **Its filters are its own structure:** where work is (the folder, `--file`, `--here`, `--direct`), where it stands (`--state`, `--readiness`, `--claimed`) and which tags it holds (`--tags-any`, `--tags-all`, `--tags-none`), so `total` and `--limit` count the matches. `log list`'s do the same for the log.
 - **`claim-next` must filter in koan:** it chooses and claims in one change, so nothing outside can narrow its choice.
 - **`pick` and completion share these filters**, since nothing can sit between their reads and fzf or the shell.
 - **Anything else is `jq`'s**, in the pipe or in the program that reads the output. A proposed filter on what koan doesn't model stays out, and one on what it does model needs a reason of its own.

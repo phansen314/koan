@@ -33,7 +33,15 @@
             "$ref": "types#/$defs/tag"
           },
           "default": [],
-          "description": "Only tasks holding every one of these tags; empty filters nothing. Given with tags_any, a task must pass both."
+          "description": "Only tasks holding every one of these tags; empty filters nothing. Given with tags_any or tags_none, a task must pass each one given."
+        },
+        "tags_none": {
+          "type": "array",
+          "items": {
+            "$ref": "types#/$defs/tag"
+          },
+          "default": [],
+          "description": "Only tasks holding none of these tags; empty filters nothing. A tag also in tags_any or tags_all is invalid-input at its entry here, since no task could pass."
         }
       }
     },
