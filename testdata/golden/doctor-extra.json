@@ -25,7 +25,7 @@
       {
         "kind": "invalid-row",
         "detail": "I9",
-        "message": "Task @3: its extra has \"gone\" as null. A person fixes it in the database.",
+        "message": "Task @3: its extra has \"gone\" as null. koan update 3 --extra-remove gone clears the null.",
         "ids": [
           3
         ],

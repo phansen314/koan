@@ -139,6 +139,8 @@ func TestUpdateExtraPatch(t *testing.T) {
 		{map[string]any{"r": map[string]any{"at": "A"}}, map[string]any{"r": map[string]any{"at": nil}}, nil, map[string]any{"r": map[string]any{}}},
 		{map[string]any{"r": "s"}, map[string]any{"r": map[string]any{"at": "A", "n": nil}}, nil, map[string]any{"r": map[string]any{"at": "A"}}},
 		{map[string]any{"r": []any{1.0}}, map[string]any{"r": []any{2.0, nil}}, nil, map[string]any{"r": []any{2.0, nil}}},
+		{map[string]any{"r": map[string]any{"b": map[string]any{"c": 1.0, "d": 2.0}}}, map[string]any{"r": map[string]any{"b": map[string]any{"c": 3.0}}}, nil, map[string]any{"r": map[string]any{"b": map[string]any{"c": 3.0, "d": 2.0}}}},
+		{map[string]any{"r": map[string]any{"b": map[string]any{"c": map[string]any{"e": 1.0, "f": 2.0}}}}, map[string]any{"r": map[string]any{"b": map[string]any{"c": map[string]any{"e": nil}}}}, nil, map[string]any{"r": map[string]any{"b": map[string]any{"c": map[string]any{"f": 2.0}}}}},
 	} {
 		y := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "p", Extra: c.stored})).ID
 		must[[]int64](t)(tr.Update([]string{fmt.Sprint(y)}, Update{ExtraMerge: c.patch, ExtraRemove: c.remove}))
@@ -164,8 +166,33 @@ func TestUpdateExtraPatch(t *testing.T) {
 	_, err = tr.ClaimNext(Scope{}, map[string]any{"koan": 1.0})
 	wantErr(t, err, core.KindInvalidInput, "")
 	// What is given is a patch applied to {}.
-	if y := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Extra: map[string]any{"a": nil, "b": map[string]any{"c": nil}}})).ID; !reflect.DeepEqual(tr.Tasks[y].Extra, map[string]any{"b": map[string]any{}}) {
+	given := map[string]any{"a": nil, "b": map[string]any{"c": nil}}
+	stored := map[string]any{"b": map[string]any{}}
+	if y := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Extra: given})).ID; !reflect.DeepEqual(tr.Tasks[y].Extra, stored) {
 		t.Errorf("given: %v", tr.Tasks[y].Extra)
+	}
+	made := must[[]FolderAt](t)(tr.CreateFolder("/given", nil, given))
+	if f := tr.Folders[made[0].ID]; !reflect.DeepEqual(f.Extra, stored) {
+		t.Errorf("a folder given: %v", f.Extra)
+	}
+	out := must[BatchResult](t)(tr.Batch(BatchInput{
+		Folders: []BatchFolder{{Path: "/given2", Extra: given}},
+		Tasks:   []BatchTask{{TaskInput: TaskInput{Title: "x", Extra: given}}},
+	}))
+	if f := tr.Folders[out.Folders[0].ID]; !reflect.DeepEqual(f.Extra, stored) {
+		t.Errorf("a batch's folder given: %v", f.Extra)
+	}
+	if x := tr.Tasks[out.Tasks[0]]; !reflect.DeepEqual(x.Extra, stored) {
+		t.Errorf("a batch's task given: %v", x.Extra)
+	}
+	y := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x"})).ID
+	must[[]int64](t)(tr.ClaimTask([]string{fmt.Sprint(y)}, given))
+	if c := tr.Claims[y]; !reflect.DeepEqual(c.Extra, stored) {
+		t.Errorf("a claim given: %v", c.Extra)
+	}
+	next := must[*Claim](t)(tr.ClaimNext(Scope{}, given))
+	if next == nil || !reflect.DeepEqual(next.Extra, stored) {
+		t.Errorf("claim-next given: %+v", next)
 	}
 }
 

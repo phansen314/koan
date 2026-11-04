@@ -357,10 +357,8 @@ func (c *checker) values() {
 		if f.title != nil && !storedTitle(*f.title) {
 			bad = append(bad, fmt.Sprintf("its title %q isn't a title", *f.title))
 		}
-		bad = append(bad, namespaces("its extra", f.extra)...)
-		if len(bad) > 0 {
-			c.invalidRow("I9", []int64{id}, "Folder @%d: %s.", id, strings.Join(bad, "; "))
-		}
+		wrong, nulls := namespaces("its extra", f.extra)
+		c.invalidValues("Folder", id, append(bad, wrong...), nulls)
 	}
 	for _, id := range sorted(c.tasks) {
 		t := c.tasks[id]
@@ -392,32 +390,58 @@ func (c *checker) values() {
 				bad = append(bad, fmt.Sprintf("its tag %q isn't a tag", tag))
 			}
 		}
-		bad = append(bad, namespaces("its extra", t.extra)...)
+		wrong, nulls := namespaces("its extra", t.extra)
+		bad = append(bad, wrong...)
 		if t.claimed != nil {
-			bad = append(bad, namespaces("its claim's extra", t.claimExtra)...)
+			// update can't reach a claim's extra, so its nulls aren't nulls
+			// update clears.
+			wrong, _ := namespaces("its claim's extra", t.claimExtra)
+			bad = append(bad, wrong...)
 		}
-		if len(bad) > 0 {
-			c.invalidRow("I9", []int64{id}, "Task @%d: %s.", id, strings.Join(bad, "; "))
-		}
+		c.invalidValues("Task", id, bad, nulls)
 	}
+}
+
+// invalidValues reports what is wrong with a task or folder's values, if
+// anything. nulls, among bad, are its own extra's namespaces that hold a
+// null, which update can clear; the rest take a person.
+func (c *checker) invalidValues(what string, id int64, bad, nulls []string) {
+	if len(bad) == 0 {
+		return
+	}
+	message := fmt.Sprintf("%s @%d: %s.", what, id, strings.Join(bad, "; "))
+	if len(nulls) == 0 {
+		c.invalidRow("I9", []int64{id}, "%s", message)
+		return
+	}
+	cleared := "the null"
+	if len(nulls) > 1 {
+		cleared = "the nulls"
+	}
+	message += fmt.Sprintf(" koan update %d --extra-remove %s clears %s.", id, strings.Join(nulls, ","), cleared)
+	if len(bad) > len(nulls) {
+		message += " A person fixes the rest in the database."
+	}
+	c.add(newFinding(InvalidRow, "I9", message, []int64{id}, nil))
 }
 
 // namespaces is what is wrong with an extra as stored, whose name is what:
 // a top-level key that is no namespace, or a null under one, in byte order.
-func namespaces(what, extra string) []string {
+// nulls names the namespaces that hold a null.
+func namespaces(what, extra string) (bad, nulls []string) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(extra), &m); err != nil || m == nil {
-		return []string{what + " isn't a JSON object"}
+		return []string{what + " isn't a JSON object"}, nil
 	}
-	var bad []string
 	for _, k := range slices.Sorted(maps.Keys(m)) {
 		if why := core.NamespaceFault(k); why != "" {
 			bad = append(bad, fmt.Sprintf("%s has %q, which %s", what, k, why))
 		} else if string(m[k]) == "null" {
 			bad = append(bad, fmt.Sprintf("%s has %q as null", what, k))
+			nulls = append(nulls, k)
 		}
 	}
-	return bad
+	return bad, nulls
 }
 
 // storedTitle reports whether a title is one as koan stores it: trimmed,

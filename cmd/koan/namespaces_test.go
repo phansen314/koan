@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/phansen314/koan/internal/core"
+	"github.com/phansen314/koan/internal/model"
 	"github.com/phansen314/koan/internal/testrun"
 )
 
@@ -249,17 +251,19 @@ func TestExtraNames(t *testing.T) {
 // leaves such a name where it is, and can't name it.
 func TestDoctorExtra(t *testing.T) {
 	home := root(t)
-	ok(t, home, "folder", "create", "/w")                                  // 1
-	ok(t, home, "task", "create", "a")                                     // 2
-	ok(t, home, "task", "create", "b")                                     // 3
-	ok(t, home, "task", "create", "c")                                     // 4
-	ok(t, home, "task", "create", "fine", "--extra", `{"a":{"B.c":null}}`) // 5
+	ok(t, home, "folder", "create", "/w") // 1
+	ok(t, home, "task", "create", "a")    // 2
+	ok(t, home, "task", "create", "b")    // 3
+	ok(t, home, "task", "create", "c")    // 4
+	ok(t, home, "task", "create", "fine") // 5
 	ok(t, home, "claim", "4")
 	edit(t, home,
 		`UPDATE folder SET extra = '{"Bad":1}' WHERE id = 1`,
 		`UPDATE task SET extra = '{"koan":1,"ok":2,"a.b":3}' WHERE id = 2`,
 		`UPDATE task SET extra = '{"gone":null}' WHERE id = 3`,
-		`UPDATE claim SET extra = '{"By":"me"}' WHERE task = 4`)
+		`UPDATE claim SET extra = '{"By":"me"}' WHERE task = 4`,
+		// Below the top level, a name or a null is part of the value.
+		`UPDATE task SET extra = '{"ok":{"B.c":null,"koan":1}}' WHERE id = 5`)
 	want := []string{"invalid-row I9 [1] false", "invalid-row I9 [2] false", "invalid-row I9 [3] false", "invalid-row I9 [4] false"}
 	r := ok(t, home, "doctor")
 	golden(t, r, "doctor-extra")
@@ -278,5 +282,125 @@ func TestDoctorExtra(t *testing.T) {
 	}
 	if !slices.Contains(summary(ok(t, home, "doctor").Result()["findings"]), "invalid-row I9 [2] false") {
 		t.Error("still broken, doctor should say so")
+	}
+}
+
+// A null under a good name is the one fault update can clear, and doctor
+// says how, on a folder or a task. Its claim's extra is out of update's reach.
+func TestDoctorExtraNull(t *testing.T) {
+	home := root(t)
+	ok(t, home, "folder", "create", "/w")  // 1
+	ok(t, home, "task", "create", "one")   // 2
+	ok(t, home, "task", "create", "two")   // 3
+	ok(t, home, "task", "create", "mixed") // 4
+	ok(t, home, "task", "create", "claim") // 5
+	ok(t, home, "claim", "5")
+	edit(t, home,
+		`UPDATE folder SET extra = '{"gone":null}' WHERE id = 1`,
+		`UPDATE task SET extra = '{"gone":null,"keep":1}' WHERE id = 2`,
+		`UPDATE task SET extra = '{"a":null,"b":null}' WHERE id = 3`,
+		`UPDATE task SET extra = '{"Bad":1,"gone":null}' WHERE id = 4`,
+		`UPDATE claim SET extra = '{"gone":null}' WHERE task = 5`)
+	messages := func() map[string]string {
+		out := map[string]string{}
+		for _, f := range ok(t, home, "doctor").Result()["findings"].([]any) {
+			f := f.(map[string]any)
+			out[fmt.Sprint(f["ids"])] = f["message"].(string)
+		}
+		return out
+	}
+	const person = "A person fixes it in the database."
+	found := messages()
+	for ids, want := range map[string]string{
+		"[1]": `Folder @1: its extra has "gone" as null. koan update 1 --extra-remove gone clears the null.`,
+		"[2]": `Task @2: its extra has "gone" as null. koan update 2 --extra-remove gone clears the null.`,
+		"[3]": `Task @3: its extra has "a" as null; its extra has "b" as null. koan update 3 --extra-remove a,b clears the nulls.`,
+	} {
+		if found[ids] != want {
+			t.Errorf("%s: %q, want %q", ids, found[ids], want)
+		}
+	}
+	if m := found["[4]"]; !strings.Contains(m, `"Bad", which is not a namespace`) ||
+		!strings.HasSuffix(m, `koan update 4 --extra-remove gone clears the null. A person fixes the rest in the database.`) {
+		t.Errorf("mixed: %q", m)
+	}
+	if m := found["[5]"]; m != `Task @5: its claim's extra has "gone" as null. `+person {
+		t.Errorf("claim: %q", m)
+	}
+	// The command each message gives does what it says.
+	for _, ids := range []string{"[1]", "[2]", "[3]", "[4]"} {
+		_, command, _ := strings.Cut(found[ids], "koan ")
+		command, _, _ = strings.Cut(command, " clears")
+		ok(t, home, strings.Fields(command)...)
+	}
+	left := messages()
+	if len(left) != 2 || strings.Contains(left["[4]"], "null") || !strings.HasSuffix(left["[4]"], person) || left["[5]"] != found["[5]"] {
+		t.Errorf("left: %v", left)
+	}
+	if got := extraOf(t, home, "2", "task"); got != `{"keep":1}` {
+		t.Errorf("kept: %s", got)
+	}
+}
+
+// When a shape fault and a bad name come together, the model and the binary
+// give the same faults, in the same order, with the same first message.
+func TestExtraFaultsMatchModel(t *testing.T) {
+	bad := map[string]any{"Bad": 1.0}
+	for _, c := range []struct {
+		name  string
+		args  []string
+		stdin string
+		run   func(m *model.Tree) error
+	}{
+		{name: "claim", args: []string{"claim", "a b", "--extra", `{"Bad":1}`}, run: func(m *model.Tree) error {
+			_, err := m.ClaimTask([]string{"a b"}, bad)
+			return err
+		}},
+		{name: "claim-next", args: []string{"claim-next", "a b", "--tags-any", "Tag", "--tags-all", "Tag", "--tags-none", "Tag", "--extra", `{"Bad":1}`}, run: func(m *model.Tree) error {
+			_, err := m.ClaimNext(model.Scope{Folder: "a b", TagsAny: []string{"Tag"}, TagsAll: []string{"Tag"}, TagsNone: []string{"Tag"}}, bad)
+			return err
+		}},
+		{name: "task create", args: []string{"task", "create", "x", "--folder", "a b", "--tags", "Tag", "--blocked-by", "$a", "--blocks", "$a", "--join", "$a", "--extra", `{"Bad":1}`}, run: func(m *model.Tree) error {
+			_, err := m.CreateTask(model.TaskInput{Title: "x", Folder: "a b", Tags: []string{"Tag"}, BlockedBy: []string{"$a"}, Blocks: []string{"$a"}, Join: []string{"$a"}, Extra: bad})
+			return err
+		}},
+		{name: "folder create", args: []string{"folder", "create", "a b", "--join", "$a", "--extra", `{"Bad":1}`}, run: func(m *model.Tree) error {
+			_, err := m.CreateFolderJoin("a b", nil, bad, []string{"$a"})
+			return err
+		}},
+		{name: "update", args: []string{"update", "a b", "--tags-add", "Tag", "--extra-merge", `{"Bad":1}`, "--extra-remove", "koan"}, run: func(m *model.Tree) error {
+			_, err := m.Update([]string{"a b"}, model.Update{TagsAdd: []string{"Tag"}, ExtraMerge: bad, ExtraRemove: []string{"koan"}})
+			return err
+		}},
+		{name: "batch", args: []string{"batch", "-i", "-"}, stdin: `{"folders":[{"path":"a b","join":["/"],"extra":{"Bad":1}}],"tasks":[{"title":"x","folder":"a b","tags":["Tag"],"blocked_by":["/"],"join":["/"],"extra":{"Bad":1}}]}`, run: func(m *model.Tree) error {
+			_, err := m.Batch(model.BatchInput{
+				Folders: []model.BatchFolder{{Path: "a b", Join: []string{"/"}, Extra: bad}},
+				Tasks:   []model.BatchTask{{TaskInput: model.TaskInput{Title: "x", Folder: "a b", Tags: []string{"Tag"}, BlockedBy: []string{"/"}, Join: []string{"/"}, Extra: bad}}},
+			})
+			return err
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			home := root(t)
+			var r *testrun.Result
+			if c.stdin != "" {
+				r = input(t, home, c.args[0], c.stdin)
+			} else {
+				r = koan(t, home, c.args...)
+			}
+			e, isCore := c.run(model.New(1, func() string { return "2026-10-20T10:00:00Z" })).(*core.Error)
+			if !isCore {
+				t.Fatalf("the model took it; koan %s", r.Line())
+			}
+			if len(e.Problems) < 2 {
+				t.Errorf("not several faults: %q", e.Problems)
+			}
+			if got := strings.Fields(problemFields(r)); !slices.Equal(got, e.Problems) || r.Kind() != e.Kind {
+				t.Errorf("%s %q, model %s %q", r.Kind(), got, e.Kind, e.Problems)
+			}
+			if got := r.Error()["message"]; got != e.Message {
+				t.Errorf("message %q, model %q", got, e.Message)
+			}
+		})
 	}
 }

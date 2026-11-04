@@ -96,12 +96,12 @@ func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 			}
 			s.priority(prefix+"/priority", x.Priority)
 			p.tags = s.tags(prefix+"/tags", x.Tags)
-			s.patch(prefix+"/extra", x.Extra)
 			p.bb, p.bl = s.edgeRefs(prefix, x.BlockedBy, x.Blocks, true)
 			p.joins = batchJoins
 			if x.Join != nil {
 				p.joins = s.joinRefs(prefix+"/join", x.Join, true)
 			}
+			s.patch(prefix+"/extra", x.Extra)
 		}
 		if err := s.done(nil); err != nil {
 			return err

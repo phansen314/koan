@@ -385,9 +385,9 @@ func (t *Tree) CreateTask(in TaskInput) (out TaskCreated, err error) {
 		fref := s.ref("/folder", folderRef, core.WantFolder, false)
 		s.priority("/priority", in.Priority)
 		tags := s.tags("/tags", in.Tags)
-		s.patch("/extra", in.Extra)
 		bb, bl := s.edgeRefs("", in.BlockedBy, in.Blocks, false)
 		joins := s.joinRefs("/join", in.Join, false)
+		s.patch("/extra", in.Extra)
 		if err := s.done(nil); err != nil {
 			return err
 		}
@@ -1550,11 +1550,12 @@ func (t *Tree) Archive(refs ...string) (archived, left []int64, err error) {
 func (t *Tree) ClaimTask(tasks []string, extra map[string]any) (claimed []int64, err error) {
 	err = t.change(func(c *Tree) error {
 		var s shape
+		refs := taskRefs(&s, tasks)
 		s.patch("/extra", extra)
 		if err := s.done(nil); err != nil {
 			return err
 		}
-		xs, err := c.subjectTasks(tasks)
+		xs, err := c.resolveTasks(refs)
 		if err != nil {
 			return err
 		}
@@ -1594,11 +1595,12 @@ type Scope struct {
 func (t *Tree) ClaimNext(s Scope, extra map[string]any) (claim *Claim, err error) {
 	err = t.change(func(c *Tree) error {
 		var f shape
+		read := f.scope(s)
 		f.patch("/extra", extra)
 		if err := f.done(nil); err != nil {
 			return err
 		}
-		ids, err := c.ScopedFrontier(s)
+		ids, err := c.scoped(s, read)
 		if err != nil {
 			return err
 		}
@@ -1615,26 +1617,44 @@ func (t *Tree) ClaimNext(s Scope, extra map[string]any) (claim *Claim, err error
 // ScopedFrontier is the frontier, cut to a scope. Scope chooses where to
 // look, never what is ready.
 func (t *Tree) ScopedFrontier(s Scope) ([]int64, error) {
-	ref := s.Folder
+	var sh shape
+	read := sh.scope(s)
+	if err := sh.done(nil); err != nil {
+		return nil, err
+	}
+	return t.scoped(s, read)
+}
+
+// scopeRead is a scope once its shape is read.
+type scopeRead struct {
+	folder                     core.Ref
+	anyTags, allTags, noneTags map[string]bool
+}
+
+// scope reads a scope's fields into s.
+func (s *shape) scope(sc Scope) scopeRead {
+	ref := sc.Folder
 	if ref == "" {
 		ref = "/"
 	}
-	var sh shape
-	fref := sh.ref("/folder", ref, core.WantFolder, false)
-	anyTags := sh.tags("/tags_any", s.TagsAny)
-	allTags := sh.tags("/tags_all", s.TagsAll)
-	noneTags := sh.tags("/tags_none", s.TagsNone)
+	read := scopeRead{folder: s.ref("/folder", ref, core.WantFolder, false)}
+	read.anyTags = s.tags("/tags_any", sc.TagsAny)
+	read.allTags = s.tags("/tags_all", sc.TagsAll)
+	read.noneTags = s.tags("/tags_none", sc.TagsNone)
 	wanted := map[string]bool{}
-	for _, tags := range []map[string]bool{anyTags, allTags} {
+	for _, tags := range []map[string]bool{read.anyTags, read.allTags} {
 		for tag := range tags {
 			wanted[tag] = core.ValidTag(tag)
 		}
 	}
-	sh.both("/tags_none", "is both wanted and left out", s.TagsNone, wanted)
-	if err := sh.done(nil); err != nil {
-		return nil, err
-	}
-	folder, err := t.resolveFolder(fref, "/folder")
+	s.both("/tags_none", "is both wanted and left out", sc.TagsNone, wanted)
+	return read
+}
+
+// scoped is the frontier, cut to a scope whose shape is good.
+func (t *Tree) scoped(s Scope, read scopeRead) ([]int64, error) {
+	anyTags, allTags, noneTags := read.anyTags, read.allTags, read.noneTags
+	folder, err := t.resolveFolder(read.folder, "/folder")
 	if err != nil {
 		return nil, err
 	}
