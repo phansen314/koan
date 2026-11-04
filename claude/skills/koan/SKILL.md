@@ -33,10 +33,10 @@ This file covers the daily work. Read a reference file, beside this one, before 
 
 ```sh
 koan info      # .result.state: usable, not-initialized, unsupported-format or corrupt
-koan version   # .result.version: v0.13.0 or later is this skill's koan
+koan version   # .result.version: v0.14.0 or later is this skill's koan
 ```
 
-Ready when `.result.state` is `usable`. When it is `not-initialized`, tell the user and suggest `koan init`; **never run `init` unasked.** Any other state, a `version` earlier than `v0.13.0` or without the `v`, or a `usage` error for a command this skill names: tell the user, and see [references/errors.md](references/errors.md). Never move or replace the root yourself.
+Ready when `.result.state` is `usable`. When it is `not-initialized`, tell the user and suggest `koan init`; **never run `init` unasked.** Any other state, a `version` earlier than `v0.14.0` or without the `v`, or a `usage` error for a command this skill names: tell the user, and see [references/errors.md](references/errors.md). Never move or replace the root yourself.
 
 ## Reading output
 
