@@ -44,8 +44,37 @@
       "minimum": 1,
       "maximum": 9007199254740991
     },
+    "namespace": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/tag"
+        },
+        {
+          "not": {
+            "const": "koan"
+          }
+        }
+      ],
+      "description": "A top-level key of extra. koan is reserved."
+    },
     "extra": {
-      "type": "object"
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/namespace"
+      },
+      "additionalProperties": {
+        "not": {
+          "type": "null"
+        }
+      },
+      "description": "As stored. koan never interprets the values."
+    },
+    "extra-patch": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/namespace"
+      },
+      "description": "A JSON Merge Patch (RFC 7396) of extra. koan never interprets the values, but for null, which removes."
     },
     "end": {
       "enum": [

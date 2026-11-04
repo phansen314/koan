@@ -11,7 +11,7 @@
       ],
       "properties": {
         "extra": {
-          "$ref": "types#/$defs/extra",
+          "$ref": "types#/$defs/extra-patch",
           "default": {}
         }
       },

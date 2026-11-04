@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -191,18 +192,29 @@ func (r *input) title(field string) *string {
 	return &t
 }
 
-// object is a JSON object field, as stored, or {} when it isn't given.
-func (r *input) object(field string) json.RawMessage {
-	v, ok := r.value(field)
-	if !ok {
+// patch is a field holding a merge patch of extra, nil when it isn't given.
+// Its top-level keys are namespaces, each checked, a null's included.
+func (r *input) patch(field string) map[string]any {
+	m := r.objectMap(field)
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		if why := core.NamespaceFault(k); why != "" {
+			r.fault(r.at(field)+cli.Pointer(k), "%q %s", k, why)
+		}
+	}
+	return m
+}
+
+// extra is an extra field, the patch applied to {}, as stored; {} when it
+// isn't given.
+func (r *input) extra(field string) json.RawMessage {
+	if _, ok := r.value(field); !ok {
 		return json.RawMessage("{}")
 	}
-	m, ok := v.(map[string]any)
-	if !ok {
-		r.fault(r.at(field), "%s must be a JSON object", r.name(field))
+	m := r.patch(field)
+	if m == nil {
 		return nil
 	}
-	b, err := marshal(m)
+	b, err := marshal(mergePatch(map[string]any{}, m))
 	if err != nil {
 		r.fault(r.at(field), "%s: %v", r.name(field), err)
 	}
@@ -416,6 +428,24 @@ func (r *input) choices(field string, allowed, def []string) []string {
 // since a set takes duplicates; bad ends the fault for one that doesn't
 // pass.
 func (r *input) strings(field string, valid func(string) bool, bad string) []string {
+	return r.stringsWhy(field, func(s string) string {
+		if valid(s) {
+			return ""
+		}
+		return bad
+	}, bad)
+}
+
+// namespaces is a list of namespaces, a value given twice once; empty when
+// it isn't given.
+func (r *input) namespaces(field string) []string {
+	return r.stringsWhy(field, core.NamespaceFault, core.NamespaceFault(""))
+}
+
+// stringsWhy is a list of strings, a value given twice once. why ends the
+// fault for a string it finds wrong, "" for one it doesn't; notString ends
+// the fault for anything else.
+func (r *input) stringsWhy(field string, why func(string) string, notString string) []string {
 	list, ok := r.list(field)
 	out := []string{}
 	if !ok {
@@ -424,9 +454,13 @@ func (r *input) strings(field string, valid func(string) bool, bad string) []str
 	for i, item := range list {
 		at := fmt.Sprintf("%s/%d", r.at(field), i)
 		s, ok := item.(string)
-		switch {
-		case !ok || !valid(s):
-			r.fault(at, "%v %s", printed(item), bad)
+		if !ok {
+			r.fault(at, "%v %s", printed(item), notString)
+			continue
+		}
+		switch fault := why(s); {
+		case fault != "":
+			r.fault(at, "%v %s", printed(item), fault)
 		case !slices.Contains(out, s):
 			out = append(out, s)
 		}

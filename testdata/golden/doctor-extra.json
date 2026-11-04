@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "result": {
+    "findings": [
+      {
+        "kind": "invalid-row",
+        "detail": "I9",
+        "message": "Folder @1: its extra has \"Bad\", which is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen. A person fixes it in the database.",
+        "ids": [
+          1
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I9",
+        "message": "Task @2: its extra has \"a.b\", which is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen; its extra has \"koan\", which is reserved for koan's own use. A person fixes it in the database.",
+        "ids": [
+          2
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I9",
+        "message": "Task @3: its extra has \"gone\" as null. koan update 3 --extra-remove gone clears the null.",
+        "ids": [
+          3
+        ],
+        "paths": [],
+        "repairable": false
+      },
+      {
+        "kind": "invalid-row",
+        "detail": "I9",
+        "message": "Task @4: its claim's extra has \"By\", which is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen. A person fixes it in the database.",
+        "ids": [
+          4
+        ],
+        "paths": [],
+        "repairable": false
+      }
+    ]
+  },
+  "warnings": []
+}

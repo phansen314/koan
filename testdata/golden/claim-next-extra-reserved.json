@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"koan\" is reserved for koan's own use",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/extra/koan",
+        "reason": "\"koan\" is reserved for koan's own use"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

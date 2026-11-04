@@ -39,7 +39,7 @@
             "default": []
           },
           "extra": {
-            "$ref": "types#/$defs/extra",
+            "$ref": "types#/$defs/extra-patch",
             "default": {}
           },
           "notes": {
@@ -128,7 +128,7 @@
             "description": "No default: left out, the batch's join."
           },
           "extra": {
-            "$ref": "types#/$defs/extra",
+            "$ref": "types#/$defs/extra-patch",
             "default": {}
           },
           "notes": {

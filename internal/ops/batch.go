@@ -210,7 +210,7 @@ func readBatch(r *input) batchInput {
 		for _, j := range f.joins {
 			refs, at = append(refs, j.ref), append(at, j.at)
 		}
-		f.extra, f.notes = p.object("extra"), p.text("notes", "")
+		f.extra, f.notes = p.extra("extra"), p.text("notes", "")
 		folders = append(folders, f)
 	}
 	inBatch := r.ref("folder", core.WantFolder, "/")
@@ -257,7 +257,7 @@ func readBatch(r *input) batchInput {
 		for _, j := range x.joins {
 			refs, at = append(refs, j.ref), append(at, j.at)
 		}
-		x.extra, x.notes = p.object("extra"), p.text("notes", "")
+		x.extra, x.notes = p.extra("extra"), p.text("notes", "")
 		tasks = append(tasks, x)
 	}
 	r.sameCase(refs, at)

@@ -2,7 +2,9 @@ package model
 
 import (
 	"fmt"
+	"maps"
 	"slices"
+	"strings"
 
 	"github.com/phansen314/koan/internal/core"
 )
@@ -105,6 +107,16 @@ func (s *shape) tags(pointer string, tags []string) map[string]bool {
 		out[tag] = true
 	}
 	return out
+}
+
+// patch checks a merge patch of extra: each top-level key a namespace, a
+// null's included, in byte order.
+func (s *shape) patch(pointer string, patch map[string]any) {
+	for _, k := range slices.Sorted(maps.Keys(patch)) {
+		if why := core.NamespaceFault(k); why != "" {
+			s.faultf(pointer+"/"+strings.NewReplacer("~", "~0", "/", "~1").Replace(k), "%q %s", k, why)
+		}
+	}
 }
 
 // done checks that no two references name paths differing only in case,

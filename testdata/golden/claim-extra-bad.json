@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"By\" is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/extra/By",
+        "reason": "\"By\" is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

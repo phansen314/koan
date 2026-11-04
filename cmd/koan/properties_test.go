@@ -91,6 +91,30 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 	brng := rand.New(rand.NewSource(seed))
 	// claim-next's tag filters do too, for the same reason.
 	tagRng := rand.New(rand.NewSource(seed))
+	// extra's patches do too.
+	erng := rand.New(rand.NewSource(seed + 3))
+	decodePatch := func(patch string) map[string]any {
+		var out map[string]any
+		d := json.NewDecoder(strings.NewReader(patch))
+		d.UseNumber()
+		if err := d.Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	// givenExtra is what a create or a claim is now and then given: a patch
+	// applied to {}, nulls and all, and now and then one refused.
+	givenExtra := func() (map[string]any, string) {
+		if erng.Intn(3) > 0 {
+			return nil, ""
+		}
+		pool := []string{`{"by":"me"}`, `{}`, `{"a":null,"b":{"c":null}}`, `{"n":{"x":[null,1.0],"y":null,"z":{"w":null}}}`}
+		if erng.Intn(8) == 0 {
+			pool = []string{`{"Bad":1}`, `{"koan":null}`}
+		}
+		patch := pool[erng.Intn(len(pool))]
+		return decodePatch(patch), patch
+	}
 	home := root(t)
 	m := model.New(1, func() string { return "2026-10-20T10:00:00Z" })
 	for _, p := range []string{"/a/b", "/c"} {
@@ -314,6 +338,9 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			p := pick(folderPaths)
 			f := model.BatchFolder{Path: p}
 			part := map[string]any{"path": p}
+			if extra, patch := givenExtra(); patch != "" {
+				f.Extra, part["extra"] = extra, json.RawMessage(patch)
+			}
 			if rng.Intn(4) == 0 {
 				// Now and then one of the batch's own folders.
 				f.Join = joinList(1+rng.Intn(2), true)
@@ -340,6 +367,9 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 		for range n {
 			x := model.BatchTask{TaskInput: model.TaskInput{Title: "t"}}
 			part := map[string]any{"title": "t"}
+			if extra, patch := givenExtra(); patch != "" {
+				x.Extra, part["extra"] = extra, json.RawMessage(patch)
+			}
 			// Each label once, now and then twice.
 			if l := "$" + string(rune('a'+len(in.Tasks))); rng.Intn(4) > 0 {
 				if rng.Intn(10) == 0 {
@@ -452,13 +482,61 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					u.ExtraRemove = []string{k}
 					args = append(args, "--extra-remove", k)
 				} else {
-					v := pick([]string{"todo", "done"})
-					u.ExtraMerge = map[string]any{k: v}
-					args = append(args, "--extra-merge", fmt.Sprintf(`{%q:%q}`, k, v))
+					patch := fmt.Sprintf(`{%q:%s}`, k, pick([]string{`"todo"`, `null`, `{"at":"A","by":null}`,
+						`{"at":null}`, `{"by":{"who":"me"}}`, `{"by":{"why":"x"}}`, `[null,1.0]`}))
+					u.ExtraMerge = decodePatch(patch)
+					args = append(args, "--extra-merge", patch)
 				}
 			}
 		}
 		return u, args
+	}
+	// extraPatch updates only extra, on a few subjects that stay the same
+	// for a while, so that patches land on what earlier ones stored.
+	extraPatch := func() (args []string, name, want string, err error) {
+		pool := slices.Sorted(maps.Keys(m.Tasks))
+		pool = pool[:min(3, len(pool))]
+		folders := liveFolders()
+		pool = append(pool, folders[:min(2, len(folders))]...)
+		if len(pool) == 0 {
+			return nil, "", "", nil
+		}
+		at := pool[erng.Intn(len(pool))]
+		refs := []string{fmt.Sprint(at)}
+		name = "update task"
+		if _, isFolder := m.Folders[at]; isFolder {
+			name = "update folder"
+		}
+		if also := fmt.Sprint(pool[erng.Intn(len(pool))]); erng.Intn(5) == 0 && also != refs[0] {
+			refs = append(refs, also)
+		}
+		k := []string{"status", "n"}[erng.Intn(2)]
+		var u model.Update
+		args = []string{"update", strings.Join(refs, ",")}
+		values := []string{`"todo"`, `1.0`, `null`, `{"at":"A","by":null}`, `{"at":null}`, `{"by":{"who":"me"}}`, `{"by":{"why":"x"}}`,
+			`{"by":{"who":null}}`, `{"by":null}`, `{"by":{"who":{"deep":[null]}}}`, `[null,1.0]`}
+		merge := fmt.Sprintf(`{%q:%s}`, k, values[erng.Intn(len(values))])
+		switch erng.Intn(12) {
+		case 0:
+			u.ExtraRemove = []string{k}
+			args = append(args, "--extra-remove", k)
+		case 1:
+			bad := []string{"Bad", "koan"}[erng.Intn(2)]
+			u.ExtraRemove = []string{bad}
+			args = append(args, "--extra-remove", bad)
+		case 2:
+			bad := []string{`{"Bad":1}`, `{"koan":null}`}[erng.Intn(2)]
+			u.ExtraMerge = decodePatch(bad)
+			args = append(args, "--extra-merge", bad)
+		case 3:
+			u.ExtraMerge, u.ExtraRemove = decodePatch(merge), []string{k}
+			args = append(args, "--extra-merge", merge, "--extra-remove", k)
+		default:
+			u.ExtraMerge = decodePatch(merge)
+			args = append(args, "--extra-merge", merge)
+		}
+		updated, err := m.Update(refs, u)
+		return args, name, fmt.Sprint(nonNil(updated)), err
 	}
 	// extraOp is one of the rest: it returns the command run, and the
 	// name it counts under, or no command for a hand edit.
@@ -562,19 +640,26 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 	seq := lastSeqOf(t, home)
 
 	var made, refused, rotations int
-	for step := range steps {
+	// extra's own updates come on top of the steps asked for.
+	total := steps
+	for step := 0; step < total; step++ {
 		var args []string
 		var stdin string
 		var err error
 		var want string
 		var name string
 		op := -1
-		if xrng.Intn(5) == 0 {
+		if erng.Intn(5) == 0 {
+			op = -3
+			total++
+		} else if xrng.Intn(5) == 0 {
 			op = -2
 		} else if brng.Intn(8) > 0 {
 			op = rng.Intn(22)
 		}
 		switch {
+		case op == -3:
+			args, name, want, err = extraPatch()
 		case op == -2:
 			was := rng
 			rng = xrng
@@ -598,8 +683,12 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				join = joinList(1+rng.Intn(2), false)
 			}
 			var out model.TaskCreated
-			out, err = m.CreateTask(model.TaskInput{Title: "t", Folder: folder, BlockedBy: bb, Blocks: bl, Join: join})
+			extra, patch := givenExtra()
+			out, err = m.CreateTask(model.TaskInput{Title: "t", Folder: folder, BlockedBy: bb, Blocks: bl, Join: join, Extra: extra})
 			args = []string{"task", "create", "t"}
+			if patch != "" {
+				args = append(args, "--extra", patch)
+			}
 			if folder != "" {
 				args = append(args, "--folder", folder)
 			}
@@ -690,8 +779,12 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					join = joinList(1+rng.Intn(2), false)
 				}
 				var out model.FolderCreated
-				out, err = m.CreateFolderJoin(to, nil, nil, join)
+				extra, patch := givenExtra()
+				out, err = m.CreateFolderJoin(to, nil, extra, join)
 				args = []string{"folder", "create", to}
+				if patch != "" {
+					args = append(args, "--extra", patch)
+				}
 				if join != nil {
 					args = append(args, "--join", strings.Join(join, ","))
 				}
@@ -743,8 +836,12 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 			case 2:
 				xs, words := subjects(x, subject)
 				var claimed []int64
-				claimed, err = m.ClaimTask(xs, nil)
+				extra, patch := givenExtra()
+				claimed, err = m.ClaimTask(xs, extra)
 				args = append([]string{"claim"}, words...)
+				if patch != "" {
+					args = append(args, "--extra", patch)
+				}
 				want = fmt.Sprint(nonNil(claimed))
 			case 3:
 				xs, words := subjects(x, subject)
@@ -770,8 +867,12 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					sc.TagsAll = []string{tag()}
 					args = append(args, "--tags-all", sc.TagsAll[0])
 				}
+				extra, patch := givenExtra()
+				if patch != "" {
+					args = append(args, "--extra", patch)
+				}
 				var c *model.Claim
-				c, err = m.ClaimNext(sc, nil)
+				c, err = m.ClaimNext(sc, extra)
 				want = "<nil>"
 				if c != nil {
 					want = fmt.Sprint(c.Task)
@@ -1022,6 +1123,7 @@ func TestCheckRoot(t *testing.T) {
 		"INSERT INTO tag (task, tag) VALUES (3, 'Bad')",
 		"INSERT INTO issued (id, kind, state) VALUES (7, 'task', 'live')",
 		"UPDATE task SET created_at = '2026-10-20T11:00:00Z' WHERE id = 3",
+		`UPDATE task SET extra = '{"Bad":1}' WHERE id = 4`,
 		"INSERT INTO edge (task, blocker) VALUES (4, 3)",
 		"DELETE FROM issued WHERE id = 6",
 		"DELETE FROM event WHERE seq = 3",
@@ -1029,7 +1131,7 @@ func TestCheckRoot(t *testing.T) {
 	_, bad = testrun.CheckRoot(home, snap, testrun.Checks{Notes: true})
 	for _, want := range []string{
 		"I1: @7 is issued live with no row", "I1: task @6 was never issued", "I2: @6 is no longer issued",
-		"I7: cycle", "I8: claim on @5, which isn't a task", "I9: @3 tag \"Bad\"", "I9: @3 created_at changed",
+		"I7: cycle", "I8: claim on @5, which isn't a task", "I9: @3 tag \"Bad\"", "I9: @3 created_at changed", "I9: @4 extra",
 		"I12: @5 archived alone", "T1: folder @2", "T2: ", "T4: ", "T5: ", "T6: " + filepath.Join(tree, "@work", "@todo.md"),
 		"T6: " + filepath.Join(tree, "@work", "@done.md") + " is no gate's notes", "notes: @6 has no",
 		"I14: seq jumps from 2 to 4", "I14: event 3 left the table", "I13: event ",

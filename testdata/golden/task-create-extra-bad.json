@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"a.b\" is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/extra/a.b",
+        "reason": "\"a.b\" is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen"
+      },
+      {
+        "field": "/extra/koan",
+        "reason": "\"koan\" is reserved for koan's own use"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

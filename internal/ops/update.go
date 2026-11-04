@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/phansen314/koan/internal/cli"
+	"github.com/phansen314/koan/internal/core"
 	"github.com/phansen314/koan/internal/store"
 )
 
@@ -16,27 +17,47 @@ type UpdateResult struct {
 	Updated []int64 `json:"updated"`
 }
 
-// extraChange is what an update does to extra: replace all of it, or
-// merge keys in and remove others. A nil map isn't given.
+// extraChange is what an update does to extra: a merge patch applied, and
+// namespaces removed.
 type extraChange struct {
-	merge, replace map[string]any
-	remove         []string
+	merge  map[string]any
+	remove []string
 }
 
-// extraChange reads extra_merge, extra_remove and extra_replace_all. The
-// last can't go with the others, and a key can't be both merged and
-// removed.
+// extraChange reads extra_merge and extra_remove. A namespace can't be both
+// merged and removed; a name that is no namespace is refused as that alone.
 func (r *input) extraChange() extraChange {
 	var x extraChange
-	x.merge = r.objectMap("extra_merge")
-	x.remove = r.strings("extra_remove", func(string) bool { return true }, "is not a string")
-	x.replace = r.objectMap("extra_replace_all")
-	_, removing := r.value("extra_remove")
-	if x.replace != nil && (x.merge != nil || removing) {
-		r.fault("", "%s can't go with %s or %s", r.name("extra_replace_all"), r.name("extra_merge"), r.name("extra_remove"))
-	}
-	r.both("extra_remove", "is both merged and removed", func(k string) bool { _, ok := x.merge[k]; return ok })
+	x.merge = r.patch("extra_merge")
+	x.remove = r.namespaces("extra_remove")
+	r.both("extra_remove", "is both merged and removed", func(k string) bool {
+		_, ok := x.merge[k]
+		return ok && core.NamespaceFault(k) == ""
+	})
 	return x
+}
+
+// mergePatch is target with patch applied, by JSON Merge Patch (RFC 7396):
+// an object merges into an object, recursively, a null removes the key, and
+// anything else replaces the value whole. An object onto a value that isn't
+// one merges into nothing, which drops its nulls. Neither is changed.
+func mergePatch(target, patch map[string]any) map[string]any {
+	out := maps.Clone(target)
+	for k, v := range patch {
+		switch p := v.(type) {
+		case nil:
+			delete(out, k)
+		case map[string]any:
+			t, ok := out[k].(map[string]any)
+			if !ok {
+				t = map[string]any{}
+			}
+			out[k] = mergePatch(t, p)
+		default:
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // apply is extra after the change, as stored: its keys in byte order.
@@ -47,10 +68,7 @@ func (x extraChange) apply(extra json.RawMessage) (json.RawMessage, error) {
 	if err := d.Decode(&m); err != nil {
 		return nil, err
 	}
-	if x.replace != nil {
-		m = maps.Clone(x.replace)
-	}
-	maps.Copy(m, x.merge)
+	m = mergePatch(m, x.merge)
 	for _, k := range x.remove {
 		delete(m, k)
 	}
@@ -116,8 +134,7 @@ func Update() *cli.Command {
 			{Field: "tags_remove", Kind: cli.List},
 			{Field: "tags_replace_all", Kind: cli.List},
 			{Field: "extra_merge", Kind: cli.JSON},
-			{Field: "extra_remove", Kind: cli.Each},
-			{Field: "extra_replace_all", Kind: cli.JSON},
+			{Field: "extra_remove", Kind: cli.List},
 		},
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in, env: env}

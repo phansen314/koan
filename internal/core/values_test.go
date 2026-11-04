@@ -18,6 +18,23 @@ func TestValidName(t *testing.T) {
 	}
 }
 
+// A namespace follows the tag pattern, and koan is reserved.
+func TestNamespaceFault(t *testing.T) {
+	for _, s := range []string{"jira", "a-1", "9", "koan-x", "koans", strings.Repeat("a", 64)} {
+		if why := NamespaceFault(s); why != "" {
+			t.Errorf("NamespaceFault(%q) = %q", s, why)
+		}
+	}
+	for _, s := range []string{"", "koan", "Koan", "-a", "a-", "a.b", "a:b", "a/b", "a,b", "a b", "é", strings.Repeat("a", 65)} {
+		if NamespaceFault(s) == "" {
+			t.Errorf("NamespaceFault(%q) = none", s)
+		}
+	}
+	if NamespaceFault("koan") == NamespaceFault("Bad") {
+		t.Error("koan is refused as reserved, not as a bad name")
+	}
+}
+
 func TestValidTag(t *testing.T) {
 	for _, s := range []string{"urgent", "a-1", "9"} {
 		if !ValidTag(s) {

@@ -112,7 +112,7 @@ A claim reserves a task, so that two workers taking work from one tree are never
 - **A blocked task can be claimed.** A claim reserves work ahead of time; it doesn't make the task ready.
 - **A claim refuses other claims and takes the task off the frontier, and nothing else.** Every other change works on a claimed task as on any other, and `unclaim` works whoever made the claim.
 - **A claim ends** with `unclaim`, or when its task is marked complete or deleted. A reopened task starts unclaimed. Archiving never ends one, since only complete tasks leave.
-- **It never expires.** It outlasts the process that made it. Who holds it, and whether they are still alive, is the caller's business: a claim carries `claimed_at`, and an `extra` object koan stores and never interprets. A claim is its own record, not a field of its task.
+- **It never expires.** It outlasts the process that made it. Who holds it, and whether they are still alive, is the caller's business: a claim carries `claimed_at`, and an `extra` object by the `extra` rule (Fields, Values), whose values koan stores and never interprets. A claim is its own record, not a field of its task.
 - **It doesn't lock the notes.** Nothing stops two editors overwriting each other in a task's notes; the convention is that whoever holds the claim edits them.
 - **A claimed task can become blocked.** A new edge to an open task, or a blocker reopened, makes it wait again, and the claim stays. A move never does this, since containment never orders.
 
@@ -192,7 +192,7 @@ A folder holds four fields and a task ten, and each has its notes. Every field i
 | `id` | The folder's identity. Never changes. |
 | `name` | The folder pattern: 1–64 ASCII letters, digits and hyphens, not starting or ending with a hyphen, `^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$`. So a name never holds a `.`, a `:` or a `/`. Unique among its siblings, ignoring case. |
 | `title` | `null`, or a title by the task rule. |
-| `extra` | Any JSON object. koan stores it and never interprets it. |
+| `extra` | An object of namespaces (Values). koan stores their values and never interprets them. |
 
 A folder's place in the tree (its parent) is structure, not a field: moving it changes no field. Nor are its gates: they are tasks in it, with fields of their own.
 
@@ -209,7 +209,7 @@ A folder's place in the tree (its parent) is structure, not a field: moving it c
 | `updated_at` | When one of these fields last changed, by whatever change: an entry added to or removed from its `blocked_by` by a change to another task counts, so `X --blocks @42` moves `@42`'s and not X's. A move or a notes edit does not. |
 | `blocked_by` | The set of tasks it waits on, gates included. Never itself. |
 | `tags` | A set of labels matching `^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`: the folder pattern, lowercase only. |
-| `extra` | Any JSON object, never interpreted. A workflow `status` goes here. |
+| `extra` | An object of namespaces (Values), whose values are never interpreted. A workflow `status` goes here. |
 | notes | The `@<id>.md` file, or `@start.md` or `@done.md` for a gate: prose, possibly empty. koan never reads meaning into it. |
 
 **Values**
@@ -217,6 +217,8 @@ A folder's place in the tree (its parent) is structure, not a field: moving it c
 - Integers are within ±(2^53 − 1), written without a fraction or an exponent.
 - Timestamps are UTC to the second, `YYYY-MM-DDTHH:MM:SSZ`, and name a real date and time.
 - Sets hold no duplicates, and keys are matched exactly: `Title` is not `title`.
+- `extra`, on a folder, a task or a claim, is an object whose top-level keys are **namespaces**. A namespace's name matches the tag pattern and isn't `koan`, which is reserved. Its value is any JSON value but `null`, which koan stores and never interprets; names below the top level are part of that value.
+- A write gives `extra` as a **JSON Merge Patch** (RFC 7396). An update applies it to the `extra` stored; a create, a batch or a claim applies it to `{}`. An object in the patch merges into the object stored, recursively; a `null` removes the key at its level; anything else, arrays included, replaces the value whole; and an object merged onto a value that isn't one replaces it, with its `null`s dropped. So a `null` given never becomes a namespace's value.
 
 ## Changes
 
@@ -226,7 +228,7 @@ Every change is whole (I10), resolves its references inside itself (see Resoluti
 | --- | --- | --- |
 | Create a folder | Makes the folder at its path, with its directory and empty notes. It has no gates until one is named, or until it joins a folder, which makes both and writes the edges of joining (Join, unjoin). Its gates are new, so on its own a join here can't close a cycle; in a batch, other parts can name them. | a sibling's name differs from it only in case (`case-mismatch`); the path is taken (`exists`) |
 | Create a task | Makes the task in a folder or the root, with any edges given, those of the folders it joins included. A gate an edge names is made if the folder lacks it. | an edge would close a cycle (`cycle`) |
-| Update | Changes the title, priority, tags or `extra` of one task or folder or several, mixed, as one change. A folder has no priority and no tags, and its title can be cleared; a task's can't. | something is named twice; a field is given that one of them doesn't have, or a task's title is cleared; a tag is both added and removed, or a key of `extra` both merged and removed (`invalid-input`) |
+| Update | Changes the title, priority, tags or `extra` of one task or folder or several, mixed, as one change. A folder has no priority and no tags, and its title can be cleared; a task's can't. `extra` changes by a merge patch (Fields, Values) or by removing whole namespaces, which is the same as merging a `null` for each. | something is named twice; a field is given that one of them doesn't have, or a task's title is cleared; a tag is both added and removed, or a namespace of `extra` both merged and removed (`invalid-input`) |
 | Block, unblock | Adds or removes edges. A gate an added edge names is made if the folder lacks it. Removing never makes a gate: an edge to a gate the folder lacks is an edge that isn't there. An added edge can block a claimed task. | an added edge would close a cycle (`cycle`), or point a task at itself (`invalid-input`). Removing an edge a task doesn't have, itself included, changes nothing. |
 | Join, unjoin | Adds or removes the two edges of joining a folder (Readiness, Joining a folder): for a task, or for a folder through its gates, with each folder named. A gate an added edge names is made if the folder lacks it. Removing never deletes a gate, and never makes one: an edge to a gate either folder lacks is an edge that isn't there. An added edge can block a claimed task. | an added edge would close a cycle (`cycle`); the subject is a gate, made or not, a folder is joined to itself, or the root is named (`invalid-input`). Removing an edge a task doesn't have changes nothing, a folder unjoined from itself included, and with only one of the two there, that one is removed. |
 | Complete, reopen | Sets or clears `completed_at`, for one task or several, as one change. Completing ends the task's claim. Reopening blocks again whatever waits on it. | a task is named twice (`invalid-input`) |

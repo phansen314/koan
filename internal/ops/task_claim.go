@@ -29,7 +29,7 @@ func TaskClaim() *cli.Command {
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in, env: env}
 			refs, at := r.taskRefs()
-			extra := r.object("extra")
+			extra := r.extra("extra")
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}
@@ -83,7 +83,7 @@ func TaskClaimNext() *cli.Command {
 		Run: func(env *cli.Env, in cli.Input) (any, []cli.Warning, *cli.Error) {
 			r := input{in: in, env: env}
 			q, sc := r.scope()
-			extra := r.object("extra")
+			extra := r.extra("extra")
 			if e := r.err(); e != nil {
 				return nil, nil, e
 			}

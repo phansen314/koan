@@ -60,6 +60,7 @@ func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 			folderRefs[i] = s.path(fmt.Sprintf("/folders/%d/path", i), f.Path)
 			titles[i] = s.folderTitle(fmt.Sprintf("/folders/%d/title", i), f.Title)
 			folderJoins[i] = s.joinRefs(fmt.Sprintf("/folders/%d/join", i), f.Join, true)
+			s.patch(fmt.Sprintf("/folders/%d/extra", i), f.Extra)
 		}
 		batchFolder := in.Folder
 		if batchFolder == "" {
@@ -100,6 +101,7 @@ func (t *Tree) Batch(in BatchInput) (out BatchResult, err error) {
 			if x.Join != nil {
 				p.joins = s.joinRefs(prefix+"/join", x.Join, true)
 			}
+			s.patch(prefix+"/extra", x.Extra)
 		}
 		if err := s.done(nil); err != nil {
 			return err

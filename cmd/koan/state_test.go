@@ -204,8 +204,7 @@ func TestCompleteSeveral(t *testing.T) {
 }
 
 // update changes a task's title, priority, tags and extra: tags added,
-// removed or replaced, extra merged at the top level, keys removed, or
-// replaced. A change that changes nothing says so and leaves updated_at
+// removed or replaced, extra merged as a patch, namespaces removed. A change that changes nothing says so and leaves updated_at
 // alone.
 func TestTaskUpdate(t *testing.T) {
 	home := root(t)
@@ -227,7 +226,7 @@ func TestTaskUpdate(t *testing.T) {
 		{"--title", "New", "--priority", "3"},
 		{"--tags-add", "b", "--tags-remove", "z"},
 		{"--extra-merge", `{"w":true}`, "--extra-remove", "nope"},
-		{"--tags-replace-all", "c,b,0", "--extra-replace-all", `{"x":{"q":1},"w":true}`},
+		{"--tags-replace-all", "c,b,0", "--extra-merge", `{"x":{"q":1},"w":true}`},
 	} {
 		r := ok(t, home, append([]string{"update", "1"}, args...)...)
 		if fmt.Sprint(r.Result()) != "map[updated:[]]" || field(t, home, "1", "updated_at") != fixed {
@@ -235,8 +234,8 @@ func TestTaskUpdate(t *testing.T) {
 		}
 	}
 	// --priority null clears; --title null is null, which a task's title
-	// can't be; replacing all with nothing empties.
-	r = ok(t, home, "update", "1", "--priority", "null", "--extra-replace-all", "{}")
+	// can't be; removing every namespace empties.
+	r = ok(t, home, "update", "1", "--priority", "null", "--extra-remove", "w,x")
 	if fmt.Sprint(r.Result()["updated"]) != "[1]" || field(t, home, "1", "priority") != nil ||
 		fmt.Sprint(field(t, home, "1", "extra")) != "map[]" {
 		t.Errorf("null: %s", r.Line())
@@ -296,9 +295,7 @@ func TestTaskUpdateInvalid(t *testing.T) {
 		{[]string{"1", "--tags-add", "A,b,b"}, "/tags_add/0"},
 		{[]string{"1", "--tags-replace-all", "a", "--tags-add", "b"}, ""},
 		{[]string{"1", "--tags-replace-all", "a", "--tags-remove", "b"}, ""},
-		{[]string{"1", "--extra-replace-all", "{}", "--extra-merge", "{}"}, ""},
-		{[]string{"1", "--extra-replace-all", "{}", "--extra-remove", "k"}, ""},
-		{[]string{"1", "--extra-merge", "[1]", "--extra-replace-all", "x"}, "/extra_merge /extra_replace_all"},
+		{[]string{"1", "--extra-merge", "[1]", "--extra-remove", "Bad"}, "/extra_merge /extra_remove/0"},
 		{[]string{"1", "--tags-add", "x", "--tags-remove", "x,x"}, "/tags_remove/0"},
 	} {
 		r := fails(t, home, "invalid-input", "", append([]string{"update"}, c.args...)...)
@@ -335,7 +332,7 @@ func TestFolderUpdate(t *testing.T) {
 	if rec["title"] != nil || string(extra) != `{"b":[1],"c":"x"}` {
 		t.Errorf("updated: %v", rec)
 	}
-	for _, args := range [][]string{{"--title", "null"}, {"--extra-merge", `{"c":"x"}`}, {"--extra-replace-all", `{"c":"x","b":[1]}`}} {
+	for _, args := range [][]string{{"--title", "null"}, {"--extra-merge", `{"c":"x"}`}, {"--extra-merge", `{"c":"x","b":[1]}`}} {
 		if r := ok(t, home, append([]string{"update", "@1"}, args...)...); fmt.Sprint(r.Result()) != "map[updated:[]]" {
 			t.Errorf("%q: %s", args, r.Line())
 		}
@@ -354,7 +351,6 @@ func TestFolderUpdate(t *testing.T) {
 		`{"refs":["/w:x"],"title":"x"}`:                              "/refs/0",
 		`{"refs":["/w"],"title":1}`:                                  "/title",
 		`{"refs":["/w"],"extra_merge":{"k":1},"extra_remove":["k"]}`: "/extra_remove/0",
-		`{"refs":["/w"],"extra_replace_all":{},"extra_merge":{}}`:    "",
 	} {
 		if r := input(t, home, "update", in); r.Kind() != "invalid-input" || problemFields(r) != fields {
 			t.Errorf("%s: %s", in, r.Line())

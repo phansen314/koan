@@ -152,7 +152,15 @@ func (t *Tree) checkValues() []string {
 			fail("@%d %s %q", id, field, s)
 		}
 	}
+	namespaces := func(what string, extra map[string]any) {
+		for k, v := range extra {
+			if core.NamespaceFault(k) != "" || v == nil {
+				fail("%s extra %q: %v", what, k, v)
+			}
+		}
+	}
 	for id, f := range t.Folders {
+		namespaces(fmt.Sprintf("folder @%d", id), f.Extra)
 		if !core.ValidID(id) || !core.ValidName(f.Name) {
 			fail("folder @%d named %q", id, f.Name)
 		}
@@ -166,6 +174,7 @@ func (t *Tree) checkValues() []string {
 		}
 	}
 	for id, x := range t.Tasks {
+		namespaces(fmt.Sprintf("@%d", id), x.Extra)
 		if !core.ValidID(id) {
 			fail("task ID %d", id)
 		}
@@ -191,6 +200,7 @@ func (t *Tree) checkValues() []string {
 	}
 	for id, cl := range t.Claims {
 		stamp(id, "claimed_at", cl.ClaimedAt)
+		namespaces(fmt.Sprintf("claim on @%d", id), cl.Extra)
 		if cl.Extra == nil {
 			fail("claim on @%d has no extra object", id)
 		}

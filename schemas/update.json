@@ -50,16 +50,13 @@
           "description": "Tasks only."
         },
         "extra_merge": {
-          "$ref": "types#/$defs/extra"
+          "$ref": "types#/$defs/extra-patch"
         },
         "extra_remove": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "types#/$defs/namespace"
           }
-        },
-        "extra_replace_all": {
-          "$ref": "types#/$defs/extra"
         }
       },
       "not": {
@@ -74,18 +71,6 @@
             "required": [
               "tags_replace_all",
               "tags_remove"
-            ]
-          },
-          {
-            "required": [
-              "extra_replace_all",
-              "extra_merge"
-            ]
-          },
-          {
-            "required": [
-              "extra_replace_all",
-              "extra_remove"
             ]
           }
         ]

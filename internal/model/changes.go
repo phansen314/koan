@@ -46,6 +46,33 @@ func checkFolderTitle(title *string) (*string, error) {
 	return &t, nil
 }
 
+// applied is a patch of extra as given at creation: applied to {}.
+func applied(patch map[string]any) map[string]any {
+	return mergePatch(map[string]any{}, patch)
+}
+
+// mergePatch is RFC 7396: an object merges into an object, a null removes
+// the key, and anything else replaces the value whole, so an object onto a
+// value that isn't one merges into nothing.
+func mergePatch(target, patch map[string]any) map[string]any {
+	out := maps.Clone(target)
+	for k, v := range patch {
+		switch p := v.(type) {
+		case nil:
+			delete(out, k)
+		case map[string]any:
+			into, _ := out[k].(map[string]any)
+			if into == nil {
+				into = map[string]any{}
+			}
+			out[k] = mergePatch(into, p)
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func orEmpty(m map[string]any) map[string]any {
 	if m == nil {
 		return map[string]any{}
@@ -105,7 +132,7 @@ func (c *Tree) createFolder(ref core.Ref, pointer string, title *string, extra m
 			"%s differs from %s only in case", path, is)
 	}
 	f := c.makeFolder(parent, name)
-	f.Title, f.Extra = title, orEmpty(extra)
+	f.Title, f.Extra = title, applied(extra)
 	c.given(f.ID)
 	return append(made, FolderAt{ID: f.ID, Path: c.Path(f.ID)}), nil
 }
@@ -134,6 +161,7 @@ func (t *Tree) CreateFolderJoin(path string, title *string, extra map[string]any
 		ref := s.path("/path", path)
 		title := s.folderTitle("/title", title)
 		joins := s.joinRefs("/join", join, false)
+		s.patch("/extra", extra)
 		if err := s.done(nil); err != nil {
 			return err
 		}
@@ -303,7 +331,7 @@ func (c *Tree) newTask(title string, priority *int64, tags map[string]bool, extr
 	x := &Task{
 		ID: c.issue(), Folder: folder, Title: title, Priority: priority,
 		CreatedAt: c.now, UpdatedAt: c.now,
-		BlockedBy: map[int64]bool{}, Tags: tags, Extra: orEmpty(extra),
+		BlockedBy: map[int64]bool{}, Tags: tags, Extra: applied(extra),
 	}
 	c.Tasks[x.ID] = x
 	c.given(x.ID)
@@ -359,6 +387,7 @@ func (t *Tree) CreateTask(in TaskInput) (out TaskCreated, err error) {
 		tags := s.tags("/tags", in.Tags)
 		bb, bl := s.edgeRefs("", in.BlockedBy, in.Blocks, false)
 		joins := s.joinRefs("/join", in.Join, false)
+		s.patch("/extra", in.Extra)
 		if err := s.done(nil); err != nil {
 			return err
 		}
@@ -421,26 +450,28 @@ type Update struct {
 	TagsRemove     []string
 	TagsReplaceAll []string // nil: not given
 
-	ExtraMerge      map[string]any
-	ExtraRemove     []string
-	ExtraReplaceAll map[string]any // nil: not given
+	ExtraMerge  map[string]any
+	ExtraRemove []string
 }
 
 // none reports whether an update gives nothing to change.
 func (u Update) none() bool {
 	return !u.SetTitle && !u.SetPriority && u.TagsAdd == nil && u.TagsRemove == nil && u.TagsReplaceAll == nil &&
-		u.ExtraMerge == nil && u.ExtraRemove == nil && u.ExtraReplaceAll == nil
+		u.ExtraMerge == nil && u.ExtraRemove == nil
 }
 
-// extra checks an update's extra fields: extra_replace_all goes with
-// neither of the others, and no key is both merged and removed.
+// extra checks an update's extra fields: each name a namespace, and none
+// both merged and removed.
 func (s *shape) extra(u Update) {
-	if u.ExtraReplaceAll != nil && (u.ExtraMerge != nil || u.ExtraRemove != nil) {
-		s.faultf("", "extra_replace_all can't go with extra_merge or extra_remove")
-	}
+	s.patch("/extra_merge", u.ExtraMerge)
 	merged := map[string]bool{}
 	for k := range u.ExtraMerge {
-		merged[k] = true
+		merged[k] = core.NamespaceFault(k) == ""
+	}
+	for i, k := range u.ExtraRemove {
+		if why := core.NamespaceFault(k); why != "" {
+			s.faultf(fmt.Sprintf("/extra_remove/%d", i), "%q %s", k, why)
+		}
 	}
 	s.both("/extra_remove", "is both merged and removed", u.ExtraRemove, merged)
 }
@@ -457,11 +488,7 @@ func (s *shape) both(pointer, why string, list []string, against map[string]bool
 }
 
 func applyExtra(extra map[string]any, u Update) map[string]any {
-	out := maps.Clone(extra)
-	if u.ExtraReplaceAll != nil {
-		out = maps.Clone(u.ExtraReplaceAll)
-	}
-	maps.Copy(out, u.ExtraMerge)
+	out := mergePatch(extra, u.ExtraMerge)
 	for _, k := range u.ExtraRemove {
 		delete(out, k)
 	}
@@ -1522,7 +1549,13 @@ func (t *Tree) Archive(refs ...string) (archived, left []int64, err error) {
 // claim. It returns the tasks claimed, in input order.
 func (t *Tree) ClaimTask(tasks []string, extra map[string]any) (claimed []int64, err error) {
 	err = t.change(func(c *Tree) error {
-		xs, err := c.subjectTasks(tasks)
+		var s shape
+		refs := taskRefs(&s, tasks)
+		s.patch("/extra", extra)
+		if err := s.done(nil); err != nil {
+			return err
+		}
+		xs, err := c.resolveTasks(refs)
 		if err != nil {
 			return err
 		}
@@ -1543,7 +1576,7 @@ func (t *Tree) ClaimTask(tasks []string, extra map[string]any) (claimed []int64,
 }
 
 func (c *Tree) claim(id int64, extra map[string]any) Claim {
-	cl := &Claim{Task: id, ClaimedAt: c.now, Extra: orEmpty(extra)}
+	cl := &Claim{Task: id, ClaimedAt: c.now, Extra: applied(extra)}
 	c.Claims[id] = cl
 	return *cl
 }
@@ -1561,7 +1594,13 @@ type Scope struct {
 // nil when there is none.
 func (t *Tree) ClaimNext(s Scope, extra map[string]any) (claim *Claim, err error) {
 	err = t.change(func(c *Tree) error {
-		ids, err := c.ScopedFrontier(s)
+		var f shape
+		read := f.scope(s)
+		f.patch("/extra", extra)
+		if err := f.done(nil); err != nil {
+			return err
+		}
+		ids, err := c.scoped(s, read)
 		if err != nil {
 			return err
 		}
@@ -1578,26 +1617,44 @@ func (t *Tree) ClaimNext(s Scope, extra map[string]any) (claim *Claim, err error
 // ScopedFrontier is the frontier, cut to a scope. Scope chooses where to
 // look, never what is ready.
 func (t *Tree) ScopedFrontier(s Scope) ([]int64, error) {
-	ref := s.Folder
+	var sh shape
+	read := sh.scope(s)
+	if err := sh.done(nil); err != nil {
+		return nil, err
+	}
+	return t.scoped(s, read)
+}
+
+// scopeRead is a scope once its shape is read.
+type scopeRead struct {
+	folder                     core.Ref
+	anyTags, allTags, noneTags map[string]bool
+}
+
+// scope reads a scope's fields into s.
+func (s *shape) scope(sc Scope) scopeRead {
+	ref := sc.Folder
 	if ref == "" {
 		ref = "/"
 	}
-	var sh shape
-	fref := sh.ref("/folder", ref, core.WantFolder, false)
-	anyTags := sh.tags("/tags_any", s.TagsAny)
-	allTags := sh.tags("/tags_all", s.TagsAll)
-	noneTags := sh.tags("/tags_none", s.TagsNone)
+	read := scopeRead{folder: s.ref("/folder", ref, core.WantFolder, false)}
+	read.anyTags = s.tags("/tags_any", sc.TagsAny)
+	read.allTags = s.tags("/tags_all", sc.TagsAll)
+	read.noneTags = s.tags("/tags_none", sc.TagsNone)
 	wanted := map[string]bool{}
-	for _, tags := range []map[string]bool{anyTags, allTags} {
+	for _, tags := range []map[string]bool{read.anyTags, read.allTags} {
 		for tag := range tags {
 			wanted[tag] = core.ValidTag(tag)
 		}
 	}
-	sh.both("/tags_none", "is both wanted and left out", s.TagsNone, wanted)
-	if err := sh.done(nil); err != nil {
-		return nil, err
-	}
-	folder, err := t.resolveFolder(fref, "/folder")
+	s.both("/tags_none", "is both wanted and left out", sc.TagsNone, wanted)
+	return read
+}
+
+// scoped is the frontier, cut to a scope whose shape is good.
+func (t *Tree) scoped(s Scope, read scopeRead) ([]int64, error) {
+	anyTags, allTags, noneTags := read.anyTags, read.allTags, read.noneTags
+	folder, err := t.resolveFolder(read.folder, "/folder")
 	if err != nil {
 		return nil, err
 	}

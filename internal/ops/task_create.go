@@ -48,7 +48,7 @@ func TaskCreate() *cli.Command {
 			tags := r.tags("tags")
 			edgesIn := r.edgeRefs()
 			joins := r.joinRefs("join")
-			extra := r.object("extra")
+			extra := r.extra("extra")
 			notes := r.text("notes", "")
 			refs, at := []core.Ref{folderRef}, []string{"/folder"}
 			for _, e := range edgesIn {

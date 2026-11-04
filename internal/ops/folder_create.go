@@ -44,7 +44,7 @@ func FolderCreate() *cli.Command {
 			ref := r.path("path")
 			title := r.title("title")
 			joins := r.joinRefs("join")
-			extra := r.object("extra")
+			extra := r.extra("extra")
 			notes := r.text("notes", "")
 			refs, at := []core.Ref{ref}, []string{"/path"}
 			for _, j := range joins {

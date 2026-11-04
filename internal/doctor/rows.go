@@ -2,7 +2,9 @@ package doctor
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,6 +20,7 @@ type folderRow struct {
 	parent int64 // core.RootID for the root
 	name   string
 	title  *string
+	extra  string
 }
 
 // taskRow is a task's row as doctor reads it.
@@ -30,7 +33,9 @@ type taskRow struct {
 	created, updated  string
 	completed         *string
 	tags              []string
+	extra             string
 	claimed           *string
+	claimExtra        string
 }
 
 // issuedRow is an ID's entry in issued.
@@ -56,11 +61,11 @@ type rows struct {
 func load(tx *store.Tx) (*rows, error) {
 	r := &rows{folders: map[int64]*folderRow{}, tasks: map[int64]*taskRow{}, issued: map[int64]issuedRow{},
 		children: map[int64][]int64{}, paths: map[int64]string{core.RootID: "/"}, gates: map[int64]map[string][]int64{}}
-	err := query(tx, "SELECT id, parent, name, title FROM folder", func(rs *sql.Rows) error {
+	err := query(tx, "SELECT id, parent, name, title, extra FROM folder", func(rs *sql.Rows) error {
 		f := &folderRow{}
 		var parent sql.NullInt64
 		var title sql.NullString
-		if err := rs.Scan(&f.id, &parent, &f.name, &title); err != nil {
+		if err := rs.Scan(&f.id, &parent, &f.name, &title, &f.extra); err != nil {
 			return err
 		}
 		f.parent = parent.Int64
@@ -73,11 +78,11 @@ func load(tx *store.Tx) (*rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = query(tx, `SELECT id, folder, gate, title, priority, typeof(priority), created_at, completed_at, updated_at FROM task`, func(rs *sql.Rows) error {
+	err = query(tx, `SELECT id, folder, gate, title, priority, typeof(priority), created_at, completed_at, updated_at, extra FROM task`, func(rs *sql.Rows) error {
 		t := &taskRow{}
 		var folder sql.NullInt64
 		var gate, priority, completed sql.NullString
-		if err := rs.Scan(&t.id, &folder, &gate, &t.title, &priority, &t.priType, &t.created, &completed, &t.updated); err != nil {
+		if err := rs.Scan(&t.id, &folder, &gate, &t.title, &priority, &t.priType, &t.created, &completed, &t.updated, &t.extra); err != nil {
 			return err
 		}
 		t.folder, t.gate, t.priority = folder.Int64, gate.String, priority.String
@@ -104,14 +109,14 @@ func load(tx *store.Tx) (*rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = query(tx, "SELECT task, claimed_at FROM claim", func(rs *sql.Rows) error {
+	err = query(tx, "SELECT task, claimed_at, extra FROM claim", func(rs *sql.Rows) error {
 		var id int64
-		var at string
-		if err := rs.Scan(&id, &at); err != nil {
+		var at, extra string
+		if err := rs.Scan(&id, &at, &extra); err != nil {
 			return err
 		}
 		if t, ok := r.tasks[id]; ok {
-			t.claimed = &at
+			t.claimed, t.claimExtra = &at, extra
 		}
 		return nil
 	})
@@ -340,7 +345,7 @@ func components(next map[int64][]int64) [][]int64 {
 }
 
 // values finds rows whose values break their rules (I9): names, tags,
-// titles, timestamps and integers. One finding for each task or folder,
+// extra's namespaces, titles, timestamps and integers. One finding for each task or folder,
 // naming every value at fault.
 func (c *checker) values() {
 	for _, id := range sorted(c.folders) {
@@ -352,9 +357,8 @@ func (c *checker) values() {
 		if f.title != nil && !storedTitle(*f.title) {
 			bad = append(bad, fmt.Sprintf("its title %q isn't a title", *f.title))
 		}
-		if len(bad) > 0 {
-			c.invalidRow("I9", []int64{id}, "Folder @%d: %s.", id, strings.Join(bad, "; "))
-		}
+		wrong, nulls := namespaces("its extra", f.extra)
+		c.invalidValues("Folder", id, append(bad, wrong...), nulls)
 	}
 	for _, id := range sorted(c.tasks) {
 		t := c.tasks[id]
@@ -386,10 +390,58 @@ func (c *checker) values() {
 				bad = append(bad, fmt.Sprintf("its tag %q isn't a tag", tag))
 			}
 		}
-		if len(bad) > 0 {
-			c.invalidRow("I9", []int64{id}, "Task @%d: %s.", id, strings.Join(bad, "; "))
+		wrong, nulls := namespaces("its extra", t.extra)
+		bad = append(bad, wrong...)
+		if t.claimed != nil {
+			// update can't reach a claim's extra, so its nulls aren't nulls
+			// update clears.
+			wrong, _ := namespaces("its claim's extra", t.claimExtra)
+			bad = append(bad, wrong...)
+		}
+		c.invalidValues("Task", id, bad, nulls)
+	}
+}
+
+// invalidValues reports what is wrong with a task or folder's values, if
+// anything. nulls, among bad, are its own extra's namespaces that hold a
+// null, which update can clear; the rest take a person.
+func (c *checker) invalidValues(what string, id int64, bad, nulls []string) {
+	if len(bad) == 0 {
+		return
+	}
+	message := fmt.Sprintf("%s @%d: %s.", what, id, strings.Join(bad, "; "))
+	if len(nulls) == 0 {
+		c.invalidRow("I9", []int64{id}, "%s", message)
+		return
+	}
+	cleared := "the null"
+	if len(nulls) > 1 {
+		cleared = "the nulls"
+	}
+	message += fmt.Sprintf(" koan update %d --extra-remove %s clears %s.", id, strings.Join(nulls, ","), cleared)
+	if len(bad) > len(nulls) {
+		message += " A person fixes the rest in the database."
+	}
+	c.add(newFinding(InvalidRow, "I9", message, []int64{id}, nil))
+}
+
+// namespaces is what is wrong with an extra as stored, whose name is what:
+// a top-level key that is no namespace, or a null under one, in byte order.
+// nulls names the namespaces that hold a null.
+func namespaces(what, extra string) (bad, nulls []string) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(extra), &m); err != nil || m == nil {
+		return []string{what + " isn't a JSON object"}, nil
+	}
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		if why := core.NamespaceFault(k); why != "" {
+			bad = append(bad, fmt.Sprintf("%s has %q, which %s", what, k, why))
+		} else if string(m[k]) == "null" {
+			bad = append(bad, fmt.Sprintf("%s has %q as null", what, k))
+			nulls = append(nulls, k)
 		}
 	}
+	return bad, nulls
 }
 
 // storedTitle reports whether a title is one as koan stores it: trimmed,
