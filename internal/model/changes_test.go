@@ -120,6 +120,55 @@ func TestCreateTask(t *testing.T) {
 	checked(t, tr)
 }
 
+// extra changes by merge patch, and every path that writes it checks its
+// names.
+func TestUpdateExtraPatch(t *testing.T) {
+	tr := newTree()
+	must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t"}))
+	// A merge is a JSON Merge Patch, and --extra-remove the same as a null.
+	for _, c := range []struct {
+		stored, patch map[string]any
+		remove        []string
+		want          map[string]any
+	}{
+		{map[string]any{"j": "x"}, map[string]any{"r": map[string]any{"at": "A"}}, nil, map[string]any{"j": "x", "r": map[string]any{"at": "A"}}},
+		{map[string]any{"r": map[string]any{"at": "A", "n": "x"}}, map[string]any{"r": map[string]any{"at": "B"}}, nil, map[string]any{"r": map[string]any{"at": "B", "n": "x"}}},
+		{map[string]any{"r": map[string]any{"at": "A", "n": "x"}}, map[string]any{"r": map[string]any{"n": nil}}, nil, map[string]any{"r": map[string]any{"at": "A"}}},
+		{map[string]any{"r": map[string]any{"at": "A"}}, map[string]any{"r": nil}, nil, map[string]any{}},
+		{map[string]any{"r": map[string]any{"at": "A"}}, nil, []string{"r"}, map[string]any{}},
+		{map[string]any{"r": map[string]any{"at": "A"}}, map[string]any{"r": map[string]any{"at": nil}}, nil, map[string]any{"r": map[string]any{}}},
+		{map[string]any{"r": "s"}, map[string]any{"r": map[string]any{"at": "A", "n": nil}}, nil, map[string]any{"r": map[string]any{"at": "A"}}},
+		{map[string]any{"r": []any{1.0}}, map[string]any{"r": []any{2.0, nil}}, nil, map[string]any{"r": []any{2.0, nil}}},
+	} {
+		y := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "p", Extra: c.stored})).ID
+		must[[]int64](t)(tr.Update([]string{fmt.Sprint(y)}, Update{ExtraMerge: c.patch, ExtraRemove: c.remove}))
+		if !reflect.DeepEqual(tr.Tasks[y].Extra, c.want) {
+			t.Errorf("%v + %v - %v = %v", c.stored, c.patch, c.remove, tr.Tasks[y].Extra)
+		}
+	}
+	// Names are checked on every path, every fault at its pointer.
+	_, err := tr.Update([]string{"1"}, Update{ExtraMerge: map[string]any{"koan": 1.0, "Bad": nil, "a/b": 1.0}, ExtraRemove: []string{"ok", "koan", "Bad"}})
+	if e, _ := err.(*core.Error); e == nil || !reflect.DeepEqual(e.Problems, []string{"/extra_merge/Bad", "/extra_merge/a~1b", "/extra_merge/koan", "/extra_remove/1", "/extra_remove/2"}) {
+		t.Errorf("names: %v", err)
+	}
+	_, err = tr.CreateTask(TaskInput{Title: "x", Extra: map[string]any{"Bad": nil}})
+	wantErr(t, err, core.KindInvalidInput, "")
+	_, err = tr.CreateFolder("/bad", nil, map[string]any{"koan": 1.0})
+	wantErr(t, err, core.KindInvalidInput, "")
+	_, err = tr.Batch(BatchInput{Tasks: []BatchTask{{TaskInput: TaskInput{Title: "x", Extra: map[string]any{"Bad": 1.0}}}}})
+	if e, _ := err.(*core.Error); e == nil || !reflect.DeepEqual(e.Problems, []string{"/tasks/0/extra/Bad"}) {
+		t.Errorf("batch: %v", err)
+	}
+	_, err = tr.ClaimTask([]string{"1"}, map[string]any{"Bad": 1.0})
+	wantErr(t, err, core.KindInvalidInput, "")
+	_, err = tr.ClaimNext(Scope{}, map[string]any{"koan": 1.0})
+	wantErr(t, err, core.KindInvalidInput, "")
+	// What is given is a patch applied to {}.
+	if y := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "x", Extra: map[string]any{"a": nil, "b": map[string]any{"c": nil}}})).ID; !reflect.DeepEqual(tr.Tasks[y].Extra, map[string]any{"b": map[string]any{}}) {
+		t.Errorf("given: %v", tr.Tasks[y].Extra)
+	}
+}
+
 func TestUpdate(t *testing.T) {
 	tr := newTree()
 	id := must[TaskCreated](t)(tr.CreateTask(TaskInput{Title: "t", Tags: []string{"a"}, Extra: map[string]any{"x": 1.0}})).ID

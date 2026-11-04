@@ -29,6 +29,39 @@ func TestOrder(t *testing.T) {
 	}
 }
 
+// extra as stored holds namespaces and no null at the top; a patch can
+// hold nulls, and takes the same names.
+func TestExtraSchemas(t *testing.T) {
+	s := Load(t)
+	for _, c := range []struct {
+		def, text string
+		good      bool
+	}{
+		{"extra", `{"jira":"WEB-12","rel":{"Any.Name":null},"a":[null],"n":1,"b":true}`, true},
+		{"extra", `{}`, true},
+		{"extra", `{"a":null}`, false},
+		{"extra", `{"Bad":1}`, false},
+		{"extra", `{"koan":{}}`, false},
+		{"extra", `[]`, false},
+		{"extra-patch", `{"a":null,"b":{"c":null}}`, true},
+		{"extra-patch", `{"Bad":null}`, false},
+		{"extra-patch", `{"koan":null}`, false},
+		{"namespace", `"koan-x"`, true},
+		{"namespace", `"koan"`, false},
+		{"namespace", `"a.b"`, false},
+	} {
+		if err := s.Validate("types", "/$defs/"+c.def, c.text); (err == nil) != c.good {
+			t.Errorf("%s %s: %v", c.def, c.text, err)
+		}
+	}
+	if err := s.Validate("update", "/$defs/input", `{"refs":[1],"extra_replace_all":{}}`); err == nil {
+		t.Error("extra_replace_all taken")
+	}
+	if err := s.Validate("update", "/$defs/input", `{"refs":[1],"extra_merge":{"a":null},"extra_remove":["b"]}`); err != nil {
+		t.Errorf("a patch refused: %v", err)
+	}
+}
+
 func TestECMARegexp(t *testing.T) {
 	re, err := ecmaRegexp(`^[^\x00-\x1f  ]+$`)
 	if err != nil {

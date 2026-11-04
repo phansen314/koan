@@ -1,0 +1,22 @@
+{
+  "ok": false,
+  "error": {
+    "kind": "invalid-input",
+    "rule": null,
+    "message": "\"Bad\" is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen",
+    "ids": [],
+    "paths": [],
+    "problems": [
+      {
+        "field": "/extra_remove/1",
+        "reason": "\"Bad\" is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen"
+      },
+      {
+        "field": "/extra_remove/2",
+        "reason": "\"koan\" is reserved for koan's own use"
+      }
+    ],
+    "archived": []
+  },
+  "warnings": []
+}

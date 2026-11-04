@@ -439,7 +439,15 @@ func CheckRoot(home string, prev *Snapshot, checks Checks) (*Snapshot, []string)
 
 func object(s string) bool {
 	var m map[string]any
-	return json.Unmarshal([]byte(s), &m) == nil && m != nil
+	if json.Unmarshal([]byte(s), &m) != nil || m == nil {
+		return false
+	}
+	for k, v := range m {
+		if core.NamespaceFault(k) != "" || v == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // checkTree checks T1 to T6 against the rows.

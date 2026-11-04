@@ -452,9 +452,14 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 					u.ExtraRemove = []string{k}
 					args = append(args, "--extra-remove", k)
 				} else {
-					v := pick([]string{"todo", "done"})
-					u.ExtraMerge = map[string]any{k: v}
-					args = append(args, "--extra-merge", fmt.Sprintf(`{%q:%q}`, k, v))
+					patch := fmt.Sprintf(`{%q:%s}`, k, pick([]string{`"todo"`, `null`, `{"at":"A","by":null}`,
+						`{"at":null}`, `{"by":{"who":"me"}}`, `[null,1.0]`}))
+					d := json.NewDecoder(strings.NewReader(patch))
+					d.UseNumber()
+					if err := d.Decode(&u.ExtraMerge); err != nil {
+						t.Fatal(err)
+					}
+					args = append(args, "--extra-merge", patch)
 				}
 			}
 		}
@@ -1022,6 +1027,7 @@ func TestCheckRoot(t *testing.T) {
 		"INSERT INTO tag (task, tag) VALUES (3, 'Bad')",
 		"INSERT INTO issued (id, kind, state) VALUES (7, 'task', 'live')",
 		"UPDATE task SET created_at = '2026-10-20T11:00:00Z' WHERE id = 3",
+		`UPDATE task SET extra = '{"Bad":1}' WHERE id = 4`,
 		"INSERT INTO edge (task, blocker) VALUES (4, 3)",
 		"DELETE FROM issued WHERE id = 6",
 		"DELETE FROM event WHERE seq = 3",
@@ -1029,7 +1035,7 @@ func TestCheckRoot(t *testing.T) {
 	_, bad = testrun.CheckRoot(home, snap, testrun.Checks{Notes: true})
 	for _, want := range []string{
 		"I1: @7 is issued live with no row", "I1: task @6 was never issued", "I2: @6 is no longer issued",
-		"I7: cycle", "I8: claim on @5, which isn't a task", "I9: @3 tag \"Bad\"", "I9: @3 created_at changed",
+		"I7: cycle", "I8: claim on @5, which isn't a task", "I9: @3 tag \"Bad\"", "I9: @3 created_at changed", "I9: @4 extra",
 		"I12: @5 archived alone", "T1: folder @2", "T2: ", "T4: ", "T5: ", "T6: " + filepath.Join(tree, "@work", "@todo.md"),
 		"T6: " + filepath.Join(tree, "@work", "@done.md") + " is no gate's notes", "notes: @6 has no",
 		"I14: seq jumps from 2 to 4", "I14: event 3 left the table", "I13: event ",

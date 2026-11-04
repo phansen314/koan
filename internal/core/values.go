@@ -33,6 +33,19 @@ func ValidName(s string) bool { return namePattern.MatchString(s) }
 // lowercase only.
 func ValidTag(s string) bool { return tagPattern.MatchString(s) }
 
+// NamespaceFault says what is wrong with s as a namespace, a top-level key
+// of extra, to follow it in a message; "" when nothing is. A namespace
+// follows the tag pattern, and koan is reserved.
+func NamespaceFault(s string) string {
+	switch {
+	case s == "koan":
+		return "is reserved for koan's own use"
+	case !ValidTag(s):
+		return "is not a namespace: 1 to 64 lowercase letters, digits and hyphens, not starting or ending with a hyphen"
+	}
+	return ""
+}
+
 // ValidLabel reports whether s is a label: "$" and then a name.
 func ValidLabel(s string) bool {
 	return strings.HasPrefix(s, "$") && ValidName(s[1:])

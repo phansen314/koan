@@ -99,7 +99,7 @@ func TestMessageTerms(t *testing.T) {
 		cli, fl string
 	}{
 		{[]string{"update", "2", "--extra-merge", "1"}, `{"refs":[2],"extra_merge":1}`, "update", "--extra-merge", "extra_merge"},
-		{[]string{"update", "2", "--extra-replace-all", "{}", "--extra-merge", "{}"}, `{"refs":[2],"extra_replace_all":{},"extra_merge":{}}`, "update", "--extra-replace-all", "extra_replace_all"},
+		{[]string{"update", "2", "--tags-replace-all", "a", "--tags-add", "b"}, `{"refs":[2],"tags_replace_all":["a"],"tags_add":["b"]}`, "update", "--tags-replace-all", "tags_replace_all"},
 		{[]string{"join", "2"}, `{"ref":2}`, "join", "name the folders to join after the task or folder", "join is required"},
 		{[]string{"complete"}, `{}`, "complete", "name the tasks", "tasks is required"},
 		{[]string{"block", "2"}, `{"task":2}`, "block", "--blocked-by or --blocks", "blocked_by or blocks"},

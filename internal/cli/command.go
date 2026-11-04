@@ -32,9 +32,6 @@ const (
 	Bool
 	// List is comma-separated, and the option can repeat.
 	List
-	// Each is a list that takes one value per occurrence, since a value
-	// can hold a comma.
-	Each
 	// JSON is one JSON value in one argument; text that isn't JSON is
 	// kept as text, for the command's own check to refuse.
 	JSON
@@ -289,7 +286,7 @@ func (v *value) Type() string {
 }
 
 func (v *value) Set(text string) error {
-	if v.seen && v.opt.Kind != List && v.opt.Kind != Each {
+	if v.seen && v.opt.Kind != List {
 		return errTwice
 	}
 	v.seen = true
@@ -595,9 +592,6 @@ func (o *Option) set(in Input, text string) {
 			list = append(list, s)
 		}
 		in[o.Field] = list
-	case Each:
-		list, _ := in[o.Field].([]any)
-		in[o.Field] = append(list, text)
 	default:
 		in[o.Field] = o.value(text)
 	}
