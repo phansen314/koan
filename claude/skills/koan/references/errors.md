@@ -10,7 +10,7 @@ Read this when a command fails with a kind or rule that the skill's core doesn't
 - `unsupported-format`: the database is in a format this binary doesn't read. When `.result.format` is below `koan version`'s `.result.format`, the root is older than this koan: there is no conversion before 1.0, so the user backs it up and starts a fresh root. Otherwise the user needs a newer koan. Either way, tell the user; never move or replace the root yourself.
 - `corrupt`: report it; the user restores from a backup ([repair.md](repair.md)).
 
-`version` printing `v0.13.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. An earlier `v` release lacks commands this skill names, and anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: either way, tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
+`version` printing `v0.14.0` or later, a pseudo-version (`v0.0.0-…`) or `(devel)` is this koan. An earlier `v` release lacks commands this skill names, and anything else, such as `0.3.0` without the `v`, is the original koan, which works differently: either way, tell the user to upgrade with `go install github.com/phansen314/koan/cmd/koan@latest`. A `usage` error for a command this skill names means the same.
 
 ## Errors
 
