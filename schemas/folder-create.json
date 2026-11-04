@@ -37,7 +37,7 @@
           "description": "The folders it joins."
         },
         "extra": {
-          "$ref": "types#/$defs/extra",
+          "$ref": "types#/$defs/extra-patch",
           "default": {}
         },
         "notes": {

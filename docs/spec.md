@@ -10,7 +10,7 @@ It comes third. The rules doc, koan: invariants and rules, says what must hold; 
 
 **Reading the schemas.** They are JSON Schema 2020-12. Each has an `$id` that is its name, such as `task`, and refers to the others by it: `types#/$defs/id` is the `id` type in Shared types. These conventions hold unless a schema says otherwise:
 
-- **Records, results and inputs are closed.** Each has `unevaluatedProperties: false`, written out once here rather than in every schema. It sees through `allOf` and `$ref`, so a schema built from parts is closed as a whole, and a fragment under `$defs`, such as `task-list`'s `filter`, is closed only where it is used. Three things stay open: `extra`, which is any object; `envelope.result`, which the command's own result schema checks; and the on-disk formats, whose readers ignore fields they don't know.
+- **Records, results and inputs are closed.** Each has `unevaluatedProperties: false`, written out once here rather than in every schema. It sees through `allOf` and `$ref`, so a schema built from parts is closed as a whole, and a fragment under `$defs`, such as `task-list`'s `filter`, is closed only where it is used. Three things stay open: `extra`, whose keys no schema lists; `envelope.result`, which the command's own result schema checks; and the on-disk formats, whose readers ignore fields they don't know.
 - **Every listed field is always present.** A field that has no value is `null`, never left out. The one exception is a record cut down by `--fields`.
 - **Fields print in the order the schema lists them**, so output can be diffed. An `extra`, whose keys no schema lists, prints them in byte order at every depth, whatever order they were given in.
 - **ID lists are ascending**, unless the schema names another order, such as work order or cycle order.
@@ -30,7 +30,9 @@ Every schema below builds on these. The patterns are the rules doc's, written as
 | `title` | A title, as stored: trimmed, 1–200 code points, no control characters | `Book flights` |
 | `priority` | An integer, or null | `2` |
 | `timestamp` | UTC to the second | `2026-10-19T14:03:00Z` |
-| `extra` | Any JSON object, never interpreted | `{"status":"waiting"}` |
+| `namespace` | A top-level key of `extra`: the tag pattern, and not `koan` | `jira` |
+| `extra` | An object of namespaces, as stored; each value is any JSON value but null, never interpreted | `{"jira":"WEB-12"}` |
+| `extra-patch` | `extra` as a write gives it: a JSON Merge Patch (RFC 7396), where a null removes | `{"jira":null}` |
 | `end` | A gate's end | `start` |
 | `label` | A batch label: $ then a name | `$a` |
 | `folder-ref` | A folder: path, ID or anchored path | `/work/api`, `@41`, `@41/phase2` |
@@ -43,6 +45,8 @@ Every schema below builds on these. The patterns are the rules doc's, written as
 | `edge-end` | The other end of an edge, as a record lists it | `{"id": 42, "ref": "@42 (/work)", "state": "open"}` |
 
 A reference is a string, or an ID given as a JSON integer. Every form takes the `@` or leaves it out. Whether a reference names the right kind of thing, such as a task where a task is needed, is resolved by koan, not the pattern.
+
+**`extra` is written as a patch.** Each write that takes an `extra` takes an `extra-patch` (rules Values): `update`'s `extra_merge` is applied to the `extra` stored; `extra` on `task create`, `folder create`, `claim`, `claim-next` and a batch's parts is applied to `{}`, so a `null` in it stores nothing. Only a patch's top-level keys are names, and each is checked, a `null`'s included: a bad or reserved name is `invalid-input` at that key, such as `/extra_merge/Remind`, `/extra/koan` or `/tasks/0/extra/Remind`, escaped as JSON Pointer escapes it. koan checks nothing below them.
 
 ```json
 {
@@ -60,7 +64,12 @@ A reference is a string, or an ID given as a JSON integer. Every form takes the 
     "timestamp": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
                    "description": "A real date and time, which koan checks." },
     "seq":       { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
-    "extra":     { "type": "object" },
+    "namespace": { "allOf": [ { "$ref": "#/$defs/tag" }, { "not": { "const": "koan" } } ],
+                   "description": "A top-level key of extra. koan is reserved." },
+    "extra":     { "type": "object", "propertyNames": { "$ref": "#/$defs/namespace" }, "additionalProperties": { "not": { "type": "null" } },
+                   "description": "As stored. koan never interprets the values." },
+    "extra-patch": { "type": "object", "propertyNames": { "$ref": "#/$defs/namespace" },
+                   "description": "A JSON Merge Patch (RFC 7396) of extra. koan never interprets the values, but for null, which removes." },
     "end":       { "enum": ["start", "done"] },
     "gate":      { "enum": ["start", "done", null] },
     "state":     { "enum": ["open", "complete"] },
@@ -115,11 +124,11 @@ A command line is `koan <command> [<subject>] [<object>] [<options>]`, and every
 - **`log` holds the log's commands,** `list` and `rotate`, for the same reason: the log is neither a task nor a folder, and no reference names it, so its commands sit under its noun, `koan log list`. It is the one group for something that isn't a kind of node.
 - **References** are taken with or without the `@`: `koan show 42`, `koan block @42 --blocked-by 17,@41.start`.
 - **koan paths are never globbed.** A shell expands `/work/old/*` against the real filesystem before koan runs, so it can never mean the folders under `/work/old`. Name each one, completing them with Tab (Completing references), or pick them with `$(koan pick)`.
-- **Lists** are comma-separated, and the option can repeat: `--tags a,b` is `--tags a --tags b`. Every comma splits; there is no quoting. `--extra-remove` takes one key per occurrence, since a key can hold a comma. Only references are listed in a position: a title, a new folder's path and a directory are one word each, and never split.
+- **Lists** are comma-separated, and the option can repeat: `--tags a,b` is `--tags a --tags b`. Every comma splits; there is no quoting. Only references are listed in a position: a title, a new folder's path and a directory are one word each, and never split.
 - **`null`** is written `null`: `--priority null` clears a priority, `--title null` a folder's title, and a boolean writes it `--claimed=null`. It means null wherever the field can be null for some subject, even one this command line doesn't name: `--title null` on `update` is null whatever it names, and a task, whose title can't be null, refuses it as `invalid-input`. Anywhere else it is the word itself: a new task's title is a word, so `koan task create null` makes a task titled null, as `update` does with `"title": "null"` through `--input`.
 - **Booleans:** `--contents` is true, `--contents=false` false, and `--claimed=null` null, where the field can be null. Every boolean option is false by default, so typing one turns it on; `--claimed`, whose default is null, is a filter of three values.
 - **Integers** (`--priority`, `--limit`, `--ids-from`, `--after`) are written as JSON writes them, or `null`: `--priority 007` is not one.
-- **JSON values** (`--extra`, `--extra-merge`, `--extra-replace-all`) are one JSON object in one argument.
+- **JSON values** (`--extra`, `--extra-merge`) are one JSON object in one argument.
 - **Names are matched exactly.** There are no abbreviations, so adding an option never changes what an existing command line means.
 - **`--`** ends the options, for a title that starts with `-`.
 - **Short options** are `-i` and `-h` everywhere, and `mv`'s own, `-t` and `-T`.
@@ -637,7 +646,7 @@ Each command has one schema, named after it, holding its `input` and its `result
 
 A write that changes nothing, such as completing a complete task or removing an edge that isn't there, succeeds with changed false, and leaves updated\_at alone. An `extra` changes when it would print differently, since koan never interprets it: replacing `1.0` with `1` is a change. **A write's subject is a list unless its object is.** `complete`, `reopen`, `update`, `mv`, `delete`, `archive`, `claim` and `unclaim` take one subject or several, comma-separated or as more words, and make one change of them all: if any is refused, nothing changes. Their results list what changed, in input order, named by the verb's past tense, such as `completed`, `moved` or `deleted`, and a list is empty when nothing changed; a move changes nothing for an item already where it would go. `join` and `unjoin`, whose object is the list, `block` and `unblock`, whose lists are options, and `bind` and `unbind`, whose directory is one word, take one subject, and `changed` is in the result of each of them. A list of what a write made is named for what it holds: `folders_made`, `tasks_made` and `gates_made`. `removed` is every ID that left the tree, ascending: the subjects, and everything under them. `complete` and `delete` also give `unclaimed`, as `unclaim` does: the tasks, among those completed or removed, whose claim the change ended, in that list's order.
 
-**A set takes duplicates; a list of subjects doesn't.** An entry given more than once in a set counts once: an edge, however it is written, as rules Changes says (`blocked_by`, `blocks`, `join`), and a value in `fields`, `state`, `readiness`, `tags_any`, `tags_all`, `tags_none`, `kinds`, `tags`, `tags_add`, `tags_remove`, `tags_replace_all` and `extra_remove`. A tag both added and removed, a key both merged and removed, or a tag in both `tags_none` and `tags_any` or `tags_all`, is still `invalid-input`, since the two contradict each other.
+**A set takes duplicates; a list of subjects doesn't.** An entry given more than once in a set counts once: an edge, however it is written, as rules Changes says (`blocked_by`, `blocks`, `join`), and a value in `fields`, `state`, `readiness`, `tags_any`, `tags_all`, `tags_none`, `kinds`, `tags`, `tags_add`, `tags_remove`, `tags_replace_all` and `extra_remove`. A tag both added and removed, a namespace both merged and removed, or a tag in both `tags_none` and `tags_any` or `tags_all`, is still `invalid-input`, since the two contradict each other.
 
 In a list subject, a task or folder is given twice when two references resolve to it, however each is written, such as `42` and `@42`; it is `invalid-input` at the later one. On `mv`, `delete` and `archive`, a task or folder inside a folder given is `invalid-input` at the one inside, since it goes with that folder. On `mv`, a gate is `invalid-input` at its reference, even into its own folder: a gate stays in its folder (rules I11).
 
@@ -647,7 +656,7 @@ In a list subject, a task or folder is given twice when two references resolve t
 
 `koan task create <title> [--folder] [--priority] [--tags] [--blocked-by] [--blocks] [--join] [--extra] [--notes | --notes-file]`
 
-Makes a task, with its notes file, in a folder or the root. Its edges are written in the same change, and a gate they name is made. `--join` joins it to each folder named, as `join` does: `koan task create 'x' --folder /a --join /b` makes a task that sits in `/a` and is a member of `/b`. Warns `complete-blocker`, `claimed-blocked`. Refused: `cycle`.
+Makes a task, with its notes file, in a folder or the root. Its edges are written in the same change, and a gate they name is made. `--extra` is a patch applied to `{}` (Shared types). `--join` joins it to each folder named, as `join` does: `koan task create 'x' --folder /a --join /b` makes a task that sits in `/a` and is a member of `/b`. Warns `complete-blocker`, `claimed-blocked`. Refused: `cycle`.
 
 ```json
 { "$id": "task-create", "$defs": {
@@ -659,7 +668,7 @@ Makes a task, with its notes file, in a folder or the root. Its edges are writte
     "blocked_by": { "type": "array", "items": { "$ref": "types#/$defs/edge-ref" }, "default": [] },
     "blocks":     { "type": "array", "items": { "$ref": "types#/$defs/edge-ref" }, "default": [] },
     "join":       { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [], "description": "The folders it joins." },
-    "extra":      { "$ref": "types#/$defs/extra", "default": {} },
+    "extra":      { "$ref": "types#/$defs/extra-patch", "default": {} },
     "notes":      { "type": "string", "default": "", "description": "The notes file's first content." } } },
   "result": { "type": "object", "required": ["id", "ref", "notes_path", "gates_made", "reblocked"], "properties": {
     "id":         { "$ref": "types#/$defs/id" },
@@ -780,19 +789,19 @@ Tasks under the folder, the root when none is given, in tree order: open ones un
 
 #### claim, claim-next, unclaim
 
-`koan claim <task>... [--extra]` claims each task, blocked or not, so long as it is open, as one change: if any is refused, none is claimed. `--extra` is kept with every claim it makes, and `claimed` lists the tasks, in input order. Refused: `claimed`, `already-complete`. `koan claim-next [<folder> | --file <path> | --here] [--direct] [--tags-any] [--tags-all] [--tags-none] [--extra]` claims the first task of the frontier under the folder, the root when none is given, and returns its record, whose `claim` is the new claim, or null when there is none. `koan unclaim <task>...` ends each task's claim, whoever made it, as one change; `unclaimed` lists the tasks that had one, in input order.
+`koan claim <task>... [--extra]` claims each task, blocked or not, so long as it is open, as one change: if any is refused, none is claimed. `--extra`, a patch applied to `{}` (Shared types), is kept with every claim it makes, and `claimed` lists the tasks, in input order. Refused: `claimed`, `already-complete`. `koan claim-next [<folder> | --file <path> | --here] [--direct] [--tags-any] [--tags-all] [--tags-none] [--extra]` claims the first task of the frontier under the folder, the root when none is given, and returns its record, whose `claim` is the new claim, or null when there is none. `koan unclaim <task>...` ends each task's claim, whoever made it, as one change; `unclaimed` lists the tasks that had one, in input order.
 
 ```json
 { "$id": "claim", "$defs": {
   "input": { "type": "object", "required": ["tasks"], "properties": {
     "tasks": { "type": "array", "items": { "$ref": "types#/$defs/task-ref" }, "minItems": 1, "description": "Subject." },
-    "extra": { "$ref": "types#/$defs/extra", "default": {}, "description": "Kept with every claim it makes." } } },
+    "extra": { "$ref": "types#/$defs/extra-patch", "default": {}, "description": "Kept with every claim it makes." } } },
   "result": { "type": "object", "required": ["claimed"], "properties": {
     "claimed": { "type": "array", "items": { "$ref": "types#/$defs/id" }, "uniqueItems": true, "description": "The tasks it claimed. Input order." } } } } }
 
 { "$id": "claim-next", "$defs": {
   "input": { "type": "object", "allOf": [ { "$ref": "task-list#/$defs/filter" } ], "properties": {
-    "extra": { "$ref": "types#/$defs/extra", "default": {} } } },
+    "extra": { "$ref": "types#/$defs/extra-patch", "default": {} } } },
   "result": { "type": "object", "required": ["task"], "properties": {
     "task": { "anyOf": [ { "$ref": "task" }, { "type": "null" } ], "description": "The task it claimed, its claim included; null when the frontier was empty." } } } } }
 
@@ -808,7 +817,7 @@ A folder subject is a `folder-ref`.
 
 #### folder create
 
-`koan folder create <path> [--title] [--join] [--extra] [--notes | --notes-file]`. Makes the folder, its directory and its notes, and any missing parents the same way, with no title. It has no gates until an edge names one, or until `--join` joins it to each folder named, as `join` does, which makes both. `--join` resolves after the folders are made, so it can name a missing parent the same command makes; it joins only the folder at the path, never its parents, and naming that folder itself is an edge to itself, `invalid-input`. `--join` warns `complete-blocker` and `claimed-blocked`, when a folder joined has a complete or a claimed, ready done gate. It is never refused by `cycle`: the new folder's gates are new, and only its joins' edges name them. Refused: `case-mismatch`, `exists`.
+`koan folder create <path> [--title] [--join] [--extra] [--notes | --notes-file]`. Makes the folder, its directory and its notes, and any missing parents the same way, with no title. `--extra`, a patch applied to `{}` (Shared types), goes on the folder at the path alone. It has no gates until an edge names one, or until `--join` joins it to each folder named, as `join` does, which makes both. `--join` resolves after the folders are made, so it can name a missing parent the same command makes; it joins only the folder at the path, never its parents, and naming that folder itself is an edge to itself, `invalid-input`. `--join` warns `complete-blocker` and `claimed-blocked`, when a folder joined has a complete or a claimed, ready done gate. It is never refused by `cycle`: the new folder's gates are new, and only its joins' edges name them. Refused: `case-mismatch`, `exists`.
 
 ```json
 { "$id": "folder-create", "$defs": {
@@ -816,7 +825,7 @@ A folder subject is a `folder-ref`.
     "path":  { "allOf": [ { "$ref": "types#/$defs/path" }, { "not": { "const": "/" } } ], "description": "Subject." },
     "title": { "type": ["string", "null"], "default": null },
     "join":  { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [], "description": "The folders it joins." },
-    "extra": { "$ref": "types#/$defs/extra", "default": {} },
+    "extra": { "$ref": "types#/$defs/extra-patch", "default": {} },
     "notes": { "type": "string", "default": "", "description": "The @notes.md's first content, written by the step that makes the directory." } } },
   "result": { "type": "object", "required": ["id", "ref", "notes_path", "dir", "folders_made", "gates_made", "reblocked"], "properties": {
     "id":         { "$ref": "types#/$defs/id" },
@@ -867,9 +876,9 @@ A folder subject is a `folder-ref`.
 
 #### update
 
-`koan update <ref>... [--title] [--priority] [--tags-add] [--tags-remove] [--tags-replace-all] [--extra-merge] [--extra-remove] [--extra-replace-all]`
+`koan update <ref>... [--title] [--priority] [--tags-add] [--tags-remove] [--tags-replace-all] [--extra-merge] [--extra-remove]`
 
-Changes the fields of each task and folder given, mixed, as one change: if any is refused, none changes. At least one option is needed. A folder has a title and `extra`, and no priority or tags: `priority` or a `tags_*` field with a folder among the subjects is `invalid-input` at that field, with a reason naming the folder, and for `priority`, saying that a folder's work is ordered through its gates, which are tasks, such as `/work/api.start`. `--title null` clears a folder's title; a task's title can't be null, so with a task among the subjects it is `invalid-input` at `/title`. `--tags-replace-all` can't go with `--tags-add` or `--tags-remove`, nor `--extra-replace-all` with `--extra-merge` or `--extra-remove`. A tag can't be both added and removed, nor a key both merged and removed. `--extra-merge` merges at the top level only. A subject given twice is `invalid-input` at its later occurrence. `updated` lists the subjects whose fields changed, in input order.
+Changes the fields of each task and folder given, mixed, as one change: if any is refused, none changes. At least one option is needed. A folder has a title and `extra`, and no priority or tags: `priority` or a `tags_*` field with a folder among the subjects is `invalid-input` at that field, with a reason naming the folder, and for `priority`, saying that a folder's work is ordered through its gates, which are tasks, such as `/work/api.start`. `--title null` clears a folder's title; a task's title can't be null, so with a task among the subjects it is `invalid-input` at `/title`. `--tags-replace-all` can't go with `--tags-add` or `--tags-remove`. A tag can't be both added and removed, nor a namespace both merged and removed. `--extra-merge` is a JSON Merge Patch (rules Values; the table below). `--extra-remove` removes whole namespaces: `--extra-remove remind` gives the same result and the same event as `--extra-merge '{"remind":null}'`. A bad or reserved name in either is `invalid-input`, at `/extra_merge/<name>` or `/extra_remove/<index>`. Neither checks a name already stored, so a stored name that breaks the rule stays through any merge, and neither option can take it away: doctor reports it, `invalid-row` under `I9`, and a person fixes it. A subject given twice is `invalid-input` at its later occurrence. `updated` lists the subjects whose fields changed, in input order.
 
 ```json
 { "$id": "update", "$defs": {
@@ -881,14 +890,24 @@ Changes the fields of each task and folder given, mixed, as one change: if any i
     "tags_add":          { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "description": "Tasks only." },
     "tags_remove":       { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "description": "Tasks only." },
     "tags_replace_all":  { "type": "array", "items": { "$ref": "types#/$defs/tag" }, "description": "Tasks only." },
-    "extra_merge":       { "$ref": "types#/$defs/extra" },
-    "extra_remove":      { "type": "array", "items": { "type": "string" } },
-    "extra_replace_all": { "$ref": "types#/$defs/extra" } },
-    "not": { "anyOf": [ { "required": ["tags_replace_all", "tags_add"] }, { "required": ["tags_replace_all", "tags_remove"] },
-                        { "required": ["extra_replace_all", "extra_merge"] }, { "required": ["extra_replace_all", "extra_remove"] } ] } },
+    "extra_merge":       { "$ref": "types#/$defs/extra-patch" },
+    "extra_remove":      { "type": "array", "items": { "$ref": "types#/$defs/namespace" } } },
+    "not": { "anyOf": [ { "required": ["tags_replace_all", "tags_add"] }, { "required": ["tags_replace_all", "tags_remove"] } ] } },
   "result": { "type": "object", "required": ["updated"], "properties": {
     "updated": { "type": "array", "items": { "$ref": "types#/$defs/id" }, "uniqueItems": true, "description": "The subjects it changed. Input order." } } } } }
 ```
+
+| Stored `extra` | `--extra-merge` | Result |
+| --- | --- | --- |
+| `{"jira":"WEB-12"}` | `{"remind":{"at":"A"}}` | `{"jira":"WEB-12","remind":{"at":"A"}}` |
+| `{"remind":{"at":"A","note":"x"}}` | `{"remind":{"at":"B"}}` | `{"remind":{"at":"B","note":"x"}}` |
+| `{"remind":{"at":"A","note":"x"}}` | `{"remind":{"note":null}}` | `{"remind":{"at":"A"}}` |
+| `{"rel":{"dup":[42]}}` | `{"rel":{"dup":[42,57]}}` | `{"rel":{"dup":[42,57]}}`: an array replaces whole |
+| `{"remind":{"at":"A"}}` | `{"remind":null}` | `{}`, as `--extra-remove remind` gives |
+| `{"remind":{"at":"A"}}` | `{"remind":{"at":null}}` | `{"remind":{}}`: the emptied object stays |
+| `{"remind":"soon"}` | `{"remind":{"at":"A","note":null}}` | `{"remind":{"at":"A"}}`: an object replaces a value that isn't one, its `null`s dropped |
+| `{}` | `{"Remind":{}}` | refused: `invalid-input` at `/extra_merge/Remind` |
+| `{}` | `{"koan":{}}` | refused: `invalid-input` at `/extra_merge/koan`, reserved |
 
 #### mv
 
@@ -1347,6 +1366,7 @@ Lets a person at a terminal choose tasks, gates and folders in fzf, and prints t
 
 A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 parts, folders and tasks together. The batch is read as the tree it would leave, so a part can name a folder or a label that another part makes, in any order.
 
+- **`extra`,** on a folder or a task, is a patch applied to `{}` (Shared types); a bad name is `invalid-input` at the part's path, such as `/folders/0/extra/Bad`.
 - **Folders** are named by path. A path given twice, or one already in the tree, refuses the batch as `exists`; missing parents are made, as `folder create` makes them. Each folder made, a missing parent included, is a destination (rules doc, Changes).
 - **Tasks** go in their own `folder`, or the batch's `folder`, or the root. A task's folder can be one the batch makes. The batch's `folder` is resolved whether or not a task takes it, so one that names nothing is `not-found`.
 - **Labels** name a task within the batch only. Each is defined once, and takes no end and no material: `$a.start` is `invalid-input`. Labels are never stored.
@@ -1376,7 +1396,7 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
       "path":  { "allOf": [ { "$ref": "types#/$defs/path" }, { "not": { "const": "/" } } ] },
       "title": { "type": ["string", "null"], "default": null },
       "join":  { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [] },
-      "extra": { "$ref": "types#/$defs/extra", "default": {} },
+      "extra": { "$ref": "types#/$defs/extra-patch", "default": {} },
       "notes": { "type": "string", "default": "" } } } },
     "folder":  { "$ref": "types#/$defs/folder-ref", "default": "/", "description": "Where tasks go that name no folder." },
     "join":    { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "default": [], "description": "The folders tasks join that give no join of their own." },
@@ -1389,7 +1409,7 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
       "blocked_by": { "type": "array", "default": [], "items": { "anyOf": [ { "$ref": "types#/$defs/edge-ref" }, { "$ref": "types#/$defs/label" } ] } },
       "blocks":     { "type": "array", "default": [], "items": { "anyOf": [ { "$ref": "types#/$defs/edge-ref" }, { "$ref": "types#/$defs/label" } ] } },
       "join":       { "type": "array", "items": { "$ref": "types#/$defs/folder-ref" }, "description": "No default: left out, the batch's join." },
-      "extra":      { "$ref": "types#/$defs/extra", "default": {} },
+      "extra":      { "$ref": "types#/$defs/extra-patch", "default": {} },
       "notes":      { "type": "string", "default": "" } } } }
   },
   "anyOf": [ { "required": ["folders"], "properties": { "folders": { "minItems": 1 } } },
@@ -1402,8 +1422,8 @@ A plan of folders, tasks and edges, applied as one change. It holds 1 to 1000 pa
 
 | Value | On the command line | Through `--input` |
 | --- | --- | --- |
-| `extra`, `--extra-merge`, `--extra-replace-all` | One JSON object in one argument. Anything else is `invalid-input` | A JSON object |
-| `--extra-remove` | One key per occurrence, repeated for more | An array of keys |
+| `extra`, `--extra-merge` | One JSON object in one argument. Anything else is `invalid-input` | A JSON object |
+| `--extra-remove` | Comma-separated, or the option repeated | An array of names |
 | Tags | Comma-separated, or the option repeated; lowercase | An array |
 | References in a list | Comma-separated, or repeated: `--blocks 17,@41.start`; in a position, comma-separated or as more words: `complete 17 18,19` | An array of strings or integers |
 | `--fields` | Comma-separated field names from the record's `field` list | An array of names |
