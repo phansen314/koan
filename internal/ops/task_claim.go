@@ -76,6 +76,7 @@ func TaskClaimNext() *cli.Command {
 			{Field: "direct", Kind: cli.Bool},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
+			{Field: "tags_none", Kind: cli.List},
 			{Field: "extra", Kind: cli.JSON},
 		},
 		Here: &cli.Here{Field: "file", Flag: "--here"},

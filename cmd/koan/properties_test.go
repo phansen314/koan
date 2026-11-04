@@ -89,6 +89,8 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 	// Batches draw from a source of their own, so that the other changes
 	// draw as they would without them.
 	brng := rand.New(rand.NewSource(seed))
+	// claim-next's tag filters do too, for the same reason.
+	tagRng := rand.New(rand.NewSource(seed))
 	home := root(t)
 	m := model.New(1, func() string { return "2026-10-20T10:00:00Z" })
 	for _, p := range []string{"/a/b", "/c"} {
@@ -752,9 +754,24 @@ func properties(t *testing.T, seed int64, steps int) map[string]int {
 				want = fmt.Sprint(nonNil(unclaimed))
 			default:
 				sc := model.Scope{Folder: pick([]string{"/", "/a", "/a/b", "/c"}), Direct: rng.Intn(2) == 0}
+				args = []string{"claim-next", sc.Folder, fmt.Sprintf("--direct=%v", sc.Direct)}
+				// A filter of the tags updates give; now and then tags_none
+				// names what another filter does, and is refused.
+				tag := func() string { return []string{"a", "b", "c"}[tagRng.Intn(3)] }
+				if tagRng.Intn(2) == 0 {
+					sc.TagsNone = []string{tag()}
+					args = append(args, "--tags-none", sc.TagsNone[0])
+				}
+				if tagRng.Intn(3) == 0 {
+					sc.TagsAny = []string{tag()}
+					args = append(args, "--tags-any", sc.TagsAny[0])
+				}
+				if tagRng.Intn(3) == 0 {
+					sc.TagsAll = []string{tag()}
+					args = append(args, "--tags-all", sc.TagsAll[0])
+				}
 				var c *model.Claim
 				c, err = m.ClaimNext(sc, nil)
-				args = []string{"claim-next", sc.Folder, fmt.Sprintf("--direct=%v", sc.Direct)}
 				want = "<nil>"
 				if c != nil {
 					want = fmt.Sprint(c.Task)

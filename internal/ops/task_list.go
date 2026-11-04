@@ -28,6 +28,7 @@ func TaskList() *cli.Command {
 			{Field: "readiness", Kind: cli.List},
 			{Field: "tags_any", Kind: cli.List},
 			{Field: "tags_all", Kind: cli.List},
+			{Field: "tags_none", Kind: cli.List},
 			{Field: "claimed", Kind: cli.Bool, Nullable: true},
 			{Field: "limit", Kind: cli.Integer, Nullable: true},
 			{Field: "fields", Kind: cli.List},
@@ -39,8 +40,7 @@ func TaskList() *cli.Command {
 			direct := r.boolean("direct", false)
 			states := r.choices("state", []string{"open", "complete"}, []string{"open"})
 			readiness := r.choices("readiness", []string{"ready", "blocked"}, []string{"ready", "blocked"})
-			tagsAny := r.tags("tags_any")
-			tagsAll := r.tags("tags_all")
+			tags := r.tagFilter()
 			claimed := r.nullBool("claimed")
 			limit := r.limit("limit", 100)
 			fields := r.fields("fields", taskFields)
@@ -70,11 +70,7 @@ func TaskList() *cli.Command {
 					if ready := t.readiness(id); ready != nil && !slices.Contains(readiness, *ready) {
 						return false
 					}
-					has := t.tags[id]
-					if len(tagsAny) > 0 && !slices.ContainsFunc(tagsAny, func(tag string) bool { return slices.Contains(has, tag) }) {
-						return false
-					}
-					if slices.ContainsFunc(tagsAll, func(tag string) bool { return !slices.Contains(has, tag) }) {
+					if !tags.passes(t.tags[id]) {
 						return false
 					}
 					_, isClaimed := t.claims[id]

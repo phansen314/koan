@@ -442,15 +442,16 @@ func (s *shape) extra(u Update) {
 	for k := range u.ExtraMerge {
 		merged[k] = true
 	}
-	s.both("/extra_remove", "merged", u.ExtraRemove, merged)
+	s.both("/extra_remove", "is both merged and removed", u.ExtraRemove, merged)
 }
 
-// both refuses what a list removes that the same update adds, at its
-// entry in the list; a duplicate is refused once, at its first.
-func (s *shape) both(pointer, verb string, removed []string, added map[string]bool) {
-	for i, item := range removed {
-		if added[item] && !slices.Contains(removed[:i], item) {
-			s.faultf(fmt.Sprintf("%s/%d", pointer, i), "%q is both %s and removed", item, verb)
+// both refuses what a list holds that contradicts another field of the
+// same input, at its entry in the list, saying why; a duplicate is refused
+// once, at its first.
+func (s *shape) both(pointer, why string, list []string, against map[string]bool) {
+	for i, item := range list {
+		if against[item] && !slices.Contains(list[:i], item) {
+			s.faultf(fmt.Sprintf("%s/%d", pointer, i), "%q %s", item, why)
 		}
 	}
 }
@@ -571,7 +572,7 @@ func (t *Tree) Update(refs []string, u Update) (updated []int64, err error) {
 		if u.TagsReplaceAll != nil && (u.TagsAdd != nil || u.TagsRemove != nil) {
 			s.faultf("", "tags_replace_all can't go with tags_add or tags_remove")
 		}
-		s.both("/tags_remove", "added", u.TagsRemove, add)
+		s.both("/tags_remove", "is both added and removed", u.TagsRemove, add)
 		s.extra(u)
 		if err := s.done(nil); err != nil {
 			return err
@@ -1549,10 +1550,11 @@ func (c *Tree) claim(id int64, extra map[string]any) Claim {
 
 // Scope is where claim-next looks, as task-list's filter says.
 type Scope struct {
-	Folder  string // a folder-ref; empty means the root
-	Direct  bool
-	TagsAny []string
-	TagsAll []string
+	Folder   string // a folder-ref; empty means the root
+	Direct   bool
+	TagsAny  []string
+	TagsAll  []string
+	TagsNone []string
 }
 
 // ClaimNext claims the first task of the frontier within scope. It returns
@@ -1584,6 +1586,14 @@ func (t *Tree) ScopedFrontier(s Scope) ([]int64, error) {
 	fref := sh.ref("/folder", ref, core.WantFolder, false)
 	anyTags := sh.tags("/tags_any", s.TagsAny)
 	allTags := sh.tags("/tags_all", s.TagsAll)
+	noneTags := sh.tags("/tags_none", s.TagsNone)
+	wanted := map[string]bool{}
+	for _, tags := range []map[string]bool{anyTags, allTags} {
+		for tag := range tags {
+			wanted[tag] = core.ValidTag(tag)
+		}
+	}
+	sh.both("/tags_none", "is both wanted and left out", s.TagsNone, wanted)
 	if err := sh.done(nil); err != nil {
 		return nil, err
 	}
@@ -1597,7 +1607,7 @@ func (t *Tree) ScopedFrontier(s Scope) ([]int64, error) {
 		if !s.Direct && !t.Under(id, folder) || s.Direct && x.Folder != folder {
 			continue
 		}
-		if len(anyTags) > 0 && !hasAny(x.Tags, anyTags) || !hasAll(x.Tags, allTags) {
+		if len(anyTags) > 0 && !hasAny(x.Tags, anyTags) || !hasAll(x.Tags, allTags) || hasAny(x.Tags, noneTags) {
 			continue
 		}
 		out = append(out, id)

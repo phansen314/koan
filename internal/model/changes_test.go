@@ -824,6 +824,34 @@ func TestClaims(t *testing.T) {
 		t.Errorf("claim-next with nothing left: %d", got)
 	}
 
+	// tags_none leaves out what holds a listed tag, even first in work
+	// order, and the other tag filters still apply.
+	must[[]int64](t)(tr.Unclaim("3", "4", "5"))
+	if got := must[[]int64](t)(tr.Update([]string{"5"}, Update{TagsAdd: []string{"parked"}})); !reflect.DeepEqual(got, []int64{5}) {
+		t.Fatalf("updated %v", got)
+	}
+	front := func(s Scope) []int64 { return must[[]int64](t)(tr.ScopedFrontier(s)) }
+	if got := front(Scope{Folder: "/f"}); !reflect.DeepEqual(got, []int64{5, 4}) {
+		t.Errorf("frontier under /f: %v", got)
+	}
+	if got := front(Scope{Folder: "/f", TagsNone: []string{"parked", "parked"}}); !reflect.DeepEqual(got, []int64{4}) {
+		t.Errorf("tags_none: %v", got)
+	}
+	if got := front(Scope{Folder: "/f", TagsAny: []string{"x"}, TagsNone: []string{"parked"}}); !reflect.DeepEqual(got, []int64{4}) {
+		t.Errorf("tags_any and tags_none: %v", got)
+	}
+	if got := front(Scope{Folder: "/f", TagsNone: []string{}}); !reflect.DeepEqual(got, []int64{5, 4}) {
+		t.Errorf("empty tags_none: %v", got)
+	}
+	if got := next(Scope{Folder: "/f", TagsNone: []string{"parked"}}); got != 4 {
+		t.Errorf("claim-next past a parked task: %d", got)
+	}
+	if got := next(Scope{Folder: "/f", Direct: true, TagsNone: []string{"parked"}}); got != 0 {
+		t.Errorf("claim-next with only a parked task: %d", got)
+	}
+	must[[]int64](t)(tr.Update([]string{"5"}, Update{TagsRemove: []string{"parked"}}))
+	must[[]int64](t)(tr.ClaimTask([]string{"3", "5"}, nil))
+
 	must[[]int64](t)(tr.Unclaim("3"))
 	if got := must[[]int64](t)(tr.Unclaim("3", "5", "4")); !reflect.DeepEqual(got, []int64{5, 4}) || tr.claimed(4) {
 		t.Errorf("unclaimed %v", got)
