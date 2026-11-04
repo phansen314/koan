@@ -58,7 +58,7 @@ koan claim-next --extra '{"by":"me"}'
 koan complete 3
 ```
 
-`claim-next` claims the first task of the frontier, `@3`, as one change, so two workers asking at once are never handed the same task, and returns its whole record. `--extra` is any JSON you want kept with the claim, such as who took it.
+`claim-next` claims the first task of the frontier, `@3`, as one change, so two workers asking at once are never handed the same task, and returns its whole record. `--extra` is a JSON object you want kept with the claim, each top-level key a lowercase name of your choosing, such as `by` for who took it.
 
 `complete` answers with what changed:
 
